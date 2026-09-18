@@ -1,5 +1,5 @@
 """
-surge_live.py — the data layer. Sportmonks in, Betfair prices in, alerts out.
+surge_live.py — the data layer. API-Football in, Betfair prices in, alerts out.
 
 This is the half `surge_alerts.py` was missing: it referenced `ExchangePrices`
 without defining it, declared `API_BASE` without calling it, and had no poll loop
@@ -16,8 +16,8 @@ key physically cannot place orders, which is the point of using it.
 
 Environment:
 
-    SPORTMONKS_KEY      required
-    SURGE_LEAGUE_IDS    optional, comma-separated Sportmonks league ids
+    APIFOOTBALL_KEY     required
+    SURGE_LEAGUE_IDS    optional, comma-separated API-Football league ids
     BF_APP_KEY          required — the key marked 1.0-DELAY
     BF_USERNAME         required
     BF_PASSWORD         required
@@ -60,7 +60,7 @@ from surge_state import write_state, upload_db
 
 log = logging.getLogger("surge.live")
 
-SM_BASE = "https://api.sportmonks.com/v3/football"
+AF_BASE = "https://v3.football.api-sports.io"
 BF_LOGIN = "https://identitysso.betfair.com/api/login"
 BF_KEEPALIVE = "https://identitysso.betfair.com/api/keepAlive"
 BF_BETTING = "https://api.betfair.com/exchange/betting/rest/v1.0"
@@ -82,192 +82,141 @@ MAX_SPREAD = _f("SURGE_MAX_SPREAD", 0.08)
 DRY_RUN = _env("SURGE_DRY_RUN", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
-# ══════════════════════════════ Sportmonks ══════════════════════════════
+# ═════════════════════════════ API-Football ═════════════════════════════
+#
+# Swapped from API-Football. The two public methods are unchanged — matches()
+# returns a list[Match] and finished_today() a {fixture_id: (hg, ag)} — so
+# nothing downstream had to move.
+#
+# The shapes differ in one way that matters for cost. API-Football returned every
+# in-play fixture WITH its statistics in a single request. API-Football splits
+# that: /fixtures?live=all gives the match list in one call, and statistics cost
+# one call per fixture. So the league whitelist is applied to the list BEFORE
+# any statistics are fetched — that filter is now the difference between a few
+# dozen requests a poll and several hundred.
 
-# Statistics are matched on `developer_name` from the `statistics.type` include,
-# not on hardcoded type ids. Ids are stable in practice but they are Sportmonks'
-# to change, and a silent remap would corrupt tempo without raising anything.
+# API-Football's statistic names, mapped onto the model's fields. There is no
+# dangerous-attacks equivalent at any subscription level, which is exactly what
+# has_datk was built for: it stays False and the model drops that term rather
+# than treating a missing stat as a quiet zero.
 WANTED_STATS = {
-    "SHOTS_ON_TARGET": "sot",
-    "SHOTS_OFF_TARGET": "soff",
-    "SHOTS_INSIDEBOX": "inside",
-    "SHOTS_OUTSIDEBOX": "outside",
-    "CORNERS": "corners",
-    "BALL_POSSESSION": "poss",
-    "DANGEROUS_ATTACKS": "datk",
-    "REDCARDS": "red",
+    "Shots on Goal": "sot",
+    "Shots off Goal": "soff",
+    "Shots insidebox": "inside",
+    "Shots outsidebox": "outside",
+    "Corner Kicks": "corners",
+    "Ball Possession": "poss",
+    "Red Cards": "red",
 }
 
-# Fallback ids, used only when the type include is absent from the response.
-STAT_IDS = {86: "sot", 41: "soff", 49: "inside", 50: "outside",
-            34: "corners", 45: "poss", 44: "datk", 83: "red"}
-
-LIVE_STATES = {"INPLAY_1ST_HALF", "INPLAY_2ND_HALF", "HT",
-               "INPLAY_ET", "INPLAY_ET_2ND_HALF", "BREAK"}
-DONE_STATES = {"FT", "AET", "FT_PEN", "POSTPONED", "CANCELLED",
-               "ABANDONED", "WALKOVER", "AWARDED"}
+LIVE_STATES = {"1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT"}
+DONE_STATES = {"FT", "AET", "PEN", "PST", "CANC", "ABD", "AWD", "WO"}
 
 
-class SportmonksFeed:
+class ApiFootballFeed:
     """Live fixtures with the statistics the model needs.
 
-    One request per poll returns every in-play fixture with scores, teams,
-    period clock, state and team statistics. Sportmonks updates on a ten-second
-    cycle, so polling faster than that spends quota to receive the same numbers.
+    One request lists every in-play fixture; statistics then cost one request
+    per fixture, so the whitelist is doing real work here.
     """
 
     def __init__(self, token: str, league_ids: str = "") -> None:
         self.token = token
-        self.league_ids = [x.strip() for x in league_ids.split(",") if x.strip()]
-        self.endpoint = _env("SURGE_SM_ENDPOINT", "/livescores/inplay")
         self.s = requests.Session()
+        self.s.headers.update({"x-apisports-key": token})
+        self.leagues = {int(x) for x in re.split(r"[,;\s]+", league_ids or "")
+                        if x.strip().isdigit()}
+        self.calls = 0
 
     def _get(self, path: str, **params: Any) -> list[dict]:
-        params["api_token"] = self.token
         try:
-            r = self.s.get(f"{SM_BASE}{path}", params=params, timeout=15)
-        except requests.RequestException:
-            log.exception("Sportmonks request failed")
+            r = self.s.get(f"{AF_BASE}{path}", params=params, timeout=15)
+            self.calls += 1
+            body = r.json()
+        except Exception:
+            log.exception("API-Football request failed: %s", path)
             return []
-        if r.status_code == 429:
-            log.warning("Sportmonks rate limit hit — backing off")
-            time.sleep(20)
+        errs = body.get("errors")
+        # A dict of errors and a bare empty list both mean "no data"; only the
+        # dict carries a reason worth logging, and rate limits arrive this way.
+        if isinstance(errs, dict) and errs:
+            log.warning("API-Football error: %s", errs)
             return []
-        if r.status_code in (401, 403):
-            # Worth separating from a generic failure: these three look
-            # identical from the outside (no fixtures returned) but need
-            # completely different fixes, and guessing wastes an evening.
-            log.error("Sportmonks rejected the token (%s). Either the token is "
-                      "wrong, or your plan does not cover the leagues you asked "
-                      "for, or the trial has lapsed.", r.status_code)
-            return []
-        if r.status_code != 200:
-            log.warning("Sportmonks %s returned %s", path, r.status_code)
-            return []
-        body = r.json()
-        data = body.get("data", [])
-        return data if isinstance(data, list) else [data]
+        return body.get("response") or []
 
-    def inplay(self) -> list[dict]:
-        """Every live fixture, with full cumulative statistics.
-
-        Sportmonks offers three livescores endpoints and only one suits this bot:
-
-          /livescores/inplay   every fixture in play right now        ← this one
-          /livescores          everything today, including unstarted
-          /livescores/latest   only fixtures changed in the last 10s
-
-        `/latest` is the efficient choice for a scoreboard that already holds
-        state and just needs deltas. It is the wrong choice here, and quietly so.
-        The model works from ten-minute windows of *cumulative* counters, so it
-        needs each fixture's running totals on every pass. Polling `/latest` on
-        a 60-second cycle returns only what moved inside a 10-second window —
-        roughly a sixth of the cycle — so most live matches would simply be
-        absent from most polls. Nothing would error. Alerts would just never
-        fire, and the gap would look like a quiet night rather than a bug.
-
-        Set SURGE_SM_ENDPOINT to override if you want to see this for yourself.
-        """
-        params = {
-            "include": "scores;participants;statistics.type;periods;state;league",
-        }
-        if self.league_ids:
-            params["filters"] = "fixtureLeagues:" + ",".join(self.league_ids)
-        return self._get(self.endpoint, **params)
-
-    # ─────────────────────────── parsing ───────────────────────────
+    def _wanted(self, fx: dict) -> bool:
+        if not self.leagues:
+            return True
+        return ((fx.get("league") or {}).get("id")) in self.leagues
 
     @staticmethod
     def _minute(fx: dict) -> float:
-        """Match clock. The ticking period carries it; nothing else does."""
-        for p in fx.get("periods") or []:
-            if p.get("ticking"):
-                return float(p.get("minutes") or 0) + float(p.get("time_added") or 0)
-        # Not ticking: half time, or a period that has just ended.
-        mins = [float(p.get("minutes") or 0) for p in (fx.get("periods") or [])]
-        return max(mins) if mins else 0.0
-
-    @staticmethod
-    def _teams(fx: dict) -> tuple[str, str]:
-        home = away = ""
-        for p in fx.get("participants") or []:
-            loc = (p.get("meta") or {}).get("location")
-            if loc == "home":
-                home = p.get("name") or ""
-            elif loc == "away":
-                away = p.get("name") or ""
-        return home, away
+        st = (fx.get("fixture") or {}).get("status") or {}
+        elapsed = st.get("elapsed")
+        if elapsed is None:
+            return 0.0
+        # Added time arrives separately on some plans; treat it as real minutes
+        # so a 90+4 chance is not priced as though the match has ended.
+        extra = st.get("extra") or 0
+        return float(elapsed) + float(extra or 0)
 
     @staticmethod
     def _score(fx: dict) -> tuple[int, int]:
-        hg = ag = 0
-        for s in fx.get("scores") or []:
-            if s.get("description") != "CURRENT":
-                continue
-            sc = s.get("score") or {}
-            goals = int(sc.get("goals") or 0)
-            if sc.get("participant") == "home":
-                hg = goals
-            elif sc.get("participant") == "away":
-                ag = goals
-        return hg, ag
+        g = fx.get("goals") or {}
+        return int(g.get("home") or 0), int(g.get("away") or 0)
 
-    @staticmethod
-    def _stats(fx: dict) -> dict[str, float]:
-        """Match totals for shots, plus home possession percentage.
+    def _stats(self, fixture_id: str, home_id: int) -> dict[str, Any]:
+        """Match totals for shots, plus home possession and red cards.
 
         The model prices *any* next goal, so shot counts are summed across both
         teams. Possession is the exception — it only means anything as the home
         share, because the model asks whether the side on the ball is the side
-        chasing.
+        chasing. Red cards are never summed for the same reason: which side went
+        down is the whole signal.
         """
-        out = {"sot": 0.0, "soff": 0.0, "inside": 0.0,
-               "outside": 0.0, "corners": 0.0, "datk": 0.0}
-        poss_home = None
-        red_home = red_away = 0
-        for st in fx.get("statistics") or []:
-            t = st.get("type") or {}
-            key = WANTED_STATS.get(t.get("developer_name") or "")
-            if key is None:
-                key = STAT_IDS.get(st.get("type_id"))
-            if key is None:
-                continue
-            val = (st.get("data") or {}).get("value")
-            if val is None:
-                continue
-            if key == "poss":
-                if st.get("location") == "home":
-                    poss_home = float(val)
-            elif key == "red":
-                # Red cards are per side and never summed: which team went down
-                # is the entire signal, and a total of 1 says nothing.
-                if st.get("location") == "home":
-                    red_home = int(val)
+        out = {"sot": 0.0, "soff": 0.0, "inside": 0.0, "outside": 0.0,
+               "corners": 0.0, "datk": 0.0, "has_datk": False,
+               "poss_home": None, "red_home": 0, "red_away": 0}
+        for side in self._get("/fixtures/statistics", fixture=fixture_id):
+            is_home = ((side.get("team") or {}).get("id")) == home_id
+            for st in side.get("statistics") or []:
+                key = WANTED_STATS.get(st.get("type") or "")
+                val = st.get("value")
+                if key is None or val is None:
+                    continue
+                if key == "poss":
+                    if is_home:
+                        try:
+                            out["poss_home"] = float(str(val).rstrip("%"))
+                        except ValueError:
+                            pass
+                elif key == "red":
+                    out["red_home" if is_home else "red_away"] = int(val or 0)
                 else:
-                    red_away = int(val)
-            else:
-                out[key] += float(val)
-        out["poss_home"] = poss_home
-        out["red_home"], out["red_away"] = red_home, red_away
-        out["has_datk"] = any(
-            (st.get("type") or {}).get("developer_name") == "DANGEROUS_ATTACKS"
-            or st.get("type_id") == 44
-            for st in fx.get("statistics") or [])
+                    try:
+                        out[key] += float(val)
+                    except (TypeError, ValueError):
+                        pass
         return out
 
     def matches(self) -> list[Match]:
         found = []
-        for fx in self.inplay():
-            state = ((fx.get("state") or {}).get("developer_name") or "").upper()
-            if state in DONE_STATES:
+        live = [fx for fx in self._get("/fixtures", live="all") if self._wanted(fx)]
+        for fx in live:
+            status = (((fx.get("fixture") or {}).get("status") or {})
+                      .get("short") or "").upper()
+            if status in DONE_STATES or status not in LIVE_STATES:
                 continue
-            home, away = self._teams(fx)
+            teams = fx.get("teams") or {}
+            home = ((teams.get("home") or {}).get("name") or "")
+            away = ((teams.get("away") or {}).get("name") or "")
             if not home or not away:
                 continue
+            fid = str((fx.get("fixture") or {}).get("id"))
             hg, ag = self._score(fx)
-            s = self._stats(fx)
+            s = self._stats(fid, (teams.get("home") or {}).get("id"))
             found.append(Match(
-                fid=str(fx.get("id")),
+                fid=fid,
                 home=home, away=away,
                 league=((fx.get("league") or {}).get("name") or ""),
                 minute=self._minute(fx), hg=hg, ag=ag,
@@ -283,11 +232,16 @@ class SportmonksFeed:
     def finished_today(self) -> dict[str, tuple[int, int]]:
         """Final scores for fixtures that have ended, for settlement."""
         out = {}
-        for fx in self._get("/livescores", include="scores;state"):
-            state = ((fx.get("state") or {}).get("developer_name") or "").upper()
-            if state in DONE_STATES:
-                out[str(fx.get("id"))] = self._score(fx)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        for fx in self._get("/fixtures", date=today):
+            if not self._wanted(fx):
+                continue
+            status = (((fx.get("fixture") or {}).get("status") or {})
+                      .get("short") or "").upper()
+            if status in DONE_STATES:
+                out[str((fx.get("fixture") or {}).get("id"))] = self._score(fx)
         return out
+
 
 
 # ═════════════════════════════ name matching ════════════════════════════
@@ -475,7 +429,7 @@ class ExchangePrices:
         return None
 
     def _find_event(self, home: str, away: str) -> str | None:
-        """Match a Sportmonks fixture to a Betfair event by team names.
+        """Match a API-Football fixture to a Betfair event by team names.
 
         The two providers share no ids, so this is the seam where things break.
         A miss is logged rather than swallowed — an unmatched fixture is a
@@ -625,7 +579,7 @@ class Tracked:
 
 class Runner:
     def __init__(self) -> None:
-        self.feed = SportmonksFeed(_env("SPORTMONKS_KEY"), _env("SURGE_LEAGUE_IDS"))
+        self.feed = ApiFootballFeed(_env("APIFOOTBALL_KEY"), _env("SURGE_LEAGUE_IDS"))
         self.prices = ExchangePrices(_env("BF_APP_KEY"), _env("BF_USERNAME"),
                                      _env("BF_PASSWORD"), CFG.price_delay_s)
         self.tg = Telegram()
@@ -783,7 +737,7 @@ def _check() -> None:
     if n:
         print(f"Loaded {n} setting(s) from .env\n")
 
-    need = {"SPORTMONKS_KEY": _env("SPORTMONKS_KEY"),
+    need = {"APIFOOTBALL_KEY": _env("APIFOOTBALL_KEY"),
             "BF_APP_KEY": _env("BF_APP_KEY"),
             "BF_USERNAME": _env("BF_USERNAME"),
             "BF_PASSWORD": _env("BF_PASSWORD"),
@@ -794,11 +748,12 @@ def _check() -> None:
         # thing people paste into a chat when asking why it isn't working.
         print(f"{k:<18} {'set' if v else 'MISSING'}")
 
-    if not need["SPORTMONKS_KEY"]:
-        print("\nNo Sportmonks token. Copy .env.example to .env and fill it in.")
+    if not need["APIFOOTBALL_KEY"]:
+        print("\nNo API-Football key. Get one at dashboard.api-football.com, "
+              "then set APIFOOTBALL_KEY.")
         return
 
-    print(f"\nEndpoint          {_env('SURGE_SM_ENDPOINT', '/livescores/inplay')}")
+    print(f"\nFeed              API-Football /fixtures?live=all")
     print(f"Price delay       {CFG.price_delay_s}s")
     print(f"EV floor          {(CFG.min_ev + CFG.price_delay_s / 60 * 0.01) * 100:.1f}%")
     print(f"Odds range        {CFG.odds_floor:.2f}–{CFG.odds_ceil:.2f}")
@@ -809,9 +764,9 @@ def _check() -> None:
              else f"1/{CFG.kelly_div:.0f} Kelly, capped "
                   f"£{CFG.bank * CFG.max_stake_pct / 100:.2f}"))
 
-    feed = SportmonksFeed(need["SPORTMONKS_KEY"], _env("SURGE_LEAGUE_IDS"))
+    feed = ApiFootballFeed(need["APIFOOTBALL_KEY"], _env("SURGE_LEAGUE_IDS"))
     ms = feed.matches()
-    print(f"\nSportmonks        {len(ms)} fixture(s) in play")
+    print(f"\nAPI-Football        {len(ms)} fixture(s) in play")
     missing_datk = 0
     for m in ms[:10]:
         reds = f" · {m.red_home}-{m.red_away} red" if (m.red_home or m.red_away) else ""
@@ -836,7 +791,7 @@ def _check() -> None:
 
 
 def _markets() -> None:
-    feed = SportmonksFeed(_env("SPORTMONKS_KEY"), _env("SURGE_LEAGUE_IDS"))
+    feed = ApiFootballFeed(_env("APIFOOTBALL_KEY"), _env("SURGE_LEAGUE_IDS"))
     px = ExchangePrices(_env("BF_APP_KEY"), _env("BF_USERNAME"),
                         _env("BF_PASSWORD"), CFG.price_delay_s)
     if not px.login():
