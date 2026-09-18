@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 import math
 import os
-import sys
 import sqlite3
 import threading
 import time
@@ -29,43 +28,33 @@ import requests
 
 log = logging.getLogger("surge")
 
+
+class AlreadyRunning(Exception):
+    """Another copy of the poller holds the lock."""
+
+
+def claim_single_instance(path: str = "/tmp/surge.lock"):
+    """Refuse to start if another copy is already running.
+
+    Two processes were running against the same database: each overwrote the
+    other's backup every five minutes, and both counted against the same API
+    quota, which is what tripped the per-minute rate limit at 17:50:43 and
+    17:50:44 one second apart. The lock is held for the life of the process and
+    released by the OS if it dies, so a crash cannot leave it stuck.
+    """
+    import fcntl
+    fh = open(path, "w")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        raise AlreadyRunning(
+            f"another instance holds {path} — stop it before starting this one")
+    fh.write(str(os.getpid()))
+    fh.flush()
+    return fh                     # keep the handle alive or the lock drops
+
 API_BASE = "https://v3.football.api-sports.io"
 TG_API = "https://api.telegram.org/bot{token}/sendMessage"
-
-
-def load_dotenv(path: str = ".env") -> int:
-    """Read secrets from a file next to the script, never from the source.
-
-    This runs before Config is built, because Config reads the environment at
-    import time — a .env loaded afterwards would be ignored silently and every
-    setting would quietly fall back to its default.
-
-    Real environment variables win over the file, so a systemd unit or a shell
-    export can override .env without editing it. Missing file is not an error:
-    on a server you may prefer to export the variables directly.
-    """
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
-    if not os.path.exists(p):
-        return 0
-    mode = os.stat(p).st_mode
-    if mode & 0o077:
-        print(f"WARNING: {path} is readable by other users on this machine. "
-              f"Run: chmod 600 {path}", file=sys.stderr)
-    n = 0
-    with open(p, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            k, v = k.strip(), v.strip().strip('"').strip("'")
-            if k and k not in os.environ:
-                os.environ[k] = v
-                n += 1
-    return n
-
-
-load_dotenv()
 
 
 def _env(k: str, d: str = "") -> str:
@@ -97,7 +86,7 @@ class Config:
     # model
     league_gpg: float = field(default_factory=lambda: _f("SURGE_LEAGUE_GPG", 2.70))
     shrink: float = field(default_factory=lambda: _f("SURGE_SHRINK", 0.70))
-    commission: float = field(default_factory=lambda: _f("SURGE_COMMISSION", 0.02))
+    commission: float = field(default_factory=lambda: _f("SURGE_COMMISSION", 0.05))
 
     # the six gates
     min_tempo: float = field(default_factory=lambda: _f("SURGE_MIN_TEMPO", 1.10))
@@ -108,17 +97,24 @@ class Config:
     overround: float = field(default_factory=lambda: _f("SURGE_OVERROUND", 1.03))
     trust_base: float = field(default_factory=lambda: _f("SURGE_TRUST_BASE", 0.35))
     trust_lag: float = field(default_factory=lambda: _f("SURGE_TRUST_LAG", 4.0))
-    odds_floor: float = field(default_factory=lambda: _f("SURGE_ODDS_FLOOR", 2.40))
-    odds_ceil: float = field(default_factory=lambda: _f("SURGE_ODDS_CEIL", 4.50))
-    min_minute: int = field(default_factory=lambda: int(_f("SURGE_MIN_MINUTE", 22)))
+    # 1.50–2.00 from the 55th minute. At 55' with 37 minutes left a goal is
+    # about 67% likely in an average league, which prices at 1.49 — so this band
+    # is being offered close to fair and the whole edge has to come from tempo.
+    # It also needs a 67.8% strike rate at 1.50, against 46.7% at 2.20.
+    odds_floor: float = field(default_factory=lambda: _f("SURGE_ODDS_FLOOR", 1.50))
+    odds_ceil: float = field(default_factory=lambda: _f("SURGE_ODDS_CEIL", 2.00))
+    min_minute: int = field(default_factory=lambda: int(_f("SURGE_MIN_MINUTE", 55)))
     max_minute: int = field(default_factory=lambda: int(_f("SURGE_MAX_MINUTE", 84)))
+
+    # Guards. Every one of these exists because of something in the logs.
+    max_ev: float = field(default_factory=lambda: _f("SURGE_MAX_EV", 0.20))
+    min_match_score: float = field(default_factory=lambda: _f("SURGE_MIN_MATCH", 0.70))
     min_left: int = field(default_factory=lambda: int(_f("SURGE_MIN_LEFT", 8)))
 
     # staking (advisory — the alert tells you, it does not act)
     bank: float = field(default_factory=lambda: _f("SURGE_BANK", 500))
     max_stake_pct: float = field(default_factory=lambda: _f("SURGE_MAX_STAKE_PCT", 2))
     kelly_div: float = field(default_factory=lambda: _f("SURGE_KELLY_DIV", 4))
-    flat_stake: float = field(default_factory=lambda: _f("SURGE_FLAT_STAKE", 2))
 
     # exchange feed (READ ONLY — the delayed key physically cannot place bets)
     bf_app_key: str = field(default_factory=lambda: _env("BF_APP_KEY"))
@@ -145,6 +141,19 @@ LEAGUE_GPG = {
     "Serie A (Brazil)": 2.38, "Liga MX": 2.82, "Liga Profesional": 2.18,
     "Premier Division (Ireland)": 2.46,
 }
+
+
+# Only leagues Betfair actually prices. The logs were full of "No Betfair event
+# matched" for Oberwart v Parndorf, Binissalem v Platges Calvià, Agoncillo v
+# Calahorra, Servette Chênois Women — the matcher was not failing, it was being
+# asked to find markets that do not exist. Evaluating them burned quota on
+# matches that could never be bet, which is most of why the rate limit kept
+# tripping. Empty set means allow everything.
+BETFAIR_LEAGUES = {int(x) for x in _env("SURGE_LEAGUE_IDS", "").replace(" ", "").split(",") if x}
+
+
+def betfair_prices_it(league_id: int) -> bool:
+    return not BETFAIR_LEAGUES or league_id in BETFAIR_LEAGUES
 
 
 def gpg_for(league: str) -> float:
@@ -185,61 +194,18 @@ def proxy_xg(inside_box: int, outside_box: int) -> float:
 
 
 def tempo_mult(pxg10: float, sot10: float, corners10: float, minute: float,
-               gpg: float | None = None, soff10: float = 0.0,
-               datk10: float = 0.0, has_datk: bool = False) -> float:
+               gpg: float | None = None, soff10: float = 0.0) -> float:
     """Shots on target and off target are different evidence, weighted apart.
 
     On target is the strongest single predictor available. Off target is weaker
     but not noise — a side repeatedly missing is still creating positions, which
     is territory and intent.
-
-    Dangerous attacks carry less information per event than a shot, but they
-    arrive five to ten times more often. For a model whose entire thesis is
-    moving before the price does, a signal that updates between shots is worth
-    more than its predictive weight alone suggests: it is the difference between
-    reading pressure at the moment it builds and reading it once the market has
-    already seen the same shot you have.
-
-    Coverage for that stat is patchy outside the bigger leagues, so `has_datk`
-    says whether the feed supplied it rather than inferring absence from a zero.
-    Missing data must not read as calm: treating an absent stat as 0 would
-    deflate tempo by about 6% on exactly the obscure leagues this bot favours,
-    quietly suppressing alerts there. When it is absent the remaining weights
-    are renormalised instead.
     """
     e10 = base_rate(minute, gpg or CFG.league_gpg) * 10
     e_sot, e_all, e_cnr = e10 / 0.30, e10 / 0.105, 1.1
-    terms = [(0.40, pxg10 / e10), (0.25, sot10 / e_sot),
-             (0.14, (sot10 + soff10) / e_all), (0.09, corners10 / e_cnr)]
-    if has_datk:
-        terms.append((0.12, datk10 / (e10 / 0.025)))
-    total_w = sum(w for w, _ in terms)
-    raw = sum(w * r for w, r in terms) / total_w
+    raw = (0.44 * (pxg10 / e10) + 0.28 * (sot10 / e_sot)
+           + 0.16 * ((sot10 + soff10) / e_all) + 0.12 * (corners10 / e_cnr))
     return max(0.45, min(2.30, 1 + CFG.shrink * (raw - 1)))
-
-
-def red_mult(red_home: int, red_away: int, hg: int, ag: int) -> float:
-    """A sending-off, which the model was previously blind to.
-
-    This is a hole being closed, not an edge being found. The market reprices a
-    red card in seconds, so there is no lag to exploit — but without this term
-    the model kept its pre-card goal rate and would happily fire into a game
-    that had just changed shape.
-
-    Direction is better established than magnitude: eleven against ten produces
-    more goals than eleven against eleven, and it matters enormously which side
-    went down. A leader reduced to ten gets pinned in and usually concedes; a
-    chasing side reduced to ten shuts up shop and the game dies. The numbers
-    below are priors, not fitted values — treat them as placeholders until the
-    log has enough red-card fixtures to say otherwise.
-    """
-    d = red_home - red_away
-    if d == 0:
-        return 1.0 if red_home == 0 else 1.06   # both down, game opens slightly
-    short, lead = (-1 if d > 0 else 1), (hg > ag) - (hg < ag)
-    if lead == 0:
-        return 1.10                              # level, someone must now chase
-    return 1.18 if short == -lead else 0.92
 
 
 def poss_mult(poss_home: float | None, hg: int, ag: int) -> float:
@@ -286,16 +252,6 @@ def kelly(p: float, odds: float, commission: float) -> float:
 
 
 def recommended_stake(p: float, odds: float) -> float:
-    """Flat while the model is unproven, Kelly once it isn't.
-
-    Kelly sizes in proportion to believed edge, so it stakes hardest exactly
-    where the model is most confident — and an uncalibrated model is most
-    confident precisely where it is most wrong. Until the calibration buckets
-    line up, a flat stake makes the sample cheap to collect and keeps one bad
-    assumption from compounding. Set SURGE_FLAT_STAKE=0 to switch Kelly back on.
-    """
-    if CFG.flat_stake > 0:
-        return round(min(CFG.flat_stake, CFG.bank * CFG.max_stake_pct / 100), 2)
     full = CFG.bank * kelly(p, odds, CFG.commission) / CFG.kelly_div
     return round(min(CFG.bank * CFG.max_stake_pct / 100, full), 2)
 
@@ -327,10 +283,6 @@ class Match:
     sot: int = 0
     soff: int = 0
     corners: int = 0
-    datk: int = 0
-    has_datk: bool = False
-    red_home: int = 0
-    red_away: int = 0
     poss_home: float | None = None
     history: list[Snapshot] = field(default_factory=list)
     alerted: bool = False
@@ -348,17 +300,16 @@ class Match:
                 break
         return found
 
-    def deltas(self, prev: "Match | None") -> tuple[float, ...]:
+    def deltas(self, prev: "Match | None") -> tuple[float, float, float, float, float]:
         """Ten-minute windows. The feed is cumulative, so we subtract."""
         if prev is None:
-            return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, 0.0
         return (
             max(0, self.inside - prev.inside),
             max(0, self.outside - prev.outside),
             max(0, self.sot - prev.sot),
             max(0, self.corners - prev.corners),
             max(0, self.soff - prev.soff),
-            max(0, self.datk - prev.datk),
         )
 
 
@@ -373,7 +324,7 @@ class Gate:
 
 
 def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = None,
-             market_id: str = "") -> dict[str, Any]:
+             market_id: str = "", match_score: float | None = None) -> dict[str, Any]:
     """One number decides it: expected value per £1 staked.
 
     Hard constraints are genuinely binary — you cannot take the bet outside the
@@ -382,16 +333,14 @@ def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = N
     a large edge with one weak reading beats a marginal one where every reading
     scrapes over its line.
     """
-    inside10, outside10, sot10, cnr10, soff10, datk10 = m.deltas(prev10)
+    inside10, outside10, sot10, cnr10, soff10 = m.deltas(prev10)
     pxg10 = proxy_xg(inside10, outside10)
     gpg = gpg_for(m.league)
 
-    tempo = tempo_mult(pxg10, sot10, cnr10, m.minute, gpg, soff10,
-                       datk10, m.has_datk)
+    tempo = tempo_mult(pxg10, sot10, cnr10, m.minute, gpg, soff10)
     state = state_mult(m.hg, m.ag, m.minute)
     poss = poss_mult(m.poss_home, m.hg, m.ag)
-    red = red_mult(m.red_home, m.red_away, m.hg, m.ag)
-    lam = base_rate(m.minute, gpg) * tempo * state * poss * red
+    lam = base_rate(m.minute, gpg) * tempo * state * poss
     left = max(0.0, 92 - m.minute)
     p = 1 - math.exp(-lam * left)
 
@@ -442,8 +391,26 @@ def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = N
     failed = [why for ok, why in hard if not ok]
     eligible = not failed
 
+    # An implausible edge is a broken price, not an opportunity. A 54.6% EV on a
+    # next-goal market means believing ~50% where the book prices 31% — in a
+    # liquid German market that does not happen. The likeliest cause is a wrong
+    # market match: a bad price reads as a huge favourable move, price lag then
+    # pushes trust to its ceiling, and the model overrides the market entirely.
+    # One bad match poisons everything downstream, so cap it and shout.
+    suspect_ev = ev > CFG.max_ev
+    suspect_match = match_score is not None and match_score < CFG.min_match_score
+
     if not eligible:
         tier, reason = "HOLD", failed[0]
+    elif suspect_match:
+        tier = "HOLD"
+        reason = f"market match only {match_score:.2f} confident — not trusting the price"
+        log.warning("Rejected %s: weak market match %.2f", m.fid, match_score)
+    elif suspect_ev:
+        tier = "HOLD"
+        reason = f"EV {ev * 100:+.1f}% exceeds the {CFG.max_ev * 100:.0f}% sanity cap — treating as a data error"
+        log.error("SUSPECT price on %s v %s: EV %+.1f%% at odds %.2f, model %.1f%% vs market %.1f%% — "
+                  "check the market match", m.home, m.away, ev * 100, m.odds, p * 100, p_mkt * 100)
     elif ev >= ev_floor:
         tier, reason = "FIRE", ""
     elif lag < 0:
@@ -459,13 +426,13 @@ def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = N
         "tier": tier, "reason": reason, "eligible": eligible, "failed": failed,
         "p": p, "p_mkt": p_mkt, "p_used": p_used, "w": w, "ev": ev,
         "ev_floor": ev_floor, "be": be, "edge": p_used - be,
-        "tempo": tempo, "state": state, "poss": poss, "red": red,
-        "datk": datk10,
+        "tempo": tempo, "state": state, "poss": poss,
         "poss_read": poss_read(m.poss_home, m.hg, m.ag),
         "pressure": pressure, "slope": slope, "lag": lag,
         "sot": sot10, "soff": soff10,
         "proj_odds": proj_odds, "stale_cost": stale_cost,
         "min_price": min_price, "stake": recommended_stake(p_used, proj_odds),
+        "match_score": match_score, "suspect": suspect_ev or suspect_match,
     }
 
 
@@ -584,7 +551,7 @@ def headsup_alert(m: Match, r: dict, bot: str, style: str = "simple") -> str:
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS evaluations (
-  id INTEGER PRIMARY KEY, ts TEXT, fixture_id TEXT, league TEXT, home TEXT, away TEXT,
+  id INTEGER PRIMARY KEY, ts TEXT, fixture_id TEXT, league TEXT,
   minute REAL, score TEXT, tempo REAL, pressure INTEGER, slope REAL, lag REAL,
   model_p REAL, market_odds REAL, breakeven_p REAL, edge REAL,
   green INTEGER, tier TEXT, alerted INTEGER, outcome TEXT
@@ -604,30 +571,22 @@ class EvalLog:
     """
 
     def __init__(self, path: str = "surge.db") -> None:
-        self.path = path
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.executescript(SCHEMA)
-        # A database created before `home`/`away` existed keeps working —
-        # CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so an
-        # older surge.db needs these added on top rather than recreated.
-        cols = {r[1] for r in self.db.execute("PRAGMA table_info(evaluations)")}
-        for col in ("home", "away"):
-            if col not in cols:
-                self.db.execute(f"ALTER TABLE evaluations ADD COLUMN {col} TEXT DEFAULT ''")
         self.db.commit()
         self._lock = threading.Lock()
 
     def record(self, m: Match, r: dict, alerted: bool) -> None:
         with self._lock:
             self.db.execute(
-                "INSERT INTO evaluations (ts,fixture_id,league,home,away,minute,score,tempo,"
+                "INSERT INTO evaluations (ts,fixture_id,league,minute,score,tempo,"
                 "pressure,slope,lag,model_p,market_odds,breakeven_p,edge,green,tier,"
-                "alerted,outcome) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)",
-                (datetime.now(timezone.utc).isoformat(), m.fid, m.league, m.home, m.away,
-                 m.minute, f"{m.hg}-{m.ag}", r["tempo"], r["pressure"], r["slope"], r["lag"],
+                "alerted,outcome) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)",
+                (datetime.now(timezone.utc).isoformat(), m.fid, m.league, m.minute,
+                 f"{m.hg}-{m.ag}", r["tempo"], r["pressure"], r["slope"], r["lag"],
                  r["p"], m.odds, r["be"], r["edge"], r["green"], r["tier"],
                  1 if alerted else 0))
             self.db.commit()
@@ -682,6 +641,13 @@ def _test() -> None:
     print(f"Bot name      : {CFG.bot_name}")
     print(f"Style         : {CFG.style}")
     print(f"Heads-up      : {'on' if CFG.send_headsup else 'off'}")
+    print(f"Window        : {CFG.min_minute}'–{CFG.max_minute}'")
+    print(f"Odds band     : {CFG.odds_floor:.2f}–{CFG.odds_ceil:.2f} "
+          f"(needs {1 / ((CFG.odds_floor - 1) * 0.95 + 1) * 100:.1f}% at the floor, "
+          f"{1 / ((CFG.odds_ceil - 1) * 0.95 + 1) * 100:.1f}% at the ceiling)")
+    print(f"Sanity cap    : reject EV above {CFG.max_ev * 100:.0f}%, "
+          f"match confidence below {CFG.min_match_score:.2f}")
+    print(f"Leagues       : {len(BETFAIR_LEAGUES) or 'ALL — set SURGE_LEAGUE_IDS'}")
     print(f"Decision      : EV ≥ {CFG.min_ev * 100:.1f}% "
           f"(+{CFG.price_delay_s / 60 * 1:.1f}% delay margin)")
     print(f"Blend         : {CFG.trust_base * 100:.0f}% base model weight, "
@@ -689,13 +655,8 @@ def _test() -> None:
     print(f"Possession    : weight {CFG.poss_weight:.2f}")
     print(f"Exchange      : {'read-only key set' if CFG.bf_app_key else 'MISSING — no price source'}, "
           f"{CFG.price_delay_s}s delay")
-    print(f"Commission    : {CFG.commission * 100:.1f}%")
-    print(f"Odds range    : {CFG.odds_floor:.2f}–{CFG.odds_ceil:.2f}")
-    print(f"Stake         : "
-          + (f"flat £{CFG.flat_stake:.2f} (Kelly off while unproven)"
-             if CFG.flat_stake > 0 else
-             f"≤£{CFG.bank * CFG.max_stake_pct / 100:.2f} "
-             f"(1/{CFG.kelly_div:.0f} Kelly of £{CFG.bank:.0f})"))
+    print(f"Stake         : ≤£{CFG.bank * CFG.max_stake_pct / 100:.2f} "
+          f"(1/{CFG.kelly_div:.0f} Kelly of £{CFG.bank:.0f})")
 
     demo = Match("0", "Inter Turku", "VPS", "Veikkausliiga",
                  minute=68, hg=1, ag=1, odds=2.42,
@@ -727,9 +688,22 @@ def _test() -> None:
 
 if __name__ == "__main__":
     import sys
+
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(message)s")
+
     if "--test" in sys.argv:
         _test()
     else:
+        # Taken before anything else so a duplicate exits immediately rather
+        # than running far enough to corrupt the database it shares.
+        try:
+            _lock = claim_single_instance()
+            log.info("Instance lock acquired (pid %d)", os.getpid())
+        except AlreadyRunning as exc:
+            log.error("Refusing to start: %s", exc)
+            sys.exit(1)
+
         print(__doc__)
         print("Run with --test first. The live poller needs APIFOOTBALL_KEY set\n"
-              "and a league whitelist in SURGE_LEAGUES.")
+              "and a league whitelist in SURGE_LEAGUE_IDS.")
