@@ -1,4 +1,4 @@
-"""
+""""
 surge_live.py — the data layer. API-Football in, Betfair prices in, alerts out.
 
 This is the half `surge_alerts.py` was missing: it referenced `ExchangePrices`
@@ -437,6 +437,22 @@ class ExchangePrices:
                       "403. See NEXT-STEPS.md for how to generate and "
                       "upload one.")
             return False
+        try:
+            cert_size = os.path.getsize(self.cert_path)
+            key_size = os.path.getsize(self.key_path)
+        except OSError as e:
+            log.error("Betfair cert/key path set but unreadable: %s", e)
+            return False
+        log.info("Betfair cert %s (%d bytes), key %s (%d bytes)",
+                 self.cert_path, cert_size, self.key_path, key_size)
+        if cert_size < 100 or key_size < 100:
+            # A real cert/key is at minimum several hundred bytes. Anything
+            # smaller almost certainly got truncated somewhere between the
+            # file and the environment variable box it was pasted into.
+            log.error("That looks too small to be a real certificate/key — "
+                      "likely truncated in the paste. Re-check BF_CERT_PEM "
+                      "/ BF_KEY_PEM for missing content.")
+            return False
         url = BF_CERTLOGIN
         try:
             r = self.s.post(
@@ -447,6 +463,16 @@ class ExchangePrices:
                          "Content-Type": "application/x-www-form-urlencoded"},
                 cert=(self.cert_path, self.key_path),
                 timeout=15)
+        except requests.exceptions.SSLError as e:
+            log.error("Could not load the certificate/key for the connection "
+                      "itself (%s) — this happens locally, before anything "
+                      "reaches Betfair. If BF_CERT_PEM/BF_KEY_PEM were "
+                      "pasted into a form field, that field may have a "
+                      "character limit that silently cut the content short. "
+                      "Try BF_CERT_PATH/BF_KEY_PATH (uploaded files) instead "
+                      "if this platform allows it, or split the paste to "
+                      "confirm nothing was truncated.", e)
+            return False
         except requests.RequestException:
             log.exception("Betfair login failed — could not reach the server")
             return False
