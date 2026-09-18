@@ -134,8 +134,22 @@ def _resolve_bf_cert() -> tuple[str, str]:
                                   don't, which is exactly what base64 sidesteps.
     """
     path, key = _env("BF_CERT_PATH"), _env("BF_KEY_PATH")
-    if path and key and os.path.exists(path) and os.path.exists(key):
-        return path, key
+    if path and key:
+        if os.path.exists(path) and os.path.exists(key):
+            return path, key
+        # Set but wrong — this is a completely different problem from unset,
+        # and worth spelling out: the previous generic "not set" message
+        # covered both cases and made this impossible to tell apart from the
+        # log alone.
+        missing = [p for p in (path, key) if not os.path.exists(p)]
+        parent = os.path.dirname(missing[0]) or "."
+        try:
+            nearby = ", ".join(sorted(os.listdir(parent))[:20]) or "(empty)"
+        except OSError as e:
+            nearby = f"(couldn't list {parent}: {e})"
+        log.error("BF_CERT_PATH/BF_KEY_PATH are set but don't point at real "
+                  "files: %s. Files actually in %s: %s", missing, parent, nearby)
+        return "", ""
 
     b64_cert, b64_key = _env("BF_CERT_B64"), _env("BF_KEY_B64")
     if b64_cert and b64_key:
