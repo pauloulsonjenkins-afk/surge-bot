@@ -29,6 +29,7 @@ import requests
 
 log = logging.getLogger("surge")
 
+API_BASE = "https://v3.football.api-sports.io"
 TG_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 
@@ -275,14 +276,8 @@ def breakeven_prob(odds: float, commission: float) -> float:
     return 1 / ((odds - 1) * (1 - commission) + 1)
 
 
-def required_odds(p: float, commission: float, ev_target: float = 0.0) -> float:
-    """Lowest price at which a bet at probability p returns ev_target per £1.
-
-    ev_target=0 gives plain break-even. The floor of 0.02 on the denominator
-    stops a near-zero probability producing an absurd price rather than an
-    error — at that point the bet is not worth making at any price anyway.
-    """
-    return 1 + (ev_target + 1 - p) / max(0.02, p * (1 - commission))
+def required_odds(p: float, commission: float) -> float:
+    return 1 + (1 - p) / (p * (1 - commission))
 
 
 def kelly(p: float, odds: float, commission: float) -> float:
@@ -367,6 +362,16 @@ class Match:
         )
 
 
+@dataclass
+class Gate:
+    key: str
+    name: str
+    ok: bool
+    value: str
+    need: str
+    blocker: str = ""
+
+
 def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = None,
              market_id: str = "") -> dict[str, Any]:
     """One number decides it: expected value per £1 staked.
@@ -422,7 +427,7 @@ def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = N
 
     ev = p_used * (proj_odds - 1) * (1 - CFG.commission) - (1 - p_used)
     ev_floor = CFG.min_ev + d_min * 0.01     # extra return for not knowing the price
-    min_price = required_odds(p_used, CFG.commission, ev_floor)
+    min_price = 1 + (ev_floor + 1 - p_used) / max(0.02, p_used * (1 - CFG.commission))
 
     d, total = abs(m.hg - m.ag), m.hg + m.ag
     hard = [
@@ -516,14 +521,9 @@ class Telegram:
         try:
             r = requests.post(TG_API.format(token=self.token),
                               json={"chat_id": self.chat, "text": text}, timeout=10)
-            body = r.json()
-            ok = body.get("ok", False)
+            ok = r.json().get("ok", False)
             if not ok:
-                # Telegram's own explanation ("chat not found", "bot was
-                # blocked by the user", etc.) is far more useful than a bare
-                # "rejected" — it names the actual fix needed.
-                log.warning("Telegram rejected the message: %s",
-                           body.get("description", body))
+                log.warning("Telegram rejected the message")
             return ok
         except Exception:
             log.exception("Telegram send failed")
@@ -584,7 +584,7 @@ def headsup_alert(m: Match, r: dict, bot: str, style: str = "simple") -> str:
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS evaluations (
-  id INTEGER PRIMARY KEY, ts TEXT, fixture_id TEXT, league TEXT,
+  id INTEGER PRIMARY KEY, ts TEXT, fixture_id TEXT, league TEXT, home TEXT, away TEXT,
   minute REAL, score TEXT, tempo REAL, pressure INTEGER, slope REAL, lag REAL,
   model_p REAL, market_odds REAL, breakeven_p REAL, edge REAL,
   green INTEGER, tier TEXT, alerted INTEGER, outcome TEXT
@@ -604,28 +604,31 @@ class EvalLog:
     """
 
     def __init__(self, path: str = "surge.db") -> None:
+        self.path = path
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.executescript(SCHEMA)
+        # A database created before `home`/`away` existed keeps working —
+        # CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so an
+        # older surge.db needs these added on top rather than recreated.
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(evaluations)")}
+        for col in ("home", "away"):
+            if col not in cols:
+                self.db.execute(f"ALTER TABLE evaluations ADD COLUMN {col} TEXT DEFAULT ''")
         self.db.commit()
         self._lock = threading.Lock()
 
     def record(self, m: Match, r: dict, alerted: bool) -> None:
-        # r.get, not r["green"]: the `green` column exists in the schema but
-        # `evaluate()` never actually computes a "green" value — that's a
-        # gap in the model itself, predating this fix. Logging NULL for it
-        # keeps every OTHER evaluation from being lost to a crash; it
-        # doesn't answer what "green" was meant to measure.
         with self._lock:
             self.db.execute(
-                "INSERT INTO evaluations (ts,fixture_id,league,minute,score,tempo,"
+                "INSERT INTO evaluations (ts,fixture_id,league,home,away,minute,score,tempo,"
                 "pressure,slope,lag,model_p,market_odds,breakeven_p,edge,green,tier,"
-                "alerted,outcome) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)",
-                (datetime.now(timezone.utc).isoformat(), m.fid, m.league, m.minute,
-                 f"{m.hg}-{m.ag}", r["tempo"], r["pressure"], r["slope"], r["lag"],
-                 r["p"], m.odds, r["be"], r["edge"], r.get("green"), r["tier"],
+                "alerted,outcome) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)",
+                (datetime.now(timezone.utc).isoformat(), m.fid, m.league, m.home, m.away,
+                 m.minute, f"{m.hg}-{m.ag}", r["tempo"], r["pressure"], r["slope"], r["lag"],
+                 r["p"], m.odds, r["be"], r["edge"], r["green"], r["tier"],
                  1 if alerted else 0))
             self.db.commit()
 
@@ -666,41 +669,6 @@ class EvalLog:
                         "predicted": (lo + hi) / 2,
                         "observed": sum(1 for o in hits if o == "W") / len(hits)})
         return out
-
-    def summary(self, recent: int = 25) -> dict:
-        """A small JSON-friendly snapshot of the whole log, for a dashboard.
-
-        Deliberately separate from a full database export: this is safe to
-        make PUBLIC (no credentials, no anything sensitive in it) precisely
-        because it's small and specific — a summary, not the raw log.
-        """
-        total = self.db.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0]
-        fired = self.db.execute(
-            "SELECT COUNT(*) FROM evaluations WHERE alerted=1").fetchone()[0]
-        settled = self.db.execute(
-            "SELECT COUNT(*) FROM evaluations WHERE alerted=1 AND outcome IN ('W','L')"
-        ).fetchone()[0]
-        wins = self.db.execute(
-            "SELECT COUNT(*) FROM evaluations WHERE alerted=1 AND outcome='W'"
-        ).fetchone()[0]
-        rows = self.db.execute(
-            "SELECT ts, league, score, minute, model_p, market_odds, edge, "
-            "tier, outcome FROM evaluations WHERE alerted=1 "
-            "ORDER BY ts DESC LIMIT ?", (recent,)).fetchall()
-        recent_alerts = [
-            {"ts": ts, "league": league, "score": score, "minute": minute,
-             "model_p": model_p, "odds": odds, "edge": edge,
-             "tier": tier, "outcome": outcome}
-            for ts, league, score, minute, model_p, odds, edge, tier, outcome in rows
-        ]
-        return {
-            "total_evaluations": total,
-            "total_fired": fired,
-            "total_settled": settled,
-            "strike_rate": (wins / settled) if settled else None,
-            "calibration": self.calibration(),
-            "recent_alerts": recent_alerts,
-        }
 
 
 # ──────────────────────────────── cli ──────────────────────────────────

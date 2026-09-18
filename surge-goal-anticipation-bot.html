@@ -1,0 +1,2573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>SURGE — Goal Alert Monitor</title>
+<style>
+:root{
+  --bg:#000;--card:#0B0B0C;--card2:#141416;
+  --line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.16);
+  --tx:#F2F2F3;--mute:#8A8A90;--dim:#5C5C62;
+  --orange:#FF6B1A;--orangeBg:rgba(255,107,26,.13);
+  --green:#34D399;--greenBg:rgba(52,211,153,.12);
+  --red:#FB7185;--redBg:rgba(251,113,133,.11);
+  --amber:#FBBF24;--amberBg:rgba(251,191,36,.11);
+  --purple:#A78BFA;--blue:#60A5FA;
+  --chrome:rgba(0,0,0,.94);--navbg:rgba(6,6,7,.97);
+  --codeBg:#08080A;--codeTx:#9FD8A0;--toastBg:#111;
+  --swOn:#1E8B60;--swKnob:#fff;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--tx);font-family:var(--sans)}
+body{padding-bottom:90px;font-size:15px;line-height:1.5}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font-family:var(--mono);font-size:14.5px;background:var(--card2);border:1px solid var(--line);color:var(--tx);border-radius:9px;padding:9px 11px;width:100%}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mute) 50%),linear-gradient(135deg,var(--mute) 50%,transparent 50%);background-position:calc(100% - 17px) 50%,calc(100% - 12px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;border:none;padding:0}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--line2);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:20px;width:20px;border-radius:50%;background:var(--orange);margin-top:-8.5px;border:none}
+input[type=range]::-moz-range-track{height:3px;background:var(--line2);border-radius:2px}
+input[type=range]::-moz-range-thumb{height:20px;width:20px;border-radius:50%;background:var(--orange);border:none}
+:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+
+.top{position:sticky;top:0;z-index:40;background:var(--chrome);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:11px 14px;display:flex;gap:8px;align-items:center}
+.chip{border:1px solid var(--line2);border-radius:999px;padding:7px 13px;font-size:13px;color:var(--mute);white-space:nowrap}
+.chip.on{border-color:rgba(255,107,26,.5);color:var(--orange);background:var(--orangeBg)}
+.chip.live{border-color:rgba(52,211,153,.35);color:var(--green);background:var(--greenBg);font-family:var(--mono);font-size:11px}
+.spacer{flex:1}
+
+.wrap{padding:16px 14px 8px}
+h1{font-size:28px;font-weight:700;letter-spacing:-.025em;margin:0 0 4px}
+.sub{color:var(--mute);font-size:14px;margin:0 0 16px}
+h2{font-size:17px;font-weight:650;letter-spacing:-.01em;margin:26px 0 10px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:15px;margin-bottom:12px}
+.card.hot{border-color:rgba(52,211,153,.45);box-shadow:0 0 0 1px rgba(52,211,153,.16),0 0 30px -14px rgba(52,211,153,.55)}
+.card.warm{border-color:rgba(251,191,36,.3)}
+.card.ai{border-color:rgba(167,139,250,.32);background-image:linear-gradient(180deg,rgba(167,139,250,.06),transparent 55%)}
+.card.tight{padding:13px}
+.lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.g{color:var(--green)}.r{color:var(--red)}.a{color:var(--amber)}.o{color:var(--orange)}.m{color:var(--mute)}.p{color:var(--purple)}.bl{color:var(--blue)}
+
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 0}
+.row+.row{border-top:1px solid rgba(255,255,255,.05)}
+.row .k{color:var(--mute);font-size:14px}
+.row .v{font-family:var(--mono);font-size:14.5px;text-align:right}
+
+.seg{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:4px;margin-bottom:12px}
+.seg button{flex:1;border-radius:10px;padding:9px 4px;font-size:14px;color:var(--mute);display:flex;align-items:center;justify-content:center;gap:6px}
+.seg button.on{background:rgba(255,107,26,.15);color:var(--orange);box-shadow:inset 0 0 0 1px rgba(255,107,26,.28)}
+.seg svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.seg.sm button{font-size:13px;padding:8px 2px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px;position:relative;overflow:hidden;min-height:108px}
+.tile .lbl{margin-bottom:8px;position:relative}
+.tile .val{font-family:var(--mono);font-size:25px;font-weight:600;letter-spacing:-.03em;line-height:1.05;position:relative}
+.tile .val.sm{font-size:19px}
+.tile .note{color:var(--dim);font-size:11.5px;margin-top:6px;line-height:1.4;position:relative}
+.tile .wl{font-family:var(--mono);font-size:13px;margin-top:8px;position:relative}
+.tile .ghost{position:absolute;right:-6px;top:6px;width:72px;height:72px;opacity:.055;stroke:#fff;fill:none;stroke-width:1.6}
+.tile .badge2{display:inline-block;font-family:var(--mono);font-size:12px;padding:3px 8px;border-radius:6px;margin-top:8px}
+
+.bebar{background:var(--card);border:1px solid rgba(255,107,26,.3);border-radius:15px;padding:16px 15px 14px;margin-bottom:12px;background-image:linear-gradient(180deg,rgba(255,107,26,.06),transparent 60%)}
+.bebar .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px}
+.bebar .head .t{font-size:15px;font-weight:620}
+.bebar .head .d{font-family:var(--mono);font-size:19px;font-weight:650}
+.track{position:relative;height:16px;border-radius:8px;background:rgba(255,255,255,.055)}
+.track .ci{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.075);border-left:1px dashed rgba(255,255,255,.22);border-right:1px dashed rgba(255,255,255,.22)}
+.track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px 0 0 8px;transition:width .4s ease}
+.track .mark{position:absolute;top:-7px;bottom:-7px;width:2.5px;background:var(--orange);border-radius:2px;box-shadow:0 0 9px rgba(255,107,26,.75)}
+.track .you{position:absolute;top:-4px;width:11px;height:24px;border-radius:3px;border:2.5px solid var(--bg);transition:left .4s ease}
+.axis{position:relative;height:32px;margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+.axis span{position:absolute;transform:translateX(-50%);white-space:nowrap;text-align:center;line-height:1.3}
+.axis span b{display:block;font-weight:600;font-size:11px}
+.belegend{display:flex;gap:14px;flex-wrap:wrap;padding-top:11px;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:var(--mute)}
+.belegend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+.chart{display:flex;align-items:flex-end;gap:2px;height:96px;padding:0 0 2px;border-bottom:1px solid var(--line);position:relative}
+.chart .col{flex:1;min-width:2px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+.chart .col i{display:block;border-radius:1.5px;width:100%}
+.chart .zero{position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,.15)}
+.chartlbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:7px}
+
+.btn{border:1px solid var(--line2);border-radius:11px;padding:11px 15px;font-size:14.5px;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.btn.danger{border-color:rgba(251,113,133,.38);color:var(--red);background:rgba(251,113,133,.06)}
+.btn.primary{border-color:rgba(255,107,26,.5);color:var(--orange);background:var(--orangeBg)}
+.btn.ghost{color:var(--mute)}
+.btn.sm{padding:8px 12px;font-size:13px;width:auto}
+.btn2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+
+.mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.teams{font-size:16.5px;font-weight:620;letter-spacing:-.01em;line-height:1.3}
+.league{color:var(--dim);font-size:12px;margin-top:2px}
+.score{font-family:var(--mono);font-size:22px;font-weight:600;white-space:nowrap}
+.clock{font-family:var(--mono);font-size:12px;color:var(--orange);margin-top:3px;text-align:right}
+.badge{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;padding:4px 9px;border-radius:6px;border:1px solid}
+.b-fire{color:var(--green);border-color:rgba(52,211,153,.45);background:var(--greenBg)}
+.b-watch{color:var(--amber);border-color:rgba(251,191,36,.38);background:var(--amberBg)}
+.b-hold{color:var(--dim);border-color:var(--line)}
+.b-dead{color:var(--red);border-color:rgba(251,113,133,.3);background:var(--redBg)}
+.b-tag{color:var(--dim);border-color:var(--line);letter-spacing:.1em;margin:0 5px 5px 0}
+.b-house{color:var(--orange);border-color:rgba(255,107,26,.4)}
+.b-ai{color:var(--purple);border-color:rgba(167,139,250,.4);background:rgba(167,139,250,.1)}
+.b-inst{color:var(--green);border-color:rgba(52,211,153,.35);background:var(--greenBg)}
+.b-w{color:var(--green);border-color:rgba(52,211,153,.4);background:var(--greenBg)}
+.b-l{color:var(--red);border-color:rgba(251,113,133,.35);background:var(--redBg)}
+.b-v{color:var(--dim);border-color:var(--line)}
+.b-bot{color:var(--purple);border-color:rgba(167,139,250,.35);background:rgba(167,139,250,.08)}
+
+/* ── signal stack ── */
+.stack{margin-top:13px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+.stackhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.stackhead .n{font-family:var(--mono);font-size:14px;font-weight:650}
+.gate{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13px}
+.gate .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px;background:var(--dim)}
+.gate.ok .dot{background:var(--green);box-shadow:0 0 7px rgba(52,211,153,.7)}
+.gate.no .dot{background:rgba(255,255,255,.14)}
+.gate .nm{flex:1;min-width:0;color:var(--mute)}
+.gate.ok .nm{color:var(--tx)}
+.gate .vv{font-family:var(--mono);font-size:12.5px;color:var(--dim);white-space:nowrap}
+.gate.ok .vv{color:var(--green)}
+.gate .need{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+.dots{display:flex;gap:5px;align-items:center}
+.dots i{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.14);display:block}
+.dots i.ok{background:var(--green);box-shadow:0 0 7px rgba(52,211,153,.65)}
+.evhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.evnum{font-family:var(--mono);font-size:26px;font-weight:650;letter-spacing:-.02em}
+.evbar{position:relative;height:10px;border-radius:5px;background:rgba(255,255,255,.07);margin-top:9px;overflow:visible}
+.evbar .zero{position:absolute;top:-3px;bottom:-3px;width:1px;background:rgba(255,255,255,.28)}
+.evbar .thr{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--orange);border-radius:2px}
+.evbar .val{position:absolute;top:0;bottom:0;border-radius:5px}
+.evsub{color:var(--mute);font-size:12.5px;margin-top:9px;line-height:1.5}
+.frow{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px}
+.frow+.frow{border-top:1px solid rgba(255,255,255,.045)}
+.frow .fn{color:var(--mute)}
+.frow .fv{font-family:var(--mono);font-size:12.5px}
+.frow.good .fv{color:var(--green)}
+.frow.bad .fv{color:var(--red)}
+.stackhead{cursor:pointer}
+.stackhead .caret{font-family:var(--mono);font-size:11px;color:var(--dim);margin-left:8px}
+.spark{display:flex;align-items:flex-end;gap:1.5px;height:26px;margin-top:9px}
+.spark i{flex:1;background:rgba(255,255,255,.16);border-radius:1px;min-height:1px}
+.spark i.hi{background:var(--green)}
+.spark i.mid{background:var(--amber)}
+.allgreen{margin-top:11px;border-radius:10px;padding:10px 12px;border:1px solid rgba(52,211,153,.4);background:rgba(52,211,153,.09);font-size:13.5px}
+.allgreen b{color:var(--green)}
+.fillrow{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:11px}
+.fillrow button{border:1px solid var(--line2);border-radius:9px;padding:9px 4px;font-size:12.5px;color:var(--mute)}
+.fillrow button.got{border-color:rgba(52,211,153,.45);color:var(--green)}
+.fillrow button.miss{border-color:rgba(251,113,133,.4);color:var(--red)}
+.filldone{margin-top:11px;font-family:var(--mono);font-size:12.5px;color:var(--mute)}
+.fl{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.055);font-size:13px}
+.fl:first-child{border-top:none}
+.fl .fx2{min-width:0}
+.fl .st2{font-family:var(--mono);font-size:12px;white-space:nowrap}
+
+.note{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 13px;color:var(--mute);font-size:13.5px;line-height:1.55;margin-bottom:12px}
+.note b{color:var(--tx);font-weight:600}
+.warn{border-color:rgba(255,107,26,.3);background:rgba(255,107,26,.06)}
+.warn .t{color:var(--orange);font-weight:650;font-size:14px;margin-bottom:5px;display:block}
+.bad{border-color:rgba(251,113,133,.28);background:rgba(251,113,133,.05)}
+.bad .t{color:var(--red);font-weight:650;font-size:14px;margin-bottom:5px;display:block}
+.aiN{border-color:rgba(167,139,250,.28);background:rgba(167,139,250,.05)}
+.aiN .t{color:var(--purple);font-weight:650;font-size:14px;margin-bottom:5px;display:block}
+.ok2{border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.05)}
+.ok2 .t{color:var(--green);font-weight:650;font-size:14px;margin-bottom:5px;display:block}
+
+.slider{margin:15px 0}
+.slider .top2{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.slider .nm{font-size:14px}
+.slider .vv{font-family:var(--mono);font-size:14px;color:var(--orange)}
+.slider .hint{color:var(--dim);font-size:12px;margin-top:6px;line-height:1.4}
+
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+th{text-align:right;color:var(--dim);font-weight:400;font-size:10.5px;letter-spacing:.09em;padding:0 0 8px;text-transform:uppercase}
+th:first-child,td:first-child{text-align:left}
+td{text-align:right;padding:7px 0;border-top:1px solid rgba(255,255,255,.055)}
+
+.formula{font-family:var(--mono);font-size:12px;background:var(--codeBg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;color:var(--blue);overflow-x:auto;white-space:pre;line-height:1.7;margin:9px 0}
+.code{font-family:var(--mono);font-size:11.5px;background:var(--codeBg);border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--codeTx);overflow-x:auto;white-space:pre;line-height:1.65;margin:9px 0}
+.code .ky{color:var(--blue)}.code .st{color:var(--amber)}.code .cm{color:var(--dim)}
+.pill{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:4px 8px;border-radius:6px;border:1px solid var(--line);color:var(--mute);margin:0 5px 5px 0}
+.pill.sel{border-color:rgba(255,107,26,.5);color:var(--orange);background:var(--orangeBg)}
+.step{display:flex;gap:12px;padding:12px 0;border-top:1px solid rgba(255,255,255,.055)}
+.step:first-of-type{border-top:none}
+.step .n{font-family:var(--mono);font-size:12px;color:var(--orange);border:1px solid rgba(255,107,26,.35);border-radius:7px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex:0 0 26px;margin-top:1px}
+.step .h{font-size:14.5px;font-weight:600;margin-bottom:3px}
+.step .p2{color:var(--mute);font-size:13px;line-height:1.5}
+
+.sw{width:48px;height:27px;border-radius:14px;background:rgba(255,255,255,.12);position:relative;flex:0 0 48px;transition:background .2s}
+.sw.on{background:var(--swOn)}
+.sw i{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:var(--swKnob);transition:left .2s}
+.sw.on i{left:24px}
+.swrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;border-top:1px solid rgba(255,255,255,.055)}
+.swrow:first-child{border-top:none}
+.swrow .t2{font-size:14.5px;font-weight:550}
+.swrow .d2{color:var(--dim);font-size:12.5px;margin-top:3px;line-height:1.45}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:13px;color:var(--mute);margin-bottom:6px}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.slot{display:flex;align-items:center;gap:10px;margin:22px 0 10px}
+.slot .t{font-family:var(--mono);font-size:15px;font-weight:600;border:1px solid var(--line2);border-radius:9px;padding:6px 11px}
+.slot .d{color:var(--dim);font-size:12.5px}
+.fx{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:9px}
+.fx.rec{border-color:rgba(52,211,153,.28)}
+.fxtop{display:flex;justify-content:space-between;gap:10px}
+.fxt{font-size:15px;font-weight:600;line-height:1.35}
+.fxl{color:var(--dim);font-size:11.5px;margin-top:3px}
+.fxlam{font-family:var(--mono);font-size:19px;font-weight:600;text-align:right;line-height:1}
+.fxrec{margin-top:11px;padding-top:11px;border-top:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.fxrec .nm{font-size:13.5px;font-weight:600}
+.fxrec .sm2{color:var(--mute);font-size:12px;font-family:var(--mono);margin-top:2px}
+
+.daybar{display:flex;justify-content:space-between;align-items:baseline;margin:20px 0 9px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+.daybar .dd{font-size:14px;font-weight:620}
+.daybar .pp2{font-family:var(--mono);font-size:14px}
+.tr{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px 13px;margin-bottom:8px;border-left:3px solid var(--line)}
+.tr.w{border-left-color:var(--green)}
+.tr.l{border-left-color:var(--red)}
+.tr.v{border-left-color:var(--dim)}
+.trtop{display:flex;justify-content:space-between;gap:9px;align-items:flex-start}
+.trfx{font-size:14.5px;font-weight:600;line-height:1.3}
+.trlg{color:var(--dim);font-size:11.5px;margin-top:2px}
+.trmk{font-size:13.5px;margin-top:9px}
+.trby{color:var(--purple);font-size:12.5px;margin-top:2px}
+.trmeta{font-family:var(--mono);font-size:12px;color:var(--mute);margin-top:7px}
+.trpl{display:flex;justify-content:space-between;align-items:baseline;margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.055)}
+.trpl .amt{font-family:var(--mono);font-size:18px;font-weight:650}
+
+.usage{height:22px;border-radius:7px;background:rgba(255,255,255,.06);overflow:hidden;display:flex;margin:10px 0 8px}
+.usage i{display:block;height:100%}
+
+.ver{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:9px;border-left:3px solid var(--line2)}
+.ver.cur{border-left-color:var(--green);background-image:linear-gradient(180deg,rgba(52,211,153,.05),transparent 60%)}
+.ver.code2{border-left-color:var(--blue)}
+.vertop{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.vernum{font-family:var(--mono);font-size:15px;font-weight:650}
+.verts{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.verlab{font-size:14px;font-weight:600;margin-top:7px}
+.versum{color:var(--mute);font-size:13px;line-height:1.55;margin-top:5px}
+.versum ul{margin:5px 0 0;padding-left:17px}
+
+.navrow{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-top:1px solid rgba(255,255,255,.055);cursor:pointer}
+.navrow:first-child{border-top:none}
+.navrow .ttl{font-size:15px;font-weight:600}
+.navrow .dsc{color:var(--dim);font-size:12.5px;margin-top:2px}
+.navrow svg{width:17px;height:17px;stroke:var(--dim);fill:none;stroke-width:2;flex:0 0 17px}
+
+nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--navbg);backdrop-filter:blur(18px);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding:9px 0 max(9px,env(safe-area-inset-bottom))}
+nav button{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--dim);font-size:9px;padding:3px 0}
+nav button.on{color:var(--orange)}
+nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.pulsing{animation:pulse 2.2s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.feed{font-family:var(--mono);font-size:12.5px;color:var(--mute);padding:9px 0;border-top:1px solid rgba(255,255,255,.055);line-height:1.5}
+.feed:first-child{border-top:none}
+.empty{text-align:center;padding:34px 18px;border:1px dashed var(--line2);border-radius:15px;color:var(--mute);margin-bottom:12px}
+.empty .h{font-size:17px;font-weight:620;color:var(--tx);margin-bottom:7px}
+.toast{position:fixed;left:14px;right:14px;bottom:96px;z-index:60;background:var(--toastBg);border:1px solid var(--line2);border-radius:12px;padding:12px 14px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+
+.ix{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;
+ border:1px solid var(--line2);color:var(--dim);font-size:10.5px;font-style:normal;font-weight:600;
+ font-family:var(--sans);margin-left:7px;vertical-align:-3px;cursor:pointer;user-select:none;flex:0 0 17px}
+.ix.on{border-color:var(--orange);color:var(--orange);background:var(--orangeBg)}
+.help{display:none;background:var(--card2);border:1px solid var(--line);border-left:2px solid var(--orange);
+ border-radius:0 10px 10px 0;padding:11px 13px;margin:9px 0 2px;font-size:13px;color:var(--mute);line-height:1.6}
+.help.show{display:block}
+.help b{color:var(--tx);font-weight:600}
+.help i{color:var(--tx);font-style:italic}
+.help .warnline{color:var(--red)}
+
+/* accumulator */
+.formchips{display:flex;gap:3px;margin-top:5px}
+.formchips i{width:19px;height:19px;border-radius:4px;font-family:var(--mono);font-size:10px;
+ font-style:normal;display:flex;align-items:center;justify-content:center;font-weight:600}
+.formchips i.W{background:var(--greenBg);color:var(--green)}
+.formchips i.D{background:rgba(255,255,255,.08);color:var(--mute)}
+.formchips i.L{background:var(--redBg);color:var(--red)}
+.teamrow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid rgba(255,255,255,.05)}
+.teamrow:first-child{border-top:none}
+.tstat{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:4px}
+.mk{display:flex;justify-content:space-between;align-items:center;gap:9px;padding:9px 0;border-top:1px solid rgba(255,255,255,.05)}
+.mk .mn{font-size:13.5px}
+.mk .mo{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:2px}
+.mk button{border:1px solid var(--line2);border-radius:8px;padding:6px 11px;font-size:12.5px;color:var(--mute);white-space:nowrap}
+.mk button.val{border-color:rgba(52,211,153,.45);color:var(--green)}
+.mk button.inx{border-color:rgba(255,107,26,.5);color:var(--orange);background:var(--orangeBg)}
+.verdict{border-radius:12px;padding:13px;margin-top:12px;border:1px solid}
+.verdict.good{border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.07)}
+.verdict.bad{border-color:rgba(251,113,133,.35);background:rgba(251,113,133,.06)}
+.verdict .vt{font-weight:650;font-size:14.5px;margin-bottom:6px}
+.big2{font-family:var(--mono);font-size:24px;font-weight:650;letter-spacing:-.02em}
+
+/* theme picker */
+.thgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.th{border:1px solid var(--line);border-radius:14px;padding:12px;cursor:pointer;background:var(--card);text-align:left}
+.th.on{border-color:var(--orange);box-shadow:inset 0 0 0 1px var(--orange)}
+.th .nm2{font-size:14.5px;font-weight:600}
+.th .ds{color:var(--dim);font-size:11.5px;margin-top:3px;line-height:1.4;min-height:32px}
+.swatch{display:flex;gap:4px;margin-top:10px;height:22px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.swatch i{flex:1}
+.th .chk{font-family:var(--mono);font-size:11px;color:var(--orange);margin-top:8px;height:14px}
+
+/* utility — stays last with !important so no later display rule can beat it */
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="chip on">SURGE <span class="num" style="opacity:.6;font-size:11px">v2.9</span></span>
+  <span class="chip live pulsing" id="alertChip">● ALERTS ONLY</span>
+  <span class="chip" id="liveChip">● SIMULATED</span>
+  <span class="spacer"></span>
+  <span class="chip num" id="clocklbl">—</span>
+</div>
+
+<!-- ══ DASHBOARD ══ -->
+<section id="v-dash" class="wrap hidden">
+  <h1>Dashboard</h1>
+  <div class="seg">
+    <button class="on" data-mode="LIVE"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Live</button>
+    <button data-mode="SIM"><svg viewBox="0 0 24 24"><path d="M9 3v7L4 20a1 1 0 0 0 .9 1.5h14.2A1 1 0 0 0 20 20l-5-10V3M8 3h8"/></svg>Sim</button>
+  </div>
+  <div class="seg sm">
+    <button class="on" data-per="today">Today</button><button data-per="7d">7 days</button>
+    <button data-per="mtd">Month</button><button data-per="all">All</button>
+  </div>
+  <div id="dashBody"></div>
+  <div class="note" id="dashLiveNote" style="margin:10px 0"></div>
+  <div class="card"><div class="lbl" style="margin-bottom:11px">Daily P&amp;L</div>
+    <div class="chart" id="chart"></div>
+    <div class="chartlbl"><span id="chFrom">—</span><span id="chTo">—</span></div></div>
+  <div id="beWrap"></div>
+  <h2>Manage</h2>
+  <div class="card">
+    <button class="btn danger" id="btnReset"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></svg>Reset all stats</button>
+    <p style="color:var(--dim);font-size:12.5px;margin:10px 0 0">Clears the trade history behind every figure here and in the trade log. Bot settings are kept.</p>
+  </div>
+</section>
+
+<!-- ══ LIVE MONITOR ══ -->
+<section id="v-monitor" class="wrap">
+  <h1>Live Monitor</h1>
+  <p class="sub">Ranked by expected value. Busiest first.</p>
+  <div class="grid2">
+    <div class="tile" style="min-height:0"><div class="lbl">Bet now</div><div class="val g" id="cntFire">0</div><div class="note">EV clears the floor</div></div>
+    <div class="tile" style="min-height:0"><div class="lbl">Close</div><div class="val a" id="cntWatch">0</div><div class="note">Positive EV, under the floor</div></div>
+  </div>
+  <div id="matches"></div>
+  <div class="note" id="liveNote">Feed is <b>simulated</b> so you can watch the gates open and close. Set your connection up under More → Live connection to switch to your bot's real matches.</div>
+</section>
+
+<!-- ══ TRADE LOG ══ -->
+<section id="v-log" class="wrap hidden">
+  <h1>Trade Log</h1>
+  <p class="sub">Every bet you logged, newest first.</p>
+  <div class="seg">
+    <button class="on" data-lmode="LIVE"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Live</button>
+    <button data-lmode="SIM"><svg viewBox="0 0 24 24"><path d="M9 3v7L4 20a1 1 0 0 0 .9 1.5h14.2A1 1 0 0 0 20 20l-5-10V3M8 3h8"/></svg>Sim</button>
+  </div>
+  <div class="seg sm"><button class="on" data-lper="today">Today</button><button data-lper="7d">7D</button>
+    <button data-lper="30d">30D</button><button data-lper="all">All</button></div>
+  <div class="seg sm"><button class="on" data-lres="all">All</button><button data-lres="W">Wins</button>
+    <button data-lres="L">Losses</button><button data-lres="V">Voids</button></div>
+  <div class="field"><select id="logBot"><option>All bots</option></select></div>
+  <div id="logSummary"></div>
+  <div id="logBody"></div>
+</section>
+
+<!-- ══ SCHEDULE ══ -->
+<section id="v-sched" class="wrap hidden">
+  <h1>Next 24 Hours</h1>
+  <p class="sub" id="schedSub">—</p>
+  <div class="grid2">
+    <div class="tile" style="min-height:0"><div class="lbl">Fixtures watched</div><div class="val" id="schN">0</div><div class="note" id="schComp">—</div></div>
+    <div class="tile" style="min-height:0"><div class="lbl">Bot candidates</div><div class="val g" id="schRec">0</div><div class="note">Pass a bot's pre-match filters</div></div>
+  </div>
+  <div class="seg sm"><button class="on" data-sf="all">All</button><button data-sf="rec">Recommended</button>
+    <button data-sf="over">Overs</button><button data-sf="under">Unders</button></div>
+  <div id="schedBody"></div>
+  <div class="note"><b>How these are picked.</b> Pre-match goal expectancy comes from the league's scoring rate and each side's attack and defence rating, split into home and away λ. Every market's fair price is Poisson from those two numbers. A fixture is flagged only when a bot's odds band sits below the fair price with room for its edge margin.</div>
+</section>
+
+<!-- ══ BOTS ══ -->
+<section id="v-bots" class="wrap hidden">
+  <h1>Bots</h1>
+  <p class="sub">Installed strategies and their frozen rules.</p>
+  <button class="btn primary" id="btnAdd" style="margin-bottom:14px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Build a bot</button>
+  <div id="botList"></div>
+  <h2>Alert log &amp; fills</h2>
+  <div id="fillSummary"></div>
+  <div class="card" id="fillLog"></div>
+  <div class="note"><b>Why this matters.</b> By the time an alert reaches you and you find the market, 30 to 90 seconds have gone and the price has moved. Some fraction of alerts simply won't be gettable at a price worth taking. Nobody knows what fraction — and it decides whether this works at all. Mark every alert and the number builds itself.</div>
+  <h2>Calibration</h2>
+  <div class="card" id="calib"></div>
+  <h2>Raw feed</h2>
+  <div class="card" id="alertFeed"><div class="feed m">Waiting for the first trigger…</div></div>
+</section>
+
+<!-- ══ BUILDER ══ -->
+<section id="v-builder" class="wrap hidden">
+  <button class="btn ghost sm" data-go="bots" style="margin-bottom:14px">← Bots</button>
+  <h1 id="bTitle">Build a bot</h1>
+  <p class="sub" id="bSub">Every rule the engine will follow.</p>
+  <div id="builderBody"></div>
+</section>
+
+<!-- ══ LOCK ══ -->
+<section id="v-lock" class="wrap hidden">
+  <h1>Locked</h1>
+  <p class="sub">This area's password-protected.</p>
+  <div class="card">
+    <div class="field"><label>Password</label>
+      <input type="password" id="lockPass" placeholder="Password" autocomplete="off"></div>
+    <div id="lockErr" class="v r" style="min-height:16px;margin-top:6px"></div>
+    <button class="btn primary" id="btnUnlock" style="margin-top:11px">Unlock</button>
+  </div>
+</section>
+
+<!-- ══ MORE ══ -->
+<section id="v-more" class="wrap hidden">
+  <h1>More</h1>
+  <p class="sub">Alerts, model and maths.</p>
+  <h2 style="margin-top:0">Live connection</h2>
+  <div class="card" id="liveCard">
+    <div class="field"><label>Your surge_api.py URL</label>
+      <input type="text" id="liveBase" placeholder="https://surge-api-xxxxx.ondigitalocean.app"></div>
+    <div class="field"><label>API key · sent as <span class="num">X-API-Key</span></label>
+      <input type="password" id="liveKey" placeholder="SURGE_API_KEY value"></div>
+    <div class="row"><span class="k">Status</span><span class="v r" id="liveStat">Not connected</span></div>
+    <div class="btn2" style="margin-top:11px">
+      <button class="btn primary" id="btnLiveConnect">Connect</button>
+      <button class="btn ghost" id="btnLiveDemo">Use demo feed</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="navrow" data-go="admin"><div><div class="ttl">Admin</div><div class="dsc">Telegram, staking and version history</div></div><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+    <div class="navrow" data-go="acca"><div><div class="ttl">Accumulators</div><div class="dsc">Pre-match legs from form, priced honestly</div></div><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+    <div class="navrow" data-go="api"><div><div class="ttl">Data feed</div><div class="dsc">API-Football polling and request budget</div></div><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+    <div class="navrow" data-go="be"><div><div class="ttl">Break-even</div><div class="dsc">The number every bot has to clear</div></div><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+    <div class="navrow" data-go="model"><div><div class="ttl">The model</div><div class="dsc">Goal rate, tempo, momentum, price lag</div></div><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+  </div>
+  <div class="note warn"><span class="t">This app places no bets</span>
+    It watches, decides, and messages you. Every bet is yours to place by hand. Nothing here connects to an exchange.</div>
+</section>
+
+<!-- ══ ADMIN ══ -->
+<section id="v-admin" class="wrap hidden">
+  <button class="btn ghost sm" data-go="more" style="margin-bottom:14px">← More</button>
+  <h1>Admin</h1>
+  <p class="sub">Alerts, staking and rollback.</p>
+  <div class="seg sm">
+    <button class="on" data-ad="tg">Telegram</button>
+    <button data-ad="stake">Staking</button>
+    <button data-ad="theme">Theme</button>
+    <button data-ad="ver">Versions</button>
+  </div>
+
+  <!-- telegram -->
+  <div id="ad-tg">
+    <div class="note warn"><span class="t">The token is the whole key</span>
+      Anyone holding your bot token can send messages as your bot and read everything it receives. Nothing here is written to storage, and it clears when you close the tab.</div>
+    <div class="card">
+      <div class="lbl" style="margin-bottom:11px">1 · Bot</div>
+      <div class="field"><label>Bot token<i class="ix" data-h="tgToken" role="button" tabindex="0">i</i></label>
+        <input type="password" id="tgToken" placeholder="123456789:AAE…  from @BotFather"></div>
+      <div class="field"><label>Chat ID<i class="ix" data-h="tgChat" role="button" tabindex="0">i</i></label>
+        <input id="tgChat" placeholder="your numeric chat id"></div>
+      <div id="tgChatHelp"></div>
+    </div>
+    <div class="card">
+      <div class="lbl" style="margin-bottom:11px">2 · What gets sent</div>
+      <div class="swrow"><div><div class="t2">Bet alerts</div>
+        <div class="d2">All six gates green. The ones you act on.</div></div>
+        <div class="sw on" id="tgFire"><i></i></div></div>
+      <div class="swrow"><div><div class="t2">Heads-up alerts<i class="ix" data-h="headsup" role="button" tabindex="0">i</i></div>
+        <div class="d2">A goal looks likely but a gate is still shut. Tells you which.</div></div>
+        <div class="sw" id="tgWatch"><i></i></div></div>
+      <div class="swrow"><div><div class="t2">Quiet hours</div>
+        <div class="d2">23:30–06:30 held back and delivered as a morning digest.</div></div>
+        <div class="sw on" id="tgQuiet"><i></i></div></div>
+      <div class="slider" style="margin-top:14px"><div class="top2"><span class="nm">Max alerts per hour</span><span class="vv num" id="vTgRate">6</span></div>
+        <input type="range" id="sTgRate" min="1" max="30" step="1" value="6"></div>
+    </div>
+    <h2>Message style</h2>
+    <div class="seg sm"><button class="on" data-tgf="simple">Simple</button><button data-tgf="detailed">Detailed</button></div>
+    <div class="seg sm"><button class="on" data-tgp="back">Bet alert</button><button data-tgp="watch">Heads-up</button></div>
+    <div class="card"><div class="code" id="tgPreview">—</div></div>
+    <h2>Test and deploy</h2>
+    <div class="card">
+      <button class="btn ghost" id="tgTest">Send a test message</button>
+      <div id="tgTestOut"></div>
+      <p style="color:var(--mute);font-size:13px;margin:13px 0 4px">Or run this on the server:</p>
+      <div class="code" id="tgCurl">—</div>
+      <button class="btn ghost" id="tgCopy">Copy command</button>
+    </div>
+  </div>
+
+  <!-- staking -->
+  <div id="ad-stake" class="hidden">
+    <div class="note"><b>These shape what the alert recommends.</b> Nothing here places a bet — it decides the stake figure the message tells you to put on.</div>
+    <div class="card">
+      <div class="slider"><div class="top2"><span class="nm">Bankroll<i class="ix" data-h="bank" role="button" tabindex="0">i</i></span><span class="vv num" id="vBank">£500</span></div>
+        <input type="range" id="sBank" min="100" max="5000" step="50" value="500"></div>
+      <div class="slider"><div class="top2"><span class="nm">Max stake per bet<i class="ix" data-h="maxStake" role="button" tabindex="0">i</i></span><span class="vv num" id="vMaxStake">£10.00</span></div>
+        <input type="range" id="sMaxStake" min="0.5" max="10" step="0.5" value="2"></div>
+      <div class="slider"><div class="top2"><span class="nm">Kelly fraction<i class="ix" data-h="kellyFrac" role="button" tabindex="0">i</i></span><span class="vv num" id="vKelly">¼</span></div>
+        <input type="range" id="sKelly" min="1" max="4" step="1" value="1"></div>
+      <div class="slider"><div class="top2"><span class="nm">Daily loss stop<i class="ix" data-h="dayStop" role="button" tabindex="0">i</i></span><span class="vv num" id="vDayStop">£25.00</span></div>
+        <input type="range" id="sDayStop" min="1" max="20" step="0.5" value="5"></div>
+      <div id="stakeCalc"></div>
+    </div>
+  </div>
+
+  <!-- theme -->
+  <div id="ad-theme" class="hidden">
+    <div class="note"><b>Colour carries meaning here.</b> Green means a gate is open, red means a loss, amber means a warning. Every theme keeps those roles — they only change which colours fill them.</div>
+    <div class="thgrid" id="themeGrid"></div>
+    <div class="note warn" style="margin-top:14px"><span class="t">Red and green are the hardest pair to tell apart</span>
+      Around one man in twelve has some red-green colour blindness. <b>Colour-safe</b> swaps that pair for blue and amber, which stay distinct for every common type. If the dashboard's wins and losses ever look the same shade to you, use it.</div>
+    <div id="themeNote"></div>
+  </div>
+
+  <!-- versions -->
+  <div id="ad-ver" class="hidden">
+    <div class="card">
+      <div class="row"><span class="k">Current config version</span><span class="v o" id="curVer">—</span></div>
+      <div class="row"><span class="k">Snapshots stored</span><span class="v num" id="snapN">—</span></div>
+      <div class="btn2" style="margin-top:12px">
+        <button class="btn ghost" id="btnSnap">Snapshot now</button>
+        <button class="btn ghost" id="btnExport">Export JSON</button></div>
+    </div>
+    <div class="note"><b>What revert restores.</b> Bot rule sets, model parameters and alert settings. It cannot roll back the app's own code; the build history below is a record, not a rollback.</div>
+    <h2>Config snapshots</h2>
+    <div id="verList"></div>
+    <h2>Build history</h2>
+    <div id="buildList"></div>
+  </div>
+</section>
+
+<!-- ══ DATA FEED ══ -->
+<section id="v-api" class="wrap hidden">
+  <button class="btn ghost sm" data-go="more" style="margin-bottom:14px">← More</button>
+  <h1>Data feed</h1>
+  <p class="sub">API-Football. Nothing is sent until you add a key.</p>
+  <div class="card">
+    <div class="field"><label>API key · sent as <span class="num">x-apisports-key</span></label>
+      <input type="password" id="apiKey" placeholder="paste key to enable live polling"></div>
+    <div class="row"><span class="k">Base URL</span><span class="v bl">v3.football.api-sports.io</span></div>
+    <div class="row"><span class="k">Status</span><span class="v r" id="apiStat">Not connected</span></div>
+    <button class="btn ghost" id="btnTest" style="margin-top:11px">Check key format</button>
+  </div>
+  <h2>Plan</h2>
+  <div class="card">
+    <div class="field"><label>Subscription</label><select id="apiPlan">
+      <option>Free · 100/day · 10/min</option><option selected>Pro · $19/mo · 7,500/day · 300/min</option>
+      <option>Ultra · $29/mo · 75,000/day · 450/min</option><option>Mega · $39/mo · 150,000/day · 900/min</option></select></div>
+    <div class="row"><span class="k">Daily quota</span><span class="v o" id="qDay">7,500</span></div>
+    <div class="row"><span class="k">Per-minute ceiling</span><span class="v" id="qMin">300</span></div>
+    <p style="color:var(--mute);font-size:13px;margin:11px 0 0">Quota is <b style="color:var(--tx)">daily, not monthly</b>. Hit it at 2pm and the API errors until midnight. Read <span class="num">x-ratelimit-requests-remaining</span> off every response and throttle on it.</p>
+  </div>
+  <h2>Request budget</h2>
+  <div class="card">
+    <div class="slider"><div class="top2"><span class="nm">Live scores poll</span><span class="vv num" id="vPoll1">60s</span></div>
+      <input type="range" id="sPoll1" min="10" max="180" step="5" value="60">
+      <div class="hint"><span class="num">/fixtures?live=all</span> returns every live match in one call.</div></div>
+    <div class="slider"><div class="top2"><span class="nm">Match statistics poll</span><span class="vv num" id="vPoll2">60s</span></div>
+      <input type="range" id="sPoll2" min="15" max="300" step="15" value="60">
+      <div class="hint"><span class="num">/fixtures/statistics</span> is one call <b>per fixture</b>. This eats the quota.</div></div>
+    <div class="slider"><div class="top2"><span class="nm">Hours the poller runs</span><span class="vv num" id="vHours">18h</span></div>
+      <input type="range" id="sHours" min="4" max="24" step="1" value="18"></div>
+    <div class="slider"><div class="top2"><span class="nm">Fixtures tracked per day</span><span class="vv num" id="vFix">31</span></div>
+      <input type="range" id="sFix" min="5" max="120" step="1" value="31"></div>
+    <div class="slider"><div class="top2"><span class="nm">Minutes watched per fixture</span><span class="vv num" id="vWatch">70</span></div>
+      <input type="range" id="sWatch" min="15" max="100" step="5" value="70"></div>
+    <div class="usage" id="usageBar"></div>
+    <div class="row"><span class="k">Live scores</span><span class="v num" id="uLive">—</span></div>
+    <div class="row"><span class="k">Statistics</span><span class="v num" id="uStats">—</span></div>
+    <div class="row"><span class="k">Daily total</span><span class="v num" id="uTotal">—</span></div>
+    <div class="row"><span class="k">Headroom</span><span class="v num" id="uLeft">—</span></div>
+    <div id="uWarn"></div>
+  </div>
+  <h2>The xG problem</h2>
+  <div class="card">
+    <div class="note bad" style="margin:0 0 13px"><span class="t">API-Football does not return xG</span>
+      Its statistics endpoint gives shots on goal, off goal, total, blocked, inside box, outside box, corners, possession, saves, passes. No expected goals on any plan.</div>
+    <div class="formula">pxG = 0.150 × shotsInsideBox
+    + 0.040 × shotsOutsideBox</div>
+    <div class="row"><span class="k">Calibration target</span><span class="v num">2.65 per match</span></div>
+    <div class="row"><span class="k">Against league goals</span><span class="v num">2.70 per match</span></div>
+    <p style="color:var(--mute);font-size:13px;margin:8px 0 0">Statistics arrive cumulative, so keep a rolling buffer and subtract to get a ten-minute window. Call <span class="num">/leagues?id=</span> first — a competition with no statistics coverage returns empty arrays and your tempo sits flat at ×1.00 forever.</p>
+  </div>
+</section>
+
+<!-- ══ BREAK-EVEN ══ -->
+<section id="v-be" class="wrap hidden">
+  <button class="btn ghost sm" data-go="more" style="margin-bottom:14px">← More</button>
+  <h1>Break-even</h1>
+  <p class="sub">The number every bot has to clear.</p>
+  <div class="bebar">
+    <div class="head"><span class="t">Live calculation</span><span class="d" id="cDelta">—</span></div>
+    <div class="track"><div class="fill" id="cFill"></div><div class="mark" id="cMark"></div><div class="you" id="cYou"></div></div>
+    <div class="axis" id="cAxis"></div>
+  </div>
+  <div class="card">
+    <div class="slider"><div class="top2"><span class="nm">Odds</span><span class="vv num" id="vcO">2.13</span></div><input type="range" id="scO" min="1.2" max="5" step="0.01" value="2.13"></div>
+    <div class="slider"><div class="top2"><span class="nm">Commission</span><span class="vv num" id="vcC">5.0%</span></div><input type="range" id="scC" min="0" max="8" step="0.5" value="5"></div>
+    <div class="slider"><div class="top2"><span class="nm">Your strike rate</span><span class="vv num" id="vcP">44.0%</span></div><input type="range" id="scP" min="20" max="80" step="0.5" value="44"></div>
+    <div class="row"><span class="k">Break-even strike rate</span><span class="v num o" id="ocBE">—</span></div>
+    <div class="row"><span class="k">Your edge</span><span class="v num" id="ocEdge">—</span></div>
+    <div class="row"><span class="k">Expected return per £100</span><span class="v num" id="ocEV">—</span></div>
+    <div class="row"><span class="k">Odds you'd need</span><span class="v num" id="ocReq">—</span></div>
+    <div class="row"><span class="k">Recommended stake</span><span class="v num" id="ocK">—</span></div>
+  </div>
+  <h2>Your live sample</h2>
+  <div class="card">
+    <div class="formula">BE = avgLoss / (avgWin + avgLoss)
+   = 11.33 / (12.63 + 11.33) = 0.4729</div>
+    <div class="row"><span class="k">Break-even</span><span class="v num o">47.3%</span></div>
+    <div class="row"><span class="k">You are hitting</span><span class="v num r">44.0%</span></div>
+    <div class="row"><span class="k">95% interval</span><span class="v num">39.5% – 48.5%</span></div>
+    <div class="note bad" style="margin-top:12px"><span class="t">Break-even is inside your interval</span>
+      −£376 is about one standard error from zero. Not proof the system is broken, not proof it works. Pinning the strike rate to ±1 pp takes roughly <b>9,500</b> settled bets.</div>
+  </div>
+  <h2>Break-even by price</h2>
+  <div class="card"><table><thead><tr><th>Odds</th><th>Need @0%</th><th>Need @5%</th><th>If 44%</th></tr></thead><tbody id="beTable"></tbody></table></div>
+</section>
+
+<!-- ══ MODEL ══ -->
+<section id="v-model" class="wrap hidden">
+  <button class="btn ghost sm" data-go="more" style="margin-bottom:14px">← More</button>
+  <h1>The model</h1>
+  <p class="sub">One number decides it. Everything else is the reasoning behind it.</p>
+
+  <div class="card"><div class="lbl" style="margin-bottom:9px">Baseline goal rate</div>
+    <div class="formula">λ₀(t) = (leagueGPG / 90) × (0.65 + 0.0078t)</div>
+    <div class="row"><span class="k">Rate at 10'</span><span class="v num" id="r10">—</span></div>
+    <div class="row"><span class="k">Rate at 60'</span><span class="v num" id="r60">—</span></div>
+    <div class="row"><span class="k">Rate at 85'</span><span class="v num" id="r85">—</span></div></div>
+
+  <div class="card"><div class="lbl" style="margin-bottom:9px">Tempo and shot frequency</div>
+    <div class="formula">raw   = 0.50·pxG₁₀/E + 0.32·sot₁₀/E + 0.18·cnr₁₀/E
+tempo = 1 + k(raw − 1),  clamped 0.45–2.30</div>
+    <div class="slider"><div class="top2"><span class="nm">Shrinkage k</span><span class="vv num" id="vShrink">0.70</span></div>
+      <input type="range" id="sShrink" min="0.2" max="1" step="0.02" value="0.70">
+      <div class="hint">Ten-minute samples are noisy, so the raw ratio is pulled back toward 1.</div></div></div>
+
+  <div class="card"><div class="lbl" style="margin-bottom:9px">Possession<i class="ix" data-h="possession" role="button" tabindex="0">i</i></div>
+    <p style="color:var(--mute);font-size:13.5px;margin:0 0 4px">Raw possession barely predicts goals — a side can hold 70% passing sideways, and a team protecting a lead gives the ball away on purpose. What carries information is <b style="color:var(--tx)">whether the side on the ball is the side that needs a goal</b>. The scoreline alone cannot see that.</p>
+    <div class="formula">dom   = (possHome − 50) / 50
+chase = −dom × sign(homeGoals − awayGoals)
+mult  = 1 + weight × chase    (0.82–1.22)</div>
+    <div class="slider"><div class="top2"><span class="nm">Possession influence</span><span class="vv num" id="vPoss">0.18</span></div>
+      <input type="range" id="sPoss" min="0" max="0.40" step="0.02" value="0.18">
+      <div class="hint">Zero ignores possession entirely. Deliberately modest — it is the most over-read number in football.</div></div>
+    <p style="color:var(--mute);font-size:13px;margin:8px 0 0">Sterile domination needs no term of its own: lots of the ball with few shots already shows up as low tempo above.</p></div>
+
+  <div class="card"><div class="lbl" style="margin-bottom:9px">Attack momentum</div>
+    <p style="color:var(--mute);font-size:13.5px;margin:0 0 4px">Not how high pressure is — whether it is <b style="color:var(--tx)">rising</b>. Slope of the pressure index over the last five minutes of match time.</p>
+    <div class="formula">slope = (press_now − press_5min) / 5</div>
+    <div class="slider"><div class="top2"><span class="nm">Minimum slope</span><span class="vv num" id="vSlope">+1.5 /min</span></div>
+      <input type="range" id="sSlope" min="0" max="5" step="0.5" value="1.5"></div></div>
+
+  <div class="card" style="border-color:rgba(52,211,153,.3)"><div class="lbl g" style="margin-bottom:9px">Price lag → how far to trust the model</div>
+    <p style="color:var(--mute);font-size:13.5px;margin:0 0 4px">The market is usually right. So the model's estimate is blended toward it, and price lag decides the weight: if our probability rose faster than the price, we plausibly know something unpriced. If the price already ran past us, most of the apparent edge is staleness.</p>
+    <div class="formula">lag   = (p_now − p_5min) − (mkt_now − mkt_5min)
+w     = clamp(trustBase + trustLag · lag, 0.15, 0.70)
+pUsed = w · p_model + (1 − w) · p_market</div>
+    <div class="slider"><div class="top2"><span class="nm">Base trust in the model<i class="ix" data-h="trust" role="button" tabindex="0">i</i></span><span class="vv num" id="vTrust">35%</span></div>
+      <input type="range" id="sTrust" min="10" max="70" step="5" value="35">
+      <div class="hint">At rest, with no lag either way. Low on purpose — the book has more information than this model does.</div></div>
+    <div class="slider"><div class="top2"><span class="nm">Extra trust per point of lag</span><span class="vv num" id="vTrustLag">4.0×</span></div>
+      <input type="range" id="sTrustLag" min="0" max="10" step="0.5" value="4"></div></div>
+
+  <div class="card"><div class="lbl" style="margin-bottom:9px">Expected value — the decision</div>
+    <div class="formula">EV = pUsed · (odds − 1) · (1 − c) − (1 − pUsed)</div>
+    <p style="color:var(--mute);font-size:13.5px;margin:4px 0 0">Per £1 staked. This replaced six conditions that all had to be true at once — which threw away information, since a big edge with one weak input beats a marginal one where everything scrapes over its line.</p>
+    <div class="slider"><div class="top2"><span class="nm">Minimum EV to alert<i class="ix" data-h="minEV" role="button" tabindex="0">i</i></span><span class="vv num" id="vMinEV">+4.0%</span></div>
+      <input type="range" id="sMinEV" min="0" max="15" step="0.5" value="4"></div>
+    <div class="slider"><div class="top2"><span class="nm">Commission</span><span class="vv num" id="vComm">5.0%</span></div>
+      <input type="range" id="sComm" min="0" max="8" step="0.5" value="5"></div>
+    <div class="slider"><div class="top2"><span class="nm">Market overround</span><span class="vv num" id="vOver">3.0%</span></div>
+      <input type="range" id="sOver" min="0" max="8" step="0.5" value="3">
+      <div class="hint">Stripped out before the market's price is used as a probability.</div></div></div>
+
+  <div class="card"><div class="lbl" style="margin-bottom:9px">Game state multiplier</div>
+    <div class="row"><span class="k">0-0, after 70'</span><span class="v num r">×0.86</span></div>
+    <div class="row"><span class="k">Level, 2+ goals, after 70'</span><span class="v num g">×1.14</span></div>
+    <div class="row"><span class="k">One-goal margin, after 70'</span><span class="v num g">×1.22</span></div>
+    <div class="row"><span class="k">Two-goal margin</span><span class="v num">×1.04</span></div>
+    <div class="row"><span class="k">Three or more</span><span class="v num r">×0.88</span></div>
+    <div class="note warn" style="margin:12px 0 0"><span class="t">Why 0-0 late is penalised</span>
+      Goalless at 70' is usually goalless for a reason. The naive read is that a goal is overdue. The rate actually falls.</div></div>
+
+  <div class="card">
+    <div class="slider"><div class="top2"><span class="nm">League goals per game</span><span class="vv num" id="vGpg">2.70</span></div><input type="range" id="sGpg" min="1.8" max="4" step="0.05" value="2.7"></div>
+    <div class="slider"><div class="top2"><span class="nm">Minimum minutes left</span><span class="vv num" id="vMins">8</span></div><input type="range" id="sMins" min="2" max="25" step="1" value="8"></div>
+  </div>
+
+  <div class="note bad"><span class="t">These numbers are priors, not findings</span>
+    The weights, the shrinkage, the slope and lag thresholds are sensible starting points from how football behaves — not values fitted to data. Every figure the app shows is a hypothesis until several hundred logged entries say otherwise.</div>
+</section>
+
+<!-- ══ ACCUMULATORS ══ -->
+<section id="v-acca" class="wrap hidden">
+  <button class="btn ghost sm" data-go="more" style="margin-bottom:14px">← More</button>
+  <h1>Accumulators</h1>
+  <p class="sub">Pre-match legs from form. Priced honestly.</p>
+
+  <div class="note bad"><span class="t">What an accumulator actually does</span>
+    It does not create an edge. It <b>multiplies whatever edge you already have</b> — in
+    whichever direction that points. At a 5% margin per leg you are giving up
+    21.6% on a four-fold and 34% on a six-fold, because the margin compounds too.
+    If your per-leg edge beats the margin, accas amplify the profit. If it
+    doesn't, they amplify the loss far faster than singles would. The slip below
+    works out which of those you're looking at.</div>
+
+  <div class="seg sm">
+    <button class="on" data-af="value">Value first</button>
+    <button data-af="all">All fixtures</button>
+  </div>
+  <div id="accaList"></div>
+
+  <h2>Slip</h2>
+  <div id="accaSlip"></div>
+</section>
+
+<nav>
+  <button data-v="dash"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20h-20"/></svg>Dashboard</button>
+  <button class="on" data-v="monitor"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Live</button>
+  <button data-v="log"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3"/></svg>Trade Log</button>
+  <button data-v="sched"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Schedule</button>
+  <button data-v="bots"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2.5"/><path d="M12 4v4M8.5 13v1.5M15.5 13v1.5"/></svg>Bots</button>
+  <button data-v="more"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>More</button>
+</nav>
+
+<script>
+"use strict";
+/* Any uncaught error lands on screen instead of a console you can't open on a
+   phone. Message, file and line are right there; tap to dismiss. */
+(function(){
+ const show=(msg,src,line,col)=>{
+  let box=document.getElementById("errbox");
+  if(!box){
+   box=document.createElement("div"); box.id="errbox";
+   box.style.cssText="position:fixed;top:0;left:0;right:0;z-index:99;background:#2A0B0F;"+
+    "border-bottom:1px solid #FB7185;color:#FB7185;font:12px ui-monospace,Menlo,monospace;"+
+    "padding:10px 12px;max-height:38vh;overflow:auto;white-space:pre-wrap;line-height:1.5";
+   box.onclick=()=>box.remove();
+   (document.body||document.documentElement).appendChild(box);
+  }
+  box.textContent+=`${msg}\n  at ${String(src).split("/").pop()}:${line}:${col}\n\n`;
+ };
+ window.addEventListener("error",e=>show(e.message,e.filename,e.lineno,e.colno));
+ window.addEventListener("unhandledrejection",e=>show("Unhandled promise: "+e.reason,"",0,0));
+})();
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+/* ══ config ══ */
+const CFG={gpg:2.70,shrink:0.70,minEdge:0.07,comm:0.02,minMins:8,
+           minSlope:1.5,minLag:0.02,minPressure:55,
+           /* EV scoring */
+           possWeight:0.18,  // 0 ignores possession entirely
+           overround:1.03,   // in-play two-way books run ~3% over
+           trustBase:0.35,   // how far to back the model over the market at rest
+           trustLag:4.0,     // extra trust per unit of price lag
+           minEV:0.04,       // fire above this expected value per £1
+           oddsFloor:2.40,oddsCeil:4.50};
+/* The delayed Betfair key returns prices 1–180 seconds old. That is not just
+   noise: the quote you are shown is most likely to be stale precisely when the
+   market has been moving, which is precisely when the model likes the match.
+   Stale data therefore flatters you systematically, and has to be corrected
+   rather than tolerated. */
+const FEED={priceDelay:60,statsDelay:30,live:false};
+const STAKE={bank:500,maxStakePct:2,kellyDiv:4,dayStopPct:5};
+
+/* ══ plain-English help ══ */
+const HELP={
+ market:`Which bet the bot watches for. <b>Next Goal</b> means you win if one more goal is scored after you get on, whatever the score already is. <b>Over 2.5</b> means the whole match has to finish with 3 or more goals.`,
+ window:`The minutes of the match the bot is allowed to signal in. Outside this range it watches and says nothing. Early on you know very little; late on there's no time left for a goal.`,
+ odds:`Decimal odds. 2.00 doubles your money, 3.00 triples it.<br><br>The <b>minimum</b> matters most. Below a certain price you lose money over time even with a perfectly good strike rate — the Break-even screen shows where your line actually is.`,
+ prekick:`Whether the bot can signal before kick-off. <b>Off</b> means it waits until the game is running and it can see what's happening, which is the whole point of a live model.`,
+ scores:`Only signal when the score is currently one of these. A 0-0 at 70 minutes is usually two teams set up not to lose; a 2-2 is two teams still going for it.`,
+ staking:`How the recommended stake is worked out.<br><br>
+  <b>Flat</b> — the same amount every time.<br>
+  <b>% of bank</b> — scales with your balance, so it shrinks when you're losing.<br>
+  <b>Kelly</b> — stakes more when the edge is big and less when it's thin. Full Kelly grows a bankroll fastest <i>if</i> your probability estimate is exactly right; if you're overconfident it overbets badly. A quarter gives up some growth for much smaller swings, and with an untested model that's the sensible end.`,
+ stake:`The number for the staking method — pounds if Flat, percent if % of bank. Kelly ignores it and works each one out itself.`,
+ drip:`Instead of one bet, split into several smaller ones a few minutes apart. Spreads you across prices rather than everything on one moment.`,
+ recovery:`After a loss, stake more on the next one to win back what you lost.<br><br>
+  <span class="warnline">It does not improve your edge by a single percentage point.</span> It gathers a lot of small losses into one enormous one.<br><br>
+  Losing runs aren't rare — your Next Goal XG card records <b>12 in a row</b>. Chasing at 2.40 from a £10 start, the seventh bet alone needs <b>£254</b> and you'd already be £341 down. The twelfth would need £3,758.`,
+ entryLimit:`How many separate signals the bot may raise on the same match. One means once it's told you, it stays quiet.`,
+ leagues:`How many competitions the bot watches. More means more opportunities, but obscure leagues often have almost no money in the market when you try to bet.`,
+ exit:`What the alert suggests doing after the bet is on. <b>Ride to settlement</b> means wait for the result.`,
+ gates:`Two things decide whether you get an alert.<br><br>
+  <b>Hard limits</b> — the window, the scoreline, the odds range. Fail one and there's no bet, full stop.<br><br>
+  <b>Expected value</b> — everything else feeds one number: what this bet is worth per £1 staked. Above your floor, it alerts.<br><br>
+  An earlier version needed six separate conditions all true at once. That threw information away: a big edge with one weak reading is a better bet than a marginal one where every reading scrapes over its line.`,
+ edgeGate:`Compares the bot's estimate of the chance against the price on offer, and stays quiet if the price doesn't pay enough.<br><br>
+  <b>Off</b> means it alerts whenever the match looks right and takes whatever price is there. That's how you end up betting 1.60 and 2.20 on identical logic, when 1.60 needs a 63% hit rate to survive and 2.20 needs 47%.`,
+ possession:`Possession is the most quoted stat in football and one of the weakest predictors of a goal. A side can hold 70% of the ball passing sideways in their own half, and a team defending a lead concedes possession deliberately while staying dangerous on the break.<br><br>
+  So it isn't used as "more possession, more goals". It answers one question the scoreline can't: <b>is the side dominating the ball the side that needs a goal?</b> A 70/30 split means something very different at 0-1 than at 1-0.<br><br>
+  <i>Sterile domination</i> — lots of the ball, no shots — needs no special handling, because it already shows up as low tempo.<br><br>
+  Set the influence to zero if you'd rather it were ignored.`,
+ shotsplit:`<b>On target</b> is the strongest single predictor available — a shot that made the goalkeeper work.<br><br>
+  <b>Off target</b> is weaker evidence but not nothing. A side repeatedly missing the target is still creating positions, which is territory and intent.<br><br>
+  The <b>ratio</b> between them is chance quality. Plenty of shots with almost none on target usually means long-range efforts going nowhere.`,
+ minEV:`The expected value a bet must clear before you're told about it, per £1 staked. At +4%, a £10 bet has to be worth about 40p in expectation.<br><br>
+  It isn't money you'll see on any single bet — you win or you don't. It's the long-run average, and it only shows up over hundreds of them.<br><br>
+  Raise it for fewer, better alerts. Lower it and you'll hear about far more marginal spots.`,
+ trust:`How far to back the model against the market.<br><br>
+  The book is usually right — it has more information than this model does — so the model's estimate gets blended toward the market's before anything is decided. Base trust is what the model gets when nothing special is happening.<br><br>
+  <b>Price lag moves it.</b> If our probability rose faster than the price did, we plausibly know something unpriced and the model earns more weight. If the price already ran past us, the model gets shrunk toward the market, because most of that apparent edge is just staleness.`,
+ minEdge:`How much better than break-even the price must be.<br><br>
+  <b>pp means percentage points</b> — the plain gap between two percentages. At a price of 2.40 break-even is 42.9%, so a 5 pp minimum means the model has to say <b>47.9%</b> or better before the bot will speak.<br><br>
+  It is <b>not</b> expected profit. It's your margin for the model being wrong, and it will be wrong — the thresholds are sensible guesses, not values fitted to results.<br><br>
+  (Points, not percent, because 42.9% → 47.9% is +5 points but +11.7% in relative terms. "5%" would be ambiguous.)`,
+ minPressure:`A 0–100 score for how much is happening right now: shots, chances, corners. A generous price on a dull match is usually generous for a reason.`,
+ slope:`Whether pressure is <b>rising</b>, not just high. A match that has been busy for twenty minutes and plateaued is different from one catching fire right now — and the market has had twenty minutes to price the first one.`,
+ lag:`The gate that turns a goal prediction into a bet. Measured in <b>pp</b> — percentage points, the plain gap between two percentages.<br><br>
+  When pressure builds, the market shortens the price. If it has already shortened, you can be completely right about the goal and still make nothing. This measures whether your estimate has risen <i>faster</i> than the price has moved.<br><br>
+  Positive means you're early. Negative means the market got there first — and there's no money in being right late.`,
+ minLiq:`Only alert if there's at least this many times your stake actually available to match. Over a quarter of your logged trades never fully matched, so this does more work than any model tweak.`,
+ timeout:`If you haven't got on within this many seconds, walk away rather than chasing a price moving away from you.`,
+ mode:`<b>SIM</b> records what the bot would have said, with no money involved. <b>LIVE</b> means you're acting on it. Everything starts in SIM because a rule set with no settled results behind it has no evidence, however sensible it reads.`,
+ headsup:`A goal looks likely, but a gate is still shut.<br><br>
+  "A goal is due" and "this is worth betting" are genuinely different things. Betting every goal that looks due is how a good read still loses money. The alert names which gate is blocking, so you know whether to keep watching or move on.`,
+  fillrate:`How often an alert actually became a bet.<br><br>
+  The alert reaches you, you open the exchange, find the match, find the market — half a minute or more, and in-play prices move in that time. Some alerts will already be gone, or only available below your floor.<br><br>
+  If this sits low, the problem isn't the model. It's the gap between the signal and your thumb, and no amount of gate tuning fixes it.`,
+ bank:`The pot you're playing with. Every other figure here is a percentage of it, so setting it honestly matters more than any single one.`,
+ maxStake:`A hard ceiling on the recommended stake, as a percentage of bank, whatever Kelly suggests.`,
+ kellyFrac:`How much of the full Kelly stake to actually use. A quarter is the conservative default and the right one while the model is unproven.`,
+ dayStop:`Lose this much in a day and the app stops alerting until tomorrow. Set it wider than a normal bad run or ordinary variance keeps switching it off — the panel below shows how many losses it currently allows.`,
+ pp:`<b>Percentage points</b> — the straight gap between two percentages.<br><br>
+  You're hitting 44.0% and need 47.3% to break even, so the gap is <b>3.3 percentage points</b>. Written as a ratio that same gap would be 7.5%, which is why the unit matters.<br><br>
+  Anywhere the app shows pp — min edge, price lag, edge vs price — it means the same thing.`,
+ tgToken:`The password for your Telegram bot, from @BotFather. Anyone who has it can send messages as your bot and read everything it receives, so keep it off screenshots.`,
+ tgChat:`Which conversation the alerts go to. Message your bot once, then open <b>api.telegram.org/bot&lt;token&gt;/getUpdates</b> and read the number under message.chat.id. A negative number means a group.`
+};
+const ixTag=k=>HELP[k]?`<i class="ix" data-h="${k}" title="Tap for a plain explanation" role="button" tabindex="0">i</i>`:"";
+const helpPanel=k=>HELP[k]?`<div class="help" id="h-${k}">${HELP[k]}</div>`:"";
+function wireHelp(){
+ document.querySelectorAll(".ix").forEach(e=>{
+  const toggle=()=>{const p=$("h-"+e.dataset.h); if(!p)return;
+   const open=p.classList.toggle("show"); e.classList.toggle("on",open);};
+  e.onclick=toggle;
+  e.onkeydown=ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();toggle();}};});
+}
+function hydrateHelp(){
+ document.querySelectorAll(".ix").forEach(e=>{
+  const k=e.dataset.h; if(!HELP[k])return;
+  let p=document.getElementById("h-"+k);
+  if(!p){
+   p=document.createElement("div"); p.className="help"; p.id="h-"+k;
+   const field=e.closest(".field"),sw=e.closest(".swrow"),sl=e.closest(".slider");
+   if(field)field.appendChild(p);
+   else if(sw)sw.parentNode.insertBefore(p,sw.nextSibling);
+   else if(sl)sl.appendChild(p);
+   else e.parentNode.appendChild(p);}
+  if(!p.innerHTML.trim())p.innerHTML=HELP[k];});
+ wireHelp();
+}
+
+/* ══ maths ══ */
+const baseRate=(t,g)=>(g/90)*(0.65+0.0078*Math.min(t,95));
+const breakEvenProb=(o,c)=>1/((o-1)*(1-c)+1);
+const reqOdds=(p,c)=>1+(1-p)/(p*(1-c));
+const kelly=(p,o,c)=>{const b=(o-1)*(1-c);return b<=0?0:Math.max(0,(p*b-(1-p))/b);};
+function stateMult(h,a,t){const d=Math.abs(h-a),tot=h+a,late=t>=70;
+ if(d===0&&tot===0)return late?0.86:0.97; if(d===0&&tot>=2)return late?1.14:1.04;
+ if(d===1)return late?1.22:1.08; if(d===2)return late?1.04:1.02; return 0.88;}
+const gpgOf=m=>m.gpg||CFG.gpg;
+/* Shots on target and shots off target are different evidence. On target is the
+   strongest single predictor available. Off target is weaker but not noise — it
+   is territory and intent, and a side missing the target repeatedly is still a
+   side creating positions. They get separate weights rather than being summed. */
+function tempoMult(m){
+ const e10=baseRate(m.min,gpgOf(m))*10,eSot=e10/0.30,eAll=e10/0.105,eCnr=1.1;
+ const all10=m.sot10+(m.soff10||0);
+ const raw=0.44*(m.pxg10/e10)+0.28*(m.sot10/eSot)+0.16*(all10/eAll)+0.12*(m.cnr10/eCnr);
+ return Math.max(0.45,Math.min(2.30,1+CFG.shrink*(raw-1)));}
+
+/* Possession, used the one way it actually predicts anything.
+   Raw possession is close to useless for goals — a side can hold 70% passing
+   sideways, and a team protecting a lead gives the ball away deliberately. What
+   carries information is whether the side dominating the ball is the side that
+   needs a goal. A 70/30 split means one thing at 0-1 and the opposite at 1-0,
+   and the scoreline alone cannot tell them apart.
+   Sterile domination needs no separate term: high possession with few shots
+   already shows up as low tempo above. */
+function possMult(m){
+ if(!CFG.possWeight||m.possH==null)return 1;
+ const dom=(m.possH-50)/50;                 // +1 home owns the ball, −1 away
+ const lead=Math.sign(m.h-m.a);             // +1 home ahead
+ const chase=-dom*lead;                     // >0 the dominant side is behind
+ return Math.max(0.82,Math.min(1.22,1+CFG.possWeight*chase));}
+function possRead(m){
+ if(m.possH==null)return "—";
+ const dom=(m.possH-50)/50,lead=Math.sign(m.h-m.a);
+ if(Math.abs(dom)<0.12)return "even";
+ if(lead===0)return (dom>0?"home":"away")+" on top, level";
+ return (-dom*lead)>0?"the side behind is on top":"the side ahead is managing it";}
+const fct=n=>{let r=1;for(let i=2;i<=n;i++)r*=i;return r;};
+const pois=(k,l)=>Math.exp(-l)*Math.pow(l,k)/fct(k);
+const pOver=(line,l)=>{let c=0;for(let k=0;k<=Math.floor(line);k++)c+=pois(k,l);return 1-c;};
+const recStake=(p,o)=>Math.min(STAKE.bank*STAKE.maxStakePct/100,
+                               STAKE.bank*kelly(p,o,CFG.comm)/STAKE.kellyDiv);
+
+/* ══ trades ══ */
+let seed=20260914;
+const rng=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};
+const TODAY=new Date(2026,8,14);
+const dayKey=d=>d.toISOString().slice(0,10);
+const FXPOOL=[["Santos Laguna v Juárez","Liga MX"],["Huracán v Racing Club","Liga Profesional"],
+["Inter Turku v VPS","Veikkausliiga"],["Gorica v Varaždin","1. HNL"],["Shelbourne v Bohemians","Premier Division"],
+["Djurgården v Hammarby","Allsvenskan"],["Vitória v Estoril","Liga Portugal"],["Lech v Raków","Ekstraklasa"],
+["Brøndby v Midtjylland","Superliga"],["Excelsior v Cambuur","Eerste Divisie"],["Bodø/Glimt v Molde","Eliteserien"],
+["Trabzonspor v Sivasspor","Süper Lig"],["Cruzeiro v Bahia","Série A"],["Elfsborg v Norrköping","Superettan"]];
+const MKTS=[["Back Next Goal","Next Goal"],["Back Over 2.5 Goals","Over 2.5 Goals"],
+["Back Over 1.5 Goals","Over 1.5 Goals"],["Back Over 3.5 Goals","Over 3.5 Goals"],["Back FH Over 0.5","FH Over 0.5"]];
+let TRADES=[];
+function seedTrades(){
+ seed=20260914; TRADES=[];
+ const out=[]; for(let i=0;i<208;i++)out.push("W"); for(let i=0;i<265;i++)out.push("L"); for(let i=0;i<175;i++)out.push("V");
+ for(let i=out.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[out[i],out[j]]=[out[j],out[i]];}
+ out.forEach(o=>{
+  const d=new Date(TODAY); d.setDate(d.getDate()-Math.floor(rng()*61));
+  const fx=FXPOOL[Math.floor(rng()*FXPOOL.length)],mk=MKTS[Math.floor(rng()*MKTS.length)];
+  const legs=1+Math.floor(rng()*3);
+  let pl=0; if(o==="W")pl=8+rng()*10; else if(o==="L")pl=-(7.5+rng()*8);
+  TRADES.push({d:dayKey(d),hh:Math.floor(rng()*24),mm:Math.floor(rng()*60),o,pl,
+   stake:[10,15,20,20,30][Math.floor(rng()*5)],odds:1.7+rng()*1.5,legs,
+   matched:o==="V"?1+Math.floor(rng()*legs):legs,fx:fx[0],lg:fx[1],mkt:mk[0],sel:mk[1],
+   bot:rng()<0.62?"Next Goal XG":rng()<0.6?"Surge":"Ballast",
+   mode:rng()<0.93?"LIVE":"SIM"});});
+ const live=TRADES.filter(t=>t.mode==="LIVE");
+ const W=live.filter(t=>t.o==="W"),L=live.filter(t=>t.o==="L");
+ const ws=W.reduce((a,b)=>a+b.pl,0),ls=L.reduce((a,b)=>a+b.pl,0);
+ const wS=W.length?(12.63*W.length)/ws:1,lS=L.length?(-11.33*L.length)/ls:1;
+ TRADES.forEach(t=>{if(t.o==="W")t.pl*=wS; if(t.o==="L")t.pl*=lS;});
+}
+seedTrades();
+
+let MODE="LIVE",PERIOD="today",LMODE="LIVE",LPER="today",LRES="all",LBOT="All bots",SFILT="all";
+function startOf(p){const d=new Date(TODAY);
+ if(p==="today")return dayKey(d);
+ if(p==="7d"){d.setDate(d.getDate()-6);return dayKey(d);}
+ if(p==="30d"){d.setDate(d.getDate()-29);return dayKey(d);}
+ if(p==="mtd")return dayKey(new Date(TODAY.getFullYear(),TODAY.getMonth(),1));
+ return "0000-00-00";}
+/* Same shape as startOf() but anchored on the real clock — TODAY above is a
+   fixed date the demo data was seeded against, and only ever makes sense
+   for TRADES. Live trades use actual dates and need the actual "today". */
+function startOfReal(p){const d=new Date();
+ if(p==="today")return dayKey(d);
+ if(p==="7d"){d.setDate(d.getDate()-6);return dayKey(d);}
+ if(p==="30d"){d.setDate(d.getDate()-29);return dayKey(d);}
+ if(p==="mtd")return dayKey(new Date(d.getFullYear(),d.getMonth(),1));
+ return "0000-00-00";}
+function agg(list){
+ const w=list.filter(t=>t.o==="W"),l=list.filter(t=>t.o==="L"),v=list.filter(t=>t.o==="V");
+ const settled=w.length+l.length,pl=list.reduce((a,b)=>a+b.pl,0);
+ const staked=list.filter(t=>t.o!=="V").reduce((a,b)=>a+b.stake,0);
+ const aw=w.length?w.reduce((a,b)=>a+b.pl,0)/w.length:0;
+ const al=l.length?-l.reduce((a,b)=>a+b.pl,0)/l.length:0;
+ const nS=list.filter(t=>t.o!=="V").length;
+ return {n:list.length,w:w.length,l:l.length,v:v.length,settled,pl,staked,aw,al,
+  sr:settled?w.length/settled*100:0,roi:staked?pl/staked*100:0,
+  be:(aw+al)?al/(aw+al)*100:0,voidRate:list.length?v.length/list.length*100:0,
+  avgStake:nS?staked/nS:0};}
+const money=x=>(x<0?"−£":"£")+Math.abs(x).toFixed(2);
+const AX_LO=35,AX_HI=55,posOf=v=>Math.max(0,Math.min(100,(v-AX_LO)/(AX_HI-AX_LO)*100));
+
+/* ══ dashboard ══ */
+function renderDash(){
+ const live=LIVE.connected&&LIVE.trades&&MODE==="LIVE";
+ const noteEl=$("dashLiveNote");
+ if(noteEl)noteEl.textContent=live
+  ?"Real alerts from your bot, priced at a flat £"+LIVE.flatStake.toFixed(2)+" stake — not your actual fill price."
+  :(LIVE.connected?"Showing demo trades — switch to Live to see your bot's real settled alerts.":"Demo trades. Connect on the Live Monitor tab to see your bot's real numbers here.");
+ const list=live?LIVE.trades.filter(t=>t.d>=startOfReal(PERIOD))
+                :TRADES.filter(t=>t.mode===MODE&&t.d>=startOf(PERIOD));
+ const a=agg(list);
+ if(a.n===0){$("dashBody").innerHTML=`<div class="empty"><div class="h">No ${live?"settled alerts":"trades"} in this period</div>${live?"Nothing has fired and settled yet — this fills in as matches finish.":"Nothing logged here yet."}</div>`;
+  $("beWrap").innerHTML=""; drawChart(); return;}
+ const ci=1.96*Math.sqrt((a.sr/100)*(1-a.sr/100)/Math.max(1,a.settled))*100, gap=a.sr-a.be;
+ const fs=fillStats();
+ $("dashBody").innerHTML=`<div class="grid2">
+ <div class="tile"><svg class="ghost" viewBox="0 0 24 24"><path d="M2 14h4l3 8 4-18 3 12h6"/></svg>
+  <div class="lbl">Total trades</div><div class="val">${a.n}</div>
+  <div class="wl"><span class="g">${a.w}W</span> <span class="m">·</span> <span class="r">${a.l}L</span> <span class="m">·</span> <span class="m">${a.v}V</span></div></div>
+ <div class="tile"><svg class="ghost" viewBox="0 0 24 24"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M19 5 5 19"/></svg>
+  <div class="lbl">Strike rate</div><div class="val">${a.sr.toFixed(1)}%</div><div class="note">${a.w} of ${a.settled} settled</div></div>
+ <div class="tile"><svg class="ghost" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M17 12h3"/></svg>
+  <div class="lbl">Total P&amp;L</div><div class="val ${a.pl<0?"r":"g"}">${money(a.pl)}</div>
+  <div class="badge2" style="background:${a.pl<0?"var(--redBg)":"var(--greenBg)"};color:${a.pl<0?"var(--red)":"var(--green)"}">${(a.pl/12.03).toFixed(2)}u</div></div>
+ <div class="tile"><svg class="ghost" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/></svg>
+  <div class="lbl">ROI</div><div class="val ${a.roi<0?"r":"g"}">${a.roi>=0?"+":"−"}${Math.abs(a.roi).toFixed(1)}%</div><div class="note">on ${money(a.staked)} staked</div></div>
+ <div class="tile"><div class="lbl">Avg win / loss</div><div class="val sm"><span class="g">+£${a.aw.toFixed(2)}</span><br><span class="r">−£${a.al.toFixed(2)}</span></div><div class="note">£${a.avgStake.toFixed(2)} avg stake</div></div>
+ <div class="tile"><div class="lbl">Void rate</div><div class="val ${a.voidRate>15?"a":""}">${a.voidRate.toFixed(1)}%</div><div class="note">${a.v} never fully matched</div></div>
+ <div class="tile"><div class="lbl">Break-even</div><div class="val o">${a.be.toFixed(1)}%</div><div class="note">avgLoss ÷ (avgWin + avgLoss)</div></div>
+ <div class="tile"><div class="lbl">Fill rate<i class="ix" data-h="fillrate" role="button" tabindex="0">i</i></div>
+  <div class="val ${fs.rate===null?"m":fs.rate<60?"r":fs.rate<85?"a":"g"}">${fs.rate===null?"—":fs.rate.toFixed(0)+"%"}</div>
+  <div class="note">${fs.done?fs.got+" of "+fs.done+" alerts taken":"no alerts marked yet"}</div></div>
+ <div class="tile"><div class="lbl">Gap to level<i class="ix" data-h="pp" role="button" tabindex="0">i</i></div><div class="val ${gap<0?"r":"g"}">${gap>=0?"+":"−"}${Math.abs(gap).toFixed(1)} pp</div>
+  <div class="note">${gap<0?Math.ceil(a.be/100*a.settled-a.w)+" more wins squares it":"clear of break-even"}</div></div></div>`;
+ $("beWrap").innerHTML=`<div class="bebar">
+  <div class="head"><span class="t">Break-even</span><span class="d ${gap<0?"r":"g"}">${gap>=0?"+":"−"}${Math.abs(gap).toFixed(1)} pp</span></div>
+  <div class="track"><div class="ci" style="left:${posOf(a.sr-ci)}%;width:${posOf(a.sr+ci)-posOf(a.sr-ci)}%"></div>
+   <div class="fill" style="width:${posOf(a.sr)}%;background:${gap<0?"var(--red)":"var(--green)"}"></div>
+   <div class="mark" style="left:calc(${posOf(a.be)}% - 1.25px)"></div>
+   <div class="you" style="left:calc(${posOf(a.sr)}% - 5.5px);background:${gap<0?"var(--red)":"var(--green)"}"></div></div>
+  <div class="axis"><span style="left:0;transform:none">${AX_LO}%</span>
+   <span style="left:${posOf(a.sr)}%;color:${gap<0?"var(--red)":"var(--green)"}"><b>${a.sr.toFixed(1)}%</b>you</span>
+   <span style="left:${posOf(a.be)}%;color:var(--orange)"><b>${a.be.toFixed(1)}%</b>level</span>
+   <span style="right:0;left:auto;transform:none">${AX_HI}%</span></div>
+  <div class="belegend"><span><i style="background:${gap<0?"var(--red)":"var(--green)"}"></i>Where you are</span>
+   <span><i style="background:var(--orange)"></i>Where level is</span><span><i style="background:rgba(255,255,255,.2)"></i>95% range</span></div></div>
+  ${a.settled<400?`<div class="note">Only <b>${a.settled}</b> settled bets here — the 95% range is ±${ci.toFixed(1)} pp wide.</div>`:""}`;
+ drawChart();
+}
+function drawChart(){
+ const live=LIVE.connected&&LIVE.trades&&MODE==="LIVE";
+ const n=PERIOD==="today"?1:PERIOD==="7d"?7:PERIOD==="mtd"?(live?new Date().getDate():TODAY.getDate()):61;
+ const anchor=live?new Date():TODAY;
+ const days=[]; for(let i=n-1;i>=0;i--){const d=new Date(anchor);d.setDate(d.getDate()-i);days.push(dayKey(d));}
+ const vals=live?days.map(k=>LIVE.trades.filter(t=>t.d===k).reduce((a,b)=>a+b.pl,0))
+                :days.map(k=>TRADES.filter(t=>t.mode===MODE&&t.d===k).reduce((a,b)=>a+b.pl,0));
+ const mx=Math.max(1,...vals.map(Math.abs));
+ $("chart").innerHTML=vals.map(v=>{const hh=Math.abs(v)/mx*44;
+  return `<div class="col">${v>=0?`<i style="height:${hh}px;background:var(--green);margin-bottom:48px"></i>`
+   :`<i style="height:${hh}px;background:var(--red);margin-bottom:${48-hh}px"></i>`}</div>`;}).join("")
+  +`<div class="zero" style="bottom:48px"></div>`;
+ $("chFrom").textContent=days[0]||"—"; $("chTo").textContent=days[days.length-1]||"—";
+}
+
+/* ══ trade log ══ */
+function renderLog(){
+ const live=LIVE.connected&&LIVE.trades;
+ let list=(live&&LMODE==="LIVE")?LIVE.trades.filter(t=>t.d>=startOfReal(LPER))
+                                 :TRADES.filter(t=>t.mode===LMODE&&t.d>=startOf(LPER));
+ if(LRES!=="all")list=list.filter(t=>t.o===LRES);
+ if(LBOT!=="All bots")list=list.filter(t=>t.bot===LBOT);
+ list.sort((a,b)=>b.d.localeCompare(a.d)||b.hh-a.hh||b.mm-a.mm);
+ const a=agg(list);
+ $("logSummary").innerHTML=list.length?`<div class="card tight"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;text-align:center">
+  <div><div class="lbl">Trades</div><div class="num" style="font-size:19px;font-weight:600;margin-top:4px">${a.n}</div></div>
+  <div><div class="lbl">Strike</div><div class="num" style="font-size:19px;font-weight:600;margin-top:4px">${a.sr.toFixed(1)}%</div></div>
+  <div><div class="lbl">P&amp;L</div><div class="num ${a.pl<0?"r":"g"}" style="font-size:19px;font-weight:600;margin-top:4px">${money(a.pl)}</div></div></div></div>`:"";
+ if(!list.length){$("logBody").innerHTML=`<div class="empty"><div class="h">Nothing to show</div>No trades match these filters.</div>`;return;}
+ let html="",day="";
+ list.forEach(t=>{
+  if(t.d!==day){day=t.d;
+   const dl2=list.filter(x=>x.d===day);
+   html+=`<div class="daybar"><span class="dd">${new Date(day+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}
+    <span class="m" style="font-weight:400;font-size:12.5px"> · ${dl2.length} trade${dl2.length>1?"s":""}</span></span>
+    <span class="pp2 ${dl2.reduce((s,x)=>s+x.pl,0)<0?"r":"g"}">${money(dl2.reduce((s,x)=>s+x.pl,0))}</span></div>`;}
+  html+=`<div class="tr ${t.o.toLowerCase()}">
+   <div class="trtop"><div style="min-width:0"><div class="trfx">${t.fx}</div><div class="trlg">${t.lg}</div></div>
+    <div style="text-align:right;white-space:nowrap"><span class="badge b-bot">${esc(t.bot)}</span> <span class="badge ${{W:"b-w",L:"b-l",V:"b-v"}[t.o]}">${t.o}</span></div></div>
+   <div class="trmk">${t.mkt} · <span class="o">${t.sel}</span></div>
+   <div class="trmeta">${t.odds.toFixed(2)} &nbsp; £${t.stake.toFixed(2)} &nbsp; ${String(t.hh).padStart(2,"0")}:${String(t.mm).padStart(2,"0")}
+    ${t.matched<t.legs?`<br><span class="a">${t.matched}/${t.legs} matched · £${(t.stake*t.matched/t.legs).toFixed(2)}</span>`:""}</div>
+   <div class="trpl"><span class="amt ${t.pl<0?"r":t.pl>0?"g":"m"}">${t.pl===0?"£0.00":money(t.pl)}</span>
+    <span class="m num" style="font-size:12.5px">${t.legs} ${t.legs>1?"entries":"entry"}</span></div></div>`;});
+ $("logBody").innerHTML=html;
+}
+
+/* ══ schedule ══ */
+const LEAGUES={"Premier League":2.80,"La Liga":2.52,"Serie A":2.70,"Liga Portugal":2.62,"Eerste Divisie":3.30,
+ "Allsvenskan":2.92,"Superettan":2.80,"Eliteserien":3.10,"Veikkausliiga":2.72,"Superliga (Denmark)":2.90,
+ "Ekstraklasa":2.60,"Süper Lig":3.02,"1. HNL (Croatia)":2.48,"Besta deild":3.00,"Série A (Brazil)":2.38,
+ "Liga MX":2.82,"Liga Profesional":2.18,"Premier Division (Ireland)":2.46};
+const FIXTURES=[];
+(function(){let s=77777;const r=()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff;};
+ const spec=[["Premier Division (Ireland)",["Shelbourne v Bohemians","Derry City v Sligo Rovers","St Patrick's v Drogheda","Galway United v Waterford"]],
+  ["Serie A",["Lazio v Torino","Bologna v Genoa","Udinese v Cagliari"]],
+  ["Superettan",["Elfsborg v Norrköping","Örgryte v Helsingborg","Landskrona v Trelleborg"]],
+  ["Liga Portugal",["Vitória v Estoril","Braga v Arouca","Famalicão v Casa Pia"]],
+  ["Liga Profesional",["Huracán v Racing Club","Lanús v Platense","Banfield v Tigre"]],
+  ["Allsvenskan",["Djurgården v Hammarby","Häcken v Sirius"]],
+  ["Eerste Divisie",["Excelsior v Cambuur","De Graafschap v Emmen"]],
+  ["Veikkausliiga",["Inter Turku v VPS"]],["1. HNL (Croatia)",["Gorica v Varaždin"]],
+  ["Eliteserien",["Bodø/Glimt v Molde"]],["Superliga (Denmark)",["Brøndby v Midtjylland"]],
+  ["Ekstraklasa",["Lech v Raków"]],["Süper Lig",["Trabzonspor v Sivasspor"]],
+  ["Premier League",["Brighton v Everton"]],["La Liga",["Getafe v Osasuna"]],
+  ["Besta deild",["Breiðablik v Valur"]],["Série A (Brazil)",["Cruzeiro v Bahia"]],["Liga MX",["Santos Laguna v Juárez"]]];
+ spec.forEach(([lg,names])=>names.forEach(nm=>{
+  const gpg=LEAGUES[lg];
+  FIXTURES.push({fx:nm,lg,lh:gpg*0.55*(0.82+r()*0.42),la:gpg*0.45*(0.82+r()*0.42),
+   h:(16+Math.floor(r()*14))%24,mn:[0,0,0,15,30,45][Math.floor(r()*6)],tom:r()<0.1});}));
+ FIXTURES.sort((a,b)=>(a.tom-b.tom)||(a.h-b.h)||(a.mn-b.mn));})();
+
+function recommend(f){
+ const L=f.lh+f.la,fhL=L*0.44;
+ const cands=[{bot:"Next Goal XG",mkt:"Over 1.5 Goals",p:pOver(1.5,L),band:[1.30,2.60]},
+  {bot:"Next Goal XG",mkt:"Over 2.5 Goals",p:pOver(2.5,L),band:[1.70,3.40]},
+  {bot:"Ballast",mkt:"Over 3.5 Goals",p:pOver(3.5,L),band:[2.40,6.00]},
+  {bot:"Surge",mkt:"FH Under 1.5 Goals",p:1-pOver(1.5,fhL),band:[1.25,2.20]},
+  {bot:"Ballast",mkt:"Under 2.5 Goals",p:1-pOver(2.5,L),band:[1.50,3.00]},
+  {bot:"Surge",mkt:"BTTS",p:(1-Math.exp(-f.lh))*(1-Math.exp(-f.la)),band:[1.50,2.60]}];
+ let best=null;
+ cands.forEach(c=>{const fair=1/c.p,minTake=reqOdds(Math.max(0.02,c.p-CFG.minEdge),CFG.comm);
+  const usable=minTake<=c.band[1]&&fair>=c.band[0]&&c.p>0.18&&c.p<0.90;
+  const score=usable?c.p*(c.band[1]-minTake):-1;
+  if(!best||score>best.score)best={...c,fair,minTake,usable,score};});
+ return best;
+}
+function renderSched(){
+ const wr=FIXTURES.map(f=>({...f,r:recommend(f)}));
+ const comps=new Set(FIXTURES.map(f=>f.lg)).size,tom=FIXTURES.filter(f=>f.tom).length;
+ $("schedSub").textContent=`${FIXTURES.length} fixtures across ${comps} competitions · ${FIXTURES.length-tom} today · ${tom} tomorrow`;
+ $("schN").textContent=FIXTURES.length; $("schComp").textContent=comps+" competitions";
+ $("schRec").textContent=wr.filter(f=>f.r.usable).length;
+ let list=wr;
+ if(SFILT==="rec")list=wr.filter(f=>f.r.usable);
+ if(SFILT==="over")list=wr.filter(f=>f.r.mkt.includes("Over"));
+ if(SFILT==="under")list=wr.filter(f=>f.r.mkt.includes("Under"));
+ if(!list.length){$("schedBody").innerHTML=`<div class="empty"><div class="h">Nothing here</div>No fixtures match this filter.</div>`;return;}
+ let html="",slot="";
+ list.forEach(f=>{
+  const key=(f.tom?"T":"D")+String(f.h).padStart(2,"0")+String(f.mn).padStart(2,"0");
+  if(key!==slot){slot=key;
+   const cnt=list.filter(x=>((x.tom?"T":"D")+String(x.h).padStart(2,"0")+String(x.mn).padStart(2,"0"))===key).length;
+   html+=`<div class="slot"><span class="t">${String(f.h).padStart(2,"0")}:${String(f.mn).padStart(2,"0")}</span>
+    <span class="d">${f.tom?"Tomorrow":"Today"} · ${cnt} match${cnt>1?"es":""}</span></div>`;}
+  const L=f.lh+f.la;
+  html+=`<div class="fx${f.r.usable?" rec":""}">
+   <div class="fxtop"><div style="min-width:0"><div class="fxt">${f.fx}</div><div class="fxl">${f.lg}</div></div>
+    <div><div class="fxlam ${L>=3.0?"g":L<=2.3?"a":""}">${L.toFixed(2)}</div><div class="lbl" style="text-align:right;margin-top:3px">exp goals</div></div></div>
+   <div class="fxrec"><div style="min-width:0"><div class="nm ${f.r.usable?"g":"m"}">${f.r.mkt}</div>
+    <div class="sm2">fair ${f.r.fair.toFixed(2)} · take from ${f.r.minTake.toFixed(2)} · ${(f.r.p*100).toFixed(0)}%</div></div>
+    <span class="badge ${f.r.usable?"b-fire":"b-hold"}">${f.r.usable?esc(f.r.bot):"NO BOT"}</span></div></div>`;});
+ $("schedBody").innerHTML=html;
+}
+
+/* ══ bots ══ */
+const SCORES=["0-0","1-0","0-1","1-1","2-0","0-2","2-1","1-2","2-2","3-0","0-3","3-1","1-3","3-2","2-3","3-3","4-2","2-4"];
+let BOTS=[
+{id:"ngxg",name:"Next Goal XG",author:"House",tags:["HOUSE","PRIMARY"],on:true,mode:"SIM",open:false,
+ desc:"The main alert. Backs one more goal when momentum is building and the price hasn't caught up.",
+ cfg:{market:"Next Goal",side:"Back",from:22,to:84,prekick:false,minOdds:2.40,maxOdds:4.50,
+  scores:["1-0","0-1","1-1","2-1","1-2","2-2","3-2","2-3"],
+  leagues:24,entryLimit:1,exit:"Ride to settlement",stakeType:"¼ Kelly",stake:0,
+  edgeGate:true,minEdge:5,minPressure:52,minLiq:3,timeout:45,drip:0,recovery:false},
+ stats:{sr:50.6,roi:14.2,d30:11.5,d14:4.4,d7:-14.9,dd:23.96,streak:12,settled:1148,total:1148,
+  w:580,l:567,scr:1,pl:3270.78,staked:22960,from:"9 Aug 2026",to:"12 Sept 2026",installs:197,
+  rec:"1% of bankroll per match",sim:true,stale:true}},
+{id:"surge",name:"Surge",author:"You",tags:["STRICT","LOW VOLUME"],on:true,mode:"SIM",open:false,
+ desc:"Same gates, tighter thresholds. Fires rarely and only on the clearest divergence.",
+ cfg:{market:"Next Goal",side:"Back",from:25,to:82,prekick:false,minOdds:2.40,maxOdds:4.50,
+  scores:["1-0","0-1","1-1","2-1","1-2","2-2"],leagues:24,entryLimit:1,
+  exit:"Ride to settlement",stakeType:"¼ Kelly",stake:0,edgeGate:true,minEdge:7,minPressure:55,
+  minLiq:3,timeout:45,drip:0,recovery:false},stats:null},
+{id:"ballast",name:"Ballast",author:"Suggested",tags:["AI SUGGESTED","LIQUIDITY-FIRST"],on:false,mode:"SIM",open:false,
+ desc:"Same logic, pointed at leagues where the money is actually there.",
+ cfg:{market:"Next Goal",side:"Back",from:30,to:80,prekick:false,minOdds:2.40,maxOdds:4.00,
+  scores:["1-0","0-1","1-1","2-1","1-2","2-2"],leagues:12,entryLimit:1,exit:"Ride to settlement",
+  stakeType:"¼ Kelly",stake:0,edgeGate:true,minEdge:7,minPressure:50,minLiq:4,timeout:30,
+  drip:0,recovery:false},stats:null,ai:true}];
+
+function cfgRows(c){return `<div class="row"><span class="k">Market</span><span class="v">Back ${c.market}</span></div>
+ <div class="row"><span class="k">Entry window</span><span class="v">${c.from}'–${c.to}'</span></div>
+ <div class="row"><span class="k">Pre-kickoff</span><span class="v">${c.prekick?"On":"Off"}</span></div>
+ <div class="row"><span class="k">Odds range</span><span class="v">${c.minOdds.toFixed(2)}${c.maxOdds?" – "+c.maxOdds.toFixed(2):" +"}</span></div>
+ ${c.edgeGate?`<div class="row"><span class="k">Minimum edge</span><span class="v o">${c.minEdge} pp</span></div>
+ <div class="row"><span class="k">Minimum pressure</span><span class="v">${c.minPressure} / 100</span></div>`:
+ `<div class="row"><span class="k">Edge gate</span><span class="v r">Off — alerts on filters</span></div>`}
+ ${c.minLiq?`<div class="row"><span class="k">Min available size</span><span class="v o">${c.minLiq}× stake</span></div>`:""}
+ ${c.timeout?`<div class="row"><span class="k">Walk away after</span><span class="v">${c.timeout}s</span></div>`:""}
+ <div class="row"><span class="k">Alerts per match</span><span class="v">${c.entryLimit}</span></div>
+ ${c.drip?`<div class="row"><span class="k">Drip entries</span><span class="v">×${c.drip}${c.recovery?" · recovery on":""}</span></div>`:""}
+ <div class="row"><span class="k">Position exit</span><span class="v">${c.exit}</span></div>
+ <div class="row"><span class="k">Staking</span><span class="v">${c.stakeType}${c.stake?" · £"+c.stake.toFixed(2):""}</span></div>
+ <div class="row"><span class="k">Included leagues</span><span class="v o">${c.leagues} leagues</span></div>`;}
+
+function statBlock(b){const s=b.stats;
+ if(!s)return `<div class="note" style="margin:13px 0 0"><b>No settled sample.</b> This bot has never run. Every figure it would show here would be invented, so it shows none.</div>`;
+ return `<div class="split" style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+  <div><div class="lbl">Strike rate</div><div class="num" style="font-size:17px;font-weight:600;margin-top:3px">${s.sr}%</div></div>
+  <div><div class="lbl">Recipe ROI</div><div class="num ${s.roi>=0?"g":"r"}" style="font-size:17px;font-weight:600;margin-top:3px">+${s.roi}%</div></div></div>
+ <div class="lbl" style="margin:14px 0 8px">Recent recipe ROI</div>
+ <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${[["30d",s.d30],["14d",s.d14],["7d",s.d7]].map(([k,v])=>
+  `<div style="border:1px solid var(--line);border-radius:10px;padding:9px;text-align:center"><div class="lbl">${k}</div>
+   <div class="num ${v>=0?"g":"r"}" style="font-size:16px;margin-top:3px">${v>=0?"+":""}${v}%</div></div>`).join("")}</div>
+ <div class="row" style="margin-top:12px"><span class="k">Biggest drawdown</span><span class="v num">${s.dd}u</span></div>
+ <div class="row"><span class="k">Longest losing streak</span><span class="v num r">${s.streak} losses</span></div>
+ <div class="row"><span class="k">Settled / total</span><span class="v num">${s.settled} / ${s.total}</span></div>
+ <div class="row"><span class="k">W / L / scratch</span><span class="v num">${s.w} / ${s.l} / ${s.scr}</span></div>
+ <div class="row"><span class="k">Realised P&amp;L / staked</span><span class="v num g">+£${s.pl.toFixed(2)} / £${s.staked.toFixed(2)}</span></div>
+ <div class="row"><span class="k">Sample window</span><span class="v">${s.from} — ${s.to}</span></div>
+ ${s.stale?`<div class="note bad" style="margin:13px 0 0"><span class="t">This sample predates the current rules</span>
+  These 1,148 trades were recorded under the original settings: entry from 3', minimum odds 2.00, no edge gate. Those rules have been tightened below, so the figures above describe a bot that no longer exists. The evidence starts over.</div>`:""}
+ ${s.sim?`<div class="note warn" style="margin:10px 0 0"><span class="t">⚠ Historic SIM disclosure</span>
+  Historic SIM performance only. The sample is not a guarantee of future results.</div>`:""}`;}
+
+function analysisFor(b){
+ if(b.id==="ngxg")return `<div class="note ok2" style="margin:12px 0 0"><span class="t">What changed and why</span>
+  <b>Odds floor 2.00 → 2.20.</b> At a 50.6% strike rate break-even sits at 2.03, so the old floor was below the line — every entry between 2.00 and 2.03 lost money by construction.<br><br>
+  <b>Window 3'–90' → 22'–84'.</b> Before 22' there aren't enough shots for the tempo signal to mean anything; after 84' there isn't enough clock for a goal to arrive.<br><br>
+  <b>Edge gate on at 5 pp.</b> The old rules had none, so it took 2.20 and 3.80 on identical logic. This is the single biggest change.<br><br>
+  <b>Scorelines 15 → 8.</b> Dropped the two-goal margins, which the state multiplier already marks down.<br><br>
+  <b>Liquidity gate at 3×.</b> Aimed straight at your 27% void rate.</div>`;
+ if(b.ai)return `<div class="note aiN" style="margin:12px 0 0"><span class="t">Why these settings</span>
+  Twelve mid-tier leagues with real depth instead of Finland and Croatia. The 4× liquidity gate is the rule I'd keep above all others.</div>`;
+ return "";}
+
+function renderBots(){
+ $("botList").innerHTML=BOTS.map((b,i)=>`<div class="card${b.ai?" ai":""}">
+  <div class="mhead"><div style="min-width:0"><div class="teams">${esc(b.name)}</div>
+   <div class="league">${b.author==="House"?"House bot":"by "+esc(b.author)}</div></div>
+   <div class="sw${b.on?" on":""}" data-tog="${i}"><i></i></div></div>
+  <div style="margin-top:10px">${b.on?`<span class="badge b-inst">${b.mode}</span>`:`<span class="badge b-hold">OFF</span>`}
+   ${b.tags.map(t=>`<span class="badge b-tag${t==="HOUSE"||t==="PRIMARY"?" b-house":""}${t==="AI SUGGESTED"?" b-ai":""}">${t}</span>`).join("")}</div>
+  <p style="color:var(--mute);font-size:13.5px;margin:11px 0 0">${esc(b.desc)}</p>
+  <div class="btn2" style="margin-top:12px"><button class="btn ghost" data-open="${i}">${b.open?"Hide":"Details"}</button>
+   <button class="btn ghost" data-edit="${i}">Edit rules</button></div>
+  ${b.open?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+   <div class="lbl" style="margin-bottom:10px">🔒 Frozen logic rules</div>${cfgRows(b.cfg)}
+   <div class="lbl" style="margin:15px 0 8px">Allowed entry scores</div>
+   <div>${b.cfg.scores.map(s=>`<span class="pill sel">${s}</span>`).join("")}</div>
+   ${statBlock(b)}${analysisFor(b)}</div>`:""}</div>`).join("");
+ document.querySelectorAll("[data-tog]").forEach(e=>e.onclick=()=>{BOTS[+e.dataset.tog].on=!BOTS[+e.dataset.tog].on;renderBots();});
+ document.querySelectorAll("[data-open]").forEach(e=>e.onclick=()=>{BOTS[+e.dataset.open].open=!BOTS[+e.dataset.open].open;renderBots();});
+ document.querySelectorAll("[data-edit]").forEach(e=>e.onclick=()=>openBuilder(+e.dataset.edit));
+ const cur=LBOT;
+ $("logBot").innerHTML=["All bots",...new Set(TRADES.map(t=>t.bot))].map(b=>`<option${b===cur?" selected":""}>${b}</option>`).join("");
+}
+
+/* ══ builder ══ */
+let editIdx=-1,draftScores=[];
+function openBuilder(i){
+ editIdx=i; const b=i>=0?BOTS[i]:null;
+ const c=b?b.cfg:{market:"Next Goal",from:25,to:82,prekick:false,minOdds:2.40,maxOdds:4.50,
+  scores:["1-0","0-1","1-1","2-1","1-2","2-2"],leagues:24,entryLimit:1,exit:"Ride to settlement",
+  stakeType:"¼ Kelly",stake:10,edgeGate:true,minEdge:7,minPressure:55,minLiq:3,timeout:45,drip:0,recovery:false};
+ draftScores=[...c.scores];
+ $("bTitle").textContent=b?"Edit rules":"Build a bot";
+ $("bSub").textContent=b?b.name:"Every rule the engine will follow.";
+ const sl=(id,val,opts)=>`<select id="${id}">${opts.map(o=>`<option${o===val?" selected":""}>${o}</option>`).join("")}</select>`;
+ const fw=(label,key,control)=>`<div class="field"><label>${label}${ixTag(key)}</label>${control}${helpPanel(key)}</div>`;
+ $("builderBody").innerHTML=`<div class="card">
+ <div class="field"><label>Name</label><input id="fName" value="${b?esc(b.name):"New bot"}"></div>
+ ${fw("Market","market",sl("fMarket",c.market,["Next Goal","Over 0.5","Over 1.5","Over 2.5","Over 3.5","Under 2.5","FH Over 0.5","FH Under 1.5","BTTS"]))}
+ ${fw("Entry window (minutes)","window",`<div class="f2"><input type="number" id="fFrom" value="${c.from}"><input type="number" id="fTo" value="${c.to}"></div>`)}
+ ${fw("Odds range — min / max (0 = none)","odds",`<div class="f2"><input type="number" step="0.01" id="fMin" value="${c.minOdds}"><input type="number" step="0.01" id="fMax" value="${c.maxOdds}"></div>`)}
+ ${fw("Pre-kickoff entry","prekick",sl("fPre",c.prekick?"On":"Off",["Off","On"]))}</div>
+
+ <div class="card"><div class="lbl" style="margin-bottom:10px">Allowed entry scores${ixTag("scores")}</div>
+ ${helpPanel("scores")}
+ <div>${SCORES.map(s=>`<span class="pill${draftScores.includes(s)?" sel":""}" data-sc="${s}">${s}</span>`).join("")}</div>
+ <div style="color:var(--dim);font-size:12.5px;margin-top:8px">Tap to toggle. All other scorelines are excluded.</div></div>
+
+ <div class="card"><div class="lbl" style="margin-bottom:10px">Staking</div>
+ <div class="f2">${fw("Staking","staking",sl("fStakeType",c.stakeType,["Flat","% of bank","¼ Kelly","½ Kelly"]))}
+ ${fw("Stake (£ or %)","stake",`<input type="number" step="0.5" id="fStake" value="${c.stake}">`)}</div>
+ <div class="f2">${fw("Drip entries (0 = off)","drip",`<input type="number" id="fDrip" value="${c.drip}">`)}
+ ${fw("Recovery","recovery",sl("fRec",c.recovery?"On":"Off",["Off","On"]))}</div>
+ <div class="f2">${fw("Alerts per match","entryLimit",`<input type="number" id="fLimit" value="${c.entryLimit}">`)}
+ ${fw("Included leagues","leagues",`<input type="number" id="fLeagues" value="${c.leagues}">`)}</div>
+ ${fw("Position exit","exit",sl("fExit",c.exit,["Ride to settlement","Cash out at +50%","Cash out at +100%"]))}</div>
+
+ <div class="card"><div class="lbl" style="margin-bottom:10px">Gates${ixTag("gates")}</div>
+ ${helpPanel("gates")}
+ ${fw("Edge gate","edgeGate",sl("fEdgeGate",c.edgeGate?"On":"Off",["On","Off"]))}
+ <div class="f2">${fw("Min edge (pp)","minEdge",`<input type="number" step="0.5" id="fEdge" value="${c.minEdge}">`)}
+ ${fw("Min pressure","minPressure",`<input type="number" id="fPress" value="${c.minPressure}">`)}</div>
+ <div class="f2">${fw("Min size (× stake)","minLiq",`<input type="number" id="fLiq" value="${c.minLiq}">`)}
+ ${fw("Walk away after (s)","timeout",`<input type="number" id="fTimeout" value="${c.timeout}">`)}</div>
+ ${fw("Mode","mode",sl("fMode",b?b.mode:"SIM",["SIM","LIVE"]))}</div>
+
+ <div class="note warn"><span class="t">New bots start in SIM</span>A rule set with no settled sample has no evidence behind it, however sensible it looks.</div>
+ <div class="btn2"><button class="btn ghost" id="fCancel">Cancel</button>
+ <button class="btn primary" id="fSave">${b?"Save rules":"Create bot"}</button></div>
+ ${b&&b.id!=="ngxg"?`<button class="btn danger" id="fDel" style="margin-top:9px">Delete bot</button>`:""}`;
+ wireHelp();
+ document.querySelectorAll("[data-sc]").forEach(e=>e.onclick=()=>{const s=e.dataset.sc;
+  if(draftScores.includes(s))draftScores=draftScores.filter(x=>x!==s); else draftScores.push(s);
+  e.classList.toggle("sel");});
+ $("fCancel").onclick=()=>go("bots");
+ $("fSave").onclick=saveBot;
+ if($("fDel"))$("fDel").onclick=()=>{const nm=BOTS[editIdx].name;BOTS.splice(editIdx,1);
+  snapshot("Deleted "+nm,["Removed bot “"+nm+"”"]);renderBots();go("bots");toast("Bot deleted");};
+ go("builder");
+}
+function saveBot(){
+ const v=id=>$(id).value,n=id=>parseFloat($(id).value)||0;
+ const cfg={market:v("fMarket"),side:"Back",from:n("fFrom"),to:n("fTo"),prekick:v("fPre")==="On",
+  minOdds:n("fMin"),maxOdds:n("fMax"),scores:[...draftScores],leagues:n("fLeagues"),
+  entryLimit:n("fLimit")||1,exit:v("fExit"),stakeType:v("fStakeType"),stake:n("fStake"),
+  edgeGate:v("fEdgeGate")==="On",minEdge:n("fEdge"),minPressure:n("fPress"),minLiq:n("fLiq"),
+  timeout:n("fTimeout"),drip:n("fDrip"),recovery:v("fRec")==="On"};
+ let summary=[];
+ if(editIdx>=0){
+  const old=BOTS[editIdx].cfg,nm=v("fName");
+  const F={market:"Market",from:"Entry from",to:"Entry to",minOdds:"Min odds",maxOdds:"Max odds",
+   leagues:"Leagues",entryLimit:"Alerts/match",exit:"Exit",stakeType:"Staking",stake:"Stake",
+   edgeGate:"Edge gate",minEdge:"Min edge",minPressure:"Min pressure",minLiq:"Min size",
+   timeout:"Timeout",drip:"Drip",recovery:"Recovery",prekick:"Pre-kickoff"};
+  Object.keys(F).forEach(k=>{if(String(old[k])!==String(cfg[k]))summary.push(F[k]+": "+old[k]+" → "+cfg[k]);});
+  if(old.scores.join()!==cfg.scores.join())summary.push("Entry scores: "+old.scores.length+" → "+cfg.scores.length);
+  if(BOTS[editIdx].name!==nm)summary.push("Renamed to “"+nm+"”");
+  if(BOTS[editIdx].mode!==v("fMode"))summary.push("Mode: "+BOTS[editIdx].mode+" → "+v("fMode"));
+  BOTS[editIdx].name=nm; BOTS[editIdx].cfg=cfg; BOTS[editIdx].mode=v("fMode");
+  if(!summary.length)summary=["No values changed"];
+  snapshot("Edited "+nm,summary);
+ } else {
+  BOTS.push({id:"b"+Date.now(),name:v("fName"),author:"You",tags:["CUSTOM"],on:true,mode:v("fMode"),
+   open:true,desc:"Custom rule set.",cfg,stats:null});
+  snapshot("Created "+v("fName"),["New bot: Back "+cfg.market,
+   "Window "+cfg.from+"'–"+cfg.to+"', odds "+cfg.minOdds+(cfg.maxOdds?"–"+cfg.maxOdds:"+"),
+   cfg.edgeGate?"Edge gate on at "+cfg.minEdge+" pp":"Edge gate off"]);}
+ renderBots(); go("bots"); toast("Saved · snapshot "+VERSIONS[0].v);
+}
+
+/* ══ version control ══ */
+const BUILDS=[
+ {v:"2.9",d:"17 Sep 2026",t:"Commission, floor, two new signals",
+  s:["Commission 5% → 2%. Worth about 0.75pp off break-even at these odds — real, but small. The floor change does far more.",
+     "Odds floor 2.20 → 2.40. Break-even at 2.40 on 2% is 42.2%; the 648-trade sample ran 44.0%. That is a +1.8pp margin against a ±1.95pp standard error — inside the noise, not yet an edge.",
+     "Dangerous attacks added to tempo at 12% weight. Lower information per event than a shot, but arrives five to ten times more often, so pressure registers before the market has seen the same shot.",
+     "Red cards: the model was previously blind to them entirely. Closes a hole rather than finding an edge — the market reprices a sending-off in seconds.",
+     "Staking flat £2 by default. Kelly sizes up hardest where the model is most confident, which on an uncalibrated model is where it is most wrong."]},
+ {v:"2.8",d:"16 Sep 2026",t:"Nav reverted",
+  s:["Accumulators tried on the bottom bar, then put back under More",
+     "Promoting accas gives the weakest screen the most prominence — pre-match markets are the hardest to beat, and the shrinkage that makes the form read honest also makes it close to league average",
+     "Bots stays on the bar: alert log, fills and calibration are the screens that decide whether any of this works"]},
+ {v:"2.7",d:"15 Sep 2026",t:"Accumulators",
+  s:["New section: pre-match legs built from each team's last ten games",
+     "Form rates shrunk toward league mean with a prior worth ten matches — ten games is a ±0.46 goals-per-game standard error",
+     "1X2, goals and BTTS all priced off one Poisson scoreline grid rather than separate models",
+     "Slip reports compounded margin against compounded edge, and says outright when singles would keep more of your money",
+     "One leg per fixture — two markets on the same match are correlated and multiplying them overstates the combined chance"]},
+ {v:"2.6",d:"15 Sep 2026",t:"Shot split and possession",
+  s:["Shots on and off target weighted separately — on target is the strongest single predictor, off target is weaker but still territory and intent",
+     "On-target ratio shown as a chance-quality read",
+     "Possession used only where it predicts anything: is the side dominating the ball the side that needs a goal?",
+     "Possession influence is adjustable and can be set to zero",
+     "Python alerter brought onto the same EV logic as the app — it was still running the old six-gate rule"]},
+ {v:"2.5",d:"15 Sep 2026",t:"Delayed feed, settlement, per-league rates",
+  s:["Price lag now reads both sides off the same clock — a delayed feed was inflating it, manufacturing edge out of latency alone",
+     "Stale quotes are projected forward by their recent drift; EV prices off where the market probably is, not where it was",
+     "EV floor widens by one point per minute of feed delay",
+     "Alerts settle themselves: a goal after entry wins, full time without one loses",
+     "Calibration table — predicted probability against what actually happened",
+     "Each league uses its own goal rate; a single 2.70 was a 25% error at the extremes"]},
+ {v:"2.4",d:"15 Sep 2026",t:"Fixed demo pace",
+  s:["Speed picker removed — one fixed pace, slightly under the old Normal",
+     "A 92-minute match now runs in about four and a half minutes"]},
+ {v:"2.3",d:"15 Sep 2026",t:"Expected value replaces the six gates",
+  s:["One number decides every bet: EV per £1 staked, not six conditions ANDed together",
+     "Model probability is blended toward the market rather than trusted outright — the book usually knows more",
+     "Price lag now sets how far to trust the model instead of flipping a gate at an arbitrary line",
+     "Stake sizes off the blended probability, so it shrinks automatically when confidence is low",
+     "Matches ranked by EV; a big edge with one weak reading now correctly outranks a marginal all-rounder",
+     "Sim speed control: Pause, Slow, Normal, Fast — Slow runs a match in about nine minutes"]},
+ {v:"2.2",d:"15 Sep 2026",t:"Independent simulator, fill tracking, Live first",
+  s:["Simulator no longer uses the model's own functions — goals come from a hidden intensity on a different time curve, with red cards and regime shifts the model has no term for",
+     "Previously the sim generated matches with baseRate/tempoMult/stateMult, so the model could never be wrong and every green gate was circular",
+     "Market prices intensity through a lagged noisy filter, so it is sometimes ahead of the model and sometimes behind",
+     "Live is now the landing tab, sorted busiest-first, gates collapsed to six dots that expand on tap",
+     "Every alert is logged with got on / missed / skipped, with fill rate and average slippage"]},
+ {v:"2.1",d:"15 Sep 2026",t:"Themes",
+  s:["Five themes: Midnight, Slate, Daylight, High contrast, Colour-safe",
+     "Every hardcoded colour moved behind a variable so themes reach the whole app",
+     "Colour-safe swaps red/green for blue/amber for red-green colour blindness",
+     "Theme is the one thing remembered between sessions"]},
+ {v:"2.0",d:"15 Sep 2026",t:"Alert-only rebuild",
+  s:["Every Betfair connection feature removed — this app places no bets",
+     "Six-gate signal stack per match, green when each condition opens",
+     "Attack momentum gate: pressure rising, not just high",
+     "Price-lag gate: has the market noticed yet — the one that turns a goal read into a bet",
+     "Next Goal XG retuned as the house bot and the primary alert"]},
+ {v:"1.9",d:"15 Sep 2026",t:"Sandbox build",s:["Every bot ships in SIM","Verified self-contained"]},
+ {v:"1.8",d:"15 Sep 2026",t:"Lay betting removed",s:["All lay signals and liability sizing taken out"]},
+ {v:"1.7",d:"15 Sep 2026",t:"Simple alert format",s:["Heads-up alerts name the real blocker"]},
+ {v:"1.5",d:"15 Sep 2026",t:"Plain-English help",s:["Tap-to-open explanations","On-screen error surface"]},
+ {v:"1.3",d:"15 Sep 2026",t:"Data feed, Schedule, Trade Log",s:["xG replaced by box-location proxy"]},
+ {v:"1.0",d:"15 Sep 2026",t:"First build",s:["Poisson goal-rate model","Break-even calculator"]}];
+let VERSIONS=[],verSeq=0;
+function stateNow(){return JSON.stringify({bots:BOTS,cfg:CFG,stake:STAKE,tele:TELE});}
+function snapshot(label,summary){
+ verSeq++;
+ VERSIONS.unshift({v:"c"+String(verSeq).padStart(3,"0"),
+  ts:new Date().toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}),
+  label,summary,state:stateNow()});
+ if(VERSIONS.length>25)VERSIONS.pop();
+ renderVersions();
+}
+function revert(i){
+ const s=JSON.parse(VERSIONS[i].state);
+ BOTS=s.bots; Object.assign(CFG,s.cfg); Object.assign(STAKE,s.stake); Object.assign(TELE,s.tele);
+ const to=VERSIONS[i].v;
+ snapshot("Reverted to "+to,["Restored bot rules, model parameters and alert settings"]);
+ renderBots(); renderDash(); renderStake(); renderTele(); syncModelSliders();
+ toast("Reverted to "+to);
+}
+function renderVersions(){
+ $("curVer").textContent=VERSIONS.length?VERSIONS[0].v:"c000 (baseline)";
+ $("snapN").textContent=VERSIONS.length;
+ $("verList").innerHTML=VERSIONS.length?VERSIONS.map((x,i)=>`<div class="ver${i===0?" cur":""}">
+  <div class="vertop"><span class="vernum ${i===0?"g":""}">${x.v}</span><span class="verts">${x.ts}</span></div>
+  <div class="verlab">${esc(x.label)}</div>
+  <div class="versum"><ul>${x.summary.map(s=>`<li>${esc(s)}</li>`).join("")}</ul></div>
+  ${i===0?`<div style="color:var(--green);font-size:12.5px;margin-top:9px">● Current</div>`
+   :`<button class="btn ghost sm" style="margin-top:10px;width:100%" data-rev="${i}">Revert to ${x.v}</button>`}</div>`).join("")
+  :`<div class="empty"><div class="h">No snapshots yet</div>One is taken automatically every time you save a bot's rules.</div>`;
+ $("buildList").innerHTML=BUILDS.map(b=>`<div class="ver code2">
+  <div class="vertop"><span class="vernum bl">v${b.v}</span><span class="verts">${b.d}</span></div>
+  <div class="verlab">${b.t}</div>
+  <div class="versum"><ul>${b.s.map(s=>`<li>${esc(s)}</li>`).join("")}</ul></div></div>`).join("");
+ document.querySelectorAll("[data-rev]").forEach(e=>e.onclick=()=>revert(+e.dataset.rev));
+}
+
+/* ══ accumulators ══════════════════════════════════════════════════════
+   Form-based pre-match legs, and an honest account of what stacking them does.
+
+   Two statistical points drive the whole design.
+
+   First, ten games is a small sample. A team scoring 21 in 10 has a standard
+   error near 0.46 goals a game — the truth could be 1.2 or 3.0. So every rate
+   is shrunk toward its league mean with a prior worth ten games, which at n=10
+   means the estimate sits halfway between what you saw and what's normal.
+
+   Second, an accumulator is leverage, not alpha. The margin compounds exactly
+   as the edge does, so the slip reports both and says which is winning. */
+const ACCA={legs:[],filter:"value"};
+const FORM={};
+
+(function buildForm(){
+ let s=31337; const r=()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff;};
+ const teams=new Set();
+ FIXTURES.forEach(f=>{const [a,b]=f.fx.split(" v ");teams.add(a+"|"+f.lg);teams.add(b+"|"+f.lg);});
+ teams.forEach(key=>{
+  const [name,lg]=key.split("|"), gpg=LEAGUES[lg]||2.70, mean=gpg/2;
+  const atk=0.70+r()*0.75, def=0.70+r()*0.75;   // hidden true strength
+  const games=[];
+  for(let i=0;i<10;i++){
+   const home=r()<0.5;
+   const lf=mean*atk*(home?1.10:0.90), la=mean*def*(home?0.90:1.10);
+   const pois=l=>{let k=0,p=Math.exp(-l),c=p,u=r();while(u>c&&k<9){k++;p*=l/k;c+=p;}return k;};
+   const gf=pois(lf), ga=pois(la);
+   games.push({home,gf,ga,res:gf>ga?"W":gf<ga?"L":"D"});
+  }
+  const gf=games.reduce((a,b)=>a+b.gf,0), ga=games.reduce((a,b)=>a+b.ga,0);
+  const K=10;                                    // prior worth ten games
+  FORM[name]={lg,gpg,mean,games,gf,ga,
+   atkIdx:((gf+mean*K)/(10+K))/mean,
+   defIdx:((ga+mean*K)/(10+K))/mean,
+   w:games.filter(g=>g.res==="W").length,
+   d:games.filter(g=>g.res==="D").length,
+   l:games.filter(g=>g.res==="L").length,
+   o25:games.filter(g=>g.gf+g.ga>2.5).length,
+   btts:games.filter(g=>g.gf>0&&g.ga>0).length};
+ });
+})();
+
+/* Scoreline grid, so 1X2 comes out of the same Poisson as the goals markets
+   rather than a second, inconsistent model. */
+function grid(lh,la,n=9){
+ const g=[];
+ for(let i=0;i<=n;i++){g[i]=[];for(let j=0;j<=n;j++)g[i][j]=pois(i,lh)*pois(j,la);}
+ return g;
+}
+function marketsFor(f){
+ const [hn,an]=f.fx.split(" v ");
+ const H=FORM[hn],A=FORM[an];
+ if(!H||!A)return null;
+ const mean=H.mean;
+ const lh=mean*1.10*H.atkIdx*A.defIdx, la=mean*0.90*A.atkIdx*H.defIdx;
+ const G=grid(lh,la), L=lh+la;
+ let home=0,draw=0,away=0;
+ G.forEach((row,i)=>row.forEach((v,j)=>{ if(i>j)home+=v; else if(i===j)draw+=v; else away+=v; }));
+ const raw=[
+  {nm:hn+" to win",      p:home},
+  {nm:"Draw",            p:draw},
+  {nm:an+" to win",      p:away},
+  {nm:hn+" or draw",     p:home+draw},
+  {nm:an+" or draw",     p:away+draw},
+  {nm:"Over 1.5 goals",  p:pOver(1.5,L)},
+  {nm:"Over 2.5 goals",  p:pOver(2.5,L)},
+  {nm:"Under 2.5 goals", p:1-pOver(2.5,L)},
+  {nm:"Both teams score",p:(1-Math.exp(-lh))*(1-Math.exp(-la))}];
+ /* A bookmaker price: fair, shaded by the margin, plus enough noise that some
+    legs land on the right side of it. Swap for a real odds feed and nothing
+    downstream changes. */
+ let s=(f.fx.length*7919+Math.round(L*1000))%100000;
+ const rr=()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff;};
+ return {hn,an,lh,la,L,markets:raw.filter(m=>m.p>0.08&&m.p<0.92).map(m=>{
+  const fair=1/m.p, offered=Math.max(1.02,fair/1.055*(0.94+rr()*0.15));
+  return {...m,fair,offered,ev:m.p*offered-1};
+ }).sort((a,b)=>b.ev-a.ev)};
+}
+
+const accaHas=(fx,nm)=>ACCA.legs.some(l=>l.fx===fx&&l.nm===nm);
+function accaToggle(fx,lg,nm,p,offered){
+ const i=ACCA.legs.findIndex(l=>l.fx===fx&&l.nm===nm);
+ if(i>=0)ACCA.legs.splice(i,1);
+ else {
+  /* One leg per fixture. Two markets on the same match are not independent —
+     "over 2.5" and "both teams score" move together, so multiplying them
+     overstates the combined chance badly. */
+  const clash=ACCA.legs.findIndex(l=>l.fx===fx);
+  if(clash>=0)ACCA.legs.splice(clash,1);
+  if(ACCA.legs.length>=6){toast("Six legs is the cap here");return renderAcca();}
+  ACCA.legs.push({fx,lg,nm,p,offered});
+ }
+ renderAcca();
+}
+
+function accaMaths(){
+ const n=ACCA.legs.length;
+ if(!n)return null;
+ const p=ACCA.legs.reduce((a,l)=>a*l.p,1);
+ const odds=ACCA.legs.reduce((a,l)=>a*l.offered,1);
+ const fair=ACCA.legs.reduce((a,l)=>a/l.p,1);
+ const ev=p*odds-1;
+ const legEv=ACCA.legs.map(l=>l.p*l.offered-1);
+ const avgLegEv=legEv.reduce((a,b)=>a+b,0)/n;
+ const singlesEv=avgLegEv;                 // same total stake split evenly
+ const margin=fair/odds-1;                 // what the price is taking from you
+ const runOfBad=Math.ceil(Math.log(0.5)/Math.log(1-p));
+ return {n,p,odds,fair,ev,avgLegEv,singlesEv,margin,legEv,runOfBad,
+  stake:STAKE.bank*STAKE.maxStakePct/100};
+}
+
+function renderAcca(){
+ const list=$("accaList"); if(!list)return;
+ const rows=FIXTURES.map(f=>({f,m:marketsFor(f)})).filter(x=>x.m);
+ const show=ACCA.filter==="value"
+  ? rows.filter(x=>x.m.markets.length&&x.m.markets[0].ev>0).sort((a,b)=>b.m.markets[0].ev-a.m.markets[0].ev)
+  : rows;
+ list.innerHTML=show.length?show.map(({f,m})=>{
+  const H=FORM[m.hn],A=FORM[m.an];
+  const chips=t=>`<div class="formchips">${FORM[t].games.map(g=>`<i class="${g.res}">${g.res}</i>`).join("")}</div>`;
+  const line=(n2,T)=>`<div class="teamrow"><div style="min-width:0">
+    <div style="font-size:14px;font-weight:600">${esc(n2)}</div>
+    ${chips(n2)}
+    <div class="tstat">${T.w}W ${T.d}D ${T.l}L · ${T.gf} scored, ${T.ga} conceded · O2.5 ${T.o25}/10 · BTTS ${T.btts}/10</div></div>
+    <div style="text-align:right"><div class="num" style="font-size:13px">×${T.atkIdx.toFixed(2)}</div>
+    <div class="lbl" style="margin-top:2px">attack</div>
+    <div class="num" style="font-size:13px;margin-top:5px">×${T.defIdx.toFixed(2)}</div>
+    <div class="lbl" style="margin-top:2px">defence</div></div></div>`;
+  return `<div class="card">
+   <div class="fxtop"><div style="min-width:0"><div class="fxt">${esc(f.fx)}</div><div class="fxl">${esc(f.lg)} · ${String(f.h).padStart(2,"0")}:${String(f.mn).padStart(2,"0")}</div></div>
+    <div><div class="fxlam ${m.L>=3?"g":m.L<=2.3?"a":""}">${m.L.toFixed(2)}</div><div class="lbl" style="text-align:right;margin-top:3px">exp goals</div></div></div>
+   <div style="margin-top:11px;padding-top:11px;border-top:1px solid rgba(255,255,255,.06)">
+    ${line(m.hn,H)}${line(m.an,A)}</div>
+   <div style="margin-top:11px;padding-top:4px;border-top:1px solid rgba(255,255,255,.06)">
+    ${m.markets.slice(0,4).map(mk=>{
+      const on=accaHas(f.fx,mk.nm);
+      return `<div class="mk"><div style="min-width:0">
+       <div class="mn">${esc(mk.nm)}</div>
+       <div class="mo">${(mk.p*100).toFixed(0)}% · fair ${mk.fair.toFixed(2)} · offered ${mk.offered.toFixed(2)} · EV ${(mk.ev*100>=0?"+":"")}${(mk.ev*100).toFixed(1)}%</div></div>
+       <button class="${on?"inx":mk.ev>0?"val":""}" data-leg="${esc(f.fx)}|${esc(f.lg)}|${esc(mk.nm)}|${mk.p}|${mk.offered}">${on?"on slip":"add"}</button></div>`;}).join("")}
+   </div></div>`;}).join("")
+  :`<div class="empty"><div class="h">Nothing priced above fair</div>Every fixture's best market is behind the margin today. That is the normal state of affairs, not a fault.</div>`;
+ list.querySelectorAll("[data-leg]").forEach(b=>b.onclick=()=>{
+  const [fx,lg,nm,p,o]=b.dataset.leg.split("|");
+  accaToggle(fx,lg,nm,parseFloat(p),parseFloat(o));});
+ renderSlip();
+}
+
+function renderSlip(){
+ const el=$("accaSlip"); if(!el)return;
+ const a=accaMaths();
+ if(!a){el.innerHTML=`<div class="empty"><div class="h">No legs yet</div>Add four to six. One leg per fixture — two markets on the same match move together, and multiplying them would overstate the combined chance.</div>`;return;}
+ const ret=a.stake*a.odds;
+ const better=a.ev>a.singlesEv;
+ el.innerHTML=`<div class="card">
+  ${ACCA.legs.map(l=>`<div class="mk"><div style="min-width:0">
+    <div class="mn">${esc(l.nm)}</div>
+    <div class="mo">${esc(l.fx)} · ${(l.p*100).toFixed(0)}% @ ${l.offered.toFixed(2)} · EV ${((l.p*l.offered-1)*100>=0?"+":"")}${((l.p*l.offered-1)*100).toFixed(1)}%</div></div>
+    <button data-drop="${esc(l.fx)}|${esc(l.nm)}">remove</button></div>`).join("")}
+  <div class="split" style="grid-template-columns:1fr 1fr;margin-top:12px">
+   <div><div class="lbl">Combined price</div><div class="big2">${a.odds.toFixed(2)}</div></div>
+   <div><div class="lbl">Fair price</div><div class="big2 m">${a.fair.toFixed(2)}</div></div></div>
+  <div class="row" style="margin-top:8px"><span class="k">Chance it lands</span><span class="v num">${(a.p*100).toFixed(1)}%</span></div>
+  <div class="row"><span class="k">£${a.stake.toFixed(2)} returns</span><span class="v num">£${ret.toFixed(2)}</span></div>
+  <div class="row"><span class="k">Margin against you</span><span class="v num ${a.margin>0?"r":"g"}">${(a.margin*100).toFixed(1)}%</span></div>
+  <div class="row"><span class="k">Average edge per leg</span><span class="v num ${a.avgLegEv>=0?"g":"r"}">${(a.avgLegEv*100>=0?"+":"")}${(a.avgLegEv*100).toFixed(1)}%</span></div>
+  <div class="row"><span class="k">Accumulator EV</span><span class="v num ${a.ev>=0?"g":"r"}">${(a.ev*100>=0?"+":"")}${(a.ev*100).toFixed(1)}%</span></div>
+  <div class="row"><span class="k">Same stake as ${a.n} singles</span><span class="v num ${a.singlesEv>=0?"g":"r"}">${(a.singlesEv*100>=0?"+":"")}${(a.singlesEv*100).toFixed(1)}%</span></div>
+  <div class="row"><span class="k">Losing runs</span><span class="v num">50% chance of ${a.runOfBad} without a win</span></div>
+
+  <div class="verdict ${better?"good":"bad"}">
+   <div class="vt ${better?"g":"r"}">${better
+    ? "Stacking helps here"
+    : "You would keep more of your money on singles"}</div>
+   ${better
+    ? `Your legs average <b>${(a.avgLegEv*100).toFixed(1)}%</b> each, which beats the margin, so
+       multiplying them lifts EV to <b>${(a.ev*100).toFixed(1)}%</b>. The cost is variance:
+       this lands ${(a.p*100).toFixed(1)}% of the time and you should expect to go
+       ${a.runOfBad} bets without a win about half the time. Size it as a bet you can
+       lose ten of in a row.`
+    : `Your legs average <b>${(a.avgLegEv*100).toFixed(1)}%</b> each. Multiplying a negative
+       edge ${a.n} times gives <b>${(a.ev*100).toFixed(1)}%</b> on the accumulator against
+       <b>${(a.singlesEv*100).toFixed(1)}%</b> spread across singles. The acca isn't a worse
+       bet by accident — compounding works on losses exactly as it does on wins.`}
+  </div>
+
+  <button class="btn ghost" id="accaClear" style="margin-top:12px">Clear slip</button>
+ </div>
+ <div class="note"><b>Where these numbers come from.</b> Each team's last ten games,
+  shrunk toward its league average with a prior worth ten matches — at n=10 the
+  estimate sits halfway between what you saw and what's normal. Ten games gives a
+  standard error near half a goal a game, so an unshrunk read of recent form is
+  mostly noise dressed up as insight.</div>`;
+ el.querySelectorAll("[data-drop]").forEach(b=>b.onclick=()=>{
+  const [fx,nm]=b.dataset.drop.split("|");
+  ACCA.legs=ACCA.legs.filter(l=>!(l.fx===fx&&l.nm===nm)); renderAcca();});
+ $("accaClear").onclick=()=>{ACCA.legs=[];renderAcca();};
+}
+
+/* ══ themes ══ */
+/* Every theme sets the same variable names, so the semantic roles survive:
+   --green is always "this is good", --red always "this went wrong". Only the
+   hues change. A theme that reassigned those would quietly break the app. */
+const THEMES={
+ midnight:{nm:"Midnight",ds:"Pure black. Easiest on an OLED screen at night and kindest to the battery.",
+  v:{bg:"#000",card:"#0B0B0C",card2:"#141416",line:"rgba(255,255,255,.09)",line2:"rgba(255,255,255,.16)",
+   tx:"#F2F2F3",mute:"#8A8A90",dim:"#5C5C62",orange:"#FF6B1A",orangeBg:"rgba(255,107,26,.13)",
+   green:"#34D399",greenBg:"rgba(52,211,153,.12)",red:"#FB7185",redBg:"rgba(251,113,133,.11)",
+   amber:"#FBBF24",amberBg:"rgba(251,191,36,.11)",purple:"#A78BFA",blue:"#60A5FA",
+   chrome:"rgba(0,0,0,.94)",navbg:"rgba(6,6,7,.97)",codeBg:"#08080A",codeTx:"#9FD8A0",
+   toastBg:"#111",swOn:"#1E8B60",swKnob:"#fff"}},
+
+ slate:{nm:"Slate",ds:"Dark grey rather than black. Less glare on a long evening of matches.",
+  v:{bg:"#131417",card:"#1A1C20",card2:"#22252A",line:"rgba(255,255,255,.10)",line2:"rgba(255,255,255,.18)",
+   tx:"#E8EAED",mute:"#9AA0A8",dim:"#6B7280",orange:"#FF8A4C",orangeBg:"rgba(255,138,76,.14)",
+   green:"#4ADE80",greenBg:"rgba(74,222,128,.13)",red:"#F87171",redBg:"rgba(248,113,113,.12)",
+   amber:"#FBBF24",amberBg:"rgba(251,191,36,.12)",purple:"#B39BFA",blue:"#7DB6FF",
+   chrome:"rgba(19,20,23,.95)",navbg:"rgba(23,25,29,.97)",codeBg:"#0E1014",codeTx:"#A8DCA9",
+   toastBg:"#22252A",swOn:"#23996B",swKnob:"#fff"}},
+
+ daylight:{nm:"Daylight",ds:"Light theme for checking a score outside in the middle of the day.",
+  v:{bg:"#F5F6F8",card:"#FFFFFF",card2:"#EDEFF2",line:"rgba(0,0,0,.10)",line2:"rgba(0,0,0,.20)",
+   tx:"#14161A",mute:"#5A6068",dim:"#868C94",orange:"#C94E17",orangeBg:"rgba(201,78,23,.10)",
+   green:"#0E7A55",greenBg:"rgba(14,122,85,.12)",red:"#C0273E",redBg:"rgba(192,39,62,.10)",
+   amber:"#9C5D00",amberBg:"rgba(156,93,0,.12)",purple:"#6238B8",blue:"#1B55C4",
+   chrome:"rgba(245,246,248,.95)",navbg:"rgba(255,255,255,.97)",codeBg:"#EEF1F4",codeTx:"#0B6B3A",
+   toastBg:"#14161A",swOn:"#0E7A55",swKnob:"#fff"}},
+
+ contrast:{nm:"High contrast",ds:"Maximum legibility in direct sun, and for tired eyes at 1am.",
+  v:{bg:"#000",card:"#000",card2:"#0C0C0C",line:"rgba(255,255,255,.34)",line2:"rgba(255,255,255,.55)",
+   tx:"#FFFFFF",mute:"#D4D4D4",dim:"#A6A6A6",orange:"#FFA24D",orangeBg:"rgba(255,162,77,.18)",
+   green:"#5CEF9B",greenBg:"rgba(92,239,155,.18)",red:"#FF8A98",redBg:"rgba(255,138,152,.18)",
+   amber:"#FFD54A",amberBg:"rgba(255,213,74,.18)",purple:"#C4AEFF",blue:"#8BC4FF",
+   chrome:"rgba(0,0,0,.97)",navbg:"rgba(0,0,0,.99)",codeBg:"#0A0A0A",codeTx:"#8BEFA8",
+   toastBg:"#1A1A1A",swOn:"#2FA877",swKnob:"#fff"}},
+
+ colorsafe:{nm:"Colour-safe",ds:"Blue for good, amber for bad. Stays readable with red-green colour blindness.",
+  v:{bg:"#000",card:"#0B0B0C",card2:"#141416",line:"rgba(255,255,255,.10)",line2:"rgba(255,255,255,.18)",
+   tx:"#F2F2F3",mute:"#8A8A90",dim:"#5C5C62",orange:"#9B8BFF",orangeBg:"rgba(155,139,255,.14)",
+   green:"#4FA9FF",greenBg:"rgba(79,169,255,.14)",red:"#E8912B",redBg:"rgba(232,145,43,.14)",
+   amber:"#D9CF4A",amberBg:"rgba(217,207,74,.13)",purple:"#C0AEFF",blue:"#4FA9FF",
+   chrome:"rgba(0,0,0,.94)",navbg:"rgba(6,6,7,.97)",codeBg:"#08080A",codeTx:"#9BC7F5",
+   toastBg:"#111",swOn:"#2A6FB8",swKnob:"#fff"}}
+};
+let THEME="midnight";
+
+function applyTheme(key){
+ const t=THEMES[key]; if(!t)return;
+ THEME=key;
+ const root=document.documentElement;
+ Object.entries(t.v).forEach(([k,v])=>root.style.setProperty("--"+k,v));
+ const meta=document.querySelector('meta[name="theme-color"]');
+ if(meta)meta.setAttribute("content",t.v.bg);
+ /* A theme name isn't sensitive, so unlike the token it's worth remembering.
+    Wrapped because file:// and private mode can both refuse storage. */
+ try{localStorage.setItem("surge.theme",key);}catch(e){}
+ renderThemes();
+}
+function renderThemes(){
+ const grid=$("themeGrid"); if(!grid)return;
+ grid.innerHTML=Object.entries(THEMES).map(([k,t])=>`<button class="th${k===THEME?" on":""}" data-th="${k}">
+  <div class="nm2">${t.nm}</div><div class="ds">${t.ds}</div>
+  <div class="swatch" style="background:${t.v.card}">
+   <i style="background:${t.v.bg}"></i><i style="background:${t.v.green}"></i>
+   <i style="background:${t.v.red}"></i><i style="background:${t.v.amber}"></i>
+   <i style="background:${t.v.orange}"></i><i style="background:${t.v.tx}"></i></div>
+  <div class="chk">${k===THEME?"● in use":""}</div></button>`).join("");
+ grid.querySelectorAll("[data-th]").forEach(b=>b.onclick=()=>applyTheme(b.dataset.th));
+ const n=$("themeNote");
+ if(n)n.innerHTML=THEME==="daylight"
+  ? `<div class="note">The light theme darkens every accent so it still reads on white. Green and red stay green and red — they just stop glowing.</div>`
+  : THEME==="colorsafe"
+  ? `<div class="note ok2"><span class="t">Colour-safe in use</span>Wins and gate-open now read blue; losses and blockers read amber. Nothing else about the app changes.</div>`
+  : "";
+}
+
+/* ══ telegram ══ */
+const TELE={token:"",chat:"",fire:true,watch:false,quiet:true,rate:6,preview:"back",fmt:"simple",curl:""};
+const LASTSIG={back:null,watch:null};
+const SAMPLE={
+ back:{m:{home:"Inter Turku",away:"VPS",lg:"Veikkausliiga",min:68,h:1,a:1,odds:2.42},
+  r:{p:0.584,pMkt:0.401,pUsed:0.492,w:0.51,ev:0.062,be:0.435,press:72,tempo:1.41,slope:3.2,lag:0.041,
+   sot:3.1,soff:4.2,possH:58,possRead:"the side behind is on top",minPrice:2.14,stake:10.00,reason:""},
+  bot:"Next Goal XG"},
+ watch:{m:{home:"Djurgården",away:"Hammarby",lg:"Allsvenskan",min:71,h:2,a:2,odds:2.10},
+  r:{p:0.641,pMkt:0.462,pUsed:0.517,w:0.30,ev:0.011,be:0.501,press:78,tempo:1.52,slope:2.8,lag:-0.012,minPrice:2.20,stake:6.40,
+   reason:"the market already repriced — lag −1.2pp, model weighted down to 30%"},
+  bot:"Next Goal XG"}};
+
+function teleMsg(kind){
+ const src=LASTSIG[kind]||SAMPLE[kind]||SAMPLE.back;
+ if(!src)return "";
+ const m=src.m,r=src.r,bot=src.bot||"Next Goal XG";
+ const when=`${Math.floor(m.min)}' ${m.home} v ${m.away}`;
+ const simple=TELE.fmt==="simple";
+
+ if(kind==="watch"){
+  return simple
+   ? `👀 HEADS UP · ${bot}\n${when}\n${m.h}-${m.a} · ${m.lg}\n\n`+
+     `Goal looks likely — model ${(r.p*100).toFixed(0)}%\n`+
+     `But EV is only ${(r.ev*100>=0?"+":"")}${(r.ev*100).toFixed(1)}%\n\n`+
+     `No bet: ${r.reason||"below the floor"}`
+   : `👀 HEADS UP · ${bot}\n${m.home} v ${m.away}\n${m.lg} · ${Math.floor(m.min)}' · ${m.h}-${m.a}\n\n`+
+     `Model ${(r.p*100).toFixed(1)}% · market ${(r.pMkt*100).toFixed(1)}%\n`+
+     `Blended ${(r.pUsed*100).toFixed(1)}% at ${(r.w*100).toFixed(0)}% model weight\n`+
+     `Break-even ${(r.be*100).toFixed(1)}% · EV ${(r.ev*100>=0?"+":"")}${(r.ev*100).toFixed(1)}%\n\n`+
+     `No bet: ${r.reason||"below the floor"}\n\n`+
+     `Pressure ${r.press}/100 (${r.slope>=0?"+":""}${r.slope.toFixed(1)}/min) · lag ${(r.lag*100)>=0?"+":""}${(r.lag*100).toFixed(1)}pp`;
+ }
+ return simple
+  ? `⚽ BACK · ${bot}\n${when}\n${m.h}-${m.a} · ${m.lg}\n\n`+
+    `BACK next goal @ ${m.odds.toFixed(2)}\n£${r.stake.toFixed(2)} — don't take under ${r.minPrice.toFixed(2)}\n\n`+
+    `EV ${(r.ev*100>=0?"+":"")}${(r.ev*100).toFixed(1)}%`
+  : `⚽ BACK · ${bot}\n${m.home} v ${m.away}\n${m.lg} · ${Math.floor(m.min)}' · ${m.h}-${m.a}\n\n`+
+    `Back the next goal\nTake ${m.odds.toFixed(2)} or better\nDo not take under ${r.minPrice.toFixed(2)}\n\n`+
+    `Stake £${r.stake.toFixed(2)}\n\n`+
+    `Model ${(r.p*100).toFixed(1)}% · market ${(r.pMkt*100).toFixed(1)}%\n`+
+    `Blended ${(r.pUsed*100).toFixed(1)}% at ${(r.w*100).toFixed(0)}% model weight\n`+
+    `Break-even ${(r.be*100).toFixed(1)}% · EV ${(r.ev*100>=0?"+":"")}${(r.ev*100).toFixed(1)}%\n\n`+
+    `Pressure ${r.press}/100 rising ${r.slope>=0?"+":""}${r.slope.toFixed(1)}/min\n`+
+    `Shots ${(r.sot||0).toFixed(1)} on / ${(r.soff||0).toFixed(1)} off in 10'\n`+
+    `${r.possRead?"Possession "+Math.round(r.possH)+"% — "+r.possRead+"\n":""}`+
+    `Price lag +${(r.lag*100).toFixed(1)}pp — market hasn't caught up`;
+}
+
+function renderTele(){
+ TELE.token=$("tgToken").value.trim(); TELE.chat=$("tgChat").value.trim(); TELE.rate=+$("sTgRate").value;
+ $("vTgRate").textContent=TELE.rate;
+ [["tgFire","fire"],["tgWatch","watch"],["tgQuiet","quiet"]].forEach(([id,k])=>
+  $(id).classList.toggle("on",TELE[k]));
+ $("tgChatHelp").innerHTML = TELE.chat
+  ? `<div class="note ok2" style="margin:12px 0 0"><span class="t">Ready</span>Token and chat ID held in this page's memory only.</div>`
+  : `<div class="note" style="margin:12px 0 0"><b>Finding your chat ID.</b> Message your bot once, then open
+     <span class="num bl">api.telegram.org/bot&lt;token&gt;/getUpdates</span>. The number under
+     <span class="num">message.chat.id</span> goes here. Negative means a group.</div>`;
+ $("tgPreview").textContent=teleMsg(TELE.preview);
+ const tk=TELE.token||"<token>",ch=TELE.chat||"<chat-id>";
+ TELE.curl=`curl -s -X POST "https://api.telegram.org/bot${tk}/sendMessage" \\\n`+
+  `  -d chat_id="${ch}" \\\n  --data-urlencode text="Surge test alert"`;
+ $("tgCurl").innerHTML=`<span class="cm"># run on the server</span>\n`+esc(TELE.curl);
+}
+async function teleTest(){
+ const out=$("tgTestOut");
+ if(!TELE.token||!TELE.chat){
+  out.innerHTML=`<div class="note bad" style="margin:12px 0 0">Enter both a token and a chat ID first.</div>`;return;}
+ out.innerHTML=`<div class="note" style="margin:12px 0 0">Sending…</div>`;
+ try{
+  const res=await fetch(`https://api.telegram.org/bot${TELE.token}/sendMessage`,{
+   method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({chat_id:TELE.chat,text:teleMsg(TELE.preview)})});
+  const j=await res.json();
+  out.innerHTML=j.ok
+   ? `<div class="note ok2" style="margin:12px 0 0"><span class="t">Delivered</span>Check your Telegram.</div>`
+   : `<div class="note bad" style="margin:12px 0 0"><span class="t">Telegram refused it</span>${esc(j.description||"unknown error")}</div>`;
+ }catch(e){
+  out.innerHTML=`<div class="note warn" style="margin:12px 0 0"><span class="t">Blocked by the browser</span>
+   ${esc(String(e.message||e))}<br><br>Expected from a local file. Use the command below on the server instead.</div>`;}
+}
+
+/* ══ staking ══ */
+function renderStake(){
+ STAKE.bank=+$("sBank").value; STAKE.maxStakePct=+$("sMaxStake").value;
+ STAKE.kellyDiv=[1,2,3,4][Math.min(3,+$("sKelly").value-1)]===1?1:[1,2,4,8][+$("sKelly").value-1];
+ STAKE.dayStopPct=+$("sDayStop").value;
+ const names=["Full","½","¼","⅛"];
+ $("vKelly").textContent=names[+$("sKelly").value-1];
+ STAKE.kellyDiv=[1,2,4,8][+$("sKelly").value-1];
+ const st=STAKE.bank*STAKE.maxStakePct/100, stop=STAKE.bank*STAKE.dayStopPct/100;
+ $("vBank").textContent="£"+STAKE.bank;
+ $("vMaxStake").textContent="£"+st.toFixed(2);
+ $("vDayStop").textContent="£"+stop.toFixed(2);
+ const losses=st>0?Math.floor(stop/st):0;
+ $("stakeCalc").innerHTML=`<div class="row" style="margin-top:6px"><span class="k">Losses before the day stops</span><span class="v num ${losses<12?"r":"g"}">${losses}</span></div>
+  ${losses<12?`<div class="note bad" style="margin:12px 0 0"><span class="t">Stop sits inside your known losing run</span>
+   Next Goal XG's longest recorded streak is 12 losses. At £${st.toFixed(2)} a bet the day stops after ${losses} — a normal bad run halts you, not an abnormal one. Widen the stop or cut the stake.</div>`
+  :`<div class="note ok2" style="margin:12px 0 0"><span class="t">Stop clears the known losing run</span>
+   ${losses} losses before the day halts, against a worst recorded streak of 12.</div>`}`;
+ renderTele();
+}
+
+/* ══ monitor ══ */
+const MATCHES=[
+ {id:1,home:"Inter Turku",away:"VPS",lg:"Veikkausliiga",min:63,h:1,a:1,pxg:2.31,odds:2.42},
+ {id:2,home:"Gorica",away:"Varaždin",lg:"1. HNL (Croatia)",min:71,h:0,a:0,pxg:0.74,odds:2.66},
+ {id:3,home:"Santos Laguna",away:"Juárez",lg:"Liga MX",min:58,h:2,a:1,pxg:2.88,odds:2.18},
+ {id:4,home:"Huracán",away:"Racing Club",lg:"Liga Profesional",min:34,h:1,a:0,pxg:1.12,odds:2.45},
+ {id:5,home:"Shelbourne",away:"Bohemians",lg:"Premier Division (Ireland)",min:77,h:1,a:2,pxg:2.04,odds:3.10},
+ {id:6,home:"Djurgården",away:"Hammarby",lg:"Allsvenskan",min:46,h:2,a:1,pxg:3.41,odds:2.30},
+ {id:7,home:"Vitória",away:"Estoril",lg:"Liga Portugal",min:68,h:2,a:2,pxg:3.05,odds:2.52}];
+/* Liga Profesional runs at 2.18 goals a game and the Eerste Divisie at 3.30.
+   Feeding both a single 2.70 baseline is a 25% error in λ before any tempo
+   adjustment, and it flows straight into EV. */
+MATCHES.forEach(m=>{m.gpg=LEAGUES[m.lg]||CFG.gpg;});
+const pc=x=>(x*100).toFixed(1)+"%",pp=x=>(x>=0?"+":"")+(x*100).toFixed(1)+" pp";
+
+/* Look back five match-minutes for the momentum and lag terms. Keeping the
+   whole history and searching it is cheap at this scale and avoids the
+   off-by-one games a fixed-stride ring buffer invites. */
+function lookback(m,mins){
+ if(!m.hist.length)return null;
+ const target=m.min-mins;
+ let best=null;
+ for(const s of m.hist){if(s.min<=target)best=s; else break;}
+ return best;
+}
+
+function evaluate(m){
+ const tempo=tempoMult(m),state=stateMult(m.h,m.a,m.min),poss=possMult(m);
+ const lam=baseRate(m.min,gpgOf(m))*tempo*state*poss,left=Math.max(0,92-m.min);
+ const p=1-Math.exp(-lam*left),be=breakEvenProb(m.odds,CFG.comm);
+ const press=Math.round(Math.max(0,Math.min(100,(tempo-0.45)/1.85*100)));
+ const d=Math.abs(m.h-m.a),tot=m.h+m.a,mkt=1/m.odds;
+
+ const past=lookback(m,5);
+ const slope=past?(press-past.press)/Math.max(0.1,m.min-past.min):0;
+
+ /* Price lag, read off one clock.
+    The quote is FEED.priceDelay seconds old. Comparing today's model against a
+    stale market reading would show the model "ahead" purely because our market
+    data is behind — manufacturing edge out of latency. So the model side is
+    sampled at the same moment the price was, and the move is measured from
+    there. With a live feed the offset is zero and this reduces to the old
+    calculation. */
+ const dMin=FEED.priceDelay/60;
+ const atQuote=dMin>0.05?lookback(m,dMin):null;
+ const priorQuote=lookback(m,dMin+5);
+ const lag=(atQuote&&priorQuote)
+  ? ((atQuote.p-priorQuote.p)-(mkt-priorQuote.mkt))
+  : (past?((p-past.p)-(mkt-past.mkt)):0);
+
+ /* The quote has had FEED.priceDelay seconds to move since it was taken, and it
+    tends to move the way it was already going. Project it forward and price the
+    bet off where it probably is now, not where it was. */
+ const ref=lookback(m,5);
+ const driftPerMin=ref&&ref.odds?(m.odds-ref.odds)/Math.max(0.1,m.min-ref.min):0;
+ const projOdds=Math.max(1.01,m.odds+driftPerMin*dMin);
+ const staleCost=m.odds-projOdds;
+ const shots10=m.sot10, expShots=baseRate(m.min,gpgOf(m))*10/0.30;
+
+ /* Hard constraints. Not evidence — you simply cannot take the bet. */
+ const hard=[
+  {ok:m.min>=22&&m.min<=84, why:`${Math.floor(m.min)}' is outside the 22'–84' window`},
+  {ok:left>=CFG.minMins,    why:`only ${Math.round(left)} minutes left`},
+  {ok:tot>0,                why:`0-0 is excluded`},
+  {ok:d<3,                  why:`${m.h}-${m.a} is a dead game`},
+  {ok:m.odds>=CFG.oddsFloor,why:`${m.odds.toFixed(2)} is under the ${CFG.oddsFloor.toFixed(2)} floor`},
+  {ok:m.odds<=CFG.oddsCeil, why:`${m.odds.toFixed(2)} is over the ${CFG.oddsCeil.toFixed(2)} ceiling`}];
+ const failed=hard.filter(x=>!x.ok);
+ const eligible=failed.length===0;
+
+ /* The market is usually right, so the model's estimate gets blended toward it.
+    How far depends on price lag: if our probability has risen faster than the
+    price has moved, we plausibly know something the book hasn't priced yet and
+    the model earns more weight. If the price has already run past us, most of
+    our apparent "edge" is staleness, and shrinking toward the market is the
+    honest correction rather than a gate that flips at an arbitrary line. */
+ const pMkt=Math.max(0.02,Math.min(0.98,mkt/CFG.overround));
+ const w=Math.max(0.15,Math.min(0.70,CFG.trustBase+CFG.trustLag*lag));
+ const pUsed=w*p+(1-w)*pMkt;
+ /* Extra return demanded for not knowing the real price. One point of EV per
+    minute of delay — a blunt number, but the alternative is pretending a
+    three-minute-old quote is worth the same as a live one. */
+ const evFloor=CFG.minEV+dMin*0.01;
+
+ /* One number decides it. A match with a big edge and one weak input now
+    correctly outranks one where every input scrapes over its line. */
+ const ev=pUsed*(projOdds-1)*(1-CFG.comm)-(1-pUsed);
+ const edge=pUsed-be;
+ const minPrice=1+(evFloor+1-pUsed)/Math.max(0.02,pUsed*(1-CFG.comm));
+
+ const tier=!eligible?"HOLD":ev>=evFloor?"FIRE":ev>=evFloor*0.35?"WATCH":"HOLD";
+
+ /* Why it is or isn't a bet, in the order that actually explains it. */
+ let reason;
+ if(!eligible) reason=failed[0].why;
+ else if(lag<0) reason=`the market already repriced — lag ${(lag*100).toFixed(1)}pp, model weighted down to ${(w*100).toFixed(0)}%`;
+ else if(ev<evFloor) reason=`EV only ${(ev*100>=0?"+":"")}${(ev*100).toFixed(1)}% against a ${(evFloor*100).toFixed(1)}% floor${dMin>0.05?" (widened for feed delay)":""}`;
+ else reason="";
+
+ /* Shown as reasoning, not as the decision. */
+ const factors=[
+  {nm:"Model says",      vv:pc(p),                                  good:p>pMkt},
+  {nm:"Market says",     vv:pc(pMkt),                               good:false, note:"de-vigged"},
+  {nm:"Quoted price",    vv:m.odds.toFixed(2),                      good:false, note:FEED.priceDelay+"s old"},
+  {nm:"Likely now",      vv:projOdds.toFixed(2),                    good:staleCost<=0,
+   note:staleCost>0.01?"−"+staleCost.toFixed(2)+" drift":"holding"},
+  {nm:"Price lag",       vv:(lag>=0?"+":"")+(lag*100).toFixed(1)+"pp", good:lag>=0},
+  {nm:"Model weight",    vv:(w*100).toFixed(0)+"%",                 good:w>=0.40},
+  {nm:"Blended",         vv:pc(pUsed),                              good:pUsed>be},
+  {nm:"Break-even",      vv:pc(be),                                 good:false},
+  {nm:"EV floor",        vv:"+"+(evFloor*100).toFixed(1)+"%",       good:false,
+   note:dMin>0.05?"incl. delay margin":""},
+  {nm:"Expected value",  vv:(ev*100>=0?"+":"")+(ev*100).toFixed(1)+"%", good:ev>=evFloor}];
+ const evidence=[
+  {nm:"Tempo",            vv:"×"+tempo.toFixed(2),                       good:tempo>=1.10},
+  {nm:"Shots on target",  vv:shots10.toFixed(1)+"/10'",                  good:shots10>=expShots},
+  {nm:"Shots off target", vv:(m.soff10||0).toFixed(1)+"/10'",            good:(m.soff10||0)>=expShots*1.4},
+  {nm:"On-target ratio",  vv:(shots10+(m.soff10||0)>0.2
+    ?(shots10/(shots10+(m.soff10||0))*100).toFixed(0)+"%":"—"),          good:shots10>(m.soff10||0)*0.45},
+  {nm:"Possession",       vv:m.possH==null?"—":Math.round(m.possH)+"–"+Math.round(100-m.possH)+"%", good:false},
+  {nm:"Territory read",   vv:possRead(m),                                good:possMult(m)>1.01,
+   note:"×"+possMult(m).toFixed(2)},
+  {nm:"Momentum",         vv:(slope>=0?"+":"")+slope.toFixed(1)+"/min",  good:slope>=CFG.minSlope},
+  {nm:"Game state",       vv:"×"+state.toFixed(2),                       good:state>=1.0}];
+
+ return {tempo,state,poss,p,pMkt,pUsed,w,ev,be,edge,press,slope,lag,tier,eligible,
+  projOdds,staleCost,evFloor,sot:shots10,soff:m.soff10||0,possH:m.possH,possRead:possRead(m),
+  factors,evidence,reason,failed,minPrice,
+  stake:recStake(pUsed,projOdds)};
+}
+
+/* ══ simulator — deliberately NOT the model ══════════════════════════════
+   The world generates goals from a hidden attack intensity the model never
+   sees, on a different time curve (power, not linear), with shocks the model
+   has no term for at all. Shots are a noisy *consequence* of intensity, not
+   the cause of goals.
+
+   This matters more than it looks. The previous version generated matches
+   using baseRate/tempoMult/stateMult — the model's own functions — so the
+   model could never be wrong about them and every green gate was circular.
+   Now the model has to infer a hidden state from noisy shot counts, and it
+   can be badly wrong. If the gates still find something here, that is worth
+   something. */
+const SIM={
+ /* Model assumes 0.65 + 0.0078t. The world does not. */
+ timeCurve:t=>0.78+0.69*Math.pow(Math.min(t,95)/90,2.1),  // mean ≈ 1.00 over a match
+ GPM:2.55/90,               // the world's goals per minute; model is told 2.70
+
+ init(m){
+  m._t={hi:0.85+Math.random()*0.55,ai:0.70+Math.random()*0.55,red:0,event:""};
+  m._belief=null;
+  m.pxg10=0.25;m.sot10=0.8;m.soff10=1.4;m.cnr10=1.0;m.possH=50;
+  m.alerted=false;m.expanded=false;m.hist=[];
+ },
+
+ step(m,dt){
+  const t=m._t;
+  /* Intensities mean-revert and wander. Nothing in the model describes this. */
+  t.hi=Math.max(0.12,t.hi+(1.00-t.hi)*0.015*dt+(Math.random()-0.5)*0.11*dt);
+  t.ai=Math.max(0.12,t.ai+(0.90-t.ai)*0.015*dt+(Math.random()-0.5)*0.11*dt);
+
+  /* Regime shocks. The model has no red-card term, so these are exactly the
+     situations where it should be caught out — and it should be. */
+  if(!t.red&&Math.random()<0.00045*dt*60){
+   t.red=Math.random()<0.5?1:2;
+   if(t.red===1)t.hi*=0.55; else t.ai*=0.55;
+   t.event="red card";
+  }
+  const d=m.h-m.a;
+  if(m.min>78&&Math.abs(d)===1){ if(d<0)t.hi*=1.015; else t.ai*=1.015; }
+  if(m.min>70&&Math.abs(d)>=3){ t.hi*=0.985; t.ai*=0.985; }
+  if(m.min>75&&d===0&&m.h+m.a===0){ t.hi*=0.992; t.ai*=0.992; }  // cagey 0-0
+
+  const inten=(t.hi+t.ai)/2*SIM.timeCurve(m.min);
+
+  /* Goals straight off hidden intensity — not off the shot counts the model reads. */
+  if(Math.random()<inten*SIM.GPM*dt){
+   if(Math.random()<0.52+(t.hi-t.ai)*0.12)m.h++; else m.a++;
+   m.pxg10*=0.65;m.sot10*=0.65;
+  }
+
+  /* Shots are a noisy readout of the same hidden state. This is the only
+     channel the model gets, and it is lossy on purpose. */
+  if(Math.random()<inten*0.68*dt){
+   const inBox=Math.random()<0.58;
+   m.pxg10+=inBox?0.150:0.040;
+   if(Math.random()<0.35)m.sot10+=1; else m.soff10+=1;
+  }
+  if(Math.random()<inten*0.11*dt)m.cnr10+=1;
+  const decay=Math.pow(0.955,dt/0.45);
+  m.pxg10*=decay; m.sot10*=decay; m.soff10*=decay; m.cnr10*=decay;
+  /* Possession tracks the balance of intensity, but lags it and overshoots —
+     which is exactly why it is a poor direct read on danger. */
+  const target=t.hi/(t.hi+t.ai)*100;
+  m.possH+=(target-m.possH)*0.05*dt+(Math.random()-0.5)*1.1*dt;
+  m.possH=Math.max(22,Math.min(78,m.possH));
+
+  /* The market sees intensity through a lagged, noisy filter. Sometimes it is
+     ahead of the model, sometimes behind. That asymmetry is what the price-lag
+     gate is actually being tested against — rather than a straw man that is
+     slow by construction. */
+  if(m._belief===null)m._belief=inten;
+  m._belief+=(inten-m._belief)*0.08*dt+(Math.random()-0.5)*0.035*dt;
+  const left=Math.max(0,92-m.min);
+  const mP=1-Math.exp(-Math.max(0.01,m._belief)*SIM.GPM*left);
+  m.odds=Math.max(1.05,Math.min(9,1/Math.max(0.03,mP*1.045)));
+ }
+};
+MATCHES.forEach(m=>SIM.init(m));
+const rnd=(a,b)=>a+Math.random()*(b-a);
+/* Match-minutes advanced per 900ms tick. A shade under real-time-equivalent
+   pace so a signal is legible as it builds: a 92-minute match runs in about
+   four and a half minutes. */
+const SPEED=0.32;
+
+/* ══ live mode — talks to surge_api.py instead of the local simulator ═══
+   surge_live.py already runs the real model (evaluate() in surge_alerts.py)
+   against real Sportmonks/Betfair data and writes the result to state.json
+   every tick. surge_api.py serves that as JSON. This does NOT re-run the
+   model in JS — it adapts the Python evaluate() output into the same shape
+   renderMon() already expects, so what you see here is exactly what decided
+   whether an alert fired, not a reimplementation that could drift from it. */
+const LIVE={base:localStorage.getItem("surge.liveBase")||"",
+ key:localStorage.getItem("surge.liveKey")||"",
+ connected:false,lastTs:0,timer:null,calibTimer:null,tradesTimer:null,
+ calib:null,trades:null,flatStake:2,commission:0.02,botName:"Live bot"};
+
+function adaptLiveR(raw,m){
+ const evFloor=raw.ev_floor,staleCost=raw.stale_cost,projOdds=raw.proj_odds,
+  pMkt=raw.p_mkt,pUsed=raw.p_used,minPrice=raw.min_price;
+ const factors=[
+  {nm:"Model says",vv:pc(raw.p),good:raw.p>pMkt},
+  {nm:"Market says",vv:pc(pMkt),good:false,note:"de-vigged"},
+  {nm:"Quoted price",vv:m.odds.toFixed(2),good:false,note:"live"},
+  {nm:"Likely now",vv:projOdds.toFixed(2),good:staleCost<=0,
+   note:staleCost>0.01?"−"+staleCost.toFixed(2)+" drift":"holding"},
+  {nm:"Price lag",vv:(raw.lag>=0?"+":"")+(raw.lag*100).toFixed(1)+"pp",good:raw.lag>=0},
+  {nm:"Model weight",vv:(raw.w*100).toFixed(0)+"%",good:raw.w>=0.40},
+  {nm:"Blended",vv:pc(pUsed),good:pUsed>raw.be},
+  {nm:"Break-even",vv:pc(raw.be),good:false},
+  {nm:"EV floor",vv:"+"+(evFloor*100).toFixed(1)+"%",good:false},
+  {nm:"Expected value",vv:(raw.ev*100>=0?"+":"")+(raw.ev*100).toFixed(1)+"%",good:raw.ev>=evFloor}];
+ const evidence=[
+  {nm:"Tempo",vv:"×"+raw.tempo.toFixed(2),good:raw.tempo>=1.10},
+  {nm:"Shots on target",vv:(raw.sot||0).toFixed(1)+"/10'",good:false},
+  {nm:"Shots off target",vv:(raw.soff||0).toFixed(1)+"/10'",good:false},
+  {nm:"Possession",vv:raw.poss_home==null?"—":Math.round(raw.poss_home)+"–"+Math.round(100-raw.poss_home)+"%",good:false},
+  {nm:"Territory read",vv:raw.poss_read||"—",good:(raw.poss||1)>=1.01,note:"×"+(raw.poss||1).toFixed(2)},
+  {nm:"Momentum",vv:(raw.slope>=0?"+":"")+raw.slope.toFixed(1)+"/min",good:raw.slope>=CFG.minSlope},
+  {nm:"Game state",vv:"×"+raw.state.toFixed(2),good:raw.state>=1.0}];
+ return {tier:raw.tier,reason:raw.reason,eligible:raw.eligible,
+  failed:(raw.failed||[]).map(w=>({ok:false,why:w})),
+  p:raw.p,pMkt,pUsed,w:raw.w,ev:raw.ev,evFloor,be:raw.be,edge:raw.edge,
+  tempo:raw.tempo,state:raw.state,poss:raw.poss,press:raw.pressure,slope:raw.slope,lag:raw.lag,
+  projOdds,staleCost,minPrice,stake:raw.stake,factors,evidence};
+}
+
+function setLiveStatus(ok,text){
+ LIVE.connected=ok;
+ const chip=$("liveChip");
+ if(chip){chip.textContent=(ok?"● LIVE":"● SIMULATED");
+  chip.title=text; chip.className="chip"+(ok?" live":"");}
+ const el=$("liveStat"); if(el){el.textContent=text; el.className="v "+(ok?"g":"r");}
+ const note=$("liveNote");
+ if(note)note.textContent=ok
+  ?"Feed is live from your bot via surge_api.py."
+  :"Feed is simulated so you can watch the gates open and close. Set your connection up under More → Live connection to go live.";
+}
+
+async function pollLive(){
+ if(!LIVE.base){setLiveStatus(false,"No URL set");return;}
+ let res;
+ try{
+  res=await fetch(LIVE.base.replace(/\/$/,"")+"/api/live"+(LIVE.key?"?key="+encodeURIComponent(LIVE.key):""),
+   {headers:LIVE.key?{"X-API-Key":LIVE.key}:{},cache:"no-store"});
+ }catch(e){setLiveStatus(false,"Unreachable — check the URL");return;}
+ if(res.status===401){setLiveStatus(false,"Key rejected");return;}
+ if(!res.ok){setLiveStatus(false,"HTTP "+res.status);return;}
+ let data; try{data=await res.json();}catch(e){setLiveStatus(false,"Bad response");return;}
+ LIVE.lastTs=data.ts||0;
+ const prevExp={},prevAlerted={};
+ MATCHES.forEach(m=>{prevExp[m.id]=m.expanded;prevAlerted[m.id]=m.alerted;});
+ MATCHES=(data.matches||[]).map(raw=>{
+  const m={id:raw.id,home:raw.home,away:raw.away,lg:raw.league,gpg:LEAGUES[raw.league]||CFG.gpg,
+   min:raw.minute,h:raw.hg,a:raw.ag,odds:raw.odds,
+   expanded:prevExp[raw.id]||false,alerted:!!(raw.alerted||prevAlerted[raw.id]),
+   sot10:raw.sot||0,soff10:raw.soff||0,possH:raw.poss_home,
+   hist:(raw.history||[]).map(h=>({min:h.minute,press:h.pressure,p:h.model_p,mkt:h.market_p,odds:raw.odds}))};
+  m._liveR=adaptLiveR(raw,m);
+  return m;});
+ const ageS=Math.max(0,Date.now()/1000-LIVE.lastTs);
+ setLiveStatus(true,MATCHES.length+" live match"+(MATCHES.length===1?"":"es")+" · "+
+  (ageS<8?"just now":Math.round(ageS)+"s ago"));
+ renderMon();
+}
+
+async function fetchCalibration(){
+ if(!LIVE.base){return;}
+ try{
+  const res=await fetch(LIVE.base.replace(/\/$/,"")+"/api/calibration"+(LIVE.key?"?key="+encodeURIComponent(LIVE.key):""),
+   {headers:LIVE.key?{"X-API-Key":LIVE.key}:{},cache:"no-store"});
+  if(!res.ok)return;
+  LIVE.calib=await res.json();
+  renderCalibration();
+ }catch(e){/* next tick tries again — calibration staying stale briefly is fine */}
+}
+
+/* Every fired alert that has since settled, priced at a flat stake — see
+   the docstring on /api/trades in surge_api.py for exactly what this does
+   and doesn't account for (no real fill price, no partial matching). */
+async function fetchTrades(){
+ if(!LIVE.base){return;}
+ try{
+  const res=await fetch(LIVE.base.replace(/\/$/,"")+"/api/trades"+(LIVE.key?"?key="+encodeURIComponent(LIVE.key):""),
+   {headers:LIVE.key?{"X-API-Key":LIVE.key}:{},cache:"no-store"});
+  if(!res.ok)return;
+  const data=await res.json();
+  LIVE.flatStake=data.flat_stake>0?data.flat_stake:2;
+  LIVE.commission=data.commission||0.02;
+  LIVE.botName=data.bot_name||"Live bot";
+  LIVE.trades=(data.trades||[]).map(row=>{
+   const ts=new Date(row.ts), win=row.outcome==="W";
+   const pl=win?LIVE.flatStake*(row.market_odds-1)*(1-LIVE.commission):-LIVE.flatStake;
+   return {d:dayKey(ts),hh:ts.getHours(),mm:ts.getMinutes(),o:row.outcome,pl,
+    stake:LIVE.flatStake,odds:row.market_odds,legs:1,matched:1,
+    fx:(row.home&&row.away)?(row.home+" v "+row.away):(row.league+" · "+row.score),
+    lg:row.league,mkt:"Back Next Goal",sel:"Next Goal",bot:LIVE.botName,mode:"LIVE"};});
+  renderDash(); renderLog();
+ }catch(e){/* next tick tries again */}
+}
+
+function startLive(){
+ $("liveBase").value=LIVE.base; $("liveKey").value=LIVE.key;
+ if(LIVE.timer)clearInterval(LIVE.timer);
+ if(LIVE.calibTimer)clearInterval(LIVE.calibTimer);
+ if(LIVE.tradesTimer)clearInterval(LIVE.tradesTimer);
+ pollLive(); fetchCalibration(); fetchTrades();
+ LIVE.timer=setInterval(pollLive,15000);
+ LIVE.calibTimer=setInterval(fetchCalibration,60000);
+ LIVE.tradesTimer=setInterval(fetchTrades,60000);
+}
+function stopLive(){
+ if(LIVE.timer)clearInterval(LIVE.timer); if(LIVE.calibTimer)clearInterval(LIVE.calibTimer);
+ if(LIVE.tradesTimer)clearInterval(LIVE.tradesTimer);
+ LIVE.timer=null; LIVE.calibTimer=null; LIVE.tradesTimer=null; LIVE.calib=null; LIVE.trades=null;
+ MATCHES.forEach(m=>{delete m._liveR;});
+ setLiveStatus(false,"Not connected");
+ renderMon(); renderCalibration(); renderDash(); renderLog();
+}
+$("btnLiveConnect").onclick=()=>{
+ LIVE.base=$("liveBase").value.trim(); LIVE.key=$("liveKey").value.trim();
+ localStorage.setItem("surge.liveBase",LIVE.base); localStorage.setItem("surge.liveKey",LIVE.key);
+ if(!LIVE.base){toast("Enter your surge_api.py URL first");return;}
+ startLive(); toast("Connecting…");
+};
+$("btnLiveDemo").onclick=()=>{
+ LIVE.base=""; LIVE.key="";
+ localStorage.removeItem("surge.liveBase"); localStorage.removeItem("surge.liveKey");
+ $("liveBase").value=""; $("liveKey").value="";
+ stopLive(); toast("Back to the demo feed");
+};
+
+function tick(){
+ if(LIVE.connected){renderMon();return;}
+ MATCHES.forEach(m=>{
+  if(m.min>=92)return;
+  m.min+=SPEED;
+  SIM.step(m,SPEED);
+  const r=evaluate(m);
+  m.hist.push({min:m.min,press:r.press,p:r.p,mkt:1/m.odds,odds:m.odds});
+  /* Trim by match time, not sample count. At Slow speed a 60-sample cap would
+     hold only nine minutes of history and the five-minute lookback would run
+     off the end of it. */
+  const keepFrom=m.min-16;
+  while(m.hist.length>2&&m.hist[0].min<keepFrom)m.hist.shift();
+  settleFor(m);});
+ renderMon();
+}
+
+/* EV bar runs −10% to +15%: wide enough for a real spread, tight enough that
+   a two-point move is visible. */
+const EV_LO=-0.10,EV_HI=0.15;
+const evPos=v=>Math.max(0,Math.min(100,(v-EV_LO)/(EV_HI-EV_LO)*100));
+function evBarStyle(ev){
+ const z=evPos(0),v=evPos(ev);
+ const col=ev>=CFG.minEV?"var(--green)":ev>=0?"var(--amber)":"var(--red)";
+ return ev>=0?`left:${z}%;width:${Math.max(1,v-z)}%;background:${col}`
+             :`left:${v}%;width:${Math.max(1,z-v)}%;background:${col}`;
+}
+function sparkline(m){
+ const h=m.hist.slice(-24);
+ if(h.length<2)return "";
+ const mx=Math.max(20,...h.map(s=>s.press));
+ return `<div class="spark">${h.map(s=>{
+  const pctH=Math.max(4,s.press/mx*26);
+  const cls=s.press>=70?"hi":s.press>=45?"mid":"";
+  return `<i class="${cls}" style="height:${pctH}px"></i>`;}).join("")}</div>`;
+}
+
+function renderMon(){
+ let fire=0,watch=0;
+ const activeBot=BOTS.find(b=>b.on&&b.id==="ngxg")||BOTS.find(b=>b.on)||BOTS[0];
+ /* Most useful first. With 31 live fixtures a fixed order means scrolling past
+    dead games to find the one that is about to fire. */
+ const scored=MATCHES.map(m=>({m,r:m._liveR||evaluate(m)}))
+  .sort((a,b)=>(b.r.eligible-a.r.eligible)||(b.r.ev-a.r.ev));
+ $("matches").innerHTML=!scored.length?`<div class="note">${LIVE.connected?"Nothing live right now — the poller is connected, it just has no fixtures in play this minute.":"No matches."}</div>`:scored.map(({m,r})=>{
+  if(r.tier==="FIRE")fire++; if(r.tier==="WATCH")watch++;
+  if(r.tier==="WATCH")LASTSIG.watch={m:{...m},r,bot:activeBot.name};
+  if(r.tier==="FIRE"&&!m.alerted){m.alerted=true;
+   LASTSIG.back={m:{...m},r,bot:activeBot.name};
+   logAlert(m,r,activeBot.name);
+   pushAlert(`${Math.floor(m.min)}' ${activeBot.name} · ${m.home} v ${m.away} · ${m.h}-${m.a} · @${m.odds.toFixed(2)} · £${r.stake.toFixed(2)}`);}
+  const bcls={FIRE:"b-fire",WATCH:"b-watch",HOLD:"b-hold"}[r.tier];
+  const label=r.tier==="FIRE"?"BET":r.tier==="WATCH"?"CLOSE":"NO";
+  return `<div class="card${r.tier==="FIRE"?" hot":r.tier==="WATCH"?" warm":""}">
+   <div class="mhead"><div style="min-width:0"><div class="teams">${m.home}<br>${m.away}</div><div class="league">${m.lg}</div></div>
+    <div style="text-align:right"><div class="score">${m.h}–${m.a}</div><div class="clock">${Math.floor(m.min)}'</div></div></div>
+   <div style="margin-top:9px"><span class="badge ${bcls}">${label}</span>
+    ${r.tier==="FIRE"?`<span class="badge b-bot" style="margin-left:5px">${esc(activeBot.name)}</span>`:""}</div>
+   ${sparkline(m)}
+   <div class="stack">
+    <div class="stackhead" data-exp="${m.id}">
+     <span class="lbl">Expected value</span>
+     <span><span class="evnum ${!r.eligible?"m":r.ev>=CFG.minEV?"g":r.ev>=0?"a":"r"}">${
+       r.eligible?((r.ev*100>=0?"+":"")+(r.ev*100).toFixed(1)+"%"):"—"}</span>
+      <span class="caret">${m.expanded?"hide":"why"}</span></span></div>
+    ${r.eligible?`<div class="evbar">
+      <div class="val" style="${evBarStyle(r.ev)}"></div>
+      <div class="zero" style="left:${evPos(0)}%"></div>
+      <div class="thr" style="left:${evPos(r.evFloor)}%"></div></div>`:""}
+    <div class="evsub">${r.eligible
+      ? (r.reason||`Clears the ${(r.evFloor*100).toFixed(1)}% floor.`)
+      : "Not eligible — "+r.failed[0].why}</div>
+    ${m.expanded?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06)">
+      <div class="lbl" style="margin-bottom:6px">How the number is built</div>
+      ${r.factors.map(f=>`<div class="frow ${f.good?"good":""}">
+        <span class="fn">${f.nm}${f.note?` <span class="m" style="font-size:11px">${f.note}</span>`:""}</span>
+        <span class="fv">${f.vv}</span></div>`).join("")}
+      <div class="lbl" style="margin:14px 0 6px">Supporting evidence${ixTag("shotsplit")}</div>
+      ${helpPanel("shotsplit")}
+      ${r.evidence.map(f=>`<div class="frow ${f.good?"good":""}">
+        <span class="fn">${f.nm}</span><span class="fv">${f.vv}</span></div>`).join("")}</div>`:""}
+   </div>
+   ${r.tier==="FIRE"?(()=>{
+     const f=FILLS.find(x=>x.fx===m.home+" v "+m.away&&x.min===Math.floor(m.min));
+     return `<div class="allgreen">
+     <b>Back the next goal @ ${m.odds.toFixed(2)}</b><br>
+     Stake £${r.stake.toFixed(2)} · don't take under ${r.minPrice.toFixed(2)}<br>
+     <span class="m">EV ${(r.ev*100>=0?"+":"")}${(r.ev*100).toFixed(1)}% · blended ${pc(r.pUsed)} vs break-even ${pc(r.be)}</span>
+     ${f&&f.outcome==="pending"?`<div class="fillrow">
+       <button class="got" data-fill="${f.id}" data-out="filled">Got on</button>
+       <button class="miss" data-fill="${f.id}" data-out="missed">Missed it</button>
+       <button data-fill="${f.id}" data-out="skipped">Skipped</button></div>`
+      :f?`<div class="filldone">Marked: ${f.outcome}${f.got?" @ "+f.got.toFixed(2):""}</div>`:""}</div>`;})():""}
+   </div>`;}).join("");
+ document.querySelectorAll("[data-fill]").forEach(e=>e.onclick=ev=>{
+  ev.stopPropagation();
+  const m2=MATCHES.find(x=>FILLS.some(f=>f.id===e.dataset.fill&&f.fx===x.home+" v "+x.away));
+  setFill(e.dataset.fill,e.dataset.out,e.dataset.out==="filled"&&m2?m2.odds:null);});
+ document.querySelectorAll("[data-exp]").forEach(e=>e.onclick=()=>{
+  const m=MATCHES.find(x=>String(x.id)===e.dataset.exp);
+  if(m){m.expanded=!m.expanded;renderMon();}});
+ $("cntFire").textContent=fire; $("cntWatch").textContent=watch;
+ $("clocklbl").textContent=new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+ $("r10").textContent=baseRate(10,CFG.gpg).toFixed(4)+" /min";
+ $("r60").textContent=baseRate(60,CFG.gpg).toFixed(4)+" /min";
+ $("r85").textContent=baseRate(85,CFG.gpg).toFixed(4)+" /min";
+}
+/* Every alert, and whether you actually got on. The manual-alert design trades
+   safety for latency: by the time Telegram buzzes and you find the market, the
+   price has moved. Nobody knows how often that costs you the bet, and it
+   directly determines whether any of this works — so it gets measured. */
+const FILLS=[];
+function logAlert(m,r,bot){
+ FILLS.unshift({id:"f"+Date.now()+"-"+m.id,ts:new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}),
+  bot,fx:m.home+" v "+m.away,lg:m.lg,min:Math.floor(m.min),ask:m.odds,floor:r.minPrice,
+  stake:r.stake,outcome:"pending",got:null,
+  /* Everything settlement needs: which match, the score when we alerted, and
+     the probability we claimed. Without the last one calibration is impossible
+     later, and calibration is the only test that means anything early on. */
+  mid:m.id,goalsAt:m.h+m.a,modelP:r.pUsed,result:null,goalMin:null});
+ if(FILLS.length>60)FILLS.pop();
+}
+function setFill(id,outcome,price){
+ const f=FILLS.find(x=>x.id===id); if(!f)return;
+ f.outcome=outcome; f.got=price!=null?price:null;
+ renderMon(); renderFills(); renderCalibration(); renderDash();
+}
+/* A Next Goal bet wins the moment one more goal arrives and loses at full time
+   if none does. Nothing was ever writing this, so the strike rate could never
+   be computed and the calibration test could never return a row. */
+function settleFor(m){
+ FILLS.forEach(f=>{
+  if(f.mid!==m.id||f.result)return;
+  if(m.h+m.a>f.goalsAt){f.result="W";f.goalMin=Math.floor(m.min);settleTrade(f);}
+  else if(m.min>=92){f.result="L";settleTrade(f);}
+ });
+}
+function settleTrade(f){
+ if(f.outcome!=="filled")return;          // only bets you actually got on count
+ const price=f.got||f.ask;
+ TRADES.unshift({d:dayKey(TODAY),hh:new Date().getHours(),mm:new Date().getMinutes(),
+  o:f.result,pl:f.result==="W"?f.stake*(price-1)*(1-CFG.comm):-f.stake,
+  stake:f.stake,odds:price,legs:1,matched:1,fx:f.fx,lg:f.lg,
+  mkt:"Back Next Goal",sel:"Next Goal",bot:f.bot,mode:"SIM"});
+ renderDash(); renderLog(); renderCalibration();
+}
+
+/* Predicted probability against what actually happened. If the 60% bucket comes
+   in near 60% the model is honest, whatever the P&L is doing. This answers the
+   real question long before profit does. */
+function calibration(buckets=5){
+ const done=FILLS.filter(f=>f.result&&f.modelP!=null);
+ const out=[];
+ for(let i=0;i<buckets;i++){
+  const lo=i/buckets,hi=(i+1)/buckets;
+  const inB=done.filter(f=>f.modelP>=lo&&f.modelP<hi);
+  if(!inB.length)continue;
+  out.push({band:`${(lo*100).toFixed(0)}–${(hi*100).toFixed(0)}%`,n:inB.length,
+   predicted:inB.reduce((a,b)=>a+b.modelP,0)/inB.length,
+   observed:inB.filter(f=>f.result==="W").length/inB.length});
+ }
+ return out;
+}
+function renderCalibration(){
+ const el=$("calib"); if(!el)return;
+ const live=LIVE.connected&&LIVE.calib;
+ // surge.db's EvalLog.calibration() returns {bucket,n,predicted,observed};
+ // the demo generator returns {band,n,predicted,observed} — normalise both
+ // to `band` here rather than carrying two shapes through the render below.
+ const rows=live?LIVE.calib.map(r=>({band:r.bucket,n:r.n,predicted:r.predicted,observed:r.observed}))
+                :calibration();
+ const done=live?rows.reduce((a,r)=>a+r.n,0):FILLS.filter(f=>f.result).length;
+ if(!rows.length){el.innerHTML=`<div class="feed m">${live
+   ?"Nothing settled yet in surge.db. Once alerts fire and matches finish, this fills in on its own."
+   :"Nothing settled yet. Mark alerts as taken and let the matches finish — this fills in on its own."}</div>`;return;}
+ el.innerHTML=`<table><thead><tr><th>Model said</th><th>N</th><th>Predicted</th><th>Actual</th><th>Off by</th></tr></thead><tbody>`+
+  rows.map(r=>{const d=(r.observed-r.predicted)*100;
+   return `<tr><td>${r.band}</td><td>${r.n}</td><td>${(r.predicted*100).toFixed(0)}%</td>
+    <td class="${Math.abs(d)<10?"g":"a"}">${(r.observed*100).toFixed(0)}%</td>
+    <td class="${Math.abs(d)<10?"g":"r"}">${d>=0?"+":""}${d.toFixed(0)}pp</td></tr>`;}).join("")+
+  `</tbody></table><div class="note" style="margin:12px 0 0">${done} settled${live?" (from surge.db)":""}. Bands
+   within about 10 points are doing their job; a band consistently short of its
+   prediction means the model is overconfident there.</div>`;
+}
+function fillStats(){
+ const done=FILLS.filter(f=>f.outcome!=="pending");
+ const got=done.filter(f=>f.outcome==="filled");
+ const slip=got.filter(f=>f.got!=null).map(f=>f.got-f.ask);
+ return {n:FILLS.length,done:done.length,got:got.length,
+  rate:done.length?got.length/done.length*100:null,
+  avgSlip:slip.length?slip.reduce((a,b)=>a+b,0)/slip.length:null};
+}
+function renderFills(){
+ const el=$("fillLog"); if(!el)return;
+ const s=fillStats();
+ if(!FILLS.length){el.innerHTML=`<div class="feed m">No alerts yet. When one fires, mark whether you got on — that number matters as much as the strike rate.</div>`;return;}
+ el.innerHTML=FILLS.slice(0,20).map(f=>`<div class="fl">
+  <div class="fx2"><div>${esc(f.fx)}</div>
+   <div class="m" style="font-size:11.5px">${f.ts} · ${f.min}' · ${esc(f.bot)} · asked ${f.ask.toFixed(2)}</div></div>
+  <div class="st2 ${f.outcome==="filled"?"g":f.outcome==="missed"?"r":f.outcome==="skipped"?"m":"a"}">
+   ${f.outcome==="filled"?"got "+(f.got||f.ask).toFixed(2):f.outcome==="pending"?"pending":f.outcome}</div></div>`).join("");
+}
+const alerts=[];
+function pushAlert(t){alerts.unshift(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"})+" · "+t);
+ if(alerts.length>14)alerts.pop();
+ $("alertFeed").innerHTML=alerts.map(a=>`<div class="feed">${a}</div>`).join("");}
+
+/* ══ calculators ══ */
+function calc(){
+ const o=+$("scO").value,c=+$("scC").value/100,p=+$("scP").value/100;
+ $("vcO").textContent=o.toFixed(2);$("vcC").textContent=(c*100).toFixed(1)+"%";$("vcP").textContent=(p*100).toFixed(1)+"%";
+ const be=breakEvenProb(o,c),ev=p*(o-1)*(1-c)-(1-p),k=kelly(p,o,c)/STAKE.kellyDiv;
+ $("ocBE").textContent=pc(be);
+ $("ocEdge").textContent=pp(p-be);$("ocEdge").className="v num "+(p>=be?"g":"r");
+ $("ocEV").textContent=(ev>=0?"+":"−")+"£"+Math.abs(ev*100).toFixed(2);$("ocEV").className="v num "+(ev>=0?"g":"r");
+ $("ocReq").textContent=reqOdds(p,c).toFixed(2);
+ $("ocK").textContent=k>0?"£"+Math.min(STAKE.bank*STAKE.maxStakePct/100,STAKE.bank*k).toFixed(2):"no bet";
+ $("ocK").className="v num "+(k>0?"g":"m");
+ $("cDelta").textContent=pp(p-be);$("cDelta").className="d "+(p>=be?"g":"r");
+ const yp=posOf(p*100),bp=posOf(be*100),behind=p<be;
+ $("cFill").style.width=yp+"%";$("cFill").style.background=behind?"var(--red)":"var(--green)";
+ $("cMark").style.left="calc("+bp+"% - 1.25px)";
+ $("cYou").style.left="calc("+yp+"% - 5.5px)";$("cYou").style.background=behind?"var(--red)":"var(--green)";
+ $("cAxis").innerHTML=`<span style="left:0;transform:none">${AX_LO}%</span>
+  <span style="left:${yp}%;color:${behind?"var(--red)":"var(--green)"}"><b>${(p*100).toFixed(1)}%</b>you</span>
+  <span style="left:${bp}%;color:var(--orange)"><b>${(be*100).toFixed(1)}%</b>level</span>
+  <span style="right:0;left:auto;transform:none">${AX_HI}%</span>`;
+}
+function beTable(){$("beTable").innerHTML=[1.50,1.80,2.00,2.13,2.30,2.50,2.75,3.00,3.50,4.00].map(o=>{
+ const a=breakEvenProb(o,0),b=breakEvenProb(o,0.02),ev=0.44*(o-1)*0.98-0.56;
+ return `<tr${o===2.13?' style="color:var(--orange)"':''}><td>${o.toFixed(2)}</td><td>${(a*100).toFixed(1)}%</td><td>${(b*100).toFixed(1)}%</td><td class="${ev>=0?'g':'r'}">${ev>=0?"+":"−"}${Math.abs(ev*100).toFixed(1)}%</td></tr>`;}).join("");}
+const PLANS=[[100,10],[7500,300],[75000,450],[150000,900]];
+function calcBudget(){
+ const pl=PLANS[$("apiPlan").selectedIndex];
+ const p1=+$("sPoll1").value,p2=+$("sPoll2").value,hrs=+$("sHours").value,fix=+$("sFix").value,wat=+$("sWatch").value;
+ $("vPoll1").textContent=p1+"s";$("vPoll2").textContent=p2+"s";$("vHours").textContent=hrs+"h";
+ $("vFix").textContent=fix;$("vWatch").textContent=wat;
+ $("qDay").textContent=pl[0].toLocaleString();$("qMin").textContent=pl[1];
+ const live=Math.round(hrs*3600/p1),stats=Math.round(fix*wat*60/p2),tot=live+stats+6;
+ $("uLive").textContent=live.toLocaleString();$("uStats").textContent=stats.toLocaleString();
+ $("uTotal").textContent=tot.toLocaleString()+" / "+pl[0].toLocaleString();
+ $("uTotal").className="v num "+(tot>pl[0]?"r":tot>pl[0]*0.8?"a":"g");
+ $("uLeft").textContent=(pl[0]-tot).toLocaleString();
+ $("uLeft").className="v num "+(tot>pl[0]?"r":"g");
+ const col=tot>pl[0]?"var(--red)":tot>pl[0]*0.8?"var(--amber)":"var(--green)";
+ $("usageBar").innerHTML=`<i style="width:${Math.min(100,tot/pl[0]*100)}%;background:${col}"></i>`;
+ const peak=Math.round(60/p1+Math.min(fix,10)*60/p2);
+ $("uWarn").innerHTML=tot>pl[0]
+  ?`<div class="note bad" style="margin:12px 0 0"><span class="t">Over quota by ${(tot-pl[0]).toLocaleString()} requests</span>
+    The API stops responding for the rest of the day once you hit the cap — mid-match.</div>`
+  :peak>pl[1]
+  ?`<div class="note warn" style="margin:12px 0 0"><span class="t">Per-minute ceiling at risk</span>
+    Roughly ${peak} calls a minute at peak against a ${pl[1]} limit. Stagger the per-fixture calls.</div>`
+  :`<div class="note" style="margin:12px 0 0">Comfortable. <b>${(pl[0]-tot).toLocaleString()}</b> spare for backfill and retries.</div>`;
+}
+
+/* ══ nav / misc ══ */
+const VIEWS=["dash","monitor","log","sched","bots","builder","more","admin","acca","api","be","model","lock"];
+/* "bots" and "more" (and everything reached from them — builder, and
+   admin/acca/api/be/model under More) sit behind a simple password. This
+   is a casual deterrent, not real security: it's a string compared in
+   client-side JS in a plain HTML file, so anyone who views source has it.
+   It stops someone glancing at the app; it does not stop someone who
+   wants in. */
+const PROTECTED_VIEWS=["bots","builder","more","admin","acca","api","be","model"];
+const LOCK_PASSWORD="lottie21";
+let unlocked=false;
+try{unlocked=localStorage.getItem("surge.unlocked")==="1";}catch(e){}
+let lockTarget=null;
+
+function showView(v){
+ VIEWS.forEach(x=>$("v-"+x).classList.toggle("hidden",x!==v));
+ const highlightTarget=v==="lock"?lockTarget:v;
+ document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",
+  b.dataset.v===highlightTarget||(highlightTarget==="builder"&&b.dataset.v==="bots")||
+  (["admin","acca","api","be","model"].includes(highlightTarget)&&b.dataset.v==="more")));
+ window.scrollTo(0,0);
+}
+function go(v){
+ if(PROTECTED_VIEWS.includes(v)&&!unlocked){
+  lockTarget=v; showView("lock");
+  $("lockPass").value=""; $("lockErr").textContent="";
+  setTimeout(()=>$("lockPass").focus(),50);
+  return;
+ }
+ showView(v);
+}
+function tryUnlock(){
+ if($("lockPass").value===LOCK_PASSWORD){
+  unlocked=true; try{localStorage.setItem("surge.unlocked","1");}catch(e){}
+  const t=lockTarget||"more"; lockTarget=null; go(t);
+ }else{
+  $("lockErr").textContent="Wrong password";
+  $("lockPass").value=""; $("lockPass").focus();
+ }
+}
+$("btnUnlock").onclick=tryUnlock;
+$("lockPass").addEventListener("keydown",e=>{if(e.key==="Enter")tryUnlock();});
+function toast(msg){
+ const old=document.querySelector(".toast"); if(old)old.remove();
+ const el=document.createElement("div"); el.className="toast"; el.textContent=msg;
+ document.body.appendChild(el); setTimeout(()=>el.remove(),2600);}
+function syncModelSliders(){
+ $("sGpg").value=CFG.gpg; $("vGpg").textContent=CFG.gpg.toFixed(2);
+ $("sShrink").value=CFG.shrink; $("vShrink").textContent=CFG.shrink.toFixed(2);
+ $("sComm").value=CFG.comm*100; $("vComm").textContent=(CFG.comm*100).toFixed(1)+"%";
+ $("sMins").value=CFG.minMins; $("vMins").textContent=CFG.minMins;
+ $("sSlope").value=CFG.minSlope; $("vSlope").textContent="+"+CFG.minSlope.toFixed(1)+" /min";
+ $("sMinEV").value=CFG.minEV*100; $("vMinEV").textContent="+"+(CFG.minEV*100).toFixed(1)+"%";
+ $("sPoss").value=CFG.possWeight; $("vPoss").textContent=CFG.possWeight.toFixed(2);
+ $("sTrust").value=CFG.trustBase*100; $("vTrust").textContent=(CFG.trustBase*100).toFixed(0)+"%";
+ $("sTrustLag").value=CFG.trustLag; $("vTrustLag").textContent=CFG.trustLag.toFixed(1)+"×";
+ $("sOver").value=(CFG.overround-1)*100; $("vOver").textContent=((CFG.overround-1)*100).toFixed(1)+"%";}
+
+const cp=(text,msg)=>{if(navigator.clipboard)navigator.clipboard.writeText(text)
+ .then(()=>toast(msg),()=>toast("Copy blocked — select it manually")); else toast("Copy blocked — select it manually");};
+
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.v));
+document.querySelectorAll("[data-go]").forEach(e=>e.onclick=()=>go(e.dataset.go));
+document.querySelectorAll("[data-ad]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-ad]").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+ ["tg","stake","theme","ver"].forEach(k=>$("ad-"+k).classList.toggle("hidden",k!==b.dataset.ad));});
+document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-mode]").forEach(x=>x.classList.remove("on"));b.classList.add("on");MODE=b.dataset.mode;renderDash();});
+document.querySelectorAll("[data-per]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-per]").forEach(x=>x.classList.remove("on"));b.classList.add("on");PERIOD=b.dataset.per;renderDash();});
+document.querySelectorAll("[data-lmode]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-lmode]").forEach(x=>x.classList.remove("on"));b.classList.add("on");LMODE=b.dataset.lmode;renderLog();});
+document.querySelectorAll("[data-lper]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-lper]").forEach(x=>x.classList.remove("on"));b.classList.add("on");LPER=b.dataset.lper;renderLog();});
+document.querySelectorAll("[data-lres]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-lres]").forEach(x=>x.classList.remove("on"));b.classList.add("on");LRES=b.dataset.lres;renderLog();});
+document.querySelectorAll("[data-sf]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-sf]").forEach(x=>x.classList.remove("on"));b.classList.add("on");SFILT=b.dataset.sf;renderSched();});
+document.querySelectorAll("[data-af]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-af]").forEach(x=>x.classList.remove("on"));
+ b.classList.add("on"); ACCA.filter=b.dataset.af; renderAcca();});
+document.querySelectorAll("[data-tgf]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-tgf]").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+ TELE.fmt=b.dataset.tgf; renderTele();});
+document.querySelectorAll("[data-tgp]").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("[data-tgp]").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+ TELE.preview=b.dataset.tgp; renderTele();});
+$("logBot").onchange=()=>{LBOT=$("logBot").value;renderLog();};
+$("btnAdd").onclick=()=>openBuilder(-1);
+["tgToken","tgChat"].forEach(id=>$(id).oninput=renderTele);
+$("sTgRate").oninput=renderTele;
+[["tgFire","fire"],["tgWatch","watch"],["tgQuiet","quiet"]].forEach(([id,k])=>
+ $(id).onclick=()=>{TELE[k]=!TELE[k];renderTele();});
+$("tgTest").onclick=teleTest;
+$("tgCopy").onclick=()=>cp(TELE.curl,"Command copied");
+["sBank","sMaxStake","sKelly","sDayStop"].forEach(id=>$(id).oninput=renderStake);
+$("btnSnap").onclick=()=>{snapshot("Manual snapshot",["Captured on demand — "+BOTS.length+" bots, edge floor "+(CFG.minEdge*100).toFixed(1)+" pp"]);toast("Snapshot "+VERSIONS[0].v+" saved");};
+$("btnExport").onclick=()=>{
+ const blob=new Blob([JSON.stringify({bots:BOTS,cfg:CFG,stake:STAKE,versions:VERSIONS.map(v=>({v:v.v,label:v.label,summary:v.summary}))},null,2)],{type:"application/json"});
+ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="surge-config.json"; a.click();
+ toast("Config exported");};
+$("btnTest").onclick=()=>{const k=$("apiKey").value.trim();
+ $("apiStat").textContent=k?(k.length>=10&&k.length<=40?"Format looks right — nothing sent":"Unusual length for an API key"):"No key entered";
+ $("apiStat").className="v "+(k?"a":"r");};
+const bind=(s,v,fn,fmt)=>{$(s).oninput=()=>{fn(+$(s).value);$(v).textContent=fmt(+$(s).value);renderMon();};};
+bind("sShrink","vShrink",v=>CFG.shrink=v,v=>v.toFixed(2));
+bind("sGpg","vGpg",v=>CFG.gpg=v,v=>v.toFixed(2));
+bind("sComm","vComm",v=>CFG.comm=v/100,v=>v.toFixed(1)+"%");
+bind("sMins","vMins",v=>CFG.minMins=v,v=>String(v));
+bind("sSlope","vSlope",v=>CFG.minSlope=v,v=>"+"+v.toFixed(1)+" /min");
+bind("sMinEV","vMinEV",v=>CFG.minEV=v/100,v=>"+"+v.toFixed(1)+"%");
+bind("sPoss","vPoss",v=>CFG.possWeight=v,v=>v.toFixed(2));
+bind("sTrust","vTrust",v=>CFG.trustBase=v/100,v=>v.toFixed(0)+"%");
+bind("sTrustLag","vTrustLag",v=>CFG.trustLag=v,v=>v.toFixed(1)+"×");
+bind("sOver","vOver",v=>CFG.overround=1+v/100,v=>v.toFixed(1)+"%");
+["scO","scC","scP"].forEach(id=>$(id).oninput=calc);
+["sPoll1","sPoll2","sHours","sFix","sWatch"].forEach(id=>$(id).oninput=calcBudget);
+$("apiPlan").onchange=calcBudget;
+
+let armed=false;
+$("btnReset").onclick=()=>{const b=$("btnReset");
+ if(!armed){armed=true;b.textContent="Tap again to wipe "+TRADES.filter(t=>t.mode===MODE).length+" "+MODE+" trades";
+  setTimeout(()=>{if(armed){armed=false;b.innerHTML=`<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></svg>Reset all stats`;}},4000);return;}
+ TRADES=TRADES.filter(t=>t.mode!==MODE);armed=false;
+ b.innerHTML=`<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></svg>Reset all stats`;
+ renderDash();renderLog();toast(MODE+" trades cleared");};
+
+try{const s=localStorage.getItem("surge.theme"); if(s&&THEMES[s])THEME=s;}catch(e){}
+applyTheme(THEME);
+calc();beTable();renderStake();renderBots();renderDash();renderLog();renderSched();renderMon();
+calcBudget();renderVersions();renderFills();renderCalibration();renderAcca();syncModelSliders();hydrateHelp();
+$("liveBase").value=LIVE.base; $("liveKey").value=LIVE.key;
+if(LIVE.base){startLive();} else {setLiveStatus(false,"Not connected");}
+setInterval(tick,900);
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 """
-surge_live.py — the data layer. API-Football in, Betfair prices in, alerts out.
+surge_live.py — the data layer. Sportmonks in, Betfair prices in, alerts out.
 
 This is the half `surge_alerts.py` was missing: it referenced `ExchangePrices`
 without defining it, declared `API_BASE` without calling it, and had no poll loop
@@ -16,8 +16,8 @@ key physically cannot place orders, which is the point of using it.
 
 Environment:
 
-    API_FOOTBALL_KEY    required — your api-sports.io key
-    SURGE_LEAGUE_IDS    optional, comma-separated API-Football league ids
+    SPORTMONKS_KEY      required
+    SURGE_LEAGUE_IDS    optional, comma-separated Sportmonks league ids
     BF_APP_KEY          required — the key marked 1.0-DELAY
     BF_USERNAME         required
     BF_PASSWORD         required
@@ -28,15 +28,6 @@ Environment:
     SURGE_MIN_MATCHED   minimum £ matched on the market, default 200
     SURGE_MAX_SPREAD    maximum back/lay spread as a fraction, default 0.08
     SURGE_DRY_RUN       1 to log alerts without sending them
-
-Note on API-Football's shape: one call does not return statistics for every
-live fixture. `/fixtures?live=all` gives you the fixture list; each fixture's
-shot/corner/possession numbers need a *separate* call to `/fixtures/statistics`.
-On a quiet weekday evening that is a handful of extra calls per poll. On a
-Saturday afternoon with thirty-plus fixtures live across your chosen leagues,
-it is thirty-plus extra calls, every poll, on top of the one fixture-list call.
-See ApiFootballFeed below for the quota arithmetic and which plan tier it
-actually needs.
 """
 
 from __future__ import annotations
@@ -65,11 +56,12 @@ from surge_alerts import (
     evaluate,
     headsup_alert,
 )
+from surge_state import write_state, upload_db
 
 log = logging.getLogger("surge.live")
 
-AF_BASE = "https://v3.football.api-sports.io"
-BF_CERTLOGIN = "https://identitysso-cert.betfair.com/api/certlogin"
+SM_BASE = "https://api.sportmonks.com/v3/football"
+BF_LOGIN = "https://identitysso.betfair.com/api/login"
 BF_KEEPALIVE = "https://identitysso.betfair.com/api/keepAlive"
 BF_BETTING = "https://api.betfair.com/exchange/betting/rest/v1.0"
 
@@ -90,372 +82,192 @@ MAX_SPREAD = _f("SURGE_MAX_SPREAD", 0.08)
 DRY_RUN = _env("SURGE_DRY_RUN", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
-def _validate_pem_pair(cert_path: str, key_path: str) -> None:
-    """Fail loudly and specifically, before the SSL layer fails vaguely.
+# ══════════════════════════════ Sportmonks ══════════════════════════════
 
-    A malformed certificate surfaces as `[SSL] PEM lib` deep inside a
-    connection attempt — technically accurate, useless for figuring out
-    what to fix. Loading it directly here, at startup, turns that into an
-    error that names the actual problem: which file, and what's wrong
-    with it.
-    """
-    import ssl
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    try:
-        ctx.load_cert_chain(cert_path, key_path)
-    except ssl.SSLError as e:
-        log.error(
-            "The Betfair certificate/key don't parse as valid PEM (%s). "
-            "If you pasted these into BF_CERT_PEM/BF_KEY_PEM, check you "
-            "copied the WHOLE file, including the "
-            "-----BEGIN...----- and -----END...----- lines, with nothing "
-            "added or missing.", e)
-    except FileNotFoundError:
-        pass  # caller already checked existence where that matters
-
-
-def _spaces_client():
-    """A DigitalOcean Spaces client, or (None, "") if it isn't configured.
-
-    Spaces is only needed because App Platform's local disk isn't
-    guaranteed to survive a restart, redeploy, or the platform moving the
-    container — all things that happen to a worker without warning. Without
-    this, `surge.db` — the calibration log the whole two-week run exists to
-    produce — can simply vanish back to empty.
-    """
-    key, secret, bucket = _env("SPACES_KEY"), _env("SPACES_SECRET"), _env("SPACES_BUCKET")
-    if not (key and secret and bucket):
-        return None, ""
-    region = _env("SPACES_REGION", "lon1")
-    endpoint = _env("SPACES_ENDPOINT", f"https://{region}.digitaloceanspaces.com")
-    try:
-        import boto3
-    except ImportError:
-        log.error("SPACES_KEY/SPACES_SECRET/SPACES_BUCKET are set but boto3 "
-                  "isn't installed — add boto3 to requirements.txt.")
-        return None, ""
-    client = boto3.client("s3", region_name=region, endpoint_url=endpoint,
-                          aws_access_key_id=key, aws_secret_access_key=secret)
-    return client, bucket
-
-
-def restore_db_from_spaces(local_path: str) -> None:
-    """Pull the last backup down before opening the database, if there is one.
-
-    Called once at startup. A missing backup (first run ever, or Spaces not
-    configured) is not an error — there's nothing to restore yet, and the
-    database starts empty exactly as it always has.
-    """
-    client, bucket = _spaces_client()
-    if not client:
-        return
-    key = os.path.basename(local_path)
-    try:
-        client.download_file(bucket, key, local_path)
-        log.info("Restored %s from the last Spaces backup.", local_path)
-    except Exception as e:
-        log.info("No existing Spaces backup for %s (%s) — starting fresh.", key, e)
-
-
-def backup_db_to_spaces(local_path: str) -> None:
-    """Push the current database up to Spaces. Cheap, so call it often."""
-    client, bucket = _spaces_client()
-    if not client or not os.path.exists(local_path):
-        return
-    key = os.path.basename(local_path)
-    try:
-        client.upload_file(local_path, bucket, key)
-        log.info("Backed up %s to Spaces.", local_path)
-    except Exception:
-        log.exception("Spaces backup failed — will retry next cycle")
-
-
-def publish_stats_to_spaces(evlog, dry_run: bool) -> None:
-    """Upload a small, PUBLIC JSON summary for a real dashboard to read.
-
-    Deliberately a separate object and a separate upload from the database
-    backup above: this one is meant to be public (a calibration summary
-    has nothing sensitive in it) and small enough for a browser to fetch
-    on every page load, where the full database is neither.
-    """
-    client, bucket = _spaces_client()
-    if not client:
-        return
-    try:
-        import json
-        summary = evlog.summary()
-        summary["dry_run"] = dry_run
-        summary["generated_at"] = datetime.now(timezone.utc).isoformat()
-        body = json.dumps(summary, default=str).encode("utf-8")
-        client.put_object(Bucket=bucket, Key="stats.json", Body=body,
-                          ContentType="application/json", ACL="public-read")
-        log.info("Published stats.json (%d evaluations, %d settled)",
-                 summary["total_evaluations"], summary["total_settled"])
-    except Exception:
-        log.exception("stats.json publish failed — will retry next cycle")
-
-
-def _resolve_bf_cert() -> tuple[str, str]:
-    """Find the Betfair certificate, however this host makes it available.
-
-    On a host with a normal filesystem (PythonAnywhere), BF_CERT_PATH and
-    BF_KEY_PATH point straight at the uploaded files — used as-is.
-
-    On a platform-as-a-service host (DigitalOcean App Platform and similar),
-    there's nowhere persistent to upload the certificate to, only
-    environment variables. Two ways to hand it over that way:
-
-      BF_CERT_B64 / BF_KEY_B64   base64 of the file — ONE line, can't be
-                                  mangled by a form that doesn't preserve
-                                  line breaks. Preferred: generate with
-                                  `base64 -w0 client-2048.crt` etc.
-      BF_CERT_PEM / BF_KEY_PEM   the raw file contents, multi-line. Works
-                                  fine as long as the dashboard's text box
-                                  actually keeps the line breaks — some
-                                  don't, which is exactly what base64 sidesteps.
-    """
-    path, key = _env("BF_CERT_PATH"), _env("BF_KEY_PATH")
-    if path and key:
-        if os.path.exists(path) and os.path.exists(key):
-            return path, key
-        # Set but wrong — this is a completely different problem from unset,
-        # and worth spelling out: the previous generic "not set" message
-        # covered both cases and made this impossible to tell apart from the
-        # log alone.
-        missing = [p for p in (path, key) if not os.path.exists(p)]
-        parent = os.path.dirname(missing[0]) or "."
-        try:
-            nearby = ", ".join(sorted(os.listdir(parent))[:20]) or "(empty)"
-        except OSError as e:
-            nearby = f"(couldn't list {parent}: {e})"
-        log.error("BF_CERT_PATH/BF_KEY_PATH are set but don't point at real "
-                  "files: %s. Files actually in %s: %s", missing, parent, nearby)
-        return "", ""
-
-    b64_cert, b64_key = _env("BF_CERT_B64"), _env("BF_KEY_B64")
-    if b64_cert and b64_key:
-        import base64
-        import tempfile
-        tmp = tempfile.gettempdir()
-        cert_out, key_out = f"{tmp}/bf_cert.crt", f"{tmp}/bf_key.key"
-        try:
-            # Strip ALL whitespace first, not just leading/trailing — base64
-            # itself tolerates line breaks fine, but validate=True doesn't,
-            # and a console that soft-wraps a long line can hand back a copy
-            # with a stray newline in the middle. Stripping before decoding
-            # (rather than passing validate=True) treats that as harmless,
-            # which is what it actually is.
-            cert_clean = "".join(b64_cert.split())
-            key_clean = "".join(b64_key.split())
-            cert_bytes = base64.b64decode(cert_clean, validate=True)
-            key_bytes = base64.b64decode(key_clean, validate=True)
-        except Exception as e:
-            log.error("BF_CERT_B64 / BF_KEY_B64 don't decode as base64 (%s) "
-                      "— check the whole output of `base64 -w0 ...` was "
-                      "copied, with nothing added or missing.", e)
-            return "", ""
-        with open(cert_out, "wb") as fh:
-            fh.write(cert_bytes)
-        with open(key_out, "wb") as fh:
-            fh.write(key_bytes)
-        _validate_pem_pair(cert_out, key_out)
-        return cert_out, key_out
-
-    pem, pem_key = _env("BF_CERT_PEM"), _env("BF_KEY_PEM")
-    if pem and pem_key:
-        # Some dashboards store a multi-line variable as one line, turning
-        # real newlines into the two characters '\' and 'n'. A PEM file is
-        # meaningless without its line breaks, so undo that if it happened —
-        # harmless if the value already had real newlines, since correctly
-        # pasted PEM text never contains a literal backslash-n sequence.
-        pem = pem.strip().replace("\\n", "\n")
-        pem_key = pem_key.strip().replace("\\n", "\n")
-        import tempfile
-        tmp = tempfile.gettempdir()
-        cert_out, key_out = f"{tmp}/bf_cert.crt", f"{tmp}/bf_key.key"
-        with open(cert_out, "w", encoding="utf-8") as fh:
-            fh.write(pem + "\n")
-        with open(key_out, "w", encoding="utf-8") as fh:
-            fh.write(pem_key + "\n")
-        _validate_pem_pair(cert_out, key_out)
-        return cert_out, key_out
-    return "", ""
-
-
-# ═════════════════════════════ API-Football ══════════════════════════════
-
-# API-Football's statistics endpoint keys stats on a free-text `type` string,
-# not a numeric id, so matching is done on the label, not on array position —
-# a provider reordering the list can't silently swap two numbers.
+# Statistics are matched on `developer_name` from the `statistics.type` include,
+# not on hardcoded type ids. Ids are stable in practice but they are Sportmonks'
+# to change, and a silent remap would corrupt tempo without raising anything.
 WANTED_STATS = {
-    "Shots on Goal": "sot",
-    "Shots off Goal": "soff",
-    "Shots insidebox": "inside",
-    "Shots outsidebox": "outside",
-    "Corner Kicks": "corners",
-    "Ball Possession": "poss",
-    "Red Cards": "red",
+    "SHOTS_ON_TARGET": "sot",
+    "SHOTS_OFF_TARGET": "soff",
+    "SHOTS_INSIDEBOX": "inside",
+    "SHOTS_OUTSIDEBOX": "outside",
+    "CORNERS": "corners",
+    "BALL_POSSESSION": "poss",
+    "DANGEROUS_ATTACKS": "datk",
+    "REDCARDS": "red",
 }
-# API-Football has no "dangerous attacks" field. `Match.has_datk` is always
-# False here, which is not a missing feature: `evaluate()` already
-# renormalises signal weights when a stat is absent (see HANDOVER.md), so
-# the model runs on one fewer signal rather than a corrupted one.
 
-LIVE_STATUS = {"1H", "2H", "HT", "ET", "BT", "P", "LIVE", "SUSP", "INT"}
-DONE_STATUS = {"FT", "AET", "PEN", "PST", "CANC", "ABD", "AWD", "WO"}
-STATS_REQUEST_GAP_S = _f("SURGE_AF_REQUEST_GAP", 0.15)
+# Fallback ids, used only when the type include is absent from the response.
+STAT_IDS = {86: "sot", 41: "soff", 49: "inside", 50: "outside",
+            34: "corners", 45: "poss", 44: "datk", 83: "red"}
+
+LIVE_STATES = {"INPLAY_1ST_HALF", "INPLAY_2ND_HALF", "HT",
+               "INPLAY_ET", "INPLAY_ET_2ND_HALF", "BREAK"}
+DONE_STATES = {"FT", "AET", "FT_PEN", "POSTPONED", "CANCELLED",
+               "ABANDONED", "WALKOVER", "AWARDED"}
 
 
-class ApiFootballFeed:
+class SportmonksFeed:
     """Live fixtures with the statistics the model needs.
 
-    This is two kinds of call, not one:
-
-      /fixtures?live=all          every fixture in play — no stats included
-      /fixtures/statistics        one call PER fixture, for its stats
-
-    That second call is the thing to budget for. A poll with 15 fixtures live
-    is 16 requests, not 1. On API-Football's Pro tier (7,500/day) a quiet
-    weekday evening is fine; a Saturday afternoon with 30+ fixtures across
-    the leagues you've picked can burn through a day's quota by early evening
-    — the bot goes quiet not because nothing is happening but because the
-    plan ran out, and that looks exactly like a slow day. If you're watching
-    more than a handful of leagues, budget for the Ultra tier (75,000/day),
-    not Pro.
+    One request per poll returns every in-play fixture with scores, teams,
+    period clock, state and team statistics. Sportmonks updates on a ten-second
+    cycle, so polling faster than that spends quota to receive the same numbers.
     """
 
     def __init__(self, token: str, league_ids: str = "") -> None:
         self.token = token
-        self.league_ids = {int(x) for x in league_ids.split(",") if x.strip()}
+        self.league_ids = [x.strip() for x in league_ids.split(",") if x.strip()]
+        self.endpoint = _env("SURGE_SM_ENDPOINT", "/livescores/inplay")
         self.s = requests.Session()
 
     def _get(self, path: str, **params: Any) -> list[dict]:
+        params["api_token"] = self.token
         try:
-            r = self.s.get(f"{AF_BASE}{path}", params=params,
-                            headers={"x-apisports-key": self.token}, timeout=15)
+            r = self.s.get(f"{SM_BASE}{path}", params=params, timeout=15)
         except requests.RequestException:
-            log.exception("API-Football request failed")
+            log.exception("Sportmonks request failed")
             return []
         if r.status_code == 429:
-            log.warning("API-Football rate limit hit — backing off")
+            log.warning("Sportmonks rate limit hit — backing off")
             time.sleep(20)
             return []
         if r.status_code in (401, 403):
-            log.error("API-Football rejected the token (%s). Check the key, "
-                      "or whether today's request quota is used up.", r.status_code)
+            # Worth separating from a generic failure: these three look
+            # identical from the outside (no fixtures returned) but need
+            # completely different fixes, and guessing wastes an evening.
+            log.error("Sportmonks rejected the token (%s). Either the token is "
+                      "wrong, or your plan does not cover the leagues you asked "
+                      "for, or the trial has lapsed.", r.status_code)
             return []
         if r.status_code != 200:
-            log.warning("API-Football %s returned %s", path, r.status_code)
+            log.warning("Sportmonks %s returned %s", path, r.status_code)
             return []
         body = r.json()
-        errs = body.get("errors")
-        if errs:
-            # api-sports.io often returns HTTP 200 with the problem described
-            # here instead of a 4xx — rate limit, bad plan, unknown parameter.
-            # Treated as a hard miss rather than parsed further, since the
-            # shape of `errors` varies (dict in some cases, list in others).
-            log.warning("API-Football error: %s", errs)
-            return []
-        data = body.get("response", [])
+        data = body.get("data", [])
         return data if isinstance(data, list) else [data]
 
     def inplay(self) -> list[dict]:
-        """Every live fixture — teams, score and clock, but no statistics yet."""
-        fixtures = self._get("/fixtures", live="all")
+        """Every live fixture, with full cumulative statistics.
+
+        Sportmonks offers three livescores endpoints and only one suits this bot:
+
+          /livescores/inplay   every fixture in play right now        ← this one
+          /livescores          everything today, including unstarted
+          /livescores/latest   only fixtures changed in the last 10s
+
+        `/latest` is the efficient choice for a scoreboard that already holds
+        state and just needs deltas. It is the wrong choice here, and quietly so.
+        The model works from ten-minute windows of *cumulative* counters, so it
+        needs each fixture's running totals on every pass. Polling `/latest` on
+        a 60-second cycle returns only what moved inside a 10-second window —
+        roughly a sixth of the cycle — so most live matches would simply be
+        absent from most polls. Nothing would error. Alerts would just never
+        fire, and the gap would look like a quiet night rather than a bug.
+
+        Set SURGE_SM_ENDPOINT to override if you want to see this for yourself.
+        """
+        params = {
+            "include": "scores;participants;statistics.type;periods;state;league",
+        }
         if self.league_ids:
-            fixtures = [f for f in fixtures
-                        if ((f.get("league") or {}).get("id")) in self.league_ids]
-        return fixtures
+            params["filters"] = "fixtureLeagues:" + ",".join(self.league_ids)
+        return self._get(self.endpoint, **params)
 
     # ─────────────────────────── parsing ───────────────────────────
 
     @staticmethod
     def _minute(fx: dict) -> float:
-        st = ((fx.get("fixture") or {}).get("status")) or {}
-        elapsed = float(st.get("elapsed") or 0)
-        extra = st.get("extra")
-        return elapsed + float(extra or 0)
+        """Match clock. The ticking period carries it; nothing else does."""
+        for p in fx.get("periods") or []:
+            if p.get("ticking"):
+                return float(p.get("minutes") or 0) + float(p.get("time_added") or 0)
+        # Not ticking: half time, or a period that has just ended.
+        mins = [float(p.get("minutes") or 0) for p in (fx.get("periods") or [])]
+        return max(mins) if mins else 0.0
 
     @staticmethod
     def _teams(fx: dict) -> tuple[str, str]:
-        t = fx.get("teams") or {}
-        home = (t.get("home") or {}).get("name") or ""
-        away = (t.get("away") or {}).get("name") or ""
+        home = away = ""
+        for p in fx.get("participants") or []:
+            loc = (p.get("meta") or {}).get("location")
+            if loc == "home":
+                home = p.get("name") or ""
+            elif loc == "away":
+                away = p.get("name") or ""
         return home, away
 
     @staticmethod
     def _score(fx: dict) -> tuple[int, int]:
-        g = fx.get("goals") or {}
-        return int(g.get("home") or 0), int(g.get("away") or 0)
+        hg = ag = 0
+        for s in fx.get("scores") or []:
+            if s.get("description") != "CURRENT":
+                continue
+            sc = s.get("score") or {}
+            goals = int(sc.get("goals") or 0)
+            if sc.get("participant") == "home":
+                hg = goals
+            elif sc.get("participant") == "away":
+                ag = goals
+        return hg, ag
 
-    def _stats(self, fixture_id: str, home_id: int) -> dict[str, Any]:
-        """One extra request. Match totals for shots, home possession, reds.
+    @staticmethod
+    def _stats(fx: dict) -> dict[str, float]:
+        """Match totals for shots, plus home possession percentage.
 
-        The model prices *any* next goal, so shot counts are summed across
-        both teams. Possession and red cards are per-side — a total of
-        "1 red card" says nothing; knowing which side is down a man is the
-        entire signal.
+        The model prices *any* next goal, so shot counts are summed across both
+        teams. Possession is the exception — it only means anything as the home
+        share, because the model asks whether the side on the ball is the side
+        chasing.
         """
         out = {"sot": 0.0, "soff": 0.0, "inside": 0.0,
-               "outside": 0.0, "corners": 0.0, "datk": 0.0,
-               "poss_home": None, "red_home": 0, "red_away": 0,
-               "has_datk": False}
-        rows = self._get("/fixtures/statistics", fixture=fixture_id)
-        for block in rows:
-            team_id = (block.get("team") or {}).get("id")
-            is_home = team_id == home_id
-            for st in block.get("statistics") or []:
-                key = WANTED_STATS.get(st.get("type") or "")
-                if key is None:
-                    continue
-                val = st.get("value")
-                if val is None:
-                    continue
-                if key == "poss":
-                    if is_home:
-                        try:
-                            out["poss_home"] = float(str(val).rstrip("%"))
-                        except ValueError:
-                            pass
-                elif key == "red":
-                    if is_home:
-                        out["red_home"] = int(val)
-                    else:
-                        out["red_away"] = int(val)
+               "outside": 0.0, "corners": 0.0, "datk": 0.0}
+        poss_home = None
+        red_home = red_away = 0
+        for st in fx.get("statistics") or []:
+            t = st.get("type") or {}
+            key = WANTED_STATS.get(t.get("developer_name") or "")
+            if key is None:
+                key = STAT_IDS.get(st.get("type_id"))
+            if key is None:
+                continue
+            val = (st.get("data") or {}).get("value")
+            if val is None:
+                continue
+            if key == "poss":
+                if st.get("location") == "home":
+                    poss_home = float(val)
+            elif key == "red":
+                # Red cards are per side and never summed: which team went down
+                # is the entire signal, and a total of 1 says nothing.
+                if st.get("location") == "home":
+                    red_home = int(val)
                 else:
-                    try:
-                        out[key] += float(val)
-                    except (TypeError, ValueError):
-                        pass
+                    red_away = int(val)
+            else:
+                out[key] += float(val)
+        out["poss_home"] = poss_home
+        out["red_home"], out["red_away"] = red_home, red_away
+        out["has_datk"] = any(
+            (st.get("type") or {}).get("developer_name") == "DANGEROUS_ATTACKS"
+            or st.get("type_id") == 44
+            for st in fx.get("statistics") or [])
         return out
 
     def matches(self) -> list[Match]:
         found = []
-        fixtures = [fx for fx in self.inplay()
-                    if ((fx.get("fixture") or {}).get("status") or {}).get("short", "").upper()
-                    not in DONE_STATUS]
-        for i, fx in enumerate(fixtures):
+        for fx in self.inplay():
+            state = ((fx.get("state") or {}).get("developer_name") or "").upper()
+            if state in DONE_STATES:
+                continue
             home, away = self._teams(fx)
             if not home or not away:
                 continue
-            fixture_id = (fx.get("fixture") or {}).get("id")
-            home_id = ((fx.get("teams") or {}).get("home") or {}).get("id")
             hg, ag = self._score(fx)
-            if i > 0:
-                # Without this, N fixtures live means N statistics calls
-                # fired back-to-back in well under a second — fine against a
-                # daily quota, but plenty of plans also cap requests *per
-                # minute*, and a burst like that trips it even though the
-                # steady-state average across the poll is nowhere near the
-                # limit. This spreads them out instead of firing all at
-                # once. It can't rescue a plan capped below roughly one
-                # request per second sustained — if fixture counts routinely
-                # hit that, the plan itself needs a higher tier, not slower
-                # code.
-                time.sleep(STATS_REQUEST_GAP_S)
-            s = self._stats(fixture_id, home_id)
+            s = self._stats(fx)
             found.append(Match(
-                fid=str(fixture_id),
+                fid=str(fx.get("id")),
                 home=home, away=away,
                 league=((fx.get("league") or {}).get("name") or ""),
                 minute=self._minute(fx), hg=hg, ag=ag,
@@ -470,13 +282,11 @@ class ApiFootballFeed:
 
     def finished_today(self) -> dict[str, tuple[int, int]]:
         """Final scores for fixtures that have ended, for settlement."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         out = {}
-        for fx in self._get("/fixtures", date=today):
-            status = ((fx.get("fixture") or {}).get("status") or {}).get("short", "").upper()
-            if status in DONE_STATUS:
-                fid = (fx.get("fixture") or {}).get("id")
-                out[str(fid)] = self._score(fx)
+        for fx in self._get("/livescores", include="scores;state"):
+            state = ((fx.get("state") or {}).get("developer_name") or "").upper()
+            if state in DONE_STATES:
+                out[str(fx.get("id"))] = self._score(fx)
         return out
 
 
@@ -547,13 +357,11 @@ class ExchangePrices:
     LINES = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5]
 
     def __init__(self, app_key: str, username: str, password: str,
-                 delay_s: int = 60, cert_path: str = "", key_path: str = "") -> None:
+                 delay_s: int = 60) -> None:
         self.app_key = app_key
         self.username = username
         self.password = password
         self.delay_s = delay_s
-        self.cert_path = cert_path
-        self.key_path = key_path
         self.token = ""
         self._token_at = 0.0
         self.s = requests.Session()
@@ -564,81 +372,22 @@ class ExchangePrices:
     # ───────────────────────────── auth ─────────────────────────────
 
     def login(self) -> bool:
-        """Betfair supports two logins, and only one of them is for scripts.
-
-        Interactive login (plain username/password, no certificate) is meant
-        for an app with a person sitting in front of it. Betfair blocks it
-        from unattended servers — a 403 with an HTML page back, not a normal
-        rejected-credentials response — which is what an empty BF_CERT_PATH
-        will eventually hit. Non-interactive (certificate) login is the one
-        Betfair documents for bots, and it's what runs here whenever a
-        certificate is configured.
-        """
-        if not (self.cert_path and self.key_path):
-            log.error("No BF_CERT_PATH / BF_KEY_PATH set. Betfair requires "
-                      "certificate login for unattended scripts — plain "
-                      "username/password from a server gets blocked with a "
-                      "403. See NEXT-STEPS.md for how to generate and "
-                      "upload one.")
-            return False
-        try:
-            cert_size = os.path.getsize(self.cert_path)
-            key_size = os.path.getsize(self.key_path)
-        except OSError as e:
-            log.error("Betfair cert/key path set but unreadable: %s", e)
-            return False
-        log.info("Betfair cert %s (%d bytes), key %s (%d bytes)",
-                 self.cert_path, cert_size, self.key_path, key_size)
-        if cert_size < 100 or key_size < 100:
-            # A real cert/key is at minimum several hundred bytes. Anything
-            # smaller almost certainly got truncated somewhere between the
-            # file and the environment variable box it was pasted into.
-            log.error("That looks too small to be a real certificate/key — "
-                      "likely truncated in the paste. Re-check BF_CERT_PEM "
-                      "/ BF_KEY_PEM for missing content.")
-            return False
-        url = BF_CERTLOGIN
         try:
             r = self.s.post(
-                url,
+                BF_LOGIN,
                 data={"username": self.username, "password": self.password},
                 headers={"X-Application": self.app_key,
                          "Accept": "application/json",
                          "Content-Type": "application/x-www-form-urlencoded"},
-                cert=(self.cert_path, self.key_path),
                 timeout=15)
-        except requests.exceptions.SSLError as e:
-            log.error("Could not load the certificate/key for the connection "
-                      "itself (%s) — this happens locally, before anything "
-                      "reaches Betfair. If BF_CERT_PEM/BF_KEY_PEM were "
-                      "pasted into a form field, that field may have a "
-                      "character limit that silently cut the content short. "
-                      "Try BF_CERT_PATH/BF_KEY_PATH (uploaded files) instead "
-                      "if this platform allows it, or split the paste to "
-                      "confirm nothing was truncated.", e)
-            return False
-        except requests.RequestException:
-            log.exception("Betfair login failed — could not reach the server")
-            return False
-        try:
             body = r.json()
-        except ValueError:
-            # Betfair sent back something that isn't JSON — an empty body, an
-            # HTML page, or a block response. That's a different problem from
-            # a rejected login (wrong password etc.), which always comes back
-            # as JSON, so show exactly what arrived instead of guessing.
-            snippet = (r.text or "(empty body)")[:300]
-            log.error("Betfair returned a non-JSON response — HTTP %s, "
-                      "content-type %s. First bytes: %r",
-                      r.status_code, r.headers.get("Content-Type", "unknown"), snippet)
+        except Exception:
+            log.exception("Betfair login failed")
             return False
-        # Certificate login reports success/failure as loginStatus, not status.
-        ok = body.get("loginStatus") == "SUCCESS" or body.get("status") == "SUCCESS"
-        if not ok:
-            log.error("Betfair login rejected: %s",
-                      body.get("loginStatus") or body.get("error") or body.get("status"))
+        if body.get("status") != "SUCCESS":
+            log.error("Betfair login rejected: %s", body.get("error") or body.get("status"))
             return False
-        self.token = body["sessionToken"] if "sessionToken" in body else body["token"]
+        self.token = body["token"]
         self._token_at = time.time()
         log.info("Betfair session opened")
         return True
@@ -726,7 +475,7 @@ class ExchangePrices:
         return None
 
     def _find_event(self, home: str, away: str) -> str | None:
-        """Match a live-feed fixture to a Betfair event by team names.
+        """Match a Sportmonks fixture to a Betfair event by team names.
 
         The two providers share no ids, so this is the seam where things break.
         A miss is logged rather than swallowed — an unmatched fixture is a
@@ -876,15 +625,11 @@ class Tracked:
 
 class Runner:
     def __init__(self) -> None:
-        self.feed = ApiFootballFeed(_env("API_FOOTBALL_KEY"), _env("SURGE_LEAGUE_IDS"))
-        cert, key = _resolve_bf_cert()
+        self.feed = SportmonksFeed(_env("SPORTMONKS_KEY"), _env("SURGE_LEAGUE_IDS"))
         self.prices = ExchangePrices(_env("BF_APP_KEY"), _env("BF_USERNAME"),
-                                     _env("BF_PASSWORD"), CFG.price_delay_s,
-                                     cert, key)
+                                     _env("BF_PASSWORD"), CFG.price_delay_s)
         self.tg = Telegram()
-        self.db_path = _env("SURGE_DB", "surge.db")
-        restore_db_from_spaces(self.db_path)
-        self.evlog = EvalLog(self.db_path)
+        self.evlog = EvalLog(_env("SURGE_DB", "surge.db"))
         self.tracked: dict[str, Tracked] = {}
         self._last_settle = 0.0
 
@@ -894,6 +639,7 @@ class Runner:
         matches = self.feed.matches()
         if not matches:
             log.debug("No live fixtures")
+            write_state([])
             return
 
         # Resolve markets first, then price every one of them in a single call.
@@ -907,6 +653,12 @@ class Runner:
             else:
                 t.market_id = ""
         quotes = self.prices.refresh(wanted)
+
+        # What the HTML control panel gets to see — identity plus the full
+        # evaluate() output, nothing that touches a credential. Rebuilt fresh
+        # every tick() rather than mutated, so a fixture that drops out of
+        # `matches` (settled, postponed) simply stops appearing.
+        live_out: list[dict] = []
 
         for m in matches:
             t = self.tracked[m.fid]
@@ -934,6 +686,18 @@ class Runner:
             fire = r["tier"] == "FIRE" and not t.alerted
             self.evlog.record(m, r, fire)
 
+            live_out.append({
+                "id": m.fid, "home": m.home, "away": m.away, "league": m.league,
+                "minute": m.minute, "hg": m.hg, "ag": m.ag, "odds": m.odds,
+                "alerted": t.alerted,
+                **r,
+                "history": [
+                    {"minute": s.minute, "pressure": s.pressure,
+                     "model_p": s.model_p, "market_p": s.market_p}
+                    for s in t.history[-20:]
+                ],
+            })
+
             if fire:
                 t.alerted = True
                 t.alert_score = (m.hg, m.ag)
@@ -947,6 +711,8 @@ class Runner:
             elif CFG.send_headsup and r["tier"] == "WATCH" and not t.alerted:
                 if not DRY_RUN:
                     self.tg.send(headsup_alert(m, r, CFG.bot_name, CFG.style))
+
+        write_state(live_out)
 
     # ─────────────────────────── settlement ───────────────────────────
 
@@ -986,21 +752,11 @@ class Runner:
                  (CFG.min_ev + CFG.price_delay_s / 60 * 0.01) * 100)
         if DRY_RUN:
             log.warning("DRY RUN — alerts print to stdout, nothing is sent")
-        # A platform-as-a-service worker (DigitalOcean and similar) treats
-        # any process exit — including a deliberate one on a config problem
-        # — as a crash, and auto-rolls back to the last deployment that
-        # didn't exit. That silently undoes every fix pushed while Betfair
-        # is unreachable, which looks exactly like "my changes aren't
-        # taking" even though they are. So this never exits over a login
-        # failure: it logs clearly and keeps retrying, the way a real
-        # always-on service should behave when a dependency is down.
-        backoff = 30
-        while not self.prices.login():
-            log.error("Cannot reach Betfair — retrying in %ds. Nothing is "
-                      "priced or sent while this repeats; the message above "
-                      "this one says why.", backoff)
-            time.sleep(backoff)
-            backoff = min(backoff * 2, 300)
+        if not self.prices.login():
+            log.error("Cannot reach Betfair — nothing can be priced. Stopping.")
+            return
+        upload_db(self.evlog.path)  # so surge_api.py has *something* on first deploy,
+                                     # rather than a 5-minute wait for the first cycle
         while True:
             start = time.time()
             try:
@@ -1008,9 +764,13 @@ class Runner:
                 if start - self._last_settle > 300:
                     self.settle()
                     self.tg.flush_held()
-                    backup_db_to_spaces(self.db_path)
-                    publish_stats_to_spaces(self.evlog, DRY_RUN)
                     self._last_settle = start
+                    # surge.db only ever lives on this container's local
+                    # disk (SQLite wants a real filesystem). Push a copy to
+                    # Spaces on the same 5-minute cadence as settlement so
+                    # surge_api.py has something recent to read calibration
+                    # and trades from — see surge_state.py's docstring.
+                    upload_db(self.evlog.path)
             except Exception:
                 log.exception("Poll failed — continuing")
             time.sleep(max(10.0, CFG.live_poll_s - (time.time() - start)))
@@ -1023,12 +783,10 @@ def _check() -> None:
     if n:
         print(f"Loaded {n} setting(s) from .env\n")
 
-    need = {"API_FOOTBALL_KEY": _env("API_FOOTBALL_KEY"),
+    need = {"SPORTMONKS_KEY": _env("SPORTMONKS_KEY"),
             "BF_APP_KEY": _env("BF_APP_KEY"),
             "BF_USERNAME": _env("BF_USERNAME"),
             "BF_PASSWORD": _env("BF_PASSWORD"),
-            "BF_CERT_PATH": _env("BF_CERT_PATH"),
-            "BF_KEY_PATH": _env("BF_KEY_PATH"),
             "TG_BOT_TOKEN": _env("TG_BOT_TOKEN"),
             "TG_CHAT_ID": _env("TG_CHAT_ID")}
     for k, v in need.items():
@@ -1036,11 +794,12 @@ def _check() -> None:
         # thing people paste into a chat when asking why it isn't working.
         print(f"{k:<18} {'set' if v else 'MISSING'}")
 
-    if not need["API_FOOTBALL_KEY"]:
-        print("\nNo API-Football key. Copy .env.example to .env and fill it in.")
+    if not need["SPORTMONKS_KEY"]:
+        print("\nNo Sportmonks token. Copy .env.example to .env and fill it in.")
         return
 
-    print(f"\nPrice delay       {CFG.price_delay_s}s")
+    print(f"\nEndpoint          {_env('SURGE_SM_ENDPOINT', '/livescores/inplay')}")
+    print(f"Price delay       {CFG.price_delay_s}s")
     print(f"EV floor          {(CFG.min_ev + CFG.price_delay_s / 60 * 0.01) * 100:.1f}%")
     print(f"Odds range        {CFG.odds_floor:.2f}–{CFG.odds_ceil:.2f}")
     print(f"Commission        {CFG.commission * 100:.1f}%")
@@ -1050,46 +809,36 @@ def _check() -> None:
              else f"1/{CFG.kelly_div:.0f} Kelly, capped "
                   f"£{CFG.bank * CFG.max_stake_pct / 100:.2f}"))
 
-    feed = ApiFootballFeed(need["API_FOOTBALL_KEY"], _env("SURGE_LEAGUE_IDS"))
+    feed = SportmonksFeed(need["SPORTMONKS_KEY"], _env("SURGE_LEAGUE_IDS"))
     ms = feed.matches()
-    print(f"\nAPI-Football      {len(ms)} fixture(s) in play "
-          f"({1 + len(ms)} request(s) that poll)")
+    print(f"\nSportmonks        {len(ms)} fixture(s) in play")
+    missing_datk = 0
     for m in ms[:10]:
         reds = f" · {m.red_home}-{m.red_away} red" if (m.red_home or m.red_away) else ""
+        datk = f"{m.datk} d.att" if m.has_datk else "no d.att"
+        if not m.has_datk:
+            missing_datk += 1
         print(f"  {int(m.minute):>3}' {m.home} {m.hg}-{m.ag} {m.away} "
-              f"· {m.league} · {m.sot} SOT{reds}")
+              f"· {m.league} · {m.sot} SOT · {datk}{reds}")
     if not ms:
         print("  (nothing live, or your plan does not cover what is live —")
         print("   an empty list here at 3pm on a Saturday means the plan, not the code)")
-    else:
-        polls_per_day = 24 * 3600 // CFG.live_poll_s
-        print(f"\n  No 'dangerous attacks' field on this provider — the model")
-        print(f"  renormalises and runs on one fewer signal, always, for every fixture.")
-        print(f"  At {len(ms)} fixture(s) live, a poll costs {1 + len(ms)} request(s).")
-        print(f"  {polls_per_day} polls/day at this rate = "
-              f"{polls_per_day * (1 + len(ms)):,} requests/day if it held all day —")
-        print(f"  check that against your plan's daily cap before trusting a quiet night.")
+    elif missing_datk:
+        print(f"\n  {missing_datk} fixture(s) without dangerous attacks — tempo")
+        print("  renormalises for those, so they are scored, just on fewer signals.")
 
-    cert, key = _resolve_bf_cert()
     if not need["BF_APP_KEY"]:
         print("\nBetfair           no key — nothing can be priced, so nothing will fire")
         return
-    if not (cert and key):
-        print("\nBetfair           no certificate — plain username/password login is")
-        print("                  blocked by Betfair for unattended scripts (403). Set")
-        print("                  BF_CERT_PATH/BF_KEY_PATH (files) or BF_CERT_PEM/")
-        print("                  BF_KEY_PEM (contents). See NEXT-STEPS.md.")
-        return
     px = ExchangePrices(need["BF_APP_KEY"], need["BF_USERNAME"],
-                        need["BF_PASSWORD"], CFG.price_delay_s, cert, key)
+                        need["BF_PASSWORD"], CFG.price_delay_s)
     print(f"\nBetfair           {'session opened' if px.login() else 'LOGIN FAILED'}")
 
 
 def _markets() -> None:
-    feed = ApiFootballFeed(_env("API_FOOTBALL_KEY"), _env("SURGE_LEAGUE_IDS"))
-    cert, key = _resolve_bf_cert()
+    feed = SportmonksFeed(_env("SPORTMONKS_KEY"), _env("SURGE_LEAGUE_IDS"))
     px = ExchangePrices(_env("BF_APP_KEY"), _env("BF_USERNAME"),
-                        _env("BF_PASSWORD"), CFG.price_delay_s, cert, key)
+                        _env("BF_PASSWORD"), CFG.price_delay_s)
     if not px.login():
         print("Betfair login failed.")
         return
@@ -1114,28 +863,6 @@ def _markets() -> None:
               f"· £{quote.matched:,.0f} matched · spread {quote.spread * 100:.1f}%")
 
 
-def _test_telegram() -> None:
-    """Send one real message, right now, regardless of dry run or the time.
-
-    This answers a narrower question than a full poll cycle does: not
-    "did a real alert condition fire" (that needs an actual match), but
-    "if one did, is the wiring to Telegram actually able to deliver it".
-    `force=True` bypasses quiet hours and the hourly rate limit, since a
-    test you asked for shouldn't get silently queued until morning.
-    """
-    load_dotenv()
-    tg = Telegram()
-    if not tg.enabled:
-        print("TG_BOT_TOKEN / TG_CHAT_ID not set — nothing to test.")
-        return
-    print(f"Sending a test message to chat {tg.chat}...")
-    ok = tg.send("✅ SURGE test — if you're reading this on your phone, "
-                "the bot can reach your Telegram.", force=True)
-    print("Sent — check your phone now." if ok
-          else "Send FAILED — see the warning/error above for why "
-               "(wrong token, wrong chat id, or bot never messaged first).")
-
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
@@ -1143,7 +870,5 @@ if __name__ == "__main__":
         _check()
     elif "--markets" in sys.argv:
         _markets()
-    elif "--test-telegram" in sys.argv:
-        _test_telegram()
     else:
         Runner().run()
