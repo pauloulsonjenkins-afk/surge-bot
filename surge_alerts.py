@@ -733,4 +733,3 @@ if __name__ == "__main__":
         print(__doc__)
         print("Run with --test first. The live poller needs APIFOOTBALL_KEY set\n"
               "and a league whitelist in SURGE_LEAGUES.")
-
