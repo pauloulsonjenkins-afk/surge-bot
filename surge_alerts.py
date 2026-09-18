@@ -516,9 +516,14 @@ class Telegram:
         try:
             r = requests.post(TG_API.format(token=self.token),
                               json={"chat_id": self.chat, "text": text}, timeout=10)
-            ok = r.json().get("ok", False)
+            body = r.json()
+            ok = body.get("ok", False)
             if not ok:
-                log.warning("Telegram rejected the message")
+                # Telegram's own explanation ("chat not found", "bot was
+                # blocked by the user", etc.) is far more useful than a bare
+                # "rejected" — it names the actual fix needed.
+                log.warning("Telegram rejected the message: %s",
+                           body.get("description", body))
             return ok
         except Exception:
             log.exception("Telegram send failed")
@@ -661,6 +666,41 @@ class EvalLog:
                         "predicted": (lo + hi) / 2,
                         "observed": sum(1 for o in hits if o == "W") / len(hits)})
         return out
+
+    def summary(self, recent: int = 25) -> dict:
+        """A small JSON-friendly snapshot of the whole log, for a dashboard.
+
+        Deliberately separate from a full database export: this is safe to
+        make PUBLIC (no credentials, no anything sensitive in it) precisely
+        because it's small and specific — a summary, not the raw log.
+        """
+        total = self.db.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0]
+        fired = self.db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE alerted=1").fetchone()[0]
+        settled = self.db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE alerted=1 AND outcome IN ('W','L')"
+        ).fetchone()[0]
+        wins = self.db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE alerted=1 AND outcome='W'"
+        ).fetchone()[0]
+        rows = self.db.execute(
+            "SELECT ts, league, score, minute, model_p, market_odds, edge, "
+            "tier, outcome FROM evaluations WHERE alerted=1 "
+            "ORDER BY ts DESC LIMIT ?", (recent,)).fetchall()
+        recent_alerts = [
+            {"ts": ts, "league": league, "score": score, "minute": minute,
+             "model_p": model_p, "odds": odds, "edge": edge,
+             "tier": tier, "outcome": outcome}
+            for ts, league, score, minute, model_p, odds, edge, tier, outcome in rows
+        ]
+        return {
+            "total_evaluations": total,
+            "total_fired": fired,
+            "total_settled": settled,
+            "strike_rate": (wins / settled) if settled else None,
+            "calibration": self.calibration(),
+            "recent_alerts": recent_alerts,
+        }
 
 
 # ──────────────────────────────── cli ──────────────────────────────────

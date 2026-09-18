@@ -114,6 +114,87 @@ def _validate_pem_pair(cert_path: str, key_path: str) -> None:
         pass  # caller already checked existence where that matters
 
 
+def _spaces_client():
+    """A DigitalOcean Spaces client, or (None, "") if it isn't configured.
+
+    Spaces is only needed because App Platform's local disk isn't
+    guaranteed to survive a restart, redeploy, or the platform moving the
+    container — all things that happen to a worker without warning. Without
+    this, `surge.db` — the calibration log the whole two-week run exists to
+    produce — can simply vanish back to empty.
+    """
+    key, secret, bucket = _env("SPACES_KEY"), _env("SPACES_SECRET"), _env("SPACES_BUCKET")
+    if not (key and secret and bucket):
+        return None, ""
+    region = _env("SPACES_REGION", "lon1")
+    endpoint = _env("SPACES_ENDPOINT", f"https://{region}.digitaloceanspaces.com")
+    try:
+        import boto3
+    except ImportError:
+        log.error("SPACES_KEY/SPACES_SECRET/SPACES_BUCKET are set but boto3 "
+                  "isn't installed — add boto3 to requirements.txt.")
+        return None, ""
+    client = boto3.client("s3", region_name=region, endpoint_url=endpoint,
+                          aws_access_key_id=key, aws_secret_access_key=secret)
+    return client, bucket
+
+
+def restore_db_from_spaces(local_path: str) -> None:
+    """Pull the last backup down before opening the database, if there is one.
+
+    Called once at startup. A missing backup (first run ever, or Spaces not
+    configured) is not an error — there's nothing to restore yet, and the
+    database starts empty exactly as it always has.
+    """
+    client, bucket = _spaces_client()
+    if not client:
+        return
+    key = os.path.basename(local_path)
+    try:
+        client.download_file(bucket, key, local_path)
+        log.info("Restored %s from the last Spaces backup.", local_path)
+    except Exception as e:
+        log.info("No existing Spaces backup for %s (%s) — starting fresh.", key, e)
+
+
+def backup_db_to_spaces(local_path: str) -> None:
+    """Push the current database up to Spaces. Cheap, so call it often."""
+    client, bucket = _spaces_client()
+    if not client or not os.path.exists(local_path):
+        return
+    key = os.path.basename(local_path)
+    try:
+        client.upload_file(local_path, bucket, key)
+        log.info("Backed up %s to Spaces.", local_path)
+    except Exception:
+        log.exception("Spaces backup failed — will retry next cycle")
+
+
+def publish_stats_to_spaces(evlog, dry_run: bool) -> None:
+    """Upload a small, PUBLIC JSON summary for a real dashboard to read.
+
+    Deliberately a separate object and a separate upload from the database
+    backup above: this one is meant to be public (a calibration summary
+    has nothing sensitive in it) and small enough for a browser to fetch
+    on every page load, where the full database is neither.
+    """
+    client, bucket = _spaces_client()
+    if not client:
+        return
+    try:
+        import json
+        summary = evlog.summary()
+        summary["dry_run"] = dry_run
+        summary["generated_at"] = datetime.now(timezone.utc).isoformat()
+        body = json.dumps(summary, default=str).encode("utf-8")
+        client.put_object(Bucket=bucket, Key="stats.json", Body=body,
+                          ContentType="application/json", ACL="public-read")
+        log.info("Published stats.json (%d evaluations, %d settled)",
+                 summary["total_evaluations"], summary["total_settled"])
+    except Exception:
+        log.exception("stats.json publish failed — will retry next cycle")
+
+
 def _resolve_bf_cert() -> tuple[str, str]:
     """Find the Betfair certificate, however this host makes it available.
 
@@ -801,7 +882,9 @@ class Runner:
                                      _env("BF_PASSWORD"), CFG.price_delay_s,
                                      cert, key)
         self.tg = Telegram()
-        self.evlog = EvalLog(_env("SURGE_DB", "surge.db"))
+        self.db_path = _env("SURGE_DB", "surge.db")
+        restore_db_from_spaces(self.db_path)
+        self.evlog = EvalLog(self.db_path)
         self.tracked: dict[str, Tracked] = {}
         self._last_settle = 0.0
 
@@ -925,6 +1008,8 @@ class Runner:
                 if start - self._last_settle > 300:
                     self.settle()
                     self.tg.flush_held()
+                    backup_db_to_spaces(self.db_path)
+                    publish_stats_to_spaces(self.evlog, DRY_RUN)
                     self._last_settle = start
             except Exception:
                 log.exception("Poll failed — continuing")
@@ -1029,6 +1114,28 @@ def _markets() -> None:
               f"· £{quote.matched:,.0f} matched · spread {quote.spread * 100:.1f}%")
 
 
+def _test_telegram() -> None:
+    """Send one real message, right now, regardless of dry run or the time.
+
+    This answers a narrower question than a full poll cycle does: not
+    "did a real alert condition fire" (that needs an actual match), but
+    "if one did, is the wiring to Telegram actually able to deliver it".
+    `force=True` bypasses quiet hours and the hourly rate limit, since a
+    test you asked for shouldn't get silently queued until morning.
+    """
+    load_dotenv()
+    tg = Telegram()
+    if not tg.enabled:
+        print("TG_BOT_TOKEN / TG_CHAT_ID not set — nothing to test.")
+        return
+    print(f"Sending a test message to chat {tg.chat}...")
+    ok = tg.send("✅ SURGE test — if you're reading this on your phone, "
+                "the bot can reach your Telegram.", force=True)
+    print("Sent — check your phone now." if ok
+          else "Send FAILED — see the warning/error above for why "
+               "(wrong token, wrong chat id, or bot never messaged first).")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
@@ -1036,5 +1143,7 @@ if __name__ == "__main__":
         _check()
     elif "--markets" in sys.argv:
         _markets()
+    elif "--test-telegram" in sys.argv:
+        _test_telegram()
     else:
         Runner().run()
