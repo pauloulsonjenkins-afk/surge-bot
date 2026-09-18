@@ -144,8 +144,16 @@ def _resolve_bf_cert() -> tuple[str, str]:
         tmp = tempfile.gettempdir()
         cert_out, key_out = f"{tmp}/bf_cert.crt", f"{tmp}/bf_key.key"
         try:
-            cert_bytes = base64.b64decode(b64_cert, validate=True)
-            key_bytes = base64.b64decode(b64_key, validate=True)
+            # Strip ALL whitespace first, not just leading/trailing — base64
+            # itself tolerates line breaks fine, but validate=True doesn't,
+            # and a console that soft-wraps a long line can hand back a copy
+            # with a stray newline in the middle. Stripping before decoding
+            # (rather than passing validate=True) treats that as harmless,
+            # which is what it actually is.
+            cert_clean = "".join(b64_cert.split())
+            key_clean = "".join(b64_key.split())
+            cert_bytes = base64.b64decode(cert_clean, validate=True)
+            key_bytes = base64.b64decode(key_clean, validate=True)
         except Exception as e:
             log.error("BF_CERT_B64 / BF_KEY_B64 don't decode as base64 (%s) "
                       "— check the whole output of `base64 -w0 ...` was "
