@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import sqlite3
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -70,6 +71,46 @@ def claim_single_instance(path: str = "/tmp/surge.lock"):
 
 API_BASE = "https://v3.football.api-sports.io"
 TG_API = "https://api.telegram.org/bot{token}/sendMessage"
+
+
+def load_dotenv(path: str = ".env") -> int:
+    """Read secrets from a file next to the script, never from the source.
+
+    This runs before Config is built, because Config reads the environment at
+    import time — a .env loaded afterwards would be ignored silently and every
+    setting would quietly fall back to its default.
+
+    Real environment variables win over the file, so App Platform settings or a
+    shell export can override .env without editing it. A missing file is not an
+    error: on a server you may prefer to export the variables directly.
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+    if not os.path.exists(p):
+        return 0
+    try:
+        mode = os.stat(p).st_mode
+        if mode & 0o077:
+            print(f"WARNING: {path} is readable by other users on this machine. "
+                  f"Run: chmod 600 {path}", file=sys.stderr)
+        n = 0
+        with open(p, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k, v = k.strip(), v.strip().strip('"').strip("'")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+                    n += 1
+        return n
+    except OSError as exc:
+        # A malformed or unreadable .env must not stop the container booting.
+        print(f"WARNING: could not read {path}: {exc}", file=sys.stderr)
+        return 0
+
+
+load_dotenv()
 
 
 def _env(k: str, d: str = "") -> str:
@@ -128,6 +169,10 @@ class Config:
 
     # staking (advisory — the alert tells you, it does not act)
     bank: float = field(default_factory=lambda: _f("SURGE_BANK", 500))
+    # Flat stake wins over Kelly while the model is unproven: Kelly sizes off a
+    # probability estimate, and sizing off an uncalibrated one is how a small
+    # edge error becomes a large bankroll error. Set to 0 to use Kelly.
+    flat_stake: float = field(default_factory=lambda: _f("SURGE_FLAT_STAKE", 2))
     max_stake_pct: float = field(default_factory=lambda: _f("SURGE_MAX_STAKE_PCT", 2))
     kelly_div: float = field(default_factory=lambda: _f("SURGE_KELLY_DIV", 4))
 
@@ -302,6 +347,8 @@ def kelly(p: float, odds: float, commission: float) -> float:
 
 
 def recommended_stake(p: float, odds: float) -> float:
+    if CFG.flat_stake > 0:
+        return round(min(CFG.flat_stake, CFG.bank * CFG.max_stake_pct / 100), 2)
     full = CFG.bank * kelly(p, odds, CFG.commission) / CFG.kelly_div
     return round(min(CFG.bank * CFG.max_stake_pct / 100, full), 2)
 
