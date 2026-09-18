@@ -1,4 +1,4 @@
-""""
+"""
 surge_live.py — the data layer. API-Football in, Betfair prices in, alerts out.
 
 This is the half `surge_alerts.py` was missing: it referenced `ExchangePrices`
@@ -842,7 +842,7 @@ class Runner:
             log.warning("DRY RUN — alerts print to stdout, nothing is sent")
         if not self.prices.login():
             log.error("Cannot reach Betfair — nothing can be priced. Stopping.")
-            return
+            sys.exit(1)
         while True:
             start = time.time()
             try:
