@@ -29,7 +29,6 @@ import requests
 
 log = logging.getLogger("surge")
 
-API_BASE = "https://v3.football.api-sports.io"
 TG_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 
@@ -276,8 +275,14 @@ def breakeven_prob(odds: float, commission: float) -> float:
     return 1 / ((odds - 1) * (1 - commission) + 1)
 
 
-def required_odds(p: float, commission: float) -> float:
-    return 1 + (1 - p) / (p * (1 - commission))
+def required_odds(p: float, commission: float, ev_target: float = 0.0) -> float:
+    """Lowest price at which a bet at probability p returns ev_target per £1.
+
+    ev_target=0 gives plain break-even. The floor of 0.02 on the denominator
+    stops a near-zero probability producing an absurd price rather than an
+    error — at that point the bet is not worth making at any price anyway.
+    """
+    return 1 + (ev_target + 1 - p) / max(0.02, p * (1 - commission))
 
 
 def kelly(p: float, odds: float, commission: float) -> float:
@@ -362,16 +367,6 @@ class Match:
         )
 
 
-@dataclass
-class Gate:
-    key: str
-    name: str
-    ok: bool
-    value: str
-    need: str
-    blocker: str = ""
-
-
 def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = None,
              market_id: str = "") -> dict[str, Any]:
     """One number decides it: expected value per £1 staked.
@@ -427,7 +422,7 @@ def evaluate(m: Match, prev10: Match | None, prices: "ExchangePrices | None" = N
 
     ev = p_used * (proj_odds - 1) * (1 - CFG.commission) - (1 - p_used)
     ev_floor = CFG.min_ev + d_min * 0.01     # extra return for not knowing the price
-    min_price = 1 + (ev_floor + 1 - p_used) / max(0.02, p_used * (1 - CFG.commission))
+    min_price = required_odds(p_used, CFG.commission, ev_floor)
 
     d, total = abs(m.hg - m.ag), m.hg + m.ag
     hard = [
@@ -613,6 +608,11 @@ class EvalLog:
         self._lock = threading.Lock()
 
     def record(self, m: Match, r: dict, alerted: bool) -> None:
+        # r.get, not r["green"]: the `green` column exists in the schema but
+        # `evaluate()` never actually computes a "green" value — that's a
+        # gap in the model itself, predating this fix. Logging NULL for it
+        # keeps every OTHER evaluation from being lost to a crash; it
+        # doesn't answer what "green" was meant to measure.
         with self._lock:
             self.db.execute(
                 "INSERT INTO evaluations (ts,fixture_id,league,minute,score,tempo,"
@@ -620,7 +620,7 @@ class EvalLog:
                 "alerted,outcome) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)",
                 (datetime.now(timezone.utc).isoformat(), m.fid, m.league, m.minute,
                  f"{m.hg}-{m.ag}", r["tempo"], r["pressure"], r["slope"], r["lag"],
-                 r["p"], m.odds, r["be"], r["edge"], r["green"], r["tier"],
+                 r["p"], m.odds, r["be"], r["edge"], r.get("green"), r["tier"],
                  1 if alerted else 0))
             self.db.commit()
 
