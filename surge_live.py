@@ -222,6 +222,7 @@ WANTED_STATS = {
 
 LIVE_STATUS = {"1H", "2H", "HT", "ET", "BT", "P", "LIVE", "SUSP", "INT"}
 DONE_STATUS = {"FT", "AET", "PEN", "PST", "CANC", "ABD", "AWD", "WO"}
+STATS_REQUEST_GAP_S = _f("SURGE_AF_REQUEST_GAP", 0.15)
 
 
 class ApiFootballFeed:
@@ -349,16 +350,28 @@ class ApiFootballFeed:
 
     def matches(self) -> list[Match]:
         found = []
-        for fx in self.inplay():
-            status = ((fx.get("fixture") or {}).get("status") or {}).get("short", "").upper()
-            if status in DONE_STATUS:
-                continue
+        fixtures = [fx for fx in self.inplay()
+                    if ((fx.get("fixture") or {}).get("status") or {}).get("short", "").upper()
+                    not in DONE_STATUS]
+        for i, fx in enumerate(fixtures):
             home, away = self._teams(fx)
             if not home or not away:
                 continue
             fixture_id = (fx.get("fixture") or {}).get("id")
             home_id = ((fx.get("teams") or {}).get("home") or {}).get("id")
             hg, ag = self._score(fx)
+            if i > 0:
+                # Without this, N fixtures live means N statistics calls
+                # fired back-to-back in well under a second — fine against a
+                # daily quota, but plenty of plans also cap requests *per
+                # minute*, and a burst like that trips it even though the
+                # steady-state average across the poll is nowhere near the
+                # limit. This spreads them out instead of firing all at
+                # once. It can't rescue a plan capped below roughly one
+                # request per second sustained — if fixture counts routinely
+                # hit that, the plan itself needs a higher tier, not slower
+                # code.
+                time.sleep(STATS_REQUEST_GAP_S)
             s = self._stats(fixture_id, home_id)
             found.append(Match(
                 fid=str(fixture_id),
