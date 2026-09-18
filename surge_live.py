@@ -876,9 +876,21 @@ class Runner:
                  (CFG.min_ev + CFG.price_delay_s / 60 * 0.01) * 100)
         if DRY_RUN:
             log.warning("DRY RUN — alerts print to stdout, nothing is sent")
-        if not self.prices.login():
-            log.error("Cannot reach Betfair — nothing can be priced. Stopping.")
-            sys.exit(1)
+        # A platform-as-a-service worker (DigitalOcean and similar) treats
+        # any process exit — including a deliberate one on a config problem
+        # — as a crash, and auto-rolls back to the last deployment that
+        # didn't exit. That silently undoes every fix pushed while Betfair
+        # is unreachable, which looks exactly like "my changes aren't
+        # taking" even though they are. So this never exits over a login
+        # failure: it logs clearly and keeps retrying, the way a real
+        # always-on service should behave when a dependency is down.
+        backoff = 30
+        while not self.prices.login():
+            log.error("Cannot reach Betfair — retrying in %ds. Nothing is "
+                      "priced or sent while this repeats; the message above "
+                      "this one says why.", backoff)
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 300)
         while True:
             start = time.time()
             try:
