@@ -90,6 +90,30 @@ MAX_SPREAD = _f("SURGE_MAX_SPREAD", 0.08)
 DRY_RUN = _env("SURGE_DRY_RUN", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _validate_pem_pair(cert_path: str, key_path: str) -> None:
+    """Fail loudly and specifically, before the SSL layer fails vaguely.
+
+    A malformed certificate surfaces as `[SSL] PEM lib` deep inside a
+    connection attempt — technically accurate, useless for figuring out
+    what to fix. Loading it directly here, at startup, turns that into an
+    error that names the actual problem: which file, and what's wrong
+    with it.
+    """
+    import ssl
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    try:
+        ctx.load_cert_chain(cert_path, key_path)
+    except ssl.SSLError as e:
+        log.error(
+            "The Betfair certificate/key don't parse as valid PEM (%s). "
+            "If you pasted these into BF_CERT_PEM/BF_KEY_PEM, check you "
+            "copied the WHOLE file, including the "
+            "-----BEGIN...----- and -----END...----- lines, with nothing "
+            "added or missing.", e)
+    except FileNotFoundError:
+        pass  # caller already checked existence where that matters
+
+
 def _resolve_bf_cert() -> tuple[str, str]:
     """Find the Betfair certificate, however this host makes it available.
 
@@ -108,13 +132,21 @@ def _resolve_bf_cert() -> tuple[str, str]:
         return path, key
     pem, pem_key = _env("BF_CERT_PEM"), _env("BF_KEY_PEM")
     if pem and pem_key:
+        # Some dashboards store a multi-line variable as one line, turning
+        # real newlines into the two characters '\' and 'n'. A PEM file is
+        # meaningless without its line breaks, so undo that if it happened —
+        # harmless if the value already had real newlines, since correctly
+        # pasted PEM text never contains a literal backslash-n sequence.
+        pem = pem.strip().replace("\\n", "\n")
+        pem_key = pem_key.strip().replace("\\n", "\n")
         import tempfile
         tmp = tempfile.gettempdir()
         cert_out, key_out = f"{tmp}/bf_cert.crt", f"{tmp}/bf_key.key"
         with open(cert_out, "w", encoding="utf-8") as fh:
-            fh.write(pem)
+            fh.write(pem + "\n")
         with open(key_out, "w", encoding="utf-8") as fh:
-            fh.write(pem_key)
+            fh.write(pem_key + "\n")
+        _validate_pem_pair(cert_out, key_out)
         return cert_out, key_out
     return "", ""
 
