@@ -33,6 +33,9 @@ class AlreadyRunning(Exception):
     """Another copy of the poller holds the lock."""
 
 
+_LOCK_HANDLE = None          # module-level so it cannot be garbage collected
+
+
 def claim_single_instance(path: str = "/tmp/surge.lock"):
     """Refuse to start if another copy is already running.
 
@@ -42,16 +45,28 @@ def claim_single_instance(path: str = "/tmp/surge.lock"):
     17:50:44 one second apart. The lock is held for the life of the process and
     released by the OS if it dies, so a crash cannot leave it stuck.
     """
-    import fcntl
-    fh = open(path, "w")
+    global _LOCK_HANDLE
+    if _flag("SURGE_ALLOW_MULTI", False):
+        log.warning("SURGE_ALLOW_MULTI is set — duplicate instances permitted")
+        return None
     try:
+        import fcntl
+    except ImportError:            # not a Unix host; nothing to lock against
+        return None
+    try:
+        fh = open(path, "w")
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        raise AlreadyRunning(
-            f"another instance holds {path} — stop it before starting this one")
+    except OSError as exc:
+        if isinstance(exc, BlockingIOError) or getattr(exc, "errno", None) in (11, 35):
+            raise AlreadyRunning(
+                f"another instance holds {path} — stop it before starting this one")
+        # An unwritable /tmp is a reason to log, not a reason to refuse to run.
+        log.warning("Could not take the instance lock (%s) — continuing without it", exc)
+        return None
     fh.write(str(os.getpid()))
     fh.flush()
-    return fh                     # keep the handle alive or the lock drops
+    _LOCK_HANDLE = fh              # held here so the caller cannot drop it
+    return fh
 
 API_BASE = "https://v3.football.api-sports.io"
 TG_API = "https://api.telegram.org/bot{token}/sendMessage"
@@ -149,7 +164,42 @@ LEAGUE_GPG = {
 # asked to find markets that do not exist. Evaluating them burned quota on
 # matches that could never be bet, which is most of why the rate limit kept
 # tripping. Empty set means allow everything.
-BETFAIR_LEAGUES = {int(x) for x in _env("SURGE_LEAGUE_IDS", "").replace(" ", "").split(",") if x}
+# Accepts ids, names, or a mix, and never raises. Config is typed by a human
+# under time pressure; a bad character in an environment variable must not be
+# able to kill a container at import time.
+LEAGUE_IDS_BY_NAME = {
+    "premier league": 39, "championship": 40, "league one": 41, "league two": 42,
+    "la liga": 140, "serie a": 135, "bundesliga": 78, "ligue 1": 61,
+    "eredivisie": 88, "primeira liga": 94, "liga portugal": 94,
+    "champions league": 2, "europa league": 3,
+    "eerste divisie": 89, "allsvenskan": 113, "superettan": 114,
+    "eliteserien": 103, "veikkausliiga": 244, "superliga": 119,
+    "ekstraklasa": 106, "super lig": 203, "liga mx": 262,
+    "serie a brazil": 71, "liga profesional": 128, "premier division": 357,
+}
+
+
+def _parse_leagues(raw: str) -> set[int]:
+    out, ignored = set(), []
+    for part in raw.replace(";", ",").split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if token.isdigit():
+            out.add(int(token))
+            continue
+        hit = LEAGUE_IDS_BY_NAME.get(token.lower())
+        if hit:
+            out.add(hit)
+        else:
+            ignored.append(token)
+    if ignored:
+        log.warning("SURGE_LEAGUE_IDS: ignoring unrecognised %s — use numeric ids "
+                    "or a known name. Running without those.", ignored)
+    return out
+
+
+BETFAIR_LEAGUES = _parse_leagues(_env("SURGE_LEAGUE_IDS", ""))
 
 
 def betfair_prices_it(league_id: int) -> bool:
@@ -686,6 +736,33 @@ def _test() -> None:
         print("\nSet TG_BOT_TOKEN and TG_CHAT_ID to send it.")
 
 
+def run_forever(poll_fn=None, interval: int | None = None) -> None:
+    """Worker entrypoint. Stays alive, because a process that returns is a
+    deploy failure on every platform that supervises workers.
+
+    Pass your own poll function; the default just heartbeats so a container has
+    something to run while the feed is being wired up.
+    """
+    interval = interval or CFG.live_poll_s
+    log.info("Surge worker up (pid %d), polling every %ds", os.getpid(), interval)
+    tg = Telegram()
+    beats = 0
+    while True:
+        started = time.time()
+        try:
+            if poll_fn:
+                poll_fn()
+            else:
+                beats += 1
+                if beats % 60 == 1:
+                    log.info("Heartbeat — no poll function wired yet")
+        except Exception:
+            # One bad cycle must not take the worker down. A crashed container
+            # stops alerting silently, which is worse than a logged error.
+            log.exception("Poll cycle failed — continuing")
+        time.sleep(max(1.0, interval - (time.time() - started)))
+
+
 if __name__ == "__main__":
     import sys
 
@@ -694,16 +771,15 @@ if __name__ == "__main__":
 
     if "--test" in sys.argv:
         _test()
-    else:
-        # Taken before anything else so a duplicate exits immediately rather
-        # than running far enough to corrupt the database it shares.
-        try:
-            _lock = claim_single_instance()
-            log.info("Instance lock acquired (pid %d)", os.getpid())
-        except AlreadyRunning as exc:
-            log.error("Refusing to start: %s", exc)
-            sys.exit(1)
+        sys.exit(0)
 
-        print(__doc__)
-        print("Run with --test first. The live poller needs APIFOOTBALL_KEY set\n"
-              "and a league whitelist in SURGE_LEAGUE_IDS.")
+    try:
+        claim_single_instance()
+        log.info("Instance lock acquired (pid %d)", os.getpid())
+    except AlreadyRunning as exc:
+        # Exit CLEANLY. A duplicate is a condition to report, not a build
+        # failure — a non-zero code here marks the whole deploy as broken.
+        log.error("Not starting: %s", exc)
+        sys.exit(0)
+
+    run_forever()
