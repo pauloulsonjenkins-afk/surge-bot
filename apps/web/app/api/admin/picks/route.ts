@@ -3,6 +3,12 @@ import { cookies } from "next/headers";
 import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchRecentPicks } from "@/server/engine-client";
 
+// Force the Node.js runtime (not Edge): Edge functions can't reach the
+// app's internal DigitalOcean networking, which is why fetch() to the
+// engine's internal address was hanging until the platform's own timeout.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
   if (!(await verifySessionToken(token))) {
