@@ -1,10 +1,14 @@
 /**
- * The engine's HTTP interface. Two routes:
+ * The engine's HTTP interface. Routes:
  *
  *   GET  /health                               DigitalOcean's health check
  *   POST /webhooks/inplayguru/<path token>     InPlayGuru picks
+ *   GET  /internal/picks                        recent captured picks (admin site only)
  *
- * The request URL contains the secret path token, so URLs are never logged.
+ * The webhook URL contains the secret path token, so URLs are never logged.
+ * /internal/picks is protected separately by ADMIN_INTERNAL_KEY, checked as
+ * a Bearer token — it's meant to be called server-to-server by the admin
+ * site, not opened directly in a browser.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { EngineDb } from "../storage/engine-db";
@@ -58,12 +62,34 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
   });
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const path = (req.url ?? "/").split("?")[0] ?? "/";
+    const rawUrl = req.url ?? "/";
+    const path = rawUrl.split("?")[0] ?? "/";
 
     if (req.method === "GET" && path === "/health") {
       // Stays 200 even if backups are failing: a failed health check makes
       // DigitalOcean restart the container, which would lose un-backed-up data.
       send(res, 200, { ok: true, webhooksStored: db.countWebhooks(), backup: backups.getStatus() });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/picks") {
+      const internalKey = process.env.ADMIN_INTERNAL_KEY;
+      if (!internalKey) {
+        log.warn("GET /internal/picks called but ADMIN_INTERNAL_KEY is not set on the engine.");
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      const authHeader = req.headers["authorization"];
+      const authValue = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+      const provided = authValue?.startsWith("Bearer ") ? authValue.slice(7) : "";
+      if (!verifyPathToken(provided, internalKey)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const url = new URL(rawUrl, "http://internal");
+      const limitParam = Number(url.searchParams.get("limit"));
+      const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
+      send(res, 200, { picks: db.listRecentWebhooks(limit) });
       return;
     }
 
