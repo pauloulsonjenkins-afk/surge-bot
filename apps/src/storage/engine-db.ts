@@ -21,6 +21,10 @@ export interface CapturedWebhook {
   body: string;
 }
 
+export interface StoredWebhook extends CapturedWebhook {
+  id: number;
+}
+
 export class EngineDb {
   private readonly db: Database.Database;
   private readonly onChange: () => void;
@@ -72,6 +76,34 @@ export class EngineDb {
   countWebhooks(): number {
     const row = this.db.prepare(`SELECT COUNT(*) AS n FROM inplayguru_webhooks`).get() as { n: number };
     return row.n;
+  }
+
+  /** Most recently captured webhooks, newest first. For the admin site's "picks received" view. */
+  listRecentWebhooks(limit = 50): StoredWebhook[] {
+    const capped = Math.min(Math.max(limit, 1), 200);
+    const rows = this.db
+      .prepare(
+        `SELECT id, received_at, body_sha256, content_type, signature_verified, body
+         FROM inplayguru_webhooks
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(capped) as Array<{
+      id: number;
+      received_at: string;
+      body_sha256: string;
+      content_type: string | null;
+      signature_verified: number;
+      body: string;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      receivedAt: r.received_at,
+      bodySha256: r.body_sha256,
+      contentType: r.content_type,
+      signatureVerified: !!r.signature_verified,
+      body: r.body,
+    }));
   }
 
   /** Writes a consistent copy of the whole database to `destPath`, safe while the service is running. */
