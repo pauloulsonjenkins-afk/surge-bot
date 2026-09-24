@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Tokens grounded in the subject: a live odds/trading shell. The accent is
+ * an amber, closer to a dot-matrix sportsbook board than a generic
+ * acid-green "AI dashboard" glow. Numerals use tabular-nums throughout so
+ * scores and prices don't jitter as digits change.
+ */
+:root {
+  --app: #0e1116;
+  --surface: #12161d;
+  --surface-2: #171c25;
+  --line: #242a33;
+  --ink: #e7e9ec;
+  --ink-muted: #8b93a1;
+  --accent: #e8a33d;
+  --accent-ink: #17110a;
+  --danger: #e8613d;
+}
+
+body {
+  font-feature-settings: "tnum" 1;
+}
