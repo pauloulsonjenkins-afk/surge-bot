@@ -5,7 +5,7 @@ const ITEMS = [
   {
     href: "/more/admin/telegram",
     label: "Admin",
-    description: "Telegram, staking, data feed, Betfair and more — password protected.",
+    description: "Telegram, staking, data feed and more â€” password protected.",
     icon: ShieldCheck,
   },
   {
@@ -48,4 +48,5 @@ export default function MorePage() {
       </ul>
     </div>
   );
+
 }
