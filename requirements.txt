@@ -2,3 +2,5 @@ requests
 flask
 gunicorn
 boto3
+schedule
+beautifulsoup4
