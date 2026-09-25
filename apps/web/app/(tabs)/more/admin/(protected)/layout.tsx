@@ -12,7 +12,6 @@ const ADMIN_SECTIONS = [
   { href: "/more/admin/data-feed", label: "Data Feed" },
   { href: "/more/admin/break-even", label: "Break-even" },
   { href: "/more/admin/model", label: "The Model" },
-  { href: "/more/admin/betfair", label: "Betfair" },
 ];
 
 export default async function ProtectedAdminLayout({
@@ -21,7 +20,7 @@ export default async function ProtectedAdminLayout({
   children: React.ReactNode;
 }) {
   // Authoritative check. Runs server-side on every request to any nested
-  // admin route — a client-side flag can't substitute for this because it
+  // admin route â€” a client-side flag can't substitute for this because it
   // never touches the actual secret and can be flipped in devtools.
   const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
   const authed = await verifySessionToken(token);
@@ -52,4 +51,5 @@ export default async function ProtectedAdminLayout({
       <div className="flex-1 px-4 py-4">{children}</div>
     </div>
   );
+
 }
