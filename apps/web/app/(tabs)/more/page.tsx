@@ -33,3 +33,20 @@ export default function MorePage() {
             <Link
               href={href}
               className="flex items-center gap-3 px-3 py-3 active:bg-surface-2"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-2 text-accent">
+                <Icon size={18} />
+              </span>
+              <span className="flex-1">
+                <span className="block text-sm font-medium text-ink">{label}</span>
+                <span className="block text-xs text-ink-muted">{description}</span>
+              </span>
+              <ChevronRight size={16} className="text-ink-muted" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+}
