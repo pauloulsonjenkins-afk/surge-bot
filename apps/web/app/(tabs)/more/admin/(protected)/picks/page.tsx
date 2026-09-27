@@ -38,3 +38,8 @@ export default function PicksPage() {
               </tr>
             ))}
           </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
