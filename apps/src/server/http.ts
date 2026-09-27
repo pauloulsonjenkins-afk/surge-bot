@@ -264,15 +264,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       try {
-        const dialogs = await activeTelegramClient.getDialogs({ limit: 50 });
-        const chats = dialogs
-          .filter((d) => d.isGroup || d.isChannel)
-          .map((d) => ({
-            id: d.id?.toString() ?? "",
-            title: d.title ?? "(untitled)",
-            isChannel: !!d.isChannel,
-            isGroup: !!d.isGroup,
-          }));
+        const dialogs = await activeTelegramClient.getDialogs({ limit: 80 });
+        // No group/channel filter: InPlayGuru can deliver as a group post OR
+        // as a DM from a personal alerts bot (a "bot" dialog looks like a
+        // private chat, not a group/channel) — list everything and let the
+        // admin pick the right one.
+        const chats = dialogs.map((d) => {
+          const entity = d.entity as { bot?: boolean; username?: string } | undefined;
+          const kind = d.isChannel ? "channel" : d.isGroup ? "group" : entity?.bot ? "bot" : "person";
+          const title = d.title || (entity?.username ? `@${entity.username}` : "(untitled)");
+          return { id: d.id?.toString() ?? "", title, kind };
+        });
         send(res, 200, { chats });
       } catch (err) {
         send(res, 500, { error: err instanceof Error ? err.message : String(err) });

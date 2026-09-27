@@ -7,8 +7,7 @@ type LoginStatus = "idle" | "connecting" | "awaiting_code" | "awaiting_password"
 interface Chat {
   id: string;
   title: string;
-  isChannel: boolean;
-  isGroup: boolean;
+  kind: "channel" | "group" | "bot" | "person";
 }
 
 async function postJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
@@ -159,12 +158,15 @@ export default function TelegramPage() {
         </div>
       ) : status === "logged_in" && chats ? (
         <div className="mt-4 space-y-2">
-          <p className="text-sm text-ink-muted">Pick the chat InPlayGuru's alerts land in:</p>
+          <p className="text-sm text-ink-muted">
+            Pick the chat InPlayGuru's alerts land in — look for the personal alerts bot (labelled "bot" below), not
+            a group.
+          </p>
           <ul className="divide-y divide-line rounded-lg border border-line">
             {chats.map((c) => (
               <li key={c.id} className="flex items-center justify-between px-3 py-2">
                 <span className="text-sm text-ink">
-                  {c.title} <span className="text-xs text-ink-muted">({c.isChannel ? "channel" : "group"})</span>
+                  {c.title} <span className="text-xs text-ink-muted">({c.kind})</span>
                 </span>
                 <button
                   disabled={busy}
@@ -176,7 +178,7 @@ export default function TelegramPage() {
               </li>
             ))}
           </ul>
-          {chats.length === 0 && <p className="text-sm text-ink-muted">No groups or channels found on this account.</p>}
+          {chats.length === 0 && <p className="text-sm text-ink-muted">No chats found on this account.</p>}
           {sessionString && (
             <div className="mt-2">
               <p className="mb-1 text-xs font-medium text-ink-muted">

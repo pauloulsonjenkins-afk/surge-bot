@@ -7,8 +7,7 @@
 export interface TelegramChat {
   id: string;
   title: string;
-  isChannel: boolean;
-  isGroup: boolean;
+  kind: "channel" | "group" | "bot" | "person";
 }
 
 export interface TelegramLoginStatus {
