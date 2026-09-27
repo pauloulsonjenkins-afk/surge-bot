@@ -201,27 +201,34 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
       loginFlow.reset();
       loginFlow.status = "connecting";
-      const client = createTelegramClient(apiId, apiHash);
-      activeTelegramClient = client;
-
-      client
-        .start({
-          phoneNumber: async () => phoneNumber,
-          phoneCode: async () => loginFlow.waitForCode(),
-          password: async () => loginFlow.waitForPassword(),
-          onError: (err) => log.error(`Telegram login error: ${err.message}`),
-        })
-        .then(() => {
-          const sessionString = client.session.save() as unknown as string;
-          loginFlow.succeed(sessionString);
-          log.info("Telegram login succeeded; session string ready to save as TELEGRAM_SESSION.");
-        })
-        .catch((err) => {
-          loginFlow.fail(err instanceof Error ? err.message : String(err));
-          activeTelegramClient = null;
-        });
-
+      // Reply immediately, before touching GramJS: client.start() does real
+      // synchronous crypto/key-exchange work the instant it's called, which
+      // was delaying this response long enough for DigitalOcean's own proxy
+      // to time it out with a 504 before Node ever got to send anything.
+      // Deferring to the next tick guarantees this response goes out first.
       send(res, 200, { status: "started" });
+
+      setImmediate(() => {
+        const client = createTelegramClient(apiId, apiHash);
+        activeTelegramClient = client;
+
+        client
+          .start({
+            phoneNumber: async () => phoneNumber,
+            phoneCode: async () => loginFlow.waitForCode(),
+            password: async () => loginFlow.waitForPassword(),
+            onError: (err) => log.error(`Telegram login error: ${err.message}`),
+          })
+          .then(() => {
+            const sessionString = client.session.save() as unknown as string;
+            loginFlow.succeed(sessionString);
+            log.info("Telegram login succeeded; session string ready to save as TELEGRAM_SESSION.");
+          })
+          .catch((err) => {
+            loginFlow.fail(err instanceof Error ? err.message : String(err));
+            activeTelegramClient = null;
+          });
+      });
       return;
     }
 
