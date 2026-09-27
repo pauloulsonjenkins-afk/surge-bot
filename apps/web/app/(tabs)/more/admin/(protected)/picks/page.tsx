@@ -9,7 +9,7 @@ export default function PicksPage() {
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-2">Picks received</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        Every InPlayGuru pick the engine has actually captured, most recent first. This is real
+        Every live pick the engine has actually captured, most recent first. This is real
         data from the engine&rsquo;s database, not a mock — it has nothing to do with the trades
         shown on the main dashboard, since no trades have been placed yet.
       </p>
@@ -38,8 +38,3 @@ export default function PicksPage() {
               </tr>
             ))}
           </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
