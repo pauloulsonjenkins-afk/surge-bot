@@ -8,6 +8,8 @@ import { loadServerEnv } from "./server-env";
 import { createEngineHttpServer } from "./http";
 import { EngineDb } from "../storage/engine-db";
 import { BackupScheduler, SpacesSync } from "../storage/spaces-sync";
+import { createTelegramClient } from "../telegram/client";
+import { startTelegramListener } from "../telegram/listener";
 import { log } from "./log";
 
 async function main(): Promise<void> {
@@ -39,6 +41,29 @@ async function main(): Promise<void> {
 
   const server = createEngineHttpServer(env, db, backups);
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));
+
+  // If a Telegram session was already completed via the admin Telegram tab
+  // and saved as env vars, resume listening on restart without needing to
+  // log in again. Until all four vars are set, this is a no-op — use the
+  // admin Telegram tab to run the login flow first.
+  const tgApiId = process.env.TELEGRAM_API_ID;
+  const tgApiHash = process.env.TELEGRAM_API_HASH;
+  const tgSession = process.env.TELEGRAM_SESSION;
+  const tgChatId = process.env.TELEGRAM_SOURCE_CHAT_ID;
+  if (tgApiId && tgApiHash && tgSession && tgChatId) {
+    try {
+      const client = createTelegramClient(Number(tgApiId), tgApiHash, tgSession);
+      await client.connect();
+      await startTelegramListener(client, db, tgChatId);
+      log.info("Telegram listener resumed from saved session.");
+    } catch (err) {
+      log.error(
+        `Failed to resume the Telegram listener from the saved session: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  } else {
+    log.info("Telegram env vars not fully set yet; log in via the admin Telegram tab first.");
+  }
 
   let stopping = false;
   const shutdown = async (signal: string) => {

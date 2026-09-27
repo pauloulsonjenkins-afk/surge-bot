@@ -4,18 +4,28 @@
  *   GET  /health                               DigitalOcean's health check
  *   POST /webhooks/inplayguru/<path token>     InPlayGuru picks
  *   GET  /internal/picks                        recent captured picks (admin site only)
+ *   POST /internal/telegram/login/start         begin Telegram user-session login
+ *   POST /internal/telegram/login/code          submit the SMS/app login code
+ *   POST /internal/telegram/login/password      submit the 2FA password, if any
+ *   GET  /internal/telegram/login/status        poll login progress
+ *   GET  /internal/telegram/login/chats         list chats once logged in
+ *   POST /internal/telegram/login/watch         pick which chat to watch and start listening
  *
  * The webhook URL contains the secret path token, so URLs are never logged.
- * /internal/picks is protected separately by ADMIN_INTERNAL_KEY, checked as
- * a Bearer token — it's meant to be called server-to-server by the admin
- * site, not opened directly in a browser.
+ * /internal/* routes are protected separately by ADMIN_INTERNAL_KEY, checked
+ * as a Bearer token — they're meant to be called server-to-server by the
+ * admin site, not opened directly in a browser.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { TelegramClient } from "telegram";
 import type { EngineDb } from "../storage/engine-db";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
 import { verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
 import { handleVerifiedPick } from "../inplayguru/receiver";
+import { createTelegramClient } from "../telegram/client";
+import { loginFlow } from "../telegram/session-flow";
+import { startTelegramListener } from "../telegram/listener";
 import { log } from "./log";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -53,6 +63,29 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const raw = await readBody(req);
+  if (raw.length === 0) return {};
+  try {
+    return JSON.parse(raw.toString("utf8")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function isAdminAuthorized(req: IncomingMessage): boolean {
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!internalKey) return false;
+  const authHeader = req.headers["authorization"];
+  const authValue = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+  const provided = authValue?.startsWith("Bearer ") ? authValue.slice(7) : "";
+  return verifyPathToken(provided, internalKey);
+}
+
+// Holds the client across the multi-step login handshake, and afterwards as
+// the live listener connection for the rest of this process's lifetime.
+let activeTelegramClient: TelegramClient | null = null;
+
 export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: BackupScheduler): Server {
   return createServer((req, res) => {
     handle(req, res).catch((err) => {
@@ -79,10 +112,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 500, { error: "not_configured" });
         return;
       }
-      const authHeader = req.headers["authorization"];
-      const authValue = Array.isArray(authHeader) ? authHeader[0] : authHeader;
-      const provided = authValue?.startsWith("Bearer ") ? authValue.slice(7) : "";
-      if (!verifyPathToken(provided, internalKey)) {
+      if (!isAdminAuthorized(req)) {
         send(res, 401, { error: "unauthorized" });
         return;
       }
@@ -90,6 +120,15 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const limitParam = Number(url.searchParams.get("limit"));
       const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
       send(res, 200, { picks: db.listRecentWebhooks(limit) });
+      return;
+    }
+
+    if (path.startsWith("/internal/telegram/")) {
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      await handleTelegramAdmin(req, res, path, db);
       return;
     }
 
@@ -129,6 +168,140 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
       const outcome = handleVerifiedPick(db, body, req.headers["content-type"] ?? null, signatureVerified);
       send(res, 200, { status: outcome });
+      return;
+    }
+
+    send(res, 404, { error: "not_found" });
+  }
+
+  async function handleTelegramAdmin(
+    req: IncomingMessage,
+    res: ServerResponse,
+    path: string,
+    dbRef: EngineDb,
+  ): Promise<void> {
+    if (req.method === "POST" && path === "/internal/telegram/login/start") {
+      const apiIdRaw = process.env.TELEGRAM_API_ID;
+      const apiHash = process.env.TELEGRAM_API_HASH;
+      if (!apiIdRaw || !apiHash) {
+        send(res, 500, { error: "TELEGRAM_API_ID and TELEGRAM_API_HASH must be set on the engine first." });
+        return;
+      }
+      const apiId = Number(apiIdRaw);
+      const body = await readJsonBody(req);
+      const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
+      if (!phoneNumber) {
+        send(res, 400, { error: "phoneNumber is required." });
+        return;
+      }
+      if (loginFlow.status === "connecting" || loginFlow.status === "awaiting_code" || loginFlow.status === "awaiting_password") {
+        send(res, 409, { error: "A login is already in progress.", status: loginFlow.status });
+        return;
+      }
+
+      loginFlow.reset();
+      loginFlow.status = "connecting";
+      const client = createTelegramClient(apiId, apiHash);
+      activeTelegramClient = client;
+
+      client
+        .start({
+          phoneNumber: async () => phoneNumber,
+          phoneCode: async () => loginFlow.waitForCode(),
+          password: async () => loginFlow.waitForPassword(),
+          onError: (err) => log.error(`Telegram login error: ${err.message}`),
+        })
+        .then(() => {
+          const sessionString = client.session.save() as unknown as string;
+          loginFlow.succeed(sessionString);
+          log.info("Telegram login succeeded; session string ready to save as TELEGRAM_SESSION.");
+        })
+        .catch((err) => {
+          loginFlow.fail(err instanceof Error ? err.message : String(err));
+          activeTelegramClient = null;
+        });
+
+      send(res, 200, { status: "started" });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/telegram/login/code") {
+      const body = await readJsonBody(req);
+      const code = typeof body.code === "string" ? body.code.trim() : "";
+      if (!code) {
+        send(res, 400, { error: "code is required." });
+        return;
+      }
+      const ok = loginFlow.submitCode(code);
+      send(res, ok ? 200 : 409, { status: loginFlow.status, accepted: ok });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/telegram/login/password") {
+      const body = await readJsonBody(req);
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!password) {
+        send(res, 400, { error: "password is required." });
+        return;
+      }
+      const ok = loginFlow.submitPassword(password);
+      send(res, ok ? 200 : 409, { status: loginFlow.status, accepted: ok });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/telegram/login/status") {
+      send(res, 200, {
+        status: loginFlow.status,
+        error: loginFlow.error,
+        sessionString: loginFlow.sessionString,
+      });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/telegram/login/chats") {
+      if (!activeTelegramClient || loginFlow.status !== "logged_in") {
+        send(res, 409, { error: "Not logged in yet." });
+        return;
+      }
+      try {
+        const dialogs = await activeTelegramClient.getDialogs({ limit: 50 });
+        const chats = dialogs
+          .filter((d) => d.isGroup || d.isChannel)
+          .map((d) => ({
+            id: d.id?.toString() ?? "",
+            title: d.title ?? "(untitled)",
+            isChannel: !!d.isChannel,
+            isGroup: !!d.isGroup,
+          }));
+        send(res, 200, { chats });
+      } catch (err) {
+        send(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/telegram/login/watch") {
+      if (!activeTelegramClient || loginFlow.status !== "logged_in") {
+        send(res, 409, { error: "Not logged in yet." });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
+      if (!chatId) {
+        send(res, 400, { error: "chatId is required." });
+        return;
+      }
+      try {
+        await startTelegramListener(activeTelegramClient, dbRef, chatId);
+        send(res, 200, {
+          status: "watching",
+          chatId,
+          sessionString: loginFlow.sessionString,
+          note: "Save TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION and TELEGRAM_SOURCE_CHAT_ID (this chat id) as env vars so this survives a redeploy.",
+        });
+      } catch (err) {
+        send(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      }
       return;
     }
 
