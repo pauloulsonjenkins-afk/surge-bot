@@ -181,6 +181,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     dbRef: EngineDb,
   ): Promise<void> {
     if (req.method === "POST" && path === "/internal/telegram/login/start") {
+      log.info("Received POST /internal/telegram/login/start.");
       const apiIdRaw = process.env.TELEGRAM_API_ID;
       const apiHash = process.env.TELEGRAM_API_HASH;
       if (!apiIdRaw || !apiHash) {
@@ -189,6 +190,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       const apiId = Number(apiIdRaw);
       const body = await readJsonBody(req);
+      log.info("Parsed request body for Telegram login start.");
       const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
       if (!phoneNumber) {
         send(res, 400, { error: "phoneNumber is required." });
@@ -201,6 +203,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
       loginFlow.reset();
       loginFlow.status = "connecting";
+      log.info("About to send 'started' response for Telegram login.");
       // Reply immediately, before touching GramJS: client.start() does real
       // synchronous crypto/key-exchange work the instant it's called, which
       // was delaying this response long enough for DigitalOcean's own proxy
