@@ -16,6 +16,7 @@ const whenFmt = new Intl.DateTimeFormat("en-GB", {
 });
 
 interface Form {
+  maxStake: string;
   maxAgeMinutes: string;
   dailyCap: string;
   bttsMarketType: string;
@@ -25,6 +26,7 @@ interface Form {
 
 function toForm(s: SendingSettings): Form {
   return {
+    maxStake: String(s.maxStake),
     maxAgeMinutes: String(s.maxAgeMinutes),
     dailyCap: String(s.dailyCap),
     bttsMarketType: s.bttsMarketType,
@@ -50,6 +52,9 @@ export default function SendingPage() {
   const save = useSaveSending();
   const [form, setForm] = useState<Form | null>(null);
   const [saved, setSaved] = useState(false);
+  // What has been typed into each strategy's stake box but not saved yet, keyed by lower-case name.
+  const [stakeDraft, setStakeDraft] = useState<Record<string, string>>({});
+  const [stakeError, setStakeError] = useState<string | null>(null);
 
   // Fill the form once. Later refreshes must not overwrite what is being typed.
   useEffect(() => {
@@ -72,16 +77,42 @@ export default function SendingPage() {
     const turningOn = !settings.enabled;
     if (turningOn) {
       const ok = window.confirm(
-        "Turn sending ON?\n\nNew picks from strategies that are switched on will be added to the feed your betting software reads. Stakes and price limits stay in your betting software.",
+        "Turn sending ON?\n\nNew picks from strategies that are switched on will be added to the feed your betting software reads, with the stake you set for each strategy.",
       );
       if (!ok) return;
     }
     save.mutate({ enabled: turningOn });
   }
 
+  function saveStake(key: string) {
+    const raw = (stakeDraft[key] ?? "").trim().replace(/^£/, "");
+    const n = Number(raw);
+    if (!raw || !Number.isFinite(n) || n <= 0) {
+      setStakeError("Enter a stake above zero, for example 2 or 2.50.");
+      return;
+    }
+    if (n > settings.maxStake) {
+      setStakeError(`That is above your highest stake allowed (£${settings.maxStake}). Raise that limit first if you really mean it.`);
+      return;
+    }
+    setStakeError(null);
+    save.mutate(
+      { stakes: { [key]: n } },
+      {
+        onSuccess: () =>
+          setStakeDraft((d) => {
+            const next = { ...d };
+            delete next[key];
+            return next;
+          }),
+      },
+    );
+  }
+
   function saveLimits() {
     save.mutate(
       {
+        maxStake: Number(form!.maxStake),
         maxAgeMinutes: Number(form!.maxAgeMinutes),
         dailyCap: Number(form!.dailyCap),
         bttsMarketType: form!.bttsMarketType,
@@ -148,34 +179,65 @@ export default function SendingPage() {
         </p>
       </Card>
 
-      <Card title="Strategies" subtitle="Each one is off until you switch it on.">
+      <Card title="Strategies" subtitle="Set a stake for each strategy, then switch it on. Each one is off until you do.">
+        {stakeError && <p className="mb-2 text-xs text-danger">{stakeError}</p>}
         {data.strategies.length === 0 ? (
           <p className="text-xs text-ink-muted">Strategies appear here as picks arrive.</p>
         ) : (
           <ul className="divide-y divide-line">
             {data.strategies.map((s) => {
+              const key = s.label.toLowerCase();
               const supported = s.market === "NEXT_GOAL" || s.market === "BOTH_TEAMS_TO_SCORE";
               const note = !s.market ? "No market set" : !supported ? "Can't be sent yet" : marketName(s.market);
+              const draft = stakeDraft[key];
+              const shown = draft ?? (s.stake !== null ? s.stake.toFixed(2) : "");
+              const dirty = draft !== undefined && draft.trim() !== (s.stake !== null ? s.stake.toFixed(2) : "");
+              const canSwitch = supported && s.stake !== null && !dirty && !save.isPending;
               return (
-                <li key={s.label} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-ink">{s.label}</p>
-                    <p className={`text-xs ${supported ? "text-ink-muted" : "text-danger"}`}>{note}</p>
+                <li key={s.label} className="py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-ink">{s.label}</p>
+                      <p className={`text-xs ${supported ? "text-ink-muted" : "text-danger"}`}>{note}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={s.enabled}
+                      disabled={!canSwitch}
+                      onClick={() => save.mutate({ strategies: { [key]: !s.enabled } })}
+                      className={`h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors disabled:opacity-40 ${
+                        s.enabled ? "bg-accent" : "bg-surface-2"
+                      }`}
+                    >
+                      <span
+                        className={`block h-5 w-5 rounded-full bg-ink transition-transform ${s.enabled ? "translate-x-5" : ""}`}
+                      />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={s.enabled}
-                    disabled={!supported || save.isPending}
-                    onClick={() => save.mutate({ strategies: { [s.label.toLowerCase()]: !s.enabled } })}
-                    className={`h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors disabled:opacity-40 ${
-                      s.enabled ? "bg-accent" : "bg-surface-2"
-                    }`}
-                  >
-                    <span
-                      className={`block h-5 w-5 rounded-full bg-ink transition-transform ${s.enabled ? "translate-x-5" : ""}`}
-                    />
-                  </button>
+                  {supported && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="whitespace-nowrap text-xs text-ink-muted">Stake £</span>
+                      <input
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        className="w-24 rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink"
+                        value={shown}
+                        onChange={(e) => setStakeDraft((d) => ({ ...d, [key]: e.target.value }))}
+                      />
+                      {dirty && (
+                        <button
+                          type="button"
+                          onClick={() => saveStake(key)}
+                          disabled={save.isPending}
+                          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink disabled:opacity-50"
+                        >
+                          Set
+                        </button>
+                      )}
+                      {!dirty && s.stake === null && <span className="text-xs text-danger">Needed to switch on</span>}
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -183,8 +245,17 @@ export default function SendingPage() {
         )}
       </Card>
 
-      <Card title="Safety limits">
+      <Card title="Safety limits" subtitle="Save changes with the button under Match names.">
         <div className="grid grid-cols-2 gap-3">
+          <label className="col-span-2 text-xs text-ink-muted">
+            Highest stake allowed (£). Nothing above this is ever sent.
+            <input
+              inputMode="decimal"
+              className={`${inputCls} mt-1`}
+              value={form.maxStake}
+              onChange={(e) => setForm({ ...form, maxStake: e.target.value })}
+            />
+          </label>
           <label className="text-xs text-ink-muted">
             Ignore picks older than (minutes)
             <input
@@ -254,7 +325,7 @@ export default function SendingPage() {
               <li key={r.pickId} className="rounded-md bg-surface-2 px-3 py-2 text-xs">
                 <p className="font-medium text-ink">{r.eventName}</p>
                 <p className="text-ink-muted">
-                  {r.provider} · {r.selectionName} · <span className="font-mono">{r.marketType}</span>
+                  {r.provider} · {r.selectionName} · £{r.stake.toFixed(2)} · <span className="font-mono">{r.marketType}</span>
                 </p>
               </li>
             ))}

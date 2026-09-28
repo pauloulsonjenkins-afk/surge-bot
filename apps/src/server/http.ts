@@ -213,9 +213,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const settings = getSendingSettings(db);
       const preview = buildFeed(db, { markSent: false });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
-      const seen = new Map<string, { label: string; market: string | null; enabled: boolean }>();
+      const seen = new Map<string, { label: string; market: string | null; enabled: boolean; stake: number | null }>();
       for (const st of db.hitRateStats(null).byStrategy) {
-        seen.set(st.label.toLowerCase(), { label: st.label, market: st.market, enabled: settings.strategies[st.label.toLowerCase()] === true });
+        const key = st.label.toLowerCase();
+        seen.set(key, { label: st.label, market: st.market, enabled: settings.strategies[key] === true, stake: settings.stakes[key] ?? null });
       }
       send(res, 200, {
         settings,

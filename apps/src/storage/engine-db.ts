@@ -122,6 +122,8 @@ export interface LivePick {
   sendable: boolean;
   /** When the pick was first handed to the bet feed, or null if it never has been. */
   sentAt: string | null;
+  /** The exact feed row (as JSON) that was handed over, kept so later polls repeat it unchanged. */
+  sentRowJson: string | null;
   flags: string[];
   /** The full parsed alert (all stats, odds, etc.) for the detail view. */
   detail: ParsedAlert | null;
@@ -189,6 +191,9 @@ export class EngineDb {
     const liveCols = this.db.prepare(`PRAGMA table_info(live_picks)`).all() as Array<{ name: string }>;
     if (!liveCols.some((c) => c.name === "sent_at")) {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_at TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "sent_row")) {
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_row TEXT`);
     }
   }
 
@@ -372,6 +377,7 @@ export class EngineDb {
         status: r.status as LivePick["status"],
         sendable: Number(r.sendable) === 1,
         sentAt: (r.sent_at as string | null) ?? null,
+        sentRowJson: (r.sent_row as string | null) ?? null,
         flags,
         detail,
         rawText: String(r.raw_text),
@@ -485,12 +491,15 @@ export class EngineDb {
     this.onChange();
   }
 
-  /** Stamps sent_at on picks that haven't been handed to the feed before. Already-stamped picks keep their first time. */
-  markSent(ids: number[]): void {
-    if (ids.length === 0) return;
+  /**
+   * Stamps sent_at, and stores the exact row that was handed over, on picks that
+   * haven't been sent before. Already-stamped picks keep their first time and row.
+   */
+  markSent(items: Array<{ id: number; rowJson: string }>): void {
+    if (items.length === 0) return;
     const now = new Date().toISOString();
-    const stmt = this.db.prepare(`UPDATE live_picks SET sent_at = ? WHERE id = ? AND sent_at IS NULL`);
-    for (const id of ids) stmt.run(now, id);
+    const stmt = this.db.prepare(`UPDATE live_picks SET sent_at = ?, sent_row = ? WHERE id = ? AND sent_at IS NULL`);
+    for (const it of items) stmt.run(now, it.rowJson, it.id);
     this.onChange();
   }
 

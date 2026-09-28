@@ -160,6 +160,9 @@ export async function fetchHitRateStats(days: number | null): Promise<HitRateSta
 export interface SendingSettings {
   enabled: boolean;
   strategies: Record<string, boolean>;
+  /** Stake in pounds per strategy (lower-case name). Send null to clear one. */
+  stakes: Record<string, number | null>;
+  maxStake: number;
   maxAgeMinutes: number;
   dailyCap: number;
   bttsMarketType: string;
@@ -169,11 +172,11 @@ export interface SendingSettings {
 
 export interface SendingState {
   settings: SendingSettings;
-  strategies: Array<{ label: string; market: string | null; enabled: boolean }>;
+  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
   preview: {
-    rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string }>;
+    rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string; stake: number }>;
     skipped: Array<{ pickId: number; strategy: string; match: string; reason: string }>;
     csv: string;
     blockedReason: string | null;
