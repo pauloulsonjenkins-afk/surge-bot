@@ -25,6 +25,7 @@ function Row({ pick }: { pick: LivePick }) {
       <div className="shrink-0 text-right">
         <p className={`text-xs font-medium ${hit ? "text-hit" : "text-danger"}`}>{hit ? "Hit" : "Miss"}</p>
         <p className="text-[11px] tabular-nums text-ink-muted">{pick.ftScore ?? "–"}</p>
+        {pick.resultOverridden && <p className="text-[10px] text-ink-muted">amended</p>}
       </div>
     </li>
   );

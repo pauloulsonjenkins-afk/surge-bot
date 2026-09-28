@@ -2,6 +2,7 @@
  * Entry point for the engine's DigitalOcean web service.
  * package.json "start" runs the compiled copy: node dist/src/server/main.js
  */
+import { parseAlert } from "../inplayguru/parse-alert";
 import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { loadServerEnv } from "./server-env";
@@ -31,6 +32,14 @@ async function main(): Promise<void> {
   const db = new EngineDb(env.dbPath, () => backups?.markDirty());
   backups = new BackupScheduler(db, sync, join(dirname(env.dbPath), "snapshot-upload.db"));
   backups.start();
+
+  // Correct any stored results using the current rules (hit/miss from the final score).
+  try {
+    const fixed = db.recomputeSettledResults(parseAlert);
+    if (fixed > 0) log.info(`Corrected ${fixed} stored result(s) using the final score.`);
+  } catch (err) {
+    log.error(`Could not re-check stored results: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (!env.signingSecret) {
     log.warn(

@@ -116,7 +116,12 @@ export interface LivePick {
   goalsAway: number | null;
   htScore: string | null;
   ftScore: string | null;
+  /** The result in force: your amendment if there is one, otherwise the alert's own Hit/Miss. */
   result: "hit" | "miss" | null;
+  /** True when the result was set by hand on the Results admin page. */
+  resultOverridden: boolean;
+  /** What the alert itself said, kept even when amended. */
+  originalResult: "hit" | "miss" | null;
   /** captured = live and unsettled; settled = has a result; unmapped/flagged = must not be sent to bet. */
   status: "captured" | "settled" | "unmapped" | "flagged";
   sendable: boolean;
@@ -191,6 +196,10 @@ export class EngineDb {
     const liveCols = this.db.prepare(`PRAGMA table_info(live_picks)`).all() as Array<{ name: string }>;
     if (!liveCols.some((c) => c.name === "sent_at")) {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_at TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "result_override")) {
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN result_override TEXT`);
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN result_override_at TEXT`);
     }
     if (!liveCols.some((c) => c.name === "sent_row")) {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_row TEXT`);
@@ -373,8 +382,11 @@ export class EngineDb {
         goalsAway: r.goals_away === null ? null : Number(r.goals_away),
         htScore: (r.ht_score as string | null) ?? null,
         ftScore: (r.ft_score as string | null) ?? null,
-        result: (r.result as "hit" | "miss" | null) ?? null,
-        status: r.status as LivePick["status"],
+        result: ((r.result_override as "hit" | "miss" | null) ?? (r.result as "hit" | "miss" | null)) ?? null,
+        resultOverridden: r.result_override !== null && r.result_override !== undefined,
+        originalResult: (r.result as "hit" | "miss" | null) ?? null,
+        // A hand-set result settles the pick, so it can never be sent afterwards.
+        status: (r.result_override ? "settled" : r.status) as LivePick["status"],
         sendable: Number(r.sendable) === 1,
         sentAt: (r.sent_at as string | null) ?? null,
         sentRowJson: (r.sent_row as string | null) ?? null,
@@ -394,10 +406,15 @@ export class EngineDb {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const rows = (
       since === null
-        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, result, status FROM live_picks ORDER BY id`).all()
+        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute,
+                  COALESCE(result_override, result) AS result,
+                  CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
+           FROM live_picks ORDER BY id`).all()
         : this.db
             .prepare(
-              `SELECT first_seen_at, strategy, market, competition, minute, result, status
+              `SELECT first_seen_at, strategy, market, competition, minute,
+                      COALESCE(result_override, result) AS result,
+                      CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
                FROM live_picks WHERE first_seen_at >= ? ORDER BY id`,
             )
             .all(since)
@@ -497,6 +514,44 @@ export class EngineDb {
     for (const id of deletable) del.run(id);
     if (deletable.length > 0) this.onChange();
     return { removed: deletable.length, keptBecauseSent: mine.length - deletable.length };
+  }
+
+  /**
+   * Sets (or, with null, clears) a hand-made result on one pick. The override
+   * survives later edits of the alert, so InPlayGuru's own tick can't undo it.
+   * Returns false if there is no such pick.
+   */
+  setResultOverride(id: number, result: "hit" | "miss" | null): boolean {
+    const info = this.db
+      .prepare(`UPDATE live_picks SET result_override = ?, result_override_at = ? WHERE id = ?`)
+      .run(result, result === null ? null : new Date().toISOString(), id);
+    if (info.changes > 0) this.onChange();
+    return info.changes > 0;
+  }
+
+  /**
+   * Re-reads the stored text of every settled pick with the current parser and
+   * updates its result. Run at start-up, so an improvement to how results are
+   * worked out also corrects picks that were stored earlier. Hand-made
+   * amendments are separate and are never touched. Returns how many results changed.
+   */
+  recomputeSettledResults(parse: (text: string) => ParsedAlert): number {
+    const rows = this.db
+      .prepare(`SELECT id, raw_text, result FROM live_picks WHERE ft_score IS NOT NULL`)
+      .all() as Array<{ id: number; raw_text: string; result: string | null }>;
+    const upd = this.db.prepare(`UPDATE live_picks SET result = ?, parsed_json = ? WHERE id = ?`);
+    let changed = 0;
+    for (const r of rows) {
+      try {
+        const p = parse(r.raw_text);
+        upd.run(p.result, JSON.stringify(p), r.id);
+        if ((p.result ?? null) !== (r.result ?? null)) changed++;
+      } catch {
+        // leave this row as it was
+      }
+    }
+    if (rows.length > 0) this.onChange();
+    return changed;
   }
 
   getSetting(key: string): string | null {

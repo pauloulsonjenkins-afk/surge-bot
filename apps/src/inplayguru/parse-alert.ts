@@ -62,7 +62,15 @@ export interface ParsedAlert {
 
   htScore: string | null;
   ftScore: string | null;
+  /**
+   * Hit or miss. For Next Goal and Both Teams to Score it is worked out from the
+   * full-time score, because the alert's own tick has been seen to disagree with
+   * the actual bet. Other markets use the alert's tick.
+   */
   result: PickResult | null;
+  /** What the alert's own Hit/Miss tick said, kept for comparison. */
+  alertResult: PickResult | null;
+  resultSource: "score" | "alert" | null;
 
   /** Things that look wrong. Any entry here means the pick must not be sent to bet. */
   flags: string[];
@@ -288,6 +296,24 @@ export function parseAlert(text: string): ParsedAlert {
     flags.push(`Strategy "${strategyRaw}" is not in the strategy table, so no market is set.`);
   }
 
+  // ---- final result: from the score where the bet allows it ----
+  const alertResult = result;
+  let finalResult: PickResult | null = result;
+  let resultSource: "score" | "alert" | null = result ? "alert" : null;
+  const ft = ftScore ? ftScore.match(/^(\d+)-(\d+)$/) : null;
+  if (ft && ft[1] !== undefined && ft[2] !== undefined) {
+    const a = Number(ft[1]);
+    const b = Number(ft[2]);
+    let computed: PickResult | null = null;
+    // Over (goals at the alert + 0.5): wins if the final total is above that line.
+    if (market === "NEXT_GOAL" && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
+    else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";
+    if (computed) {
+      finalResult = computed;
+      resultSource = "score";
+    }
+  }
+
   const sendable =
     flags.length === 0 &&
     market !== null &&
@@ -322,7 +348,9 @@ export function parseAlert(text: string): ParsedAlert {
     freePick,
     htScore,
     ftScore,
-    result,
+    result: finalResult,
+    alertResult,
+    resultSource,
     flags,
     sendable,
   };

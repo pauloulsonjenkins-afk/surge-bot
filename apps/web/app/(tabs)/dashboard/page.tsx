@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Lock } from "lucide-react";
 import { useHitRateStats } from "@/queries/use-stats";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { TIMEFRAMES, TimeframeToggle, type Timeframe } from "@/components/dashboard/TimeframeToggle";
@@ -24,8 +26,15 @@ export default function DashboardPage() {
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-medium tracking-tight text-ink">Dashboard</h1>
-        <TimeframeToggle value={timeframe} onChange={setTimeframe} />
+        <Link
+          href="/more/admin/sending"
+          className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
+        >
+          <Lock size={13} />
+          Admin
+        </Link>
       </div>
+      <TimeframeToggle value={timeframe} onChange={setTimeframe} />
 
       {error ? (
         <QueryError error={error} next="/dashboard" />

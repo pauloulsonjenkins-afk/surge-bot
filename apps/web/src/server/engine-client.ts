@@ -76,6 +76,10 @@ export interface LivePick {
   htScore: string | null;
   ftScore: string | null;
   result: "hit" | "miss" | null;
+  /** True when the result was set by hand rather than taken from the alert. */
+  resultOverridden: boolean;
+  /** What the alert itself said, even when amended. */
+  originalResult: "hit" | "miss" | null;
   status: "captured" | "settled" | "unmapped" | "flagged";
   sendable: boolean;
   /** When the pick was first handed to the bet feed, or null. */
@@ -87,6 +91,10 @@ export interface LivePick {
     lastGoal: string | null;
     matched: number | null;
     strikeRate: number | null;
+    /** The result worked out by the app, what the alert's own tick said, and which one was used. */
+    result: "hit" | "miss" | null;
+    alertResult: "hit" | "miss" | null;
+    resultSource: "score" | "alert" | null;
   } | null;
 }
 
@@ -224,6 +232,28 @@ export async function removeStrategy(label: string): Promise<{ removed: number; 
     });
     if (!res.ok) throw new Error(`Engine responded ${res.status} when removing the strategy.`);
     return (await res.json()) as { removed: number; keptBecauseSent: number };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function setPickResult(id: number, result: "hit" | "miss" | null): Promise<void> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/picks/result`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id, result }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving the result.`);
   } finally {
     clearTimeout(timeout);
   }
