@@ -12,6 +12,7 @@
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
+ *   POST /internal/picks/exclude                 mark (or unmark) a pick as "didn't actually bet" (admin site only)
  *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -255,6 +256,30 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       log.info(`Pick ${id} result ${result === null ? "reset to the alert's own result" : `set by hand to ${result}`} from the admin page.`);
+      send(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/picks/exclude") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : null;
+      if (id === null || typeof body.excluded !== "boolean") {
+        send(res, 400, { error: "id_and_excluded_required" });
+        return;
+      }
+      if (!db.setPickExcluded(id, body.excluded)) {
+        send(res, 404, { error: "no_such_pick" });
+        return;
+      }
+      log.info(`Pick ${id} ${body.excluded ? "excluded (didn't actually bet)" : "restored"} from the admin page.`);
       send(res, 200, { ok: true });
       return;
     }

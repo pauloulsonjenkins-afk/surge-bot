@@ -120,6 +120,8 @@ export interface LivePick {
   result: "hit" | "miss" | null;
   /** True when the result was set by hand on the Results admin page. */
   resultOverridden: boolean;
+  /** True when marked "didn't actually bet" — left out of every count, kept in the raw Picks log. */
+  excluded: boolean;
   /** What the alert itself said, kept even when amended. */
   originalResult: "hit" | "miss" | null;
   /** captured = live and unsettled; settled = has a result; unmapped/flagged = must not be sent to bet. */
@@ -196,6 +198,9 @@ export class EngineDb {
     const liveCols = this.db.prepare(`PRAGMA table_info(live_picks)`).all() as Array<{ name: string }>;
     if (!liveCols.some((c) => c.name === "sent_at")) {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_at TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "excluded")) {
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0`);
     }
     if (!liveCols.some((c) => c.name === "result_override")) {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN result_override TEXT`);
@@ -384,6 +389,7 @@ export class EngineDb {
         ftScore: (r.ft_score as string | null) ?? null,
         result: ((r.result_override as "hit" | "miss" | null) ?? (r.result as "hit" | "miss" | null)) ?? null,
         resultOverridden: r.result_override !== null && r.result_override !== undefined,
+        excluded: Number(r.excluded) === 1,
         originalResult: (r.result as "hit" | "miss" | null) ?? null,
         // A hand-set result settles the pick, so it can never be sent afterwards.
         status: (r.result_override ? "settled" : r.status) as LivePick["status"],
@@ -409,13 +415,13 @@ export class EngineDb {
         ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute,
                   COALESCE(result_override, result) AS result,
                   CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
-           FROM live_picks ORDER BY id`).all()
+           FROM live_picks WHERE excluded = 0 ORDER BY id`).all()
         : this.db
             .prepare(
               `SELECT first_seen_at, strategy, market, competition, minute,
                       COALESCE(result_override, result) AS result,
                       CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
-               FROM live_picks WHERE first_seen_at >= ? ORDER BY id`,
+               FROM live_picks WHERE first_seen_at >= ? AND excluded = 0 ORDER BY id`,
             )
             .all(since)
     ) as Array<{
@@ -521,6 +527,13 @@ export class EngineDb {
    * survives later edits of the alert, so InPlayGuru's own tick can't undo it.
    * Returns false if there is no such pick.
    */
+  /** Marks (or unmarks) a pick as "didn't actually bet". Excluded picks are left out of stats and Win/Loss. */
+  setPickExcluded(id: number, excluded: boolean): boolean {
+    const info = this.db.prepare(`UPDATE live_picks SET excluded = ? WHERE id = ?`).run(excluded ? 1 : 0, id);
+    if (info.changes > 0) this.onChange();
+    return info.changes > 0;
+  }
+
   setResultOverride(id: number, result: "hit" | "miss" | null): boolean {
     const info = this.db
       .prepare(`UPDATE live_picks SET result_override = ?, result_override_at = ? WHERE id = ?`)
@@ -574,7 +587,7 @@ export class EngineDb {
       .prepare(
         `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row
          FROM live_picks
-         WHERE first_seen_at >= ? AND COALESCE(result_override, result) IN ('hit', 'miss')
+         WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
       )
       .all(sinceIso) as Array<{

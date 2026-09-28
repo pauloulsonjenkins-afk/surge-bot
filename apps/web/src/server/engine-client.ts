@@ -80,6 +80,8 @@ export interface LivePick {
   resultOverridden: boolean;
   /** What the alert itself said, even when amended. */
   originalResult: "hit" | "miss" | null;
+  /** True when marked "didn't actually bet" — left out of stats and Win/Loss. */
+  excluded: boolean;
   status: "captured" | "settled" | "unmapped" | "flagged";
   sendable: boolean;
   /** When the pick was first handed to the bet feed, or null. */
@@ -361,6 +363,28 @@ async function accessRequest(method: "GET" | "PUT", publicView?: boolean): Promi
 
 export const fetchPublicView = () => accessRequest("GET");
 export const savePublicView = (enabled: boolean) => accessRequest("PUT", enabled);
+
+export async function setPickExcluded(id: number, excluded: boolean): Promise<void> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/picks/exclude`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id, excluded }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export const fetchSending = () => sendingRequest("GET");
 export const saveSending = (patch: Partial<SendingSettings>) => sendingRequest("PUT", patch);

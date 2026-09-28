@@ -10,6 +10,29 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiFetchError } from "./fetch-json";
 
 /** Amend one pick's result by hand (null puts back the alert's own result). */
+export function useSetPickExcluded() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { id: number; excluded: boolean }) => {
+      const res = await fetch("/api/admin/picks/exclude", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(v),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiFetchError(body?.error ?? `Could not save (${res.status})`, res.status);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-live-picks"] });
+      qc.invalidateQueries({ queryKey: ["live-picks"] });
+      qc.invalidateQueries({ queryKey: ["hit-rate-stats"] });
+      qc.invalidateQueries({ queryKey: ["winloss"] });
+    },
+  });
+}
+
 export function useSetPickResult() {
   const qc = useQueryClient();
   return useMutation({

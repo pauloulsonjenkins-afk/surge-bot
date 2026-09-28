@@ -3,7 +3,7 @@
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
-import { useAdminLivePicks, useSetPickResult, type LivePick } from "@/queries/use-live";
+import { useAdminLivePicks, useSetPickExcluded, useSetPickResult, type LivePick } from "@/queries/use-live";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -26,6 +26,7 @@ function ResultChip({ pick }: { pick: LivePick }) {
 export default function ResultsPage() {
   const { data, isLoading, error } = useAdminLivePicks(100);
   const setResult = useSetPickResult();
+  const setExcluded = useSetPickExcluded();
 
   function change(pick: LivePick, result: "hit" | "miss" | null) {
     const wording =
@@ -36,6 +37,14 @@ export default function ResultsPage() {
       `${wording}\n\n${pick.home ?? "?"} v ${pick.away ?? "?"}\n\nThe Dashboard, Strategies and Trade Log will use it. Nothing changes in your betting software.`,
     );
     if (ok) setResult.mutate({ id: pick.id, result });
+  }
+
+  function toggleExcluded(pick: LivePick) {
+    const wording = pick.excluded
+      ? "Put this pick back into your results and stats?"
+      : "Remove this pick from your results?\n\nUse this when the bet was wrong or never actually went on. It comes out of the Dashboard, Trade Log and Win/Loss straight away. The original alert stays on the Picks page, and you can put it back at any time.";
+    const ok = window.confirm(`${wording}\n\n${pick.home ?? "?"} v ${pick.away ?? "?"}`);
+    if (ok) setExcluded.mutate({ id: pick.id, excluded: !pick.excluded });
   }
 
   if (error) return <QueryError error={error} next="/more/admin/results" />;
@@ -59,12 +68,13 @@ export default function ResultsPage() {
       </div>
 
       {setResult.error && <p className="text-sm text-danger">{setResult.error.message}</p>}
+      {setExcluded.error && <p className="text-sm text-danger">{setExcluded.error.message}</p>}
 
       {data.length === 0 ? (
         <p className="text-sm text-ink-muted">No picks yet.</p>
       ) : (
         data.map((p) => (
-          <article key={p.id} className="rounded-xl border border-line bg-surface p-3.5">
+          <article key={p.id} className={`rounded-xl border border-line bg-surface p-3.5 ${p.excluded ? "opacity-50" : ""}`}>
             <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">{label(p.strategy)}</p>
             <p className="mt-1 text-sm font-medium text-ink">
               {p.home ?? "Unknown"} v {p.away ?? "Unknown"}
@@ -83,6 +93,12 @@ export default function ResultsPage() {
               {p.market ? `${marketName(p.market)}${p.selection ? ` · ${p.selection}` : ""}` : "No market set"}
             </p>
 
+            {p.excluded && (
+              <p className="mt-2 rounded-md bg-surface-2 px-2.5 py-1.5 text-xs text-ink-muted">
+                Removed from results — not counted anywhere.
+              </p>
+            )}
+
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <ResultChip pick={p} />
               {p.resultOverridden && (
@@ -98,33 +114,46 @@ export default function ResultsPage() {
               </p>
             )}
 
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                disabled={setResult.isPending || p.result === "hit"}
-                onClick={() => change(p, "hit")}
-                className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-hit disabled:opacity-40"
-              >
-                Set Hit
-              </button>
-              <button
-                type="button"
-                disabled={setResult.isPending || p.result === "miss"}
-                onClick={() => change(p, "miss")}
-                className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-danger disabled:opacity-40"
-              >
-                Set Miss
-              </button>
-              {p.resultOverridden && (
+            {!p.excluded && (
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={setResult.isPending}
-                  onClick={() => change(p, null)}
-                  className="rounded-md px-3 py-1.5 text-xs text-ink-muted underline disabled:opacity-40"
+                  disabled={setResult.isPending || p.result === "hit"}
+                  onClick={() => change(p, "hit")}
+                  className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-hit disabled:opacity-40"
                 >
-                  Put back original
+                  Set Hit
                 </button>
-              )}
+                <button
+                  type="button"
+                  disabled={setResult.isPending || p.result === "miss"}
+                  onClick={() => change(p, "miss")}
+                  className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-danger disabled:opacity-40"
+                >
+                  Set Miss
+                </button>
+                {p.resultOverridden && (
+                  <button
+                    type="button"
+                    disabled={setResult.isPending}
+                    onClick={() => change(p, null)}
+                    className="rounded-md px-3 py-1.5 text-xs text-ink-muted underline disabled:opacity-40"
+                  >
+                    Put back original
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="mt-2">
+              <button
+                type="button"
+                disabled={setExcluded.isPending}
+                onClick={() => toggleExcluded(p)}
+                className={`text-xs underline disabled:opacity-40 ${p.excluded ? "text-ink-muted" : "text-danger"}`}
+              >
+                {p.excluded ? "Put back" : "Remove from results"}
+              </button>
             </div>
           </article>
         ))

@@ -264,6 +264,8 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
 
     // Finished matches are left out quietly; listing them would only add noise.
     if (p.status === "settled") continue;
+    // "Didn't actually bet" picks are never (re)sent, settled or not.
+    if (p.excluded) continue;
     if (!settings.strategies[label.toLowerCase()]) {
       skipped.push(skip(p, "This strategy's switch is off."));
       continue;
