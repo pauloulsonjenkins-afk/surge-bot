@@ -35,6 +35,8 @@ export interface ParsedAlert {
   targetLine: number | null;
 
   competition: string | null;
+  /** Country from the flag emoji on the league line ("Argentina"). Null for the globe (international) or no flag. */
+  country: string | null;
   positions: string | null;
   home: string | null;
   away: string | null;
@@ -62,15 +64,7 @@ export interface ParsedAlert {
 
   htScore: string | null;
   ftScore: string | null;
-  /**
-   * Hit or miss. For Next Goal and Both Teams to Score it is worked out from the
-   * full-time score, because the alert's own tick has been seen to disagree with
-   * the actual bet. Other markets use the alert's tick.
-   */
   result: PickResult | null;
-  /** What the alert's own Hit/Miss tick said, kept for comparison. */
-  alertResult: PickResult | null;
-  resultSource: "score" | "alert" | null;
 
   /** Things that look wrong. Any entry here means the pick must not be sent to bet. */
   flags: string[];
@@ -90,6 +84,56 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
 // Emoji, flags, arrows, dingbats, variation selectors: everything that is
 // decoration rather than text on the strategy line.
 const DECORATION = /[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D]/gu;
+
+const REGIONAL_A = 0x1f1e6;
+const REGIONAL_Z = 0x1f1ff;
+const UK_NATIONS: Record<string, string> = { gbeng: "England", gbsct: "Scotland", gbwls: "Wales" };
+
+let regionNames: Intl.DisplayNames | null = null;
+function regionName(code: string): string | null {
+  try {
+    regionNames ??= new Intl.DisplayNames(["en"], { type: "region" });
+    const n = regionNames.of(code);
+    return n && n !== code ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reads a leading flag emoji: two regional-indicator letters (Argentina), or the England / Scotland / Wales flags. */
+export function countryFromFlag(line: string): string | null {
+  const cps = Array.from(line.trim()).map((c) => c.codePointAt(0) ?? 0);
+  const a = cps[0] ?? 0;
+  const b = cps[1] ?? 0;
+  if (a >= REGIONAL_A && a <= REGIONAL_Z && b >= REGIONAL_A && b <= REGIONAL_Z) {
+    return regionName(String.fromCharCode(65 + a - REGIONAL_A, 65 + b - REGIONAL_A));
+  }
+  if (a === 0x1f3f4) {
+    let tag = "";
+    for (let i = 1; i < cps.length; i++) {
+      const c = cps[i] ?? 0;
+      if (c >= 0xe0020 && c <= 0xe007e) tag += String.fromCharCode(c - 0xe0000);
+      else break;
+    }
+    return UK_NATIONS[tag] ?? null;
+  }
+  return null;
+}
+
+/** Finds the country in a stored alert's raw text, so alerts saved before this field existed can be read too. */
+export function leagueCountryFromText(text: string): string | null {
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  for (let i = 1; i < lines.length; i++) {
+    const l = lines[i] ?? "";
+    if (l.includes(":")) continue;
+    if (/ vs /i.test(l.replace(/\([^)]*\)/g, ""))) return countryFromFlag(lines[i - 1] ?? "");
+  }
+  return null;
+}
 
 function num(s: string | undefined): number | null {
   if (s === undefined) return null;
@@ -134,6 +178,7 @@ export function parseAlert(text: string): ParsedAlert {
 
   // ---- league + teams ----
   let competition: string | null = null;
+  let country: string | null = null;
   let positions: string | null = null;
   let home: string | null = null;
   let away: string | null = null;
@@ -161,6 +206,7 @@ export function parseAlert(text: string): ParsedAlert {
   if (!home || !away) flags.push("Could not read the two team names.");
 
   if (leagueLine) {
+    country = countryFromFlag(leagueLine);
     const cleaned = leagueLine.replace(DECORATION, "").trim();
     const m = cleaned.match(/^(.*?)(?:\s*\(([^()]*)\))?$/);
     competition = m?.[1]?.trim() || null;
@@ -296,24 +342,6 @@ export function parseAlert(text: string): ParsedAlert {
     flags.push(`Strategy "${strategyRaw}" is not in the strategy table, so no market is set.`);
   }
 
-  // ---- final result: from the score where the bet allows it ----
-  const alertResult = result;
-  let finalResult: PickResult | null = result;
-  let resultSource: "score" | "alert" | null = result ? "alert" : null;
-  const ft = ftScore ? ftScore.match(/^(\d+)-(\d+)$/) : null;
-  if (ft && ft[1] !== undefined && ft[2] !== undefined) {
-    const a = Number(ft[1]);
-    const b = Number(ft[2]);
-    let computed: PickResult | null = null;
-    // Over (goals at the alert + 0.5): wins if the final total is above that line.
-    if (market === "NEXT_GOAL" && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
-    else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";
-    if (computed) {
-      finalResult = computed;
-      resultSource = "score";
-    }
-  }
-
   const sendable =
     flags.length === 0 &&
     market !== null &&
@@ -333,6 +361,7 @@ export function parseAlert(text: string): ParsedAlert {
     selection,
     targetLine,
     competition,
+    country,
     positions,
     home,
     away,
@@ -348,9 +377,7 @@ export function parseAlert(text: string): ParsedAlert {
     freePick,
     htScore,
     ftScore,
-    result: finalResult,
-    alertResult,
-    resultSource,
+    result,
     flags,
     sendable,
   };

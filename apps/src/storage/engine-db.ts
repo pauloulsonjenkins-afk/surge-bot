@@ -4,7 +4,6 @@
  * Tables:
  *   inplayguru_webhooks  every verified webhook, stored exactly as received
  *   trade_log            the trade log (one row per TradeLogSink entry)
- *   settings             small key/value store (currently the "sending" options)
  *   live_picks           one row per Telegram alert, parsed into fields. Keyed by
  *                        (chat_id, message_id) so that when Telegram EDITS the
  *                        alert after full time, the same row is updated with the
@@ -18,7 +17,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ParsedAlert } from "../inplayguru/parse-alert";
+import { leagueCountryFromText, type ParsedAlert } from "../inplayguru/parse-alert";
 
 export interface CapturedWebhook {
   receivedAt: string;
@@ -70,8 +69,6 @@ export interface HitRateStats {
   };
   byStrategy: StrategyStats[];
   byLeague: HitRateRow[];
-  /** Hit rate by the match minute the alert fired at, in fixed order. */
-  byMinute: HitRateRow[];
   daily: DailyStats[];
 }
 
@@ -86,16 +83,6 @@ function strategyLabel(raw: string): string {
 }
 
 const ukDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
-
-/** Match-minute buckets for the "when do alerts hit" chart. Upper bound is inclusive. */
-const MINUTE_BUCKETS: Array<{ label: string; max: number }> = [
-  { label: "1–15'", max: 15 },
-  { label: "16–30'", max: 30 },
-  { label: "31–45'", max: 45 },
-  { label: "46–60'", max: 60 },
-  { label: "61–75'", max: 75 },
-  { label: "76'+", max: Infinity },
-];
 
 /** What the Live tab reads. One per Telegram alert. */
 export interface LivePick {
@@ -116,25 +103,32 @@ export interface LivePick {
   goalsAway: number | null;
   htScore: string | null;
   ftScore: string | null;
-  /** The result in force: your amendment if there is one, otherwise the alert's own Hit/Miss. */
   result: "hit" | "miss" | null;
-  /** True when the result was set by hand on the Results admin page. */
-  resultOverridden: boolean;
-  /** True when marked "didn't actually bet" — left out of every count, kept in the raw Picks log. */
-  excluded: boolean;
-  /** What the alert itself said, kept even when amended. */
-  originalResult: "hit" | "miss" | null;
   /** captured = live and unsettled; settled = has a result; unmapped/flagged = must not be sent to bet. */
   status: "captured" | "settled" | "unmapped" | "flagged";
   sendable: boolean;
-  /** When the pick was first handed to the bet feed, or null if it never has been. */
-  sentAt: string | null;
-  /** The exact feed row (as JSON) that was handed over, kept so later polls repeat it unchanged. */
-  sentRowJson: string | null;
   flags: string[];
   /** The full parsed alert (all stats, odds, etc.) for the detail view. */
   detail: ParsedAlert | null;
   rawText: string;
+}
+
+/** One alert for the Dashboard's league / strategy / minute breakdown. */
+export interface PerformanceAlertRow {
+  id: string;
+  /** Epoch ms when the alert first arrived. */
+  firedAt: number;
+  league: string;
+  country: string | null;
+  strategy: string;
+  minute: number | null;
+  outcome: "hit" | "miss" | "pending";
+}
+
+function stripCountryPrefix(league: string, country: string | null): string {
+  if (!country) return league;
+  const prefix = `${country.toLowerCase()} `;
+  return league.toLowerCase().startsWith(prefix) && league.length > prefix.length ? league.slice(prefix.length).trim() : league;
 }
 
 export class EngineDb {
@@ -159,11 +153,6 @@ export class EngineDb {
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         logged_at   TEXT NOT NULL,
         entry_json  TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS settings (
-        key    TEXT PRIMARY KEY,
-        value  TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS live_picks (
@@ -193,22 +182,6 @@ export class EngineDb {
         UNIQUE (chat_id, message_id)
       );
     `);
-
-    // Databases created before the bet feed existed don't have sent_at yet.
-    const liveCols = this.db.prepare(`PRAGMA table_info(live_picks)`).all() as Array<{ name: string }>;
-    if (!liveCols.some((c) => c.name === "sent_at")) {
-      this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_at TEXT`);
-    }
-    if (!liveCols.some((c) => c.name === "excluded")) {
-      this.db.exec(`ALTER TABLE live_picks ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0`);
-    }
-    if (!liveCols.some((c) => c.name === "result_override")) {
-      this.db.exec(`ALTER TABLE live_picks ADD COLUMN result_override TEXT`);
-      this.db.exec(`ALTER TABLE live_picks ADD COLUMN result_override_at TEXT`);
-    }
-    if (!liveCols.some((c) => c.name === "sent_row")) {
-      this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_row TEXT`);
-    }
   }
 
   /** Stores a webhook. Returns false if an identical body was already stored (a retry or replay). */
@@ -301,8 +274,8 @@ export class EngineDb {
            competition = excluded.competition,
            home        = excluded.home,
            away        = excluded.away,
-           minute      = COALESCE(live_picks.minute, excluded.minute),
-           timer_raw   = COALESCE(live_picks.timer_raw, excluded.timer_raw),
+           minute      = excluded.minute,
+           timer_raw   = excluded.timer_raw,
            goals_home  = excluded.goals_home,
            goals_away  = excluded.goals_away,
            ht_score    = excluded.ht_score,
@@ -387,15 +360,9 @@ export class EngineDb {
         goalsAway: r.goals_away === null ? null : Number(r.goals_away),
         htScore: (r.ht_score as string | null) ?? null,
         ftScore: (r.ft_score as string | null) ?? null,
-        result: ((r.result_override as "hit" | "miss" | null) ?? (r.result as "hit" | "miss" | null)) ?? null,
-        resultOverridden: r.result_override !== null && r.result_override !== undefined,
-        excluded: Number(r.excluded) === 1,
-        originalResult: (r.result as "hit" | "miss" | null) ?? null,
-        // A hand-set result settles the pick, so it can never be sent afterwards.
-        status: (r.result_override ? "settled" : r.status) as LivePick["status"],
+        result: (r.result as "hit" | "miss" | null) ?? null,
+        status: r.status as LivePick["status"],
         sendable: Number(r.sendable) === 1,
-        sentAt: (r.sent_at as string | null) ?? null,
-        sentRowJson: (r.sent_row as string | null) ?? null,
         flags,
         detail,
         rawText: String(r.raw_text),
@@ -412,16 +379,11 @@ export class EngineDb {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const rows = (
       since === null
-        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute,
-                  COALESCE(result_override, result) AS result,
-                  CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
-           FROM live_picks WHERE excluded = 0 ORDER BY id`).all()
+        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, result, status FROM live_picks ORDER BY id`).all()
         : this.db
             .prepare(
-              `SELECT first_seen_at, strategy, market, competition, minute,
-                      COALESCE(result_override, result) AS result,
-                      CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
-               FROM live_picks WHERE first_seen_at >= ? AND excluded = 0 ORDER BY id`,
+              `SELECT first_seen_at, strategy, market, competition, result, status
+               FROM live_picks WHERE first_seen_at >= ? ORDER BY id`,
             )
             .all(since)
     ) as Array<{
@@ -429,7 +391,6 @@ export class EngineDb {
       strategy: string;
       market: string | null;
       competition: string | null;
-      minute: number | null;
       result: string | null;
       status: string;
     }>;
@@ -441,7 +402,6 @@ export class EngineDb {
     const strategies = new Map<string, StrategyStats>();
     const leagues = new Map<string, HitRateRow>();
     const daily = new Map<string, { hits: number; misses: number }>();
-    const minutes: HitRateRow[] = MINUTE_BUCKETS.map((b) => ({ label: b.label, alerts: 0, hits: 0, misses: 0, hitRate: null }));
 
     for (const r of rows) {
       const isHit = r.result === "hit";
@@ -463,21 +423,15 @@ export class EngineDb {
       l.alerts++;
       leagues.set(lLabel, l);
 
-      const bucketIdx = r.minute === null ? -1 : MINUTE_BUCKETS.findIndex((b) => r.minute! <= b.max);
-      const m = bucketIdx >= 0 ? minutes[bucketIdx] : undefined;
-      if (m) m.alerts++;
-
       if (isHit || isMiss) {
         if (isHit) {
           hits++;
           s.hits++;
           l.hits++;
-          if (m) m.hits++;
         } else {
           misses++;
           s.misses++;
           l.misses++;
-          if (m) m.misses++;
         }
         const day = ukDate.format(new Date(r.first_seen_at));
         const d = daily.get(day) ?? { hits: 0, misses: 0 };
@@ -495,7 +449,6 @@ export class EngineDb {
       totals: { alerts: rows.length, hits, misses, pending, needsReview, hitRate: rate(hits, misses) },
       byStrategy: finish(strategies).sort((a, b) => b.hits + b.misses - (a.hits + a.misses) || b.alerts - a.alerts),
       byLeague: finish(leagues).sort((a, b) => b.hits + b.misses - (a.hits + a.misses) || b.alerts - a.alerts),
-      byMinute: minutes.map((x) => ({ ...x, hitRate: rate(x.hits, x.misses) })),
       daily: [...daily.entries()]
         .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([date, d]) => ({ date, hits: d.hits, misses: d.misses, hitRate: rate(d.hits, d.misses) })),
@@ -503,169 +456,41 @@ export class EngineDb {
   }
 
   /**
-   * Deletes the stored picks of one strategy (matched on its name without any
-   * bracketed note). Picks that were already handed to the bet feed are kept,
-   * as the record of what was sent. The raw capture log is never touched.
+   * Alerts over the last `days` days (null = all time), one row each, for the Dashboard's
+   * breakdown by league, strategy and alert minute. Outcome comes from the alert's own
+   * Hit/Miss marker, the same as hitRateStats. The country is read from the flag in the
+   * stored alert text, so alerts saved before the parser knew about countries are covered too.
    */
-  removeStrategyPicks(label: string): { removed: number; keptBecauseSent: number } {
-    const target = label.trim().toLowerCase();
-    const rows = this.db.prepare(`SELECT id, strategy, sent_at FROM live_picks`).all() as Array<{
-      id: number;
-      strategy: string;
-      sent_at: string | null;
-    }>;
-    const mine = rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === target);
-    const deletable = mine.filter((r) => r.sent_at === null).map((r) => r.id);
-    const del = this.db.prepare(`DELETE FROM live_picks WHERE id = ?`);
-    for (const id of deletable) del.run(id);
-    if (deletable.length > 0) this.onChange();
-    return { removed: deletable.length, keptBecauseSent: mine.length - deletable.length };
-  }
-
-  /**
-   * Sets (or, with null, clears) a hand-made result on one pick. The override
-   * survives later edits of the alert, so InPlayGuru's own tick can't undo it.
-   * Returns false if there is no such pick.
-   */
-  /** Marks (or unmarks) a pick as "didn't actually bet". Excluded picks are left out of stats and Win/Loss. */
-  setPickExcluded(id: number, excluded: boolean): boolean {
-    const info = this.db.prepare(`UPDATE live_picks SET excluded = ? WHERE id = ?`).run(excluded ? 1 : 0, id);
-    if (info.changes > 0) this.onChange();
-    return info.changes > 0;
-  }
-
-  setResultOverride(id: number, result: "hit" | "miss" | null): boolean {
-    const info = this.db
-      .prepare(`UPDATE live_picks SET result_override = ?, result_override_at = ? WHERE id = ?`)
-      .run(result, result === null ? null : new Date().toISOString(), id);
-    if (info.changes > 0) this.onChange();
-    return info.changes > 0;
-  }
-
-  /**
-   * Re-reads the stored text of every settled pick with the current parser and
-   * updates its result. Run at start-up, so an improvement to how results are
-   * worked out also corrects picks that were stored earlier. Hand-made
-   * amendments are separate and are never touched. Returns how many results changed.
-   */
-  recomputeSettledResults(parse: (text: string) => ParsedAlert): number {
-    const rows = this.db
-      .prepare(`SELECT id, raw_text, result FROM live_picks WHERE ft_score IS NOT NULL`)
-      .all() as Array<{ id: number; raw_text: string; result: string | null }>;
-    const upd = this.db.prepare(`UPDATE live_picks SET result = ?, parsed_json = ? WHERE id = ?`);
-    let changed = 0;
-    for (const r of rows) {
-      try {
-        const p = parse(r.raw_text);
-        upd.run(p.result, JSON.stringify(p), r.id);
-        if ((p.result ?? null) !== (r.result ?? null)) changed++;
-      } catch {
-        // leave this row as it was
-      }
-    }
-    if (rows.length > 0) this.onChange();
-    return changed;
-  }
-
-  /**
-   * Settled picks (hit or miss, with any hand-made amendment applied) since a
-   * date, with just what the Win/Loss figures need: the odds printed in the
-   * alert, the line it was on, and the stake if it was actually sent.
-   */
-  listResultsForWinLoss(sinceIso: string): Array<{
-    id: number;
-    firstSeenAt: string;
-    strategy: string;
-    market: string | null;
-    result: "hit" | "miss";
-    targetLine: number | null;
-    overLine: number | null;
-    overOdds: number | null;
-    sentStake: number | null;
-  }> {
-    const rows = this.db
-      .prepare(
-        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row
-         FROM live_picks
-         WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
-         ORDER BY first_seen_at, id`,
-      )
-      .all(sinceIso) as Array<{
+  listPerformanceAlerts(days: number | null): PerformanceAlertRow[] {
+    const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const cols = `id, first_seen_at, strategy, competition, minute, result, raw_text`;
+    const rows = (
+      since === null
+        ? this.db.prepare(`SELECT ${cols} FROM live_picks ORDER BY id DESC LIMIT 20000`).all()
+        : this.db.prepare(`SELECT ${cols} FROM live_picks WHERE first_seen_at >= ? ORDER BY id DESC LIMIT 20000`).all(since)
+    ) as Array<{
       id: number;
       first_seen_at: string;
       strategy: string;
-      market: string | null;
-      result: "hit" | "miss";
-      parsed_json: string;
-      sent_row: string | null;
+      competition: string | null;
+      minute: number | null;
+      result: string | null;
+      raw_text: string;
     }>;
 
     return rows.map((r) => {
-      let targetLine: number | null = null;
-      let overLine: number | null = null;
-      let overOdds: number | null = null;
-      try {
-        const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert>;
-        targetLine = typeof p.targetLine === "number" ? p.targetLine : null;
-        overLine = typeof p.odds?.overUnderLine === "number" ? p.odds.overUnderLine : null;
-        overOdds = typeof p.odds?.over === "number" ? p.odds.over : null;
-      } catch {
-        // leave as null
-      }
-      let sentStake: number | null = null;
-      if (r.sent_row) {
-        try {
-          const s = JSON.parse(r.sent_row) as { stake?: unknown };
-          sentStake = typeof s.stake === "number" && s.stake > 0 ? s.stake : null;
-        } catch {
-          // leave as null
-        }
-      }
+      const country = leagueCountryFromText(r.raw_text);
+      const cleaned = (r.competition ?? "").replace(/[\u{E0020}-\u{E007F}]/gu, "").trim();
       return {
-        id: r.id,
-        firstSeenAt: r.first_seen_at,
-        strategy: r.strategy,
-        market: r.market,
-        result: r.result,
-        targetLine,
-        overLine,
-        overOdds,
-        sentStake,
+        id: String(r.id),
+        firedAt: Date.parse(r.first_seen_at),
+        league: stripCountryPrefix(cleaned, country) || "Unknown league",
+        country,
+        strategy: strategyLabel(r.strategy),
+        minute: r.minute === null ? null : Number(r.minute),
+        outcome: r.result === "hit" ? "hit" : r.result === "miss" ? "miss" : "pending",
       };
     });
-  }
-
-  getSetting(key: string): string | null {
-    const row = this.db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
-    return row ? row.value : null;
-  }
-
-  setSetting(key: string, value: string): void {
-    this.db
-      .prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
-      .run(key, value);
-    this.onChange();
-  }
-
-  /**
-   * Stamps sent_at, and stores the exact row that was handed over, on picks that
-   * haven't been sent before. Already-stamped picks keep their first time and row.
-   */
-  markSent(items: Array<{ id: number; rowJson: string }>): void {
-    if (items.length === 0) return;
-    const now = new Date().toISOString();
-    const stmt = this.db.prepare(`UPDATE live_picks SET sent_at = ?, sent_row = ? WHERE id = ? AND sent_at IS NULL`);
-    for (const it of items) stmt.run(now, it.rowJson, it.id);
-    this.onChange();
-  }
-
-  /** sent_at stamps from roughly the last day and a half, for the daily-limit count. */
-  recentSentTimes(): string[] {
-    const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
-    const rows = this.db
-      .prepare(`SELECT sent_at FROM live_picks WHERE sent_at IS NOT NULL AND sent_at >= ?`)
-      .all(since) as Array<{ sent_at: string }>;
-    return rows.map((r) => r.sent_at);
   }
 
   /** Writes a consistent copy of the whole database to `destPath`, safe while the service is running. */

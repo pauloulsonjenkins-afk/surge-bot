@@ -6,14 +6,7 @@
  *   GET  /internal/picks                        recent captured picks (admin site only)
  *   GET  /internal/live                         parsed alerts for the Live tab (admin site only)
  *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
- *   GET  /internal/sending                      sending options, preview and status (admin site only)
- *   PUT  /internal/sending                      change the sending options (admin site only)
- *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
- *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
- *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
- *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
- *   POST /internal/picks/exclude                 mark (or unmark) a pick as "didn't actually bet" (admin site only)
- *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
+ *   GET  /internal/performance?days=N           one row per alert, for the Dashboard's league/strategy/minute breakdown (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
  *   POST /internal/telegram/login/password      submit the 2FA password, if any
@@ -21,7 +14,7 @@
  *   GET  /internal/telegram/login/chats         list chats once logged in
  *   POST /internal/telegram/login/watch         pick which chat to watch and start listening
  *
- * The webhook and feed URLs contain a secret path token, so those URLs are never logged.
+ * The webhook URL contains the secret path token, so URLs are never logged.
  * /internal/* routes are protected separately by ADMIN_INTERNAL_KEY, checked
  * as a Bearer token — they're meant to be called server-to-server by the
  * admin site, not opened directly in a browser.
@@ -36,14 +29,10 @@ import { handleVerifiedPick } from "../inplayguru/receiver";
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { startTelegramListener } from "../telegram/listener";
-import { buildFeed, getLastFeedFetchAt, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
-import { getPublicView, setPublicView } from "./access-settings";
-import { computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
-const FEED_PREFIX = "/feeds/bets/";
 
 class BodyTooLarge extends Error {}
 
@@ -171,30 +160,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
-    if (req.method === "GET" && path.startsWith(FEED_PREFIX)) {
-      const feedToken = process.env.BET_FEED_TOKEN;
-      const provided = path.slice(FEED_PREFIX.length).replace(/\.csv$/i, "");
-      // Same answer for "not configured" and "wrong token", so the link can't be probed.
-      if (!feedToken || !verifyPathToken(provided, feedToken)) {
-        send(res, 404, { error: "not_found" });
-        return;
-      }
-      noteFeedFetched();
-      const feed = buildFeed(db, { markSent: true });
-      if (feed.newlySent > 0) {
-        log.info(`Bet feed: ${feed.newlySent} new pick(s) handed over (${feed.rows.length} row(s) served).`);
-      }
-      res.writeHead(200, {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Length": Buffer.byteLength(feed.csv),
-        "Cache-Control": "no-store",
-      });
-      res.end(feed.csv);
-      return;
-    }
-
-    if (path === "/internal/winloss" && (req.method === "GET" || req.method === "PUT")) {
+    if (req.method === "GET" && path === "/internal/performance") {
       if (!process.env.ADMIN_INTERNAL_KEY) {
+        log.warn("GET /internal/performance called but ADMIN_INTERNAL_KEY is not set on the engine.");
         send(res, 500, { error: "not_configured" });
         return;
       }
@@ -202,150 +170,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 401, { error: "unauthorized" });
         return;
       }
-      if (req.method === "PUT") {
-        const before = getWinLossSettings(db);
-        const after = saveWinLossSettings(db, await readJsonBody(req));
-        if (before.expenditure.enabled !== after.expenditure.enabled) {
-          log.info(`Expenditure was switched ${after.expenditure.enabled ? "ON" : "OFF"} on the Win/Loss page.`);
-        }
-      }
-      send(res, 200, { ...computeWinLoss(db) });
-      return;
-    }
-
-    if (path === "/internal/access" && (req.method === "GET" || req.method === "PUT")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
-      if (req.method === "PUT") {
-        const body = await readJsonBody(req);
-        if (typeof body.publicView !== "boolean") {
-          send(res, 400, { error: "publicView_must_be_true_or_false" });
-          return;
-        }
-        setPublicView(db, body.publicView);
-        log.info(`Public view was switched ${body.publicView ? "ON" : "OFF"} from the admin page.`);
-      }
-      send(res, 200, { publicView: getPublicView(db) });
-      return;
-    }
-
-    if (req.method === "POST" && path === "/internal/picks/result") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
-      const body = await readJsonBody(req);
-      const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : null;
-      const result = body.result === "hit" || body.result === "miss" ? body.result : body.result === null ? null : undefined;
-      if (id === null || result === undefined) {
-        send(res, 400, { error: "id_and_result_required" });
-        return;
-      }
-      if (!db.setResultOverride(id, result)) {
-        send(res, 404, { error: "no_such_pick" });
-        return;
-      }
-      log.info(`Pick ${id} result ${result === null ? "reset to the alert's own result" : `set by hand to ${result}`} from the admin page.`);
-      send(res, 200, { ok: true });
-      return;
-    }
-
-    if (req.method === "POST" && path === "/internal/picks/exclude") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
-      const body = await readJsonBody(req);
-      const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : null;
-      if (id === null || typeof body.excluded !== "boolean") {
-        send(res, 400, { error: "id_and_excluded_required" });
-        return;
-      }
-      if (!db.setPickExcluded(id, body.excluded)) {
-        send(res, 404, { error: "no_such_pick" });
-        return;
-      }
-      log.info(`Pick ${id} ${body.excluded ? "excluded (didn't actually bet)" : "restored"} from the admin page.`);
-      send(res, 200, { ok: true });
-      return;
-    }
-
-    if (req.method === "POST" && path === "/internal/strategies/remove") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
-      const body = await readJsonBody(req);
-      const label = typeof body.label === "string" ? body.label.trim() : "";
-      if (!label) {
-        send(res, 400, { error: "label_required" });
-        return;
-      }
-      const result = db.removeStrategyPicks(label);
-      const key = label.toLowerCase();
-      saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null } });
-      log.info(`Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ${result.keptBecauseSent} kept.`);
-      send(res, 200, { ...result });
-      return;
-    }
-
-    if (path === "/internal/sending" && (req.method === "GET" || req.method === "PUT")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
-      if (req.method === "PUT") {
-        try {
-          const before = getSendingSettings(db);
-          const after = saveSendingSettings(db, await readJsonBody(req));
-          if (before.enabled !== after.enabled) {
-            log.info(`Sending was switched ${after.enabled ? "ON" : "OFF"} from the admin page.`);
-          }
-        } catch (err) {
-          if (err instanceof BodyTooLarge) {
-            send(res, 413, { error: "body_too_large" });
-            return;
-          }
-          throw err;
-        }
-      }
-      const settings = getSendingSettings(db);
-      const preview = buildFeed(db, { markSent: false });
-      // Every strategy seen so far, so each one gets a switch even before it is turned on.
-      const seen = new Map<string, { label: string; market: string | null; enabled: boolean; stake: number | null }>();
-      for (const st of db.hitRateStats(null).byStrategy) {
-        const key = st.label.toLowerCase();
-        seen.set(key, { label: st.label, market: st.market, enabled: settings.strategies[key] === true, stake: settings.stakes[key] ?? null });
-      }
-      send(res, 200, {
-        settings,
-        strategies: [...seen.values()],
-        feedTokenConfigured: Boolean(process.env.BET_FEED_TOKEN),
-        lastFeedFetchAt: getLastFeedFetchAt(),
-        preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), csv: preview.csv, blockedReason: preview.blockedReason },
-      });
+      const url = new URL(rawUrl, "http://internal");
+      const daysParam = Number(url.searchParams.get("days"));
+      const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
+      send(res, 200, { alerts: db.listPerformanceAlerts(days) });
       return;
     }
 
