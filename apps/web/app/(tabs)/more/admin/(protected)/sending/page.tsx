@@ -132,7 +132,7 @@ export default function SendingPage() {
       <Card title="Feed link" subtitle="The private address your betting software reads.">
         {data.feedTokenConfigured ? (
           <p className="text-xs text-ink-muted">
-            The link is set up. Its address is your engine&rsquo;s public address followed by{" "}
+            The link is set up. Its address is your site&rsquo;s web address followed by{" "}
             <span className="break-all font-mono text-ink">/feeds/bets/YOUR-TOKEN.csv</span>.
           </p>
         ) : (
