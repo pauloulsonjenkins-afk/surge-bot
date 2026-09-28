@@ -78,6 +78,8 @@ export interface LivePick {
   result: "hit" | "miss" | null;
   status: "captured" | "settled" | "unmapped" | "flagged";
   sendable: boolean;
+  /** When the pick was first handed to the bet feed, or null. */
+  sentAt: string | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -153,3 +155,53 @@ export async function fetchHitRateStats(days: number | null): Promise<HitRateSta
     clearTimeout(timeout);
   }
 }
+
+/** Mirrors the engine's bet-feed settings and the /internal/sending reply. */
+export interface SendingSettings {
+  enabled: boolean;
+  strategies: Record<string, boolean>;
+  maxAgeMinutes: number;
+  dailyCap: number;
+  bttsMarketType: string;
+  bttsSelection: string;
+  aliases: string;
+}
+
+export interface SendingState {
+  settings: SendingSettings;
+  strategies: Array<{ label: string; market: string | null; enabled: boolean }>;
+  feedTokenConfigured: boolean;
+  lastFeedFetchAt: string | null;
+  preview: {
+    rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string }>;
+    skipped: Array<{ pickId: number; strategy: string; match: string; reason: string }>;
+    csv: string;
+    blockedReason: string | null;
+  };
+}
+
+async function sendingRequest(method: "GET" | "PUT", body?: Partial<SendingSettings>): Promise<SendingState> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/sending`, {
+      method,
+      headers: { Authorization: `Bearer ${internalKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} for sending options.`);
+    return (await res.json()) as SendingState;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const fetchSending = () => sendingRequest("GET");
+export const saveSending = (patch: Partial<SendingSettings>) => sendingRequest("PUT", patch);

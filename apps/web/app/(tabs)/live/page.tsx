@@ -20,7 +20,6 @@ function pairText(pair: [number, number] | undefined): string | null {
 }
 
 function StatusChip({ pick }: { pick: LivePick }) {
-  // "Sent to bet" will join this list once orders are actually sent.
   let label = "Captured";
   let cls = "bg-surface-2 text-ink-muted";
   if (pick.status === "settled") {
@@ -33,6 +32,9 @@ function StatusChip({ pick }: { pick: LivePick }) {
     } else {
       label = "Settled";
     }
+  } else if (pick.sentAt) {
+    label = "Sent to bet";
+    cls = "bg-accent text-accent-ink";
   } else if (pick.status === "flagged") {
     label = "Needs review";
     cls = "bg-surface-2 text-danger";

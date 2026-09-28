@@ -4,6 +4,7 @@
  * Tables:
  *   inplayguru_webhooks  every verified webhook, stored exactly as received
  *   trade_log            the trade log (one row per TradeLogSink entry)
+ *   settings             small key/value store (currently the "sending" options)
  *   live_picks           one row per Telegram alert, parsed into fields. Keyed by
  *                        (chat_id, message_id) so that when Telegram EDITS the
  *                        alert after full time, the same row is updated with the
@@ -119,6 +120,8 @@ export interface LivePick {
   /** captured = live and unsettled; settled = has a result; unmapped/flagged = must not be sent to bet. */
   status: "captured" | "settled" | "unmapped" | "flagged";
   sendable: boolean;
+  /** When the pick was first handed to the bet feed, or null if it never has been. */
+  sentAt: string | null;
   flags: string[];
   /** The full parsed alert (all stats, odds, etc.) for the detail view. */
   detail: ParsedAlert | null;
@@ -149,6 +152,11 @@ export class EngineDb {
         entry_json  TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS settings (
+        key    TEXT PRIMARY KEY,
+        value  TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS live_picks (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id        TEXT NOT NULL,
@@ -176,6 +184,12 @@ export class EngineDb {
         UNIQUE (chat_id, message_id)
       );
     `);
+
+    // Databases created before the bet feed existed don't have sent_at yet.
+    const liveCols = this.db.prepare(`PRAGMA table_info(live_picks)`).all() as Array<{ name: string }>;
+    if (!liveCols.some((c) => c.name === "sent_at")) {
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_at TEXT`);
+    }
   }
 
   /** Stores a webhook. Returns false if an identical body was already stored (a retry or replay). */
@@ -357,6 +371,7 @@ export class EngineDb {
         result: (r.result as "hit" | "miss" | null) ?? null,
         status: r.status as LivePick["status"],
         sendable: Number(r.sendable) === 1,
+        sentAt: (r.sent_at as string | null) ?? null,
         flags,
         detail,
         rawText: String(r.raw_text),
@@ -456,6 +471,36 @@ export class EngineDb {
         .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([date, d]) => ({ date, hits: d.hits, misses: d.misses, hitRate: rate(d.hits, d.misses) })),
     };
+  }
+
+  getSetting(key: string): string | null {
+    const row = this.db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+    return row ? row.value : null;
+  }
+
+  setSetting(key: string, value: string): void {
+    this.db
+      .prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .run(key, value);
+    this.onChange();
+  }
+
+  /** Stamps sent_at on picks that haven't been handed to the feed before. Already-stamped picks keep their first time. */
+  markSent(ids: number[]): void {
+    if (ids.length === 0) return;
+    const now = new Date().toISOString();
+    const stmt = this.db.prepare(`UPDATE live_picks SET sent_at = ? WHERE id = ? AND sent_at IS NULL`);
+    for (const id of ids) stmt.run(now, id);
+    this.onChange();
+  }
+
+  /** sent_at stamps from roughly the last day and a half, for the daily-limit count. */
+  recentSentTimes(): string[] {
+    const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+    const rows = this.db
+      .prepare(`SELECT sent_at FROM live_picks WHERE sent_at IS NOT NULL AND sent_at >= ?`)
+      .all(since) as Array<{ sent_at: string }>;
+    return rows.map((r) => r.sent_at);
   }
 
   /** Writes a consistent copy of the whole database to `destPath`, safe while the service is running. */

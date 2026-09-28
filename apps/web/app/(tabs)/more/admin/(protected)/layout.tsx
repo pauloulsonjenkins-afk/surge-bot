@@ -7,6 +7,7 @@ import AdminLogoutButton from "@/components/nav/AdminLogoutButton";
 const ADMIN_SECTIONS = [
   { href: "/more/admin/telegram", label: "Telegram" },
   { href: "/more/admin/picks", label: "Picks" },
+  { href: "/more/admin/sending", label: "Sending" },
 ];
 
 export default async function ProtectedAdminLayout({

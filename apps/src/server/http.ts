@@ -6,6 +6,9 @@
  *   GET  /internal/picks                        recent captured picks (admin site only)
  *   GET  /internal/live                         parsed alerts for the Live tab (admin site only)
  *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
+ *   GET  /internal/sending                      sending options, preview and status (admin site only)
+ *   PUT  /internal/sending                      change the sending options (admin site only)
+ *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
  *   POST /internal/telegram/login/password      submit the 2FA password, if any
@@ -13,7 +16,7 @@
  *   GET  /internal/telegram/login/chats         list chats once logged in
  *   POST /internal/telegram/login/watch         pick which chat to watch and start listening
  *
- * The webhook URL contains the secret path token, so URLs are never logged.
+ * The webhook and feed URLs contain a secret path token, so those URLs are never logged.
  * /internal/* routes are protected separately by ADMIN_INTERNAL_KEY, checked
  * as a Bearer token — they're meant to be called server-to-server by the
  * admin site, not opened directly in a browser.
@@ -28,10 +31,12 @@ import { handleVerifiedPick } from "../inplayguru/receiver";
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { startTelegramListener } from "../telegram/listener";
+import { buildFeed, getLastFeedFetchAt, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { log } from "./log";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
+const FEED_PREFIX = "/feeds/bets/";
 
 class BodyTooLarge extends Error {}
 
@@ -156,6 +161,69 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
       send(res, 200, { ...db.hitRateStats(days) });
+      return;
+    }
+
+    if (req.method === "GET" && path.startsWith(FEED_PREFIX)) {
+      const feedToken = process.env.BET_FEED_TOKEN;
+      const provided = path.slice(FEED_PREFIX.length).replace(/\.csv$/i, "");
+      // Same answer for "not configured" and "wrong token", so the link can't be probed.
+      if (!feedToken || !verifyPathToken(provided, feedToken)) {
+        send(res, 404, { error: "not_found" });
+        return;
+      }
+      noteFeedFetched();
+      const feed = buildFeed(db, { markSent: true });
+      if (feed.newlySent > 0) {
+        log.info(`Bet feed: ${feed.newlySent} new pick(s) handed over (${feed.rows.length} row(s) served).`);
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Length": Buffer.byteLength(feed.csv),
+        "Cache-Control": "no-store",
+      });
+      res.end(feed.csv);
+      return;
+    }
+
+    if (path === "/internal/sending" && (req.method === "GET" || req.method === "PUT")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "PUT") {
+        try {
+          const before = getSendingSettings(db);
+          const after = saveSendingSettings(db, await readJsonBody(req));
+          if (before.enabled !== after.enabled) {
+            log.info(`Sending was switched ${after.enabled ? "ON" : "OFF"} from the admin page.`);
+          }
+        } catch (err) {
+          if (err instanceof BodyTooLarge) {
+            send(res, 413, { error: "body_too_large" });
+            return;
+          }
+          throw err;
+        }
+      }
+      const settings = getSendingSettings(db);
+      const preview = buildFeed(db, { markSent: false });
+      // Every strategy seen so far, so each one gets a switch even before it is turned on.
+      const seen = new Map<string, { label: string; market: string | null; enabled: boolean }>();
+      for (const st of db.hitRateStats(null).byStrategy) {
+        seen.set(st.label.toLowerCase(), { label: st.label, market: st.market, enabled: settings.strategies[st.label.toLowerCase()] === true });
+      }
+      send(res, 200, {
+        settings,
+        strategies: [...seen.values()],
+        feedTokenConfigured: Boolean(process.env.BET_FEED_TOKEN),
+        lastFeedFetchAt: getLastFeedFetchAt(),
+        preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), csv: preview.csv, blockedReason: preview.blockedReason },
+      });
       return;
     }
 
