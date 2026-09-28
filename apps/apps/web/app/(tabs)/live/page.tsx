@@ -1,19 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
-import { LiveFetchError, useLivePicks, type LivePick } from "@/queries/use-live";
+import { QueryError } from "@/components/ui/QueryError";
+import { marketName } from "@/lib/markets";
+import { useLivePicks, type LivePick } from "@/queries/use-live";
 
 // An alert that has had no result edited in after this long is treated as
 // "earlier" rather than still in play.
 const STILL_LIVE_MS = 3 * 60 * 60 * 1000;
-
-const MARKET_LABEL: Record<string, string> = {
-  NEXT_GOAL: "Next goal",
-  BOTH_TEAMS_TO_SCORE: "Both teams to score",
-};
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -50,12 +46,15 @@ function StatusChip({ pick }: { pick: LivePick }) {
 function PickCard({ pick }: { pick: LivePick }) {
   const settled = pick.status === "settled";
   const stats = pick.detail?.stats ?? {};
+  // Corners lead for the corners strategy; the rest fill the remaining slots.
+  const cornersFirst = pick.market === "FIRST_HALF_CORNERS";
   const keyStats: Array<[string, string | null]> = [
+    ...(cornersFirst ? ([["Corners", pairText(stats["Corners"])]] as Array<[string, string | null]>) : []),
     ["Momentum", pairText(stats["Momentum"])],
     ["xG", pairText(stats["xG"])],
     ["Shots on target", pairText(stats["Shots On Target"])],
   ];
-  const shownStats = keyStats.filter(([, v]) => v !== null) as Array<[string, string]>;
+  const shownStats = (keyStats.filter(([, v]) => v !== null) as Array<[string, string]>).slice(0, 3);
   const score =
     pick.goalsHome !== null && pick.goalsAway !== null ? `${pick.goalsHome} – ${pick.goalsAway}` : "– –";
 
@@ -81,9 +80,7 @@ function PickCard({ pick }: { pick: LivePick }) {
       <div className="mt-3 flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm">
         <span className="text-ink-muted">Bet</span>
         <span className="font-medium text-ink">
-          {pick.market
-            ? `${MARKET_LABEL[pick.market] ?? pick.market}${pick.selection ? ` · ${pick.selection}` : ""}`
-            : "No market set"}
+          {pick.market ? `${marketName(pick.market)}${pick.selection ? ` · ${pick.selection}` : ""}` : "No market set"}
         </span>
       </div>
 
@@ -141,20 +138,10 @@ export default function LivePage() {
   if (isLoading) return <ListSkeleton />;
 
   if (error) {
-    const needsLogin = error instanceof LiveFetchError && error.status === 401;
     return (
-      <div className="px-4 py-4">
+      <div className="space-y-3 px-4 py-4">
         <h1 className="text-lg font-medium tracking-tight text-ink">Live</h1>
-        {needsLogin ? (
-          <p className="mt-2 text-sm text-ink-muted">
-            Sign in to see live picks.{" "}
-            <Link href="/more/admin/login?next=/live" className="text-accent underline">
-              Sign in
-            </Link>
-          </p>
-        ) : (
-          <p className="mt-2 text-sm text-danger">{error.message}</p>
-        )}
+        <QueryError error={error} next="/live" />
       </div>
     );
   }

@@ -17,7 +17,7 @@
  * order later, so anything doubtful is flagged instead.
  */
 
-export type MarketCode = "NEXT_GOAL" | "BOTH_TEAMS_TO_SCORE";
+export type MarketCode = "NEXT_GOAL" | "BOTH_TEAMS_TO_SCORE" | "FIRST_HALF_CORNERS";
 
 export type PickResult = "hit" | "miss";
 
@@ -31,7 +31,7 @@ export interface ParsedAlert {
   market: MarketCode | null;
   /** Human wording of the bet, e.g. "Over 1.5" or "Yes". Null when unmapped. */
   selection: string | null;
-  /** The goals line a Next Goal bet targets (total goals + 0.5). */
+  /** The line a bet targets: goals + 0.5 for Next Goal, 5.5 for 1st half corners. */
   targetLine: number | null;
 
   competition: string | null;
@@ -73,6 +73,8 @@ export interface ParsedAlert {
 /** Strategy name (lower case, no bracketed note) -> market. Order matters: first match wins. */
 const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /both teams to score/, market: "BOTH_TEAMS_TO_SCORE" },
+  // "1st Half Corners", "First Half Corner", "1H Corners", "Corners 1st Half" ...
+  { test: /\b(?:first|1st|1h)\b[^/]*\bcorners?\b|\bcorners?\b[^/]*\b(?:first|1st|1h)\b/, market: "FIRST_HALF_CORNERS" },
   { test: /momentum/, market: "NEXT_GOAL" },
   { test: /action/, market: "NEXT_GOAL" },
 ];
@@ -160,13 +162,18 @@ export function parseAlert(text: string): ParsedAlert {
   // ---- timer / last goal ----
   let timerRaw: string | null = null;
   let minute: number | null = null;
+  /** Minute without stoppage time, so "45+2'" is still 45 (first half). */
+  let baseMinute: number | null = null;
   let lastGoal: string | null = null;
   for (const l of lines) {
     const t = l.match(/^Timer:\s*(.+)$/i);
     if (t?.[1]) {
       timerRaw = t[1].trim();
       const mm = timerRaw.match(/^(\d+)(?:\s*\+\s*(\d+))?/);
-      if (mm?.[1]) minute = Number(mm[1]) + (mm[2] ? Number(mm[2]) : 0);
+      if (mm?.[1]) {
+        baseMinute = Number(mm[1]);
+        minute = baseMinute + (mm[2] ? Number(mm[2]) : 0);
+      }
     }
     const g = l.match(/^Last Goal:\s*(.+)$/i);
     if (g?.[1]) lastGoal = g[1].trim();
@@ -261,6 +268,21 @@ export function parseAlert(text: string): ParsedAlert {
     // If both teams have already scored the bet is meaningless.
     if (goalsHome !== null && goalsAway !== null && goalsHome > 0 && goalsAway > 0 && !settled) {
       flags.push("Both teams have already scored, so this Both Teams to Score pick is not live.");
+    }
+  } else if (market === "FIRST_HALF_CORNERS") {
+    // Fixed line: the bet is corners Over 5.5 in the first half.
+    targetLine = 5.5;
+    selection = "Over 5.5";
+    const corners = stats["Corners"] ?? null;
+    if (!settled) {
+      if (!corners) {
+        flags.push("No Corners line in the alert, so the corner count could not be checked.");
+      } else if (corners[0] + corners[1] > targetLine) {
+        flags.push(`There are already ${corners[0] + corners[1]} corners, so Over 5.5 is already decided.`);
+      }
+      if (baseMinute !== null && baseMinute > 45) {
+        flags.push("The alert is past 45 minutes, so the first half is over.");
+      }
     }
   } else {
     flags.push(`Strategy "${strategyRaw}" is not in the strategy table, so no market is set.`);

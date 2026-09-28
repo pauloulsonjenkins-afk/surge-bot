@@ -110,3 +110,45 @@ export async function fetchLivePicks(limit = 50): Promise<LivePick[]> {
     clearTimeout(timeout);
   }
 }
+
+/** Mirrors HitRateStats in the engine's engine-db.ts. */
+export interface HitRateRow {
+  label: string;
+  alerts: number;
+  hits: number;
+  misses: number;
+  hitRate: number | null;
+}
+export interface StrategyStats extends HitRateRow {
+  market: string | null;
+  lastAlertAt: string;
+}
+export interface HitRateStats {
+  days: number | null;
+  totals: { alerts: number; hits: number; misses: number; pending: number; needsReview: number; hitRate: number | null };
+  byStrategy: StrategyStats[];
+  byLeague: HitRateRow[];
+  daily: Array<{ date: string; hits: number; misses: number; hitRate: number | null }>;
+}
+
+export async function fetchHitRateStats(days: number | null): Promise<HitRateStats> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/stats${days ? `?days=${days}` : ""}`, {
+      headers: { Authorization: `Bearer ${internalKey}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching stats.`);
+    return (await res.json()) as HitRateStats;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
