@@ -459,3 +459,37 @@ async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch): Promi
 
 export const fetchWinLoss = () => winLossRequest("GET");
 export const saveWinLoss = (patch: WinLossPatch) => winLossRequest("PUT", patch);
+
+/** One alert for the Dashboard's league / strategy / minute breakdown. Mirrors PerformanceAlertRow in the engine's engine-db.ts. */
+export interface EnginePerformanceAlert {
+  id: string;
+  firedAt: number;
+  league: string;
+  country: string | null;
+  strategy: string;
+  minute: number | null;
+  outcome: "hit" | "miss" | "pending";
+}
+
+export async function fetchPerformanceAlerts(days: number | null): Promise<EnginePerformanceAlert[]> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/performance${days ? `?days=${days}` : ""}`, {
+      headers: { Authorization: `Bearer ${internalKey}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching alert history.`);
+    const data = (await res.json()) as { alerts: EnginePerformanceAlert[] };
+    return data.alerts;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

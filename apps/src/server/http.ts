@@ -6,6 +6,7 @@
  *   GET  /internal/picks                        recent captured picks (admin site only)
  *   GET  /internal/live                         parsed alerts for the Live tab (admin site only)
  *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
+ *   GET  /internal/performance?days=N           one row per alert, for the Dashboard's league/strategy/minute breakdown (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
@@ -168,6 +169,23 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
       send(res, 200, { ...db.hitRateStats(days) });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/performance") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        log.warn("GET /internal/performance called but ADMIN_INTERNAL_KEY is not set on the engine.");
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const url = new URL(rawUrl, "http://internal");
+      const daysParam = Number(url.searchParams.get("days"));
+      const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
+      send(res, 200, { alerts: db.listPerformanceAlerts(days) });
       return;
     }
 

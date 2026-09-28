@@ -18,7 +18,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ParsedAlert } from "../inplayguru/parse-alert";
+import { leagueCountryFromText, type ParsedAlert } from "../inplayguru/parse-alert";
 
 export interface CapturedWebhook {
   receivedAt: string;
@@ -96,6 +96,24 @@ const MINUTE_BUCKETS: Array<{ label: string; max: number }> = [
   { label: "61–75'", max: 75 },
   { label: "76'+", max: Infinity },
 ];
+
+/** One alert for the Dashboard's league / strategy / minute breakdown. */
+export interface PerformanceAlertRow {
+  id: string;
+  /** Epoch ms when the alert first arrived. */
+  firedAt: number;
+  league: string;
+  country: string | null;
+  strategy: string;
+  minute: number | null;
+  outcome: "hit" | "miss" | "pending";
+}
+
+function stripCountryPrefix(league: string, country: string | null): string {
+  if (!country) return league;
+  const prefix = `${country.toLowerCase()} `;
+  return league.toLowerCase().startsWith(prefix) && league.length > prefix.length ? league.slice(prefix.length).trim() : league;
+}
 
 /** What the Live tab reads. One per Telegram alert. */
 export interface LivePick {
@@ -500,6 +518,47 @@ export class EngineDb {
         .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([date, d]) => ({ date, hits: d.hits, misses: d.misses, hitRate: rate(d.hits, d.misses) })),
     };
+  }
+
+  /**
+   * Alerts over the last `days` days (null = all time), one row each, for the Dashboard's
+   * breakdown by league, strategy and alert minute. Uses the same rules as hitRateStats:
+   * picks marked "didn't actually bet" are left out, and an amended result wins over the
+   * parsed one. The country is read from the flag in the stored alert text, so alerts saved
+   * before the parser knew about countries are covered too.
+   */
+  listPerformanceAlerts(days: number | null): PerformanceAlertRow[] {
+    const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const cols = `id, first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, raw_text`;
+    const rows = (
+      since === null
+        ? this.db.prepare(`SELECT ${cols} FROM live_picks WHERE excluded = 0 ORDER BY id DESC LIMIT 20000`).all()
+        : this.db
+            .prepare(`SELECT ${cols} FROM live_picks WHERE first_seen_at >= ? AND excluded = 0 ORDER BY id DESC LIMIT 20000`)
+            .all(since)
+    ) as Array<{
+      id: number;
+      first_seen_at: string;
+      strategy: string;
+      competition: string | null;
+      minute: number | null;
+      result: string | null;
+      raw_text: string;
+    }>;
+
+    return rows.map((r) => {
+      const country = leagueCountryFromText(r.raw_text);
+      const cleaned = (r.competition ?? "").replace(/[\u{E0020}-\u{E007F}]/gu, "").trim();
+      return {
+        id: String(r.id),
+        firedAt: Date.parse(r.first_seen_at),
+        league: stripCountryPrefix(cleaned, country) || "Unknown league",
+        country,
+        strategy: strategyLabel(r.strategy),
+        minute: r.minute === null ? null : Number(r.minute),
+        outcome: r.result === "hit" ? "hit" : r.result === "miss" ? "miss" : "pending",
+      };
+    });
   }
 
   /**
