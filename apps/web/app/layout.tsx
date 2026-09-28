@@ -3,8 +3,8 @@ import "./globals.css";
 import Providers from "@/queries/Providers";
 
 export const metadata: Metadata = {
-  title: "Surge",
-  description: "Live xG alerts, bot management and trading for Surge.",
+  title: "Goal Brewing Alerts",
+  description: "Live in-play football alerts.",
 };
 
 export const viewport: Viewport = {

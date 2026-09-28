@@ -6,12 +6,6 @@ import AdminLogoutButton from "@/components/nav/AdminLogoutButton";
 
 const ADMIN_SECTIONS = [
   { href: "/more/admin/telegram", label: "Telegram" },
-  { href: "/more/admin/staking", label: "Staking" },
-  { href: "/more/admin/theme", label: "Theme" },
-  { href: "/more/admin/versions", label: "Versions" },
-  { href: "/more/admin/data-feed", label: "Data Feed" },
-  { href: "/more/admin/break-even", label: "Break-even" },
-  { href: "/more/admin/model", label: "The Model" },
   { href: "/more/admin/picks", label: "Picks" },
 ];
 

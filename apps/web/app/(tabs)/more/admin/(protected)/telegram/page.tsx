@@ -129,7 +129,7 @@ export default function TelegramPage() {
     <div>
       <h2 className="text-base font-medium tracking-tight text-ink">Telegram</h2>
       <p className="mt-1 text-sm text-ink-muted">
-        Log in with your own Telegram account so the engine can read InPlayGuru's alerts from the group/channel
+        Log in with your own Telegram account so the engine can read your alerts from the group/channel
         you're already in.
       </p>
 
@@ -159,7 +159,7 @@ export default function TelegramPage() {
       ) : status === "logged_in" && chats ? (
         <div className="mt-4 space-y-2">
           <p className="text-sm text-ink-muted">
-            Pick the chat InPlayGuru's alerts land in — look for the personal alerts bot (labelled "bot" below), not
+            Pick the chat your alerts land in — look for the personal alerts bot (labelled "bot" below), not
             a group.
           </p>
           <ul className="divide-y divide-line rounded-lg border border-line">

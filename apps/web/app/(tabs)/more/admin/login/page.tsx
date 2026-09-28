@@ -45,7 +45,7 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-xs">
         <h1 className="mb-1 text-lg font-medium tracking-tight text-ink">Admin access</h1>
         <p className="mb-6 text-sm text-ink-muted">
-          This section controls staking and Betfair orders. Sign in to continue.
+          This section controls the alert connection. Sign in to continue.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-3">

@@ -9,9 +9,8 @@ export default function PicksPage() {
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-2">Picks received</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        Every live pick the engine has actually captured, most recent first. This is real
-        data from the engine&rsquo;s database, not a mock — it has nothing to do with the trades
-        shown on the main dashboard, since no trades have been placed yet.
+        Every alert the engine has captured, exactly as first received, most recent first. Results
+        and parsed details are on the Live and Trade Log tabs.
       </p>
 
       {isLoading && <p>Loading…</p>}

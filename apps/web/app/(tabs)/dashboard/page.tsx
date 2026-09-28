@@ -1,26 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Timeframe } from "@/domain/dashboard";
-import {
-  useBotPerformance,
-  useDashboardSummary,
-  useLeagueBreakdown,
-  usePnlRoiSeries,
-} from "@/queries/use-dashboard";
+import { useHitRateStats } from "@/queries/use-stats";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
-import { TimeframeToggle } from "@/components/dashboard/TimeframeToggle";
-import { PnlRoiChart } from "@/components/dashboard/PnlRoiChart";
-import { LeagueBreakdownChart } from "@/components/dashboard/LeagueBreakdownChart";
-import { BotPerformanceChart } from "@/components/dashboard/BotPerformanceChart";
+import { TIMEFRAMES, TimeframeToggle, type Timeframe } from "@/components/dashboard/TimeframeToggle";
+import { DailyResultsChart } from "@/components/dashboard/DailyResultsChart";
+import { RateList } from "@/components/dashboard/RateList";
+import { ChartCard } from "@/components/dashboard/ChartCard";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { QueryError } from "@/components/ui/QueryError";
 
 export default function DashboardPage() {
-  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
-
-  const summary = useDashboardSummary(timeframe);
-  const pnlRoi = usePnlRoiSeries(timeframe);
-  const leagues = useLeagueBreakdown(timeframe);
-  const bots = useBotPerformance(timeframe);
+  const [timeframe, setTimeframe] = useState<Timeframe>("7D");
+  const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
+  const { data, isLoading, error } = useHitRateStats(days);
 
   return (
     <div className="space-y-4 px-4 py-4">
@@ -29,11 +22,26 @@ export default function DashboardPage() {
         <TimeframeToggle value={timeframe} onChange={setTimeframe} />
       </div>
 
-      <SummaryCards summary={summary.data} isLoading={summary.isLoading} />
+      {error ? (
+        <QueryError error={error} next="/dashboard" />
+      ) : (
+        <>
+          <SummaryCards stats={data} isLoading={isLoading} />
+          <DailyResultsChart stats={data} isLoading={isLoading} />
 
-      <PnlRoiChart series={pnlRoi.data} isLoading={pnlRoi.isLoading} />
-      <LeagueBreakdownChart data={leagues.data} isLoading={leagues.isLoading} />
-      <BotPerformanceChart data={bots.data} isLoading={bots.isLoading} />
+          <ChartCard title="By strategy" subtitle="Hit rate from settled picks">
+            {isLoading ? <Skeleton className="h-32 w-full" /> : <RateList rows={data?.byStrategy ?? []} emptyDetail="Strategies appear as picks arrive." />}
+          </ChartCard>
+
+          <ChartCard title="By league" subtitle="Most active first">
+            {isLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : (
+              <RateList rows={(data?.byLeague ?? []).slice(0, 10)} emptyDetail="Leagues appear as picks arrive." />
+            )}
+          </ChartCard>
+        </>
+      )}
     </div>
   );
 }

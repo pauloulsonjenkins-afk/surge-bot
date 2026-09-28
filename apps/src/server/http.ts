@@ -4,6 +4,8 @@
  *   GET  /health                               DigitalOcean's health check
  *   POST /webhooks/inplayguru/<path token>     InPlayGuru picks
  *   GET  /internal/picks                        recent captured picks (admin site only)
+ *   GET  /internal/live                         parsed alerts for the Live tab (admin site only)
+ *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
  *   POST /internal/telegram/login/password      submit the 2FA password, if any
@@ -101,7 +103,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (req.method === "GET" && path === "/health") {
       // Stays 200 even if backups are failing: a failed health check makes
       // DigitalOcean restart the container, which would lose un-backed-up data.
-      send(res, 200, { ok: true, webhooksStored: db.countWebhooks(), backup: backups.getStatus() });
+      send(res, 200, { ok: true, webhooksStored: db.countWebhooks(), livePicks: db.countLivePicks(), backup: backups.getStatus() });
       return;
     }
 
@@ -120,6 +122,40 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const limitParam = Number(url.searchParams.get("limit"));
       const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
       send(res, 200, { picks: db.listRecentWebhooks(limit) });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/live") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        log.warn("GET /internal/live called but ADMIN_INTERNAL_KEY is not set on the engine.");
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const url = new URL(rawUrl, "http://internal");
+      const limitParam = Number(url.searchParams.get("limit"));
+      const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
+      send(res, 200, { picks: db.listLivePicks(limit) });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/stats") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        log.warn("GET /internal/stats called but ADMIN_INTERNAL_KEY is not set on the engine.");
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const url = new URL(rawUrl, "http://internal");
+      const daysParam = Number(url.searchParams.get("days"));
+      const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
+      send(res, 200, { ...db.hitRateStats(days) });
       return;
     }
 

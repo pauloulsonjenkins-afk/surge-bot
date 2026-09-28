@@ -6,8 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "verify:mock-data": "tsx scripts/verify-mock-data.ts"
+    "lint": "next lint"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.2",
