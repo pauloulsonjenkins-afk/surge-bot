@@ -19,6 +19,28 @@
   --accent-ink: #17110a;
   --danger: #e8613d;
   --hit: #3fbf8f;
+  color-scheme: dark;
+}
+
+/*
+ * Light theme ("day"): warm paper for the page, clean off-white cards, the
+ * same amber as the accent but deepened so it stays readable on light
+ * backgrounds (4.7:1 as text on a card), and a deeper green and red for hits
+ * and misses. Every text colour here passes 4.5:1 on the surface it is used on,
+ * apart from muted text on the page background, which sits at 4.7:1.
+ */
+:root[data-theme="light"] {
+  --app: #f3f0e8;
+  --surface: #fffefb;
+  --surface-2: #efeadf;
+  --line: #ded8ca;
+  --ink: #1c1f26;
+  --ink-muted: #666b76;
+  --accent: #a86200;
+  --accent-ink: #fffdf8;
+  --danger: #b83a17;
+  --hit: #0c6f4d;
+  color-scheme: light;
 }
 
 body {

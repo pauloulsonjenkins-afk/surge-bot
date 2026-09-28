@@ -45,11 +45,11 @@ export default function SettingsPage() {
             aria-label="Public view"
             disabled={save.isPending}
             onClick={toggle}
-            className={`h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors disabled:opacity-50 ${
+            className={`h-6 w-11 shrink-0 rounded-full p-0.5 ring-1 ring-inset ring-line transition-colors disabled:opacity-50 ${
               publicView ? "bg-accent" : "bg-surface-2"
             }`}
           >
-            <span className={`block h-5 w-5 rounded-full bg-ink transition-transform ${publicView ? "translate-x-5" : ""}`} />
+            <span className={`block h-5 w-5 rounded-full bg-white shadow ring-1 ring-black/10 transition-transform ${publicView ? "translate-x-5" : ""}`} />
           </button>
         </div>
 

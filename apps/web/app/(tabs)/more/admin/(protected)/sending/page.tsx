@@ -222,12 +222,12 @@ export default function SendingPage() {
                       aria-checked={s.enabled}
                       disabled={!canSwitch}
                       onClick={() => save.mutate({ strategies: { [key]: !s.enabled } })}
-                      className={`h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors disabled:opacity-40 ${
+                      className={`h-6 w-11 shrink-0 rounded-full p-0.5 ring-1 ring-inset ring-line transition-colors disabled:opacity-40 ${
                         s.enabled ? "bg-accent" : "bg-surface-2"
                       }`}
                     >
                       <span
-                        className={`block h-5 w-5 rounded-full bg-ink transition-transform ${s.enabled ? "translate-x-5" : ""}`}
+                        className={`block h-5 w-5 rounded-full bg-white shadow ring-1 ring-black/10 transition-transform ${s.enabled ? "translate-x-5" : ""}`}
                       />
                     </button>
                   </div>

@@ -171,7 +171,7 @@ export default function TelegramPage() {
                 <button
                   disabled={busy}
                   onClick={() => watchChat(c.id)}
-                  className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                  className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
                 >
                   Watch
                 </button>
@@ -206,7 +206,7 @@ export default function TelegramPage() {
           <button
             disabled={busy || !code}
             onClick={submitCode}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
           >
             Submit code
           </button>
@@ -223,7 +223,7 @@ export default function TelegramPage() {
           <button
             disabled={busy || !password}
             onClick={submitPassword}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
           >
             Submit password
           </button>
@@ -242,7 +242,7 @@ export default function TelegramPage() {
           <button
             disabled={busy || !phoneNumber}
             onClick={submitPhone}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
           >
             Log in
           </button>

@@ -34,12 +34,12 @@ export default async function ProtectedAdminLayout({
         <AdminLogoutButton />
       </header>
 
-      <nav className="flex gap-1 overflow-x-auto border-b border-line px-2 py-2">
+      <nav className="flex gap-0.5 overflow-x-auto border-b border-line px-2 py-2">
         {ADMIN_SECTIONS.map((s) => (
           <Link
             key={s.href}
             href={s.href}
-            className="shrink-0 rounded-md px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink"
+            className="shrink-0 rounded-md px-2.5 py-1.5 text-[13px] text-ink-muted hover:bg-surface-2 hover:text-ink"
           >
             {s.label}
           </Link>
