@@ -17,6 +17,29 @@ export function useSending() {
   });
 }
 
+export function useRemoveStrategy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (label: string): Promise<{ removed: number; keptBecauseSent: number }> => {
+      const res = await fetch("/api/admin/strategies/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiFetchError(body?.error ?? `Could not remove (${res.status})`, res.status);
+      }
+      return (await res.json()) as { removed: number; keptBecauseSent: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ["hit-rate-stats"] });
+      qc.invalidateQueries({ queryKey: ["live-picks"] });
+    },
+  });
+}
+
 export function useSaveSending() {
   const qc = useQueryClient();
   return useMutation({

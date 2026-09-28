@@ -63,6 +63,13 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
       // raw capture above, so it is caught on its own.
       try {
         const parsed = parseAlert(text);
+        // A real alert always has two team names and a match timer. Welcome
+        // messages, announcements and the like don't, so they are kept in the raw
+        // log (Picks page) but never turned into a strategy or a pick.
+        if (!parsed.home || !parsed.away || parsed.minute === null) {
+          log.info(`Telegram message ${message.id} is not an alert; not added to the live picks.`);
+          return;
+        }
         const what = db.upsertLivePick(chatKey, message.id, text, parsed);
         log.info(
           `Live pick for Telegram message ${message.id} ${what}` +

@@ -479,6 +479,26 @@ export class EngineDb {
     };
   }
 
+  /**
+   * Deletes the stored picks of one strategy (matched on its name without any
+   * bracketed note). Picks that were already handed to the bet feed are kept,
+   * as the record of what was sent. The raw capture log is never touched.
+   */
+  removeStrategyPicks(label: string): { removed: number; keptBecauseSent: number } {
+    const target = label.trim().toLowerCase();
+    const rows = this.db.prepare(`SELECT id, strategy, sent_at FROM live_picks`).all() as Array<{
+      id: number;
+      strategy: string;
+      sent_at: string | null;
+    }>;
+    const mine = rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === target);
+    const deletable = mine.filter((r) => r.sent_at === null).map((r) => r.id);
+    const del = this.db.prepare(`DELETE FROM live_picks WHERE id = ?`);
+    for (const id of deletable) del.run(id);
+    if (deletable.length > 0) this.onChange();
+    return { removed: deletable.length, keptBecauseSent: mine.length - deletable.length };
+  }
+
   getSetting(key: string): string | null {
     const row = this.db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
     return row ? row.value : null;

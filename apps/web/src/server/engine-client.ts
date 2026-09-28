@@ -206,5 +206,28 @@ async function sendingRequest(method: "GET" | "PUT", body?: Partial<SendingSetti
   }
 }
 
+export async function removeStrategy(label: string): Promise<{ removed: number; keptBecauseSent: number }> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/strategies/remove`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when removing the strategy.`);
+    return (await res.json()) as { removed: number; keptBecauseSent: number };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export const fetchSending = () => sendingRequest("GET");
 export const saveSending = (patch: Partial<SendingSettings>) => sendingRequest("PUT", patch);

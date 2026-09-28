@@ -8,6 +8,7 @@
  *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
+ *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -183,6 +184,29 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         "Cache-Control": "no-store",
       });
       res.end(feed.csv);
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/strategies/remove") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const label = typeof body.label === "string" ? body.label.trim() : "";
+      if (!label) {
+        send(res, 400, { error: "label_required" });
+        return;
+      }
+      const result = db.removeStrategyPicks(label);
+      const key = label.toLowerCase();
+      saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null } });
+      log.info(`Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ${result.keptBecauseSent} kept.`);
+      send(res, 200, { ...result });
       return;
     }
 
