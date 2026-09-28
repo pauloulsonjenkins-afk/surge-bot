@@ -5,10 +5,10 @@ import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import AdminLogoutButton from "@/components/nav/AdminLogoutButton";
 
 const ADMIN_SECTIONS = [
-  { href: "/more/admin/telegram", label: "Telegram" },
   { href: "/more/admin/picks", label: "Picks" },
   { href: "/more/admin/results", label: "Results" },
   { href: "/more/admin/sending", label: "Sending" },
+  { href: "/more/admin/winloss", label: "Win/Loss" },
   { href: "/more/admin/settings", label: "Settings" },
 ];
 

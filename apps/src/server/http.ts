@@ -8,6 +8,7 @@
  *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
+ *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
@@ -36,6 +37,7 @@ import { loginFlow } from "../telegram/session-flow";
 import { startTelegramListener } from "../telegram/listener";
 import { buildFeed, getLastFeedFetchAt, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
+import { computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -187,6 +189,26 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         "Cache-Control": "no-store",
       });
       res.end(feed.csv);
+      return;
+    }
+
+    if (path === "/internal/winloss" && (req.method === "GET" || req.method === "PUT")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "PUT") {
+        const before = getWinLossSettings(db);
+        const after = saveWinLossSettings(db, await readJsonBody(req));
+        if (before.expenditure.enabled !== after.expenditure.enabled) {
+          log.info(`Expenditure was switched ${after.expenditure.enabled ? "ON" : "OFF"} on the Win/Loss page.`);
+        }
+      }
+      send(res, 200, { ...computeWinLoss(db) });
       return;
     }
 

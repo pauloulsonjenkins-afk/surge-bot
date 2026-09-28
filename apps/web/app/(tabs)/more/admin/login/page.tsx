@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 export default function AdminLoginPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/more/admin/telegram";
+  const next = params.get("next") ?? "/more/admin/sending";
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

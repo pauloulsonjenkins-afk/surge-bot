@@ -554,6 +554,74 @@ export class EngineDb {
     return changed;
   }
 
+  /**
+   * Settled picks (hit or miss, with any hand-made amendment applied) since a
+   * date, with just what the Win/Loss figures need: the odds printed in the
+   * alert, the line it was on, and the stake if it was actually sent.
+   */
+  listResultsForWinLoss(sinceIso: string): Array<{
+    id: number;
+    firstSeenAt: string;
+    strategy: string;
+    market: string | null;
+    result: "hit" | "miss";
+    targetLine: number | null;
+    overLine: number | null;
+    overOdds: number | null;
+    sentStake: number | null;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row
+         FROM live_picks
+         WHERE first_seen_at >= ? AND COALESCE(result_override, result) IN ('hit', 'miss')
+         ORDER BY first_seen_at, id`,
+      )
+      .all(sinceIso) as Array<{
+      id: number;
+      first_seen_at: string;
+      strategy: string;
+      market: string | null;
+      result: "hit" | "miss";
+      parsed_json: string;
+      sent_row: string | null;
+    }>;
+
+    return rows.map((r) => {
+      let targetLine: number | null = null;
+      let overLine: number | null = null;
+      let overOdds: number | null = null;
+      try {
+        const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert>;
+        targetLine = typeof p.targetLine === "number" ? p.targetLine : null;
+        overLine = typeof p.odds?.overUnderLine === "number" ? p.odds.overUnderLine : null;
+        overOdds = typeof p.odds?.over === "number" ? p.odds.over : null;
+      } catch {
+        // leave as null
+      }
+      let sentStake: number | null = null;
+      if (r.sent_row) {
+        try {
+          const s = JSON.parse(r.sent_row) as { stake?: unknown };
+          sentStake = typeof s.stake === "number" && s.stake > 0 ? s.stake : null;
+        } catch {
+          // leave as null
+        }
+      }
+      return {
+        id: r.id,
+        firstSeenAt: r.first_seen_at,
+        strategy: r.strategy,
+        market: r.market,
+        result: r.result,
+        targetLine,
+        overLine,
+        overOdds,
+        sentStake,
+      };
+    });
+  }
+
   getSetting(key: string): string | null {
     const row = this.db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
     return row ? row.value : null;

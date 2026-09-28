@@ -9,9 +9,9 @@ const ITEMS = [
     icon: Bot,
   },
   {
-    href: "/more/admin/telegram",
+    href: "/more/admin/sending",
     label: "Admin",
-    description: "Telegram connection and received picks — password protected.",
+    description: "Sending, results, win/loss and settings — password protected.",
     icon: ShieldCheck,
   },
 ];

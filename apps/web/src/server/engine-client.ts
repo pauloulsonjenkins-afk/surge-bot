@@ -364,3 +364,74 @@ export const savePublicView = (enabled: boolean) => accessRequest("PUT", enabled
 
 export const fetchSending = () => sendingRequest("GET");
 export const saveSending = (patch: Partial<SendingSettings>) => sendingRequest("PUT", patch);
+
+/** Mirrors the engine's Win/Loss reply (winloss.ts). */
+export interface WinLossSettings {
+  commission: number;
+  assumedOdds: Record<string, number | null>;
+  expenditure: { enabled: boolean; monthly: number; startMonth: string | null };
+}
+export interface WinLossPoint {
+  label: string;
+  total: number;
+  totalAfter: number;
+  s: Record<string, number>;
+}
+export interface WinLossPeriod {
+  strategies: Record<string, number>;
+  total: number;
+  expenditure: number;
+  totalAfter: number;
+  picks: number;
+}
+export interface WinLossStrategy {
+  label: string;
+  key: string;
+  market: string | null;
+  stake: number | null;
+  assumedOdds: number | null;
+  settled: number;
+  counted: number;
+  noStake: number;
+  noOdds: number;
+  usedAlertOdds: number;
+}
+export interface WinLossState {
+  today: string;
+  settings: WinLossSettings;
+  maxStake: number;
+  strategies: WinLossStrategy[];
+  periods: { d1: WinLossPeriod; d7: WinLossPeriod; mtd: WinLossPeriod; ytd: WinLossPeriod };
+  series: { d1: WinLossPoint[]; d7: WinLossPoint[]; mtd: WinLossPoint[]; ytd: WinLossPoint[] };
+}
+export interface WinLossPatch {
+  commission?: number;
+  assumedOdds?: Record<string, number | null>;
+  expenditure?: { enabled?: boolean; monthly?: number; startMonth?: string };
+}
+
+async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch): Promise<WinLossState> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/winloss`, {
+      method,
+      headers: { Authorization: `Bearer ${internalKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} for the win/loss figures.`);
+    return (await res.json()) as WinLossState;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const fetchWinLoss = () => winLossRequest("GET");
+export const saveWinLoss = (patch: WinLossPatch) => winLossRequest("PUT", patch);
