@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "@/components/nav/BottomNav";
 import { useUiStore } from "@/state/ui.store";
+import { isValidMoreRoute } from "@/lib/routes";
 
 export default function TabsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -13,7 +14,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
   // admin route as the "return to" target — always land back on the More
   // menu for that, not mid-way into a gated page).
   useEffect(() => {
-    if (pathname.startsWith("/more") && !pathname.startsWith("/more/admin")) {
+    if (isValidMoreRoute(pathname)) {
       setLastMoreRoute(pathname);
     }
   }, [pathname, setLastMoreRoute]);

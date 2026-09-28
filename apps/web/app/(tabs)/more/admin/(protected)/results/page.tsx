@@ -3,7 +3,7 @@
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
-import { useLivePicks, useSetPickResult, type LivePick } from "@/queries/use-live";
+import { useAdminLivePicks, useSetPickResult, type LivePick } from "@/queries/use-live";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -24,7 +24,7 @@ function ResultChip({ pick }: { pick: LivePick }) {
 }
 
 export default function ResultsPage() {
-  const { data, isLoading, error } = useLivePicks(100);
+  const { data, isLoading, error } = useAdminLivePicks(100);
   const setResult = useSetPickResult();
 
   function change(pick: LivePick, result: "hit" | "miss" | null) {

@@ -98,6 +98,80 @@ export interface LivePick {
   } | null;
 }
 
+/**
+ * The shape sent to the public pages. It deliberately leaves out the raw alert
+ * text, Telegram ids, stakes and anything about what was handed to the bet feed.
+ */
+export interface PublicPick {
+  id: number;
+  firstSeenAt: string;
+  strategy: string;
+  market: string | null;
+  selection: string | null;
+  competition: string | null;
+  home: string | null;
+  away: string | null;
+  minute: number | null;
+  timerRaw: string | null;
+  goalsHome: number | null;
+  goalsAway: number | null;
+  htScore: string | null;
+  ftScore: string | null;
+  result: "hit" | "miss" | null;
+  resultOverridden: boolean;
+  status: "captured" | "settled" | "unmapped" | "flagged";
+  sentAt: string | null;
+  flags: string[];
+  detail: {
+    stats: Record<string, [number, number]>;
+    positions: string | null;
+    lastGoal: string | null;
+    matched: number | null;
+    strikeRate: number | null;
+  } | null;
+}
+
+export function toPublicPick(p: LivePick): PublicPick {
+  return {
+    id: p.id,
+    firstSeenAt: p.firstSeenAt,
+    strategy: p.strategy,
+    market: p.market,
+    selection: p.selection,
+    competition: p.competition,
+    home: p.home,
+    away: p.away,
+    minute: p.minute,
+    timerRaw: p.timerRaw,
+    goalsHome: p.goalsHome,
+    goalsAway: p.goalsAway,
+    htScore: p.htScore,
+    ftScore: p.ftScore,
+    result: p.result,
+    resultOverridden: p.resultOverridden,
+    status: p.status,
+    sentAt: p.sentAt,
+    flags: p.flags,
+    detail: p.detail
+      ? {
+          stats: p.detail.stats,
+          positions: p.detail.positions,
+          lastGoal: p.detail.lastGoal,
+          matched: p.detail.matched,
+          strikeRate: p.detail.strikeRate,
+        }
+      : null,
+  };
+}
+
+/** Admin view: everything the Results page needs, still without the raw alert text. */
+export function toAdminPick(p: LivePick): LivePick {
+  const { rawText: _raw, sentRowJson: _row, ...rest } = p as LivePick & { rawText?: string; sentRowJson?: string | null };
+  void _raw;
+  void _row;
+  return rest as LivePick;
+}
+
 export async function fetchLivePicks(limit = 50): Promise<LivePick[]> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
@@ -258,6 +332,35 @@ export async function setPickResult(id: number, result: "hit" | "miss" | null): 
     clearTimeout(timeout);
   }
 }
+
+async function accessRequest(method: "GET" | "PUT", publicView?: boolean): Promise<boolean> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/access`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${internalKey}`,
+        ...(publicView !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      body: publicView !== undefined ? JSON.stringify({ publicView }) : undefined,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} for the public view setting.`);
+    return ((await res.json()) as { publicView: boolean }).publicView === true;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const fetchPublicView = () => accessRequest("GET");
+export const savePublicView = (enabled: boolean) => accessRequest("PUT", enabled);
 
 export const fetchSending = () => sendingRequest("GET");
 export const saveSending = (patch: Partial<SendingSettings>) => sendingRequest("PUT", patch);

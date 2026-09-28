@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal } from "lucide-react";
 import { useUiStore } from "@/state/ui.store";
+import { isValidMoreRoute } from "@/lib/routes";
 
 const TABS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, isMore: false },
@@ -25,7 +26,7 @@ export default function BottomNav() {
     >
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-1">
         {TABS.map(({ href, label, icon: Icon, isMore }) => {
-          const target = isMore ? lastMoreRoute || "/more" : href;
+          const target = isMore ? (isValidMoreRoute(lastMoreRoute) ? lastMoreRoute : "/more") : href;
           const active = isMore
             ? pathname.startsWith("/more")
             : pathname === href || pathname.startsWith(`${href}/`);

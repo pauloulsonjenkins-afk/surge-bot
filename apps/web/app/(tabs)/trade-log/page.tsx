@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
-import { useLivePicks, type LivePick } from "@/queries/use-live";
+import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
 

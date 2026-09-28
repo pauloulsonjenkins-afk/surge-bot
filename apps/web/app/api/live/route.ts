@@ -1,27 +1,21 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
-import { fetchLivePicks } from "@/server/engine-client";
+import { fetchLivePicks, toPublicPick } from "@/server/engine-client";
+import { cached } from "@/server/cache";
+import { canViewData } from "@/server/access";
 
-// Node runtime, not Edge: Edge can't reach the app's internal DigitalOcean
-// networking (same reason as the picks route).
+// Open to everyone while the public view switch is on (Admin, Settings). Only the trimmed public shape is returned: no raw
+// alert text, no ids, no stakes and nothing about what was sent to bet.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  // Same sign-in as the admin area. The alerts are your own paid signals, so
-  // they are not served to anyone without a session.
-  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
-  if (!(await verifySessionToken(token))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
+  if (!(await canViewData())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const limitParam = Number(searchParams.get("limit"));
-  const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(Math.floor(limitParam), 200) : 50;
 
   try {
-    const picks = await fetchLivePicks(limit);
+    const picks = await cached(`live:${limit}`, 4000, async () => (await fetchLivePicks(limit)).map(toPublicPick));
     return NextResponse.json({ picks });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });

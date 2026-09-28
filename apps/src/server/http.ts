@@ -8,6 +8,7 @@
  *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
+ *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
  *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
@@ -34,6 +35,7 @@ import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { startTelegramListener } from "../telegram/listener";
 import { buildFeed, getLastFeedFetchAt, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
+import { getPublicView, setPublicView } from "./access-settings";
 import { log } from "./log";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -185,6 +187,28 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         "Cache-Control": "no-store",
       });
       res.end(feed.csv);
+      return;
+    }
+
+    if (path === "/internal/access" && (req.method === "GET" || req.method === "PUT")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "PUT") {
+        const body = await readJsonBody(req);
+        if (typeof body.publicView !== "boolean") {
+          send(res, 400, { error: "publicView_must_be_true_or_false" });
+          return;
+        }
+        setPublicView(db, body.publicView);
+        log.info(`Public view was switched ${body.publicView ? "ON" : "OFF"} from the admin page.`);
+      }
+      send(res, 200, { publicView: getPublicView(db) });
       return;
     }
 

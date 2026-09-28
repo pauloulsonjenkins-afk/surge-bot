@@ -5,7 +5,7 @@ import { ListSkeleton } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
-import { useLivePicks, type LivePick } from "@/queries/use-live";
+import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 
 // An alert that has had no result edited in after this long is treated as
 // "earlier" rather than still in play.

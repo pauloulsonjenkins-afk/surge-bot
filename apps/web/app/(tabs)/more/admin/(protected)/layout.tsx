@@ -9,6 +9,7 @@ const ADMIN_SECTIONS = [
   { href: "/more/admin/picks", label: "Picks" },
   { href: "/more/admin/results", label: "Results" },
   { href: "/more/admin/sending", label: "Sending" },
+  { href: "/more/admin/settings", label: "Settings" },
 ];
 
 export default async function ProtectedAdminLayout({
