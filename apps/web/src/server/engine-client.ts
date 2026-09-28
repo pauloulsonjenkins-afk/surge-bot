@@ -128,6 +128,7 @@ export interface HitRateStats {
   totals: { alerts: number; hits: number; misses: number; pending: number; needsReview: number; hitRate: number | null };
   byStrategy: StrategyStats[];
   byLeague: HitRateRow[];
+  byMinute: HitRateRow[];
   daily: Array<{ date: string; hits: number; misses: number; hitRate: number | null }>;
 }
 

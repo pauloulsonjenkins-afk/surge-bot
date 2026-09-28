@@ -7,7 +7,7 @@ import { ChartTooltip, type ChartTooltipProps } from "./ChartTooltip";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 
-const HIT = "var(--accent)";
+const HIT = "var(--hit)";
 const MISS = "var(--danger)";
 
 function shortDate(iso: string): string {
@@ -43,14 +43,14 @@ export function DailyResultsChart({ stats, isLoading }: { stats: HitRateStats | 
                     label={props.label}
                     payload={props.payload as unknown as ChartTooltipProps["payload"]}
                     series={{
-                      hits: { label: "Hits", color: "var(--accent)", format: (v) => String(v) },
+                      hits: { label: "Hits", color: "var(--hit)", format: (v) => String(v) },
                       misses: { label: "Misses", color: "var(--danger)", format: (v) => String(v) },
                     }}
                   />
                 )}
               />
-              <Bar dataKey="hits" stackId="r" fill={HIT} maxBarSize={28} />
-              <Bar dataKey="misses" stackId="r" fill={MISS} radius={[4, 4, 0, 0]} maxBarSize={28} />
+              <Bar isAnimationActive={false} dataKey="hits" stackId="r" fill={HIT} maxBarSize={28} />
+              <Bar isAnimationActive={false} dataKey="misses" stackId="r" fill={MISS} radius={[4, 4, 0, 0]} maxBarSize={28} />
             </BarChart>
           </ResponsiveContainer>
         </div>

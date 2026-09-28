@@ -23,7 +23,7 @@ function Row({ pick }: { pick: LivePick }) {
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className={`text-xs font-medium ${hit ? "text-accent" : "text-danger"}`}>{hit ? "Hit" : "Miss"}</p>
+        <p className={`text-xs font-medium ${hit ? "text-hit" : "text-danger"}`}>{hit ? "Hit" : "Miss"}</p>
         <p className="text-[11px] tabular-nums text-ink-muted">{pick.ftScore ?? "–"}</p>
       </div>
     </li>

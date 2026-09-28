@@ -26,7 +26,7 @@ function StatusChip({ pick }: { pick: LivePick }) {
   if (pick.status === "settled") {
     if (pick.result === "hit") {
       label = "Hit";
-      cls = "bg-surface-2 text-accent";
+      cls = "bg-surface-2 text-hit";
     } else if (pick.result === "miss") {
       label = "Miss";
       cls = "bg-surface-2 text-danger";

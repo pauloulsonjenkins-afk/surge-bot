@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Radio, Receipt, CalendarDays, MoreHorizontal } from "lucide-react";
+import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal } from "lucide-react";
 import { useUiStore } from "@/state/ui.store";
 
 const TABS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, isMore: false },
   { href: "/live", label: "Live", icon: Radio, isMore: false },
-  { href: "/trade-log", label: "Trade Log", icon: Receipt, isMore: false },
+  { href: "/trade-log", label: "Trade Log", icon: ListChecks, isMore: false },
   { href: "/schedule", label: "Schedule", icon: CalendarDays, isMore: false },
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
 ] as const;

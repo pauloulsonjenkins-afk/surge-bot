@@ -69,6 +69,8 @@ export interface HitRateStats {
   };
   byStrategy: StrategyStats[];
   byLeague: HitRateRow[];
+  /** Hit rate by the match minute the alert fired at, in fixed order. */
+  byMinute: HitRateRow[];
   daily: DailyStats[];
 }
 
@@ -83,6 +85,16 @@ function strategyLabel(raw: string): string {
 }
 
 const ukDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
+
+/** Match-minute buckets for the "when do alerts hit" chart. Upper bound is inclusive. */
+const MINUTE_BUCKETS: Array<{ label: string; max: number }> = [
+  { label: "1–15'", max: 15 },
+  { label: "16–30'", max: 30 },
+  { label: "31–45'", max: 45 },
+  { label: "46–60'", max: 60 },
+  { label: "61–75'", max: 75 },
+  { label: "76'+", max: Infinity },
+];
 
 /** What the Live tab reads. One per Telegram alert. */
 export interface LivePick {
@@ -256,8 +268,8 @@ export class EngineDb {
            competition = excluded.competition,
            home        = excluded.home,
            away        = excluded.away,
-           minute      = excluded.minute,
-           timer_raw   = excluded.timer_raw,
+           minute      = COALESCE(live_picks.minute, excluded.minute),
+           timer_raw   = COALESCE(live_picks.timer_raw, excluded.timer_raw),
            goals_home  = excluded.goals_home,
            goals_away  = excluded.goals_away,
            ht_score    = excluded.ht_score,
@@ -361,10 +373,10 @@ export class EngineDb {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const rows = (
       since === null
-        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, result, status FROM live_picks ORDER BY id`).all()
+        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, result, status FROM live_picks ORDER BY id`).all()
         : this.db
             .prepare(
-              `SELECT first_seen_at, strategy, market, competition, result, status
+              `SELECT first_seen_at, strategy, market, competition, minute, result, status
                FROM live_picks WHERE first_seen_at >= ? ORDER BY id`,
             )
             .all(since)
@@ -373,6 +385,7 @@ export class EngineDb {
       strategy: string;
       market: string | null;
       competition: string | null;
+      minute: number | null;
       result: string | null;
       status: string;
     }>;
@@ -384,6 +397,7 @@ export class EngineDb {
     const strategies = new Map<string, StrategyStats>();
     const leagues = new Map<string, HitRateRow>();
     const daily = new Map<string, { hits: number; misses: number }>();
+    const minutes: HitRateRow[] = MINUTE_BUCKETS.map((b) => ({ label: b.label, alerts: 0, hits: 0, misses: 0, hitRate: null }));
 
     for (const r of rows) {
       const isHit = r.result === "hit";
@@ -405,15 +419,21 @@ export class EngineDb {
       l.alerts++;
       leagues.set(lLabel, l);
 
+      const bucketIdx = r.minute === null ? -1 : MINUTE_BUCKETS.findIndex((b) => r.minute! <= b.max);
+      const m = bucketIdx >= 0 ? minutes[bucketIdx] : undefined;
+      if (m) m.alerts++;
+
       if (isHit || isMiss) {
         if (isHit) {
           hits++;
           s.hits++;
           l.hits++;
+          if (m) m.hits++;
         } else {
           misses++;
           s.misses++;
           l.misses++;
+          if (m) m.misses++;
         }
         const day = ukDate.format(new Date(r.first_seen_at));
         const d = daily.get(day) ?? { hits: 0, misses: 0 };
@@ -431,6 +451,7 @@ export class EngineDb {
       totals: { alerts: rows.length, hits, misses, pending, needsReview, hitRate: rate(hits, misses) },
       byStrategy: finish(strategies).sort((a, b) => b.hits + b.misses - (a.hits + a.misses) || b.alerts - a.alerts),
       byLeague: finish(leagues).sort((a, b) => b.hits + b.misses - (a.hits + a.misses) || b.alerts - a.alerts),
+      byMinute: minutes.map((x) => ({ ...x, hitRate: rate(x.hits, x.misses) })),
       daily: [...daily.entries()]
         .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([date, d]) => ({ date, hits: d.hits, misses: d.misses, hitRate: rate(d.hits, d.misses) })),

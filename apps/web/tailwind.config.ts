@@ -15,6 +15,7 @@ export default {
         accent: "var(--accent)",
         "accent-ink": "var(--accent-ink)",
         danger: "var(--danger)",
+        hit: "var(--hit)",
       },
     },
   },
