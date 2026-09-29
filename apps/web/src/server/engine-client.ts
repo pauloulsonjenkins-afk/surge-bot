@@ -324,7 +324,15 @@ async function sendingRequest(method: "GET" | "PUT", body?: SendingPatch): Promi
   }
 }
 
-export async function removeStrategy(label: string): Promise<{ removed: number; keptBecauseSent: number }> {
+export interface RemoveStrategyResult {
+  removed: number;
+  /** Picks already sent to bet. They are never deleted, only taken out of results once over 2 hours old. */
+  keptBecauseSent: number;
+  hiddenFromResults?: number;
+  ignoring?: boolean;
+}
+
+export async function removeStrategy(label: string, ignoreFuture = false): Promise<RemoveStrategyResult> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -336,7 +344,7 @@ export async function removeStrategy(label: string): Promise<{ removed: number; 
     const res = await fetch(`${baseUrl}/internal/strategies/remove`, {
       method: "POST",
       headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ label }),
+      body: JSON.stringify({ label, ignoreFuture }),
       cache: "no-store",
       signal: controller.signal,
     });
@@ -344,7 +352,7 @@ export async function removeStrategy(label: string): Promise<{ removed: number; 
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(body.error ?? `Engine responded ${res.status} when removing the strategy.`);
     }
-    return (await res.json()) as { removed: number; keptBecauseSent: number };
+    return (await res.json()) as RemoveStrategyResult;
   } finally {
     clearTimeout(timeout);
   }
@@ -457,11 +465,19 @@ export interface WinLossStrategy {
   noOdds: number;
   usedAlertOdds: number;
 }
+/** One line on the Profit and loss table and the strategy graph (strategies merged on the Strategies page appear once). */
+export interface WinLossReported {
+  key: string;
+  label: string;
+  members: string[];
+}
 export interface WinLossState {
   today: string;
   settings: WinLossSettings;
   maxStake: number;
   strategies: WinLossStrategy[];
+  /** Missing only while the engine is still on an older version. */
+  reported?: WinLossReported[];
   periods: { d1: WinLossPeriod; d7: WinLossPeriod; mtd: WinLossPeriod; ytd: WinLossPeriod };
   series: { d1: WinLossPoint[]; d7: WinLossPoint[]; mtd: WinLossPoint[]; ytd: WinLossPoint[] };
 }
@@ -662,7 +678,13 @@ export interface AdminStrategy {
   stake: number | null;
 }
 
-export async function fetchAdminStrategies(): Promise<AdminStrategy[]> {
+export interface AdminStrategies {
+  strategies: AdminStrategy[];
+  /** Strategies whose new alerts are being ignored. */
+  ignored: string[];
+}
+
+export async function fetchAdminStrategies(): Promise<AdminStrategies> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -677,7 +699,8 @@ export async function fetchAdminStrategies(): Promise<AdminStrategy[]> {
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching strategies.`);
-    return ((await res.json()) as { strategies: AdminStrategy[] }).strategies;
+    const data = (await res.json()) as { strategies: AdminStrategy[]; ignored?: string[] };
+    return { strategies: data.strategies, ignored: data.ignored ?? [] };
   } finally {
     clearTimeout(timeout);
   }
@@ -733,6 +756,29 @@ export async function fetchPickDays(): Promise<PickDay[]> {
     });
     if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the pick days.`);
     return ((await res.json()) as { days: PickDay[] }).days;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Starts or stops ignoring a strategy's new alerts. */
+export async function setStrategyIgnored(label: string, ignored: boolean): Promise<void> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/strategies/ignore`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ label, ignored }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving.`);
   } finally {
     clearTimeout(timeout);
   }

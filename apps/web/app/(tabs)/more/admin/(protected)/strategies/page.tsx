@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useAdminStrategies, useDeleteStrategy, useMergeStrategy, type AdminStrategy } from "@/queries/use-strategies";
+import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, type AdminStrategy } from "@/queries/use-strategies";
 import { marketName } from "@/lib/markets";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
@@ -129,32 +129,51 @@ export default function StrategiesPage() {
   const { data, isLoading, error } = useAdminStrategies();
   const merge = useMergeStrategy();
   const remove = useDeleteStrategy();
+  const ignore = useIgnoreStrategy();
+  const strategies = data?.strategies ?? [];
+  const ignored = data?.ignored ?? [];
 
   const includesOf = useMemo(() => {
     const map = new Map<string, string[]>();
-    for (const r of data ?? []) {
+    for (const r of strategies) {
       if (r.mergedInto) map.set(r.mergedInto.toLowerCase(), [...(map.get(r.mergedInto.toLowerCase()) ?? []), r.label]);
     }
     return map;
-  }, [data]);
+  }, [strategies]);
 
   function deleteStrategy(row: AdminStrategy) {
     const ok = window.confirm(
       `Delete “${row.label}”?\n\n` +
         `Its ${row.alerts} saved alert${row.alerts === 1 ? "" : "s"} are deleted for good, so it disappears from the Dashboard, Trade Log and Win/Loss.` +
-        (row.sent > 0 ? `\n\n${row.sent} of them were already sent to bet, so those are kept.` : "") +
+        (row.sent > 0
+          ? `\n\n${row.sent} of them were already sent to bet. Those are kept as records but taken out of every result and figure (unless sent in the last 2 hours), and can be put back from the Results page.`
+          : "") +
         `\n\nNothing changes in your betting software. If you only want to combine it with another strategy, use “Merge” instead.`,
     );
     if (!ok) return;
-    remove.mutate(row.label, {
-      onSuccess: (r) => {
-        if (r.keptBecauseSent > 0) window.alert(`${r.removed} alert(s) deleted. ${r.keptBecauseSent} were already sent to bet, so they were kept.`);
+    // New alerts with this name would otherwise bring the strategy straight back.
+    const ignoreFuture = window.confirm(
+      `Also ignore new “${row.label}” alerts?\n\nOK = ignore them from now on, so this strategy stays gone.\nCancel = let new ones in, and it will reappear here when one arrives.\n\nYou can stop ignoring it later from the bottom of this page.`,
+    );
+    remove.mutate(
+      { label: row.label, ignoreFuture },
+      {
+        onSuccess: (r) => {
+          const parts = [`${r.removed} alert${r.removed === 1 ? "" : "s"} deleted.`];
+          if (r.keptBecauseSent > 0) {
+            const hidden = r.hiddenFromResults ?? 0;
+            parts.push(`${r.keptBecauseSent} already sent to bet: kept as records, ${hidden} taken out of your results.`);
+            if (hidden < r.keptBecauseSent) parts.push("Any sent in the last 2 hours still count. Delete again later to clear them.");
+          }
+          if (r.ignoring) parts.push("New alerts with this name will be ignored.");
+          window.alert(parts.join("\n"));
+        },
       },
-    });
+    );
   }
 
-  const busy = merge.isPending || remove.isPending;
-  const failed = merge.error ?? remove.error;
+  const busy = merge.isPending || remove.isPending || ignore.isPending;
+  const failed = merge.error ?? remove.error ?? ignore.error;
 
   return (
     <div className="space-y-4">
@@ -174,17 +193,17 @@ export default function StrategiesPage() {
           <Skeleton className="h-28 w-full" />
           <Skeleton className="h-28 w-full" />
         </div>
-      ) : data.length === 0 ? (
+      ) : strategies.length === 0 && ignored.length === 0 ? (
         <p className="text-sm text-ink-muted">Strategies appear here once alerts arrive.</p>
       ) : (
         <>
           {failed && <p className="rounded-md border border-line bg-surface p-2 text-xs text-danger">{failed.message}</p>}
           <ul className="space-y-2">
-            {data.map((r) => (
+            {strategies.map((r) => (
               <StrategyCard
                 key={r.label}
                 row={r}
-                all={data}
+                all={strategies}
                 includes={includesOf.get(r.label.toLowerCase()) ?? []}
                 busy={busy}
                 onMerge={(into) => merge.mutate({ from: r.label, into })}
@@ -192,6 +211,28 @@ export default function StrategiesPage() {
               />
             ))}
           </ul>
+
+          {ignored.length > 0 && (
+            <section className="rounded-xl border border-line bg-surface p-3">
+              <h3 className="text-sm font-medium text-ink">Ignored strategies</h3>
+              <p className="mt-0.5 text-xs text-ink-muted">New alerts with these names are dropped on arrival, so they never come back.</p>
+              <ul className="mt-2 divide-y divide-line">
+                {ignored.map((name) => (
+                  <li key={name} className="flex items-center justify-between gap-3 py-2">
+                    <span className="min-w-0 break-words text-sm text-ink">{name}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => ignore.mutate({ label: name, ignored: false })}
+                      className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
+                    >
+                      Stop ignoring
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
     </div>

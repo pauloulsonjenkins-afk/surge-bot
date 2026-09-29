@@ -13,7 +13,7 @@ async function isAdmin(): Promise<boolean> {
 export async function GET() {
   if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
-    return NextResponse.json({ strategies: await fetchAdminStrategies() });
+    return NextResponse.json(await fetchAdminStrategies());
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
   }

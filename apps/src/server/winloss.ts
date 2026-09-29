@@ -10,6 +10,10 @@
  *            miss: minus the stake
  * A pick with no stake or no usable odds is left out and counted, never guessed.
  *
+ * Strategies merged on the Strategies page are shown as one line (the figures and the graph lines
+ * add up their picks). The money is still worked out pick by pick with each original strategy's own
+ * stake and assumed odds, so merging changes only how the results are grouped, never the pounds.
+ *
  * This is an estimate from the alert's price, not from the bets your betting
  * software actually matched, so it will differ a little from the real account.
  *
@@ -152,11 +156,23 @@ export interface WinLossStrategy {
   usedAlertOdds: number;
 }
 
+/** One line on the Profit and loss table and the strategy graph: a strategy, or several merged into one. */
+export interface WinLossReported {
+  /** Lower-case name; the key used in `periods[..].strategies` and `series[..].s`. */
+  key: string;
+  label: string;
+  /** The original strategies (lower-case names) whose picks are added into this line. */
+  members: string[];
+}
+
 export interface WinLossState {
   today: string;
   settings: WinLossSettings;
   maxStake: number;
+  /** Each original strategy, with its stake and assumed odds. These are settings, so merged strategies stay separate here. */
   strategies: WinLossStrategy[];
+  /** The lines the figures and graph show: merged strategies appear once. */
+  reported: WinLossReported[];
   periods: { d1: WinLossPeriod; d7: WinLossPeriod; mtd: WinLossPeriod; ytd: WinLossPeriod };
   series: { d1: WinLossPoint[]; d7: WinLossPoint[]; mtd: WinLossPoint[]; ytd: WinLossPoint[] };
 }
@@ -179,8 +195,12 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
 
   // A day of margin either side of the year start; the exact UK day is checked below.
   const rows = db.listResultsForWinLoss(new Date(`${addDays(start.ytd, -1)}T00:00:00Z`).toISOString());
+  const merges = db.getStrategyMerges();
+  /** The line a strategy is reported on: its own name, or the one it was merged into. */
+  const reportedAs = (key: string, label: string): string => merges[key] ?? label;
 
-  interface Priced { day: string; time: string; key: string; profit: number }
+  // gkey = the reported line; key = the original strategy, which still decides the stake and odds.
+  interface Priced { day: string; time: string; key: string; gkey: string; profit: number }
   const priced: Priced[] = [];
   const tally = new Map<string, WinLossStrategy>();
   const commission = settings.commission / 100;
@@ -228,7 +248,7 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
     if (alertOdds !== null) t.usedAlertOdds++;
 
     const profit = r.result === "hit" ? stake * (odds - 1) * (1 - commission) : -stake;
-    priced.push({ day, time: ukTime.format(new Date(r.firstSeenAt)), key, profit });
+    priced.push({ day, time: ukTime.format(new Date(r.firstSeenAt)), key, gkey: reportedAs(key, label).toLowerCase(), profit });
   }
 
   // ---- expenditure: months charged in a period ----
@@ -244,15 +264,29 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
   const expenditureFor = (p: "d1" | "d7" | "mtd" | "ytd") =>
     p === "mtd" || p === "ytd" ? r2(monthsCharged(start[p]) * ex.monthly) : 0;
 
+  // ---- the lines shown: original strategies grouped by what they are merged into ----
+  const lines = new Map<string, WinLossReported & { settled: number }>();
+  for (const t of tally.values()) {
+    const label = reportedAs(t.key, t.label);
+    const gkey = label.toLowerCase();
+    const line = lines.get(gkey) ?? { key: gkey, label, members: [], settled: 0 };
+    line.members.push(t.key);
+    line.settled += t.settled;
+    lines.set(gkey, line);
+  }
+  const reported: WinLossReported[] = [...lines.values()]
+    .sort((a, b) => b.settled - a.settled)
+    .map(({ key, label, members }) => ({ key, label, members }));
+
   // ---- period totals ----
-  const keys = [...tally.keys()];
+  const keys = reported.map((l) => l.key);
   const period = (p: "d1" | "d7" | "mtd" | "ytd"): WinLossPeriod => {
     const strategies: Record<string, number> = {};
     for (const k of keys) strategies[k] = 0;
     let picks = 0;
     for (const x of priced) {
       if (x.day >= start[p]) {
-        strategies[x.key] = (strategies[x.key] ?? 0) + x.profit;
+        strategies[x.gkey] = (strategies[x.gkey] ?? 0) + x.profit;
         picks++;
       }
     }
@@ -270,7 +304,7 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
     let spent = 0;
     const out: WinLossPoint[] = [];
     for (let d = start[p]; d <= today; d = addDays(d, 1)) {
-      for (const x of byDay.get(d) ?? []) cum[x.key] = (cum[x.key] ?? 0) + x.profit;
+      for (const x of byDay.get(d) ?? []) cum[x.gkey] = (cum[x.gkey] ?? 0) + x.profit;
       // The monthly cost is charged on the 1st, for month and year views only.
       if (p !== "d7" && ex.enabled && ex.startMonth !== null && d.endsWith("-01") && d.slice(0, 7) >= ex.startMonth) {
         spent += ex.monthly;
@@ -287,7 +321,7 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
     const cum: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
     const out: WinLossPoint[] = [{ label: "Start", total: 0, totalAfter: 0, s: Object.fromEntries(keys.map((k) => [k, 0])) }];
     for (const x of todays) {
-      cum[x.key] = (cum[x.key] ?? 0) + x.profit;
+      cum[x.gkey] = (cum[x.gkey] ?? 0) + x.profit;
       const total = Object.values(cum).reduce((a, b) => a + b, 0);
       out.push({ label: x.time, total: r2(total), totalAfter: r2(total), s: Object.fromEntries(keys.map((k) => [k, r2(cum[k] ?? 0)])) });
     }
@@ -299,6 +333,7 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
     settings,
     maxStake: sending.maxStake,
     strategies: [...tally.values()].sort((a, b) => b.settled - a.settled),
+    reported,
     periods: { d1: period("d1"), d7: period("d7"), mtd: period("mtd"), ytd: period("ytd") },
     series: { d1: oneDay(), d7: dailySeries("d7"), mtd: dailySeries("mtd"), ytd: dailySeries("ytd") },
   };

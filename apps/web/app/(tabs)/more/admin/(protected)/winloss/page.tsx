@@ -102,7 +102,10 @@ function WinLoss({ state }: { state: WinLossState }) {
   const [message, setMessage] = useState<string | null>(null);
 
   const ex = state.settings.expenditure;
+  // `strategies` are the originals (their stake and odds are settings). `lines` are what the figures and graph show,
+  // with merged strategies added together. An engine that isn't updated yet has no `reported`, so fall back to the originals.
   const strategies = state.strategies;
+  const lines = state.reported ?? strategies;
 
   // Keep the expenditure boxes in step with what the engine has saved (e.g. the start month it filled in on first tick).
   useEffect(() => {
@@ -122,10 +125,10 @@ function WinLoss({ state }: { state: WinLossState }) {
     : [{ key: "total", name: "Profit / loss", color: "var(--accent)" }];
   const combinedData = points.map((p) => ({ label: dateLabel(p.label), total: p.total, after: p.totalAfter }));
 
-  const strategySeries: LineSeries[] = strategies.map((s, i) => ({ key: `k${i}`, name: s.label, color: PALETTE[i % PALETTE.length]! }));
+  const strategySeries: LineSeries[] = lines.map((s, i) => ({ key: `k${i}`, name: s.label, color: PALETTE[i % PALETTE.length]! }));
   const strategyData = points.map((p) => {
     const row: Record<string, number | string> = { label: dateLabel(p.label) };
-    strategies.forEach((s, i) => (row[`k${i}`] = p.s[s.key] ?? 0));
+    lines.forEach((s, i) => (row[`k${i}`] = p.s[s.key] ?? 0));
     return row;
   });
 
@@ -199,7 +202,7 @@ function WinLoss({ state }: { state: WinLossState }) {
           <EmptyState title="Nothing settled yet" detail="Figures appear once picks have results." />
         ) : (
           <div>
-            {strategies.map((s) => (
+            {lines.map((s) => (
               <Figures key={s.key} title={s.label} values={PERIODS.map((p) => state.periods[p.key].strategies[s.key] ?? 0)} />
             ))}
             <Figures title="Total" bold values={PERIODS.map((p) => state.periods[p.key].total)} />

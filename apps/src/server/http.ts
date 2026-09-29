@@ -16,6 +16,7 @@
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
  *   GET  /internal/strategies                   every strategy with its counts, switch, stake and merge (admin site only)
+ *   POST /internal/strategies/ignore            stop or start ignoring a strategy's new alerts (admin site only)
  *   POST /internal/strategies/merge             report one strategy under another's name, or undo that (admin site only)
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
@@ -424,12 +425,34 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       const settings = getSendingSettings(db);
       send(res, 200, {
+        ignored: Object.values(db.getIgnoredStrategies()).sort(),
         strategies: db.listStrategiesForAdmin().map((x) => ({
           ...x,
           sendingOn: settings.strategies[x.label.toLowerCase()] === true,
           stake: settings.stakes[x.label.toLowerCase()] ?? null,
         })),
       });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/strategies/ignore") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const label = typeof body.label === "string" ? body.label.trim() : "";
+      if (!label || typeof body.ignored !== "boolean") {
+        send(res, 400, { error: "label_and_ignored_required" });
+        return;
+      }
+      db.setStrategyIgnored(label, body.ignored);
+      log.info(`Strategy "${label}": new alerts are now ${body.ignored ? "ignored" : "accepted again"}.`);
+      send(res, 200, { ok: true });
       return;
     }
 
@@ -480,12 +503,20 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const result = db.removeStrategyPicks(label);
+      // Picks already sent to bet are kept as records but taken out of every result and figure once they are
+      // over 2 hours old, so a deleted strategy can't keep skewing the Dashboard and Win/Loss.
+      const hiddenFromResults = db.excludeSentPicks(label, new Date(Date.now() - 2 * 3_600_000).toISOString());
+      const ignoreFuture = body.ignoreFuture === true;
+      if (ignoreFuture) db.setStrategyIgnored(label, true);
       db.forgetStrategyMerges(label);
       forgetStopLoss(db, label);
       const key = label.toLowerCase();
       saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null } });
-      log.info(`Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ${result.keptBecauseSent} kept.`);
-      send(res, 200, { ...result });
+      log.info(
+        `Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ${result.keptBecauseSent} sent pick(s) kept ` +
+          `(${hiddenFromResults} taken out of results)${ignoreFuture ? ", new alerts ignored" : ""}.`,
+      );
+      send(res, 200, { ...result, hiddenFromResults, ignoring: ignoreFuture });
       return;
     }
 

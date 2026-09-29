@@ -169,6 +169,8 @@ function leagueIdentity(competition: string | null, country: string | null): { k
 
 /** Strategy merges chosen on the admin Strategies page: lower-case strategy name -> the name it is reported under. */
 const STRATEGY_MERGES_KEY = "strategy_merges";
+/** Strategies whose new alerts are ignored on arrival: lower-case name -> the name as first written. */
+const IGNORED_STRATEGIES_KEY = "ignored_strategies";
 
 /** One strategy as the admin Strategies page shows it. */
 export interface AdminStrategyRow {
@@ -901,6 +903,11 @@ export class EngineDb {
     return {};
   }
 
+  /** The strategy merges chosen on the Strategies page: lower-case strategy name -> the name it is reported under. */
+  getStrategyMerges(): Record<string, string> {
+    return this.readStrategyMerges();
+  }
+
   /**
    * Reports strategy `from` under the name of strategy `into` (null undoes it). This only changes how
    * the Dashboard and stats group alerts. The bet feed, stakes and switches are untouched, so each
@@ -929,6 +936,55 @@ export class EngineDb {
     }
     this.setSetting(STRATEGY_MERGES_KEY, JSON.stringify(merges));
     return { ok: true };
+  }
+
+  /** Strategies whose new alerts are dropped on arrival (lower-case name -> display name). */
+  getIgnoredStrategies(): Record<string, string> {
+    try {
+      const raw = this.getSetting(IGNORED_STRATEGIES_KEY);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+      if (parsed && typeof parsed === "object") {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) if (typeof v === "string" && v) out[k] = v;
+        return out;
+      }
+    } catch {
+      // Unreadable setting: nothing is ignored.
+    }
+    return {};
+  }
+
+  isStrategyIgnored(rawStrategy: string): boolean {
+    return strategyLabel(rawStrategy).toLowerCase() in this.getIgnoredStrategies();
+  }
+
+  /** Starts or stops ignoring new alerts of a strategy. Stored alerts are not touched. */
+  setStrategyIgnored(label: string, ignored: boolean): void {
+    const clean = strategyLabel(label);
+    const map = this.getIgnoredStrategies();
+    if (ignored) map[clean.toLowerCase()] = clean;
+    else delete map[clean.toLowerCase()];
+    this.setSetting(IGNORED_STRATEGIES_KEY, JSON.stringify(map));
+  }
+
+  /**
+   * Takes a strategy's picks that were already sent to bet out of every result and figure (Dashboard,
+   * Trade Log, Win/Loss) once they're older than `olderThanIso`. The pick is kept as a record, only marked
+   * "removed from results", so it can be put back from the Results page. Recent ones are left alone so a
+   * row the betting software may still be reading never changes. Returns how many were taken out.
+   */
+  excludeSentPicks(label: string, olderThanIso: string): number {
+    const target = strategyLabel(label).toLowerCase();
+    const rows = this.db
+      .prepare(`SELECT id, strategy FROM live_picks WHERE sent_at IS NOT NULL AND sent_at < ? AND excluded = 0`)
+      .all(olderThanIso) as Array<{ id: number; strategy: string }>;
+    const ids = rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === target).map((r) => r.id);
+    const upd = this.db.prepare(`UPDATE live_picks SET excluded = 1 WHERE id = ?`);
+    this.db.transaction(() => {
+      for (const id of ids) upd.run(id);
+    })();
+    if (ids.length > 0) this.onChange();
+    return ids.length;
   }
 
   /** Forgets every merge that involves a strategy (used when it is deleted). */

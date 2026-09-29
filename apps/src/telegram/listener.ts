@@ -88,9 +88,24 @@ function isAlert(text: string): boolean {
   }
 }
 
+/** True when the alert is for a strategy deleted with "ignore new alerts" on the Strategies page. */
+function isIgnored(db: EngineDb, text: string): boolean {
+  try {
+    return db.isStrategyIgnored(parseAlert(text).strategyRaw);
+  } catch {
+    return false;
+  }
+}
+
 /** Stores one message. Returns true when something was written. */
 function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boolean {
   const messageAt = new Date(m.date * 1000).toISOString();
+
+  // A strategy that was deleted with "ignore new alerts" is dropped here, before anything is stored.
+  if (isIgnored(db, m.text)) {
+    if (how === "new") log.info(`Telegram message ${m.messageId} is for an ignored strategy; not stored.`);
+    return false;
+  }
 
   if (how !== "edit" && db.getLivePickText(m.chatKey, m.messageId) === null) {
     const payload = JSON.stringify({
@@ -202,6 +217,7 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
         const stored = db.getLivePickText(chatId, m.id);
         if (stored === text) continue; // already stored, unchanged
         if (stored === null && !isAlert(text)) continue; // not an alert: nothing to catch up
+        if (stored === null && isIgnored(db, text)) continue; // an ignored strategy: nothing to catch up
         if (store(db, { chatKey: chatId, messageId: m.id, date: m.date, text, senderLabel: "sync" }, "sync")) recovered++;
       }
       status.recoveredBySync += recovered;

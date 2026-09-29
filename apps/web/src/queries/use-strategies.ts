@@ -1,17 +1,17 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AdminStrategy } from "@/server/engine-client";
+import type { AdminStrategies, AdminStrategy, RemoveStrategyResult } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 
-export type { AdminStrategy };
+export type { AdminStrategies, AdminStrategy, RemoveStrategyResult };
 
 const KEY = ["admin-strategies"];
 
 export function useAdminStrategies() {
   return useQuery({
     queryKey: KEY,
-    queryFn: async ({ signal }) => (await getJson<{ strategies: AdminStrategy[] }>("/api/admin/strategies", "the strategies", signal)).strategies,
+    queryFn: ({ signal }) => getJson<AdminStrategies>("/api/admin/strategies", "the strategies", signal),
     staleTime: 0,
   });
 }
@@ -47,14 +47,30 @@ export function useMergeStrategy() {
 export function useDeleteStrategy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (label: string): Promise<{ removed: number; keptBecauseSent: number }> => {
+    mutationFn: async (v: { label: string; ignoreFuture: boolean }): Promise<RemoveStrategyResult> => {
       const res = await fetch("/api/admin/strategies/remove", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label }),
+        body: JSON.stringify(v),
       });
       if (!res.ok) await failure(res, "Could not delete");
-      return (await res.json()) as { removed: number; keptBecauseSent: number };
+      return (await res.json()) as RemoveStrategyResult;
+    },
+    onSuccess: () => refreshEverything(qc),
+  });
+}
+
+/** Stops ignoring a strategy's new alerts (or starts). */
+export function useIgnoreStrategy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { label: string; ignored: boolean }): Promise<void> => {
+      const res = await fetch("/api/admin/strategies/ignore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(v),
+      });
+      if (!res.ok) await failure(res, "Could not save");
     },
     onSuccess: () => refreshEverything(qc),
   });
