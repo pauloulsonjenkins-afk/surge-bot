@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLines";
+import { DailyPnlChart } from "@/components/admin/DailyPnlChart";
 import { marketName } from "@/lib/markets";
 import { useSaveSending } from "@/queries/use-sending";
 import { useSaveWinLoss, useWinLoss, type WinLossState } from "@/queries/use-winloss";
@@ -225,6 +226,17 @@ function WinLoss({ state }: { state: WinLossState }) {
           </p>
         )}
       </Card>
+
+      {/* ---- daily performance: one bar per day, this month ---- */}
+      {state.mtdDaily && (
+        <Card title="Daily performance" subtitle="Month to date · P&L per day">
+          {state.mtdDaily.every((d) => d.pnl === 0) ? (
+            <EmptyState title="Nothing settled this month yet" detail="A bar appears for each day once picks have a stake, odds and a result." />
+          ) : (
+            <DailyPnlChart days={state.mtdDaily} />
+          )}
+        </Card>
+      )}
 
       {/* ---- graphs ---- */}
       <div role="tablist" aria-label="Graph period" className="inline-flex gap-1 rounded-lg border border-line bg-surface p-1">

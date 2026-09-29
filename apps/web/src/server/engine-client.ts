@@ -478,6 +478,8 @@ export interface WinLossState {
   strategies: WinLossStrategy[];
   /** Missing only while the engine is still on an older version. */
   reported?: WinLossReported[];
+  /** Month to date, one figure per UK day (missing only while the engine is still on an older version). */
+  mtdDaily?: Array<{ date: string; pnl: number }>;
   periods: { d1: WinLossPeriod; d7: WinLossPeriod; mtd: WinLossPeriod; ytd: WinLossPeriod };
   series: { d1: WinLossPoint[]; d7: WinLossPoint[]; mtd: WinLossPoint[]; ytd: WinLossPoint[] };
 }

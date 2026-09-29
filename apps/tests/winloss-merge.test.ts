@@ -90,3 +90,33 @@ test("undoing the merge separates the lines again", () => {
   db.setStrategyMerge(A, null);
   assert.equal(computeWinLoss(db).reported.length, 2);
 });
+
+test("month to date has one figure per UK day, zero days included, adding up to the month total", () => {
+  const { db, add } = setup();
+  const now = new Date();
+  const dayOfMonth = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", day: "numeric" }).format(now));
+  add(A, "hit"); add(A, "miss"); add(B, "hit");            // today: +4 -2 +10
+  const wl = computeWinLoss(db, now);
+  assert.equal(wl.mtdDaily.length, dayOfMonth);              // every day from the 1st to today
+  assert.equal(wl.mtdDaily.at(-1)?.pnl, 12);
+  assert.equal(wl.mtdDaily[0]?.date.endsWith("-01"), true);
+  const sum = Math.round(wl.mtdDaily.reduce((n, d) => n + d.pnl, 0) * 100) / 100;
+  assert.equal(sum, wl.periods.mtd.total);
+});
+
+test("earlier days in the month get their own bar", () => {
+  const { db, add } = setup();
+  const now = new Date("2026-09-15T12:00:00Z");
+  add(A, "hit"); add(A, "miss");
+  // back-date the two picks: +£4 on the 3rd, -£2 on the 10th
+  const raw = db as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } };
+  raw.db.prepare(`UPDATE live_picks SET first_seen_at = ? WHERE message_id = 1`).run("2026-09-03T12:00:00.000Z");
+  raw.db.prepare(`UPDATE live_picks SET first_seen_at = ? WHERE message_id = 2`).run("2026-09-10T12:00:00.000Z");
+  const wl = computeWinLoss(db, now);
+  assert.equal(wl.mtdDaily.length, 15);
+  const byDate = Object.fromEntries(wl.mtdDaily.map((d) => [d.date, d.pnl]));
+  assert.equal(byDate["2026-09-03"], 4);
+  assert.equal(byDate["2026-09-10"], -2);
+  assert.equal(byDate["2026-09-04"], 0);                      // a quiet day is still there, at zero
+  assert.equal(wl.periods.mtd.total, 2);
+});

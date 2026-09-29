@@ -9,6 +9,7 @@ import ThemeToggle from "@/components/ui/ThemeToggle";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { TIMEFRAMES, TimeframeToggle, type Timeframe } from "@/components/dashboard/TimeframeToggle";
 import { DailyResultsChart } from "@/components/dashboard/DailyResultsChart";
+import { WinLossSummary } from "@/components/dashboard/WinLossSummary";
 import { HitRateTrendChart } from "@/components/dashboard/HitRateTrendChart";
 import { RateBarChart } from "@/components/dashboard/RateBarChart";
 import { ChartCard } from "@/components/dashboard/ChartCard";
@@ -60,6 +61,7 @@ export default function DashboardPage() {
         <>
           <SummaryCards stats={data} isLoading={isLoading} />
           <DailyResultsChart stats={data} isLoading={isLoading} />
+          <WinLossSummary strategy={strategy} />
           <HitRateTrendChart stats={data} isLoading={isLoading} />
 
           {performanceCells.length > 0 ? (

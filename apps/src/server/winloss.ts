@@ -174,6 +174,8 @@ export interface WinLossState {
   /** The lines the figures and graph show: merged strategies appear once. */
   reported: WinLossReported[];
   periods: { d1: WinLossPeriod; d7: WinLossPeriod; mtd: WinLossPeriod; ytd: WinLossPeriod };
+  /** Month to date, one entry per UK day from the 1st to today (days with no settled picks are £0). Before any monthly cost. */
+  mtdDaily: Array<{ date: string; pnl: number }>;
   series: { d1: WinLossPoint[]; d7: WinLossPoint[]; mtd: WinLossPoint[]; ytd: WinLossPoint[] };
 }
 
@@ -328,6 +330,12 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
     return out;
   };
 
+  // ---- month to date, one figure per day (for the Daily Performance bars) ----
+  const dayTotals = new Map<string, number>();
+  for (const x of priced) if (x.day >= start.mtd) dayTotals.set(x.day, (dayTotals.get(x.day) ?? 0) + x.profit);
+  const mtdDaily: Array<{ date: string; pnl: number }> = [];
+  for (let d = start.mtd; d <= today; d = addDays(d, 1)) mtdDaily.push({ date: d, pnl: r2(dayTotals.get(d) ?? 0) });
+
   return {
     today,
     settings,
@@ -335,6 +343,7 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
     strategies: [...tally.values()].sort((a, b) => b.settled - a.settled),
     reported,
     periods: { d1: period("d1"), d7: period("d7"), mtd: period("mtd"), ytd: period("ytd") },
+    mtdDaily,
     series: { d1: oneDay(), d7: dailySeries("d7"), mtd: dailySeries("mtd"), ytd: dailySeries("ytd") },
   };
 }
