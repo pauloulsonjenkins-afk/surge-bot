@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { engineUnavailable } from "@/server/public-error";
 import { fetchPerformanceCells } from "@/server/engine-client";
 import { cached } from "@/server/cache";
 import { canViewData } from "@/server/access";
@@ -16,6 +17,6 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json({ cells: await cached(`performance:${days}`, 5000, () => fetchPerformanceCells(days)) });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
+    return engineUnavailable("api/performance/breakdown", err);
   }
 }

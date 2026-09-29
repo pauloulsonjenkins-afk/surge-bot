@@ -4,13 +4,14 @@
  */
 import { parseAlert } from "../inplayguru/parse-alert";
 import { join, dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { loadServerEnv } from "./server-env";
 import { createEngineHttpServer } from "./http";
 import { EngineDb } from "../storage/engine-db";
 import { BackupScheduler, SpacesSync } from "../storage/spaces-sync";
 import { createTelegramClient } from "../telegram/client";
-import { startTelegramListener } from "../telegram/listener";
+import { startTelegramListener, stopTelegramListener } from "../telegram/listener";
 import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 
@@ -29,9 +30,20 @@ async function main(): Promise<void> {
     );
   }
 
+  // Claims the backup for this container, so an older container still running during a deploy stops
+  // uploading instead of overwriting this one's database with its own last copy.
+  const instanceId = randomUUID();
+  await sync.writeLease(instanceId);
+
+  let telegramClient: ReturnType<typeof createTelegramClient> | null = null;
   let backups: BackupScheduler | null = null;
   const db = new EngineDb(env.dbPath, () => backups?.markDirty());
-  backups = new BackupScheduler(db, sync, join(dirname(env.dbPath), "snapshot-upload.db"));
+  backups = new BackupScheduler(db, sync, join(dirname(env.dbPath), "snapshot-upload.db"), 5_000, 60_000, instanceId, () => {
+    // Two containers on one Telegram session can get the session revoked, and both would store alerts.
+    stopTelegramListener();
+    void telegramClient?.disconnect().catch(() => {});
+    log.warn("Telegram listener disconnected: the newer container has taken over.");
+  });
   backups.start();
 
   // Correct any stored results using the current rules (hit/miss from the final score).
@@ -71,6 +83,7 @@ async function main(): Promise<void> {
   if (tgApiId && tgApiHash && tgSession && tgChatId) {
     try {
       const client = createTelegramClient(Number(tgApiId), tgApiHash, tgSession);
+      telegramClient = client;
       await client.connect();
       await startTelegramListener(client, db, tgChatId);
       log.info("Telegram listener resumed from saved session.");

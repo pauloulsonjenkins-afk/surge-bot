@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { engineUnavailable } from "@/server/public-error";
 import { fetchSchedule } from "@/server/engine-client";
 import { cached } from "@/server/cache";
 import { canViewData } from "@/server/access";
@@ -19,6 +20,6 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json(await cached(`schedule:${date ?? "today"}`, 30_000, () => fetchSchedule(date)));
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
+    return engineUnavailable("api/schedule", err);
   }
 }

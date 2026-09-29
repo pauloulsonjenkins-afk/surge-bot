@@ -1,0 +1,38 @@
+# Runs on every push. GitHub shows a green tick or a red cross next to the commit
+# (on github.com and in GitHub Desktop's History). A red cross means the change
+# would not build or a safety test failed: don't deploy it, send the log instead.
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  engine:
+    name: Engine builds and bet-feed safety tests pass
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+
+  web:
+    name: Website builds
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx tsc --noEmit -p tsconfig.json

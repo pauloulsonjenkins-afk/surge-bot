@@ -192,6 +192,11 @@ export default function SendingPage() {
         <p className="mt-2 text-xs text-ink-muted">
           Last checked by your betting software:{" "}
           <span className="text-ink">{data.lastFeedFetchAt ? whenFmt.format(new Date(data.lastFeedFetchAt)) : "not yet"}</span>
+          {data.lastFeedFetcher && (
+            <span className="block truncate text-[11px] text-ink-muted" title={data.lastFeedFetcher}>
+              by {data.lastFeedFetcher}
+            </span>
+          )}
         </p>
       </Card>
 

@@ -15,6 +15,16 @@
  *
  * Shutdown: DigitalOcean sends SIGTERM before replacing the container;
  *           main.ts calls flush() then, so the last changes are uploaded.
+ *
+ * Deploys:  during a deploy DigitalOcean briefly runs the old and the new
+ *           container side by side. Without care both upload, and whichever
+ *           writes last wins: the old container's final upload on shutdown can
+ *           overwrite the new one's database. So the Space holds a small lease
+ *           (lease.json: which container owns the backup, refreshed every
+ *           minute). A container that finds someone else holding a live lease
+ *           stops uploading and tells main.ts, which disconnects its Telegram
+ *           listener. If the new owner's lease goes stale (it crashed or its
+ *           deploy was rolled back), the old container takes the lease back.
  */
 import { GetObjectCommand, PutObjectCommand, S3Client, S3ServiceException } from "@aws-sdk/client-s3";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -70,6 +80,36 @@ export class SpacesSync {
     );
   }
 
+  private get leaseKey(): string {
+    const dir = posix.dirname(this.cfg.objectKey);
+    return posix.join(dir === "." ? "" : dir, "lease.json");
+  }
+
+  /** Who holds the backup lease and when they last refreshed it; null if there is no lease yet. */
+  async readLease(): Promise<{ owner: string; at: number } | null> {
+    try {
+      const res = await this.s3.send(new GetObjectCommand({ Bucket: this.cfg.bucket, Key: this.leaseKey }));
+      const text = res.Body ? await res.Body.transformToString() : "";
+      const lease = JSON.parse(text) as { owner?: unknown; at?: unknown };
+      return typeof lease.owner === "string" && typeof lease.at === "number" ? { owner: lease.owner, at: lease.at } : null;
+    } catch (err) {
+      if (err instanceof S3ServiceException && err.name === "NoSuchKey") return null;
+      throw err;
+    }
+  }
+
+  async writeLease(owner: string): Promise<void> {
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.cfg.bucket,
+        Key: this.leaseKey,
+        Body: JSON.stringify({ owner, at: Date.now() }),
+        ContentType: "application/json",
+        ACL: "private",
+      }),
+    );
+  }
+
   get liveKey(): string {
     return this.cfg.objectKey;
   }
@@ -87,8 +127,12 @@ export interface BackupStatus {
   pendingChanges: boolean;
 }
 
+/** A lease not refreshed for this long is treated as abandoned. */
+const LEASE_STALE_MS = 3 * 60 * 1000;
+
 export class BackupScheduler {
   private dirty = false;
+  private owner = true;
   private debounce: NodeJS.Timeout | null = null;
   private retryTimer: NodeJS.Timeout | null = null;
   private inFlight: Promise<void> | null = null;
@@ -101,11 +145,35 @@ export class BackupScheduler {
     private readonly snapshotPath: string,
     private readonly debounceMs = 5_000,
     private readonly retryMs = 60_000,
+    /** This container's id for the backup lease. */
+    private readonly instanceId: string = "single",
+    /** Called once when another container takes over the backup (a newer deploy). */
+    private readonly onLostOwnership: () => void = () => {},
   ) {}
+
+  /** Checks the lease before an upload. Returns true if this container may upload. */
+  private async holdLease(): Promise<boolean> {
+    const lease = await this.sync.readLease();
+    const foreignAndLive = lease !== null && lease.owner !== this.instanceId && Date.now() - lease.at < LEASE_STALE_MS;
+    if (foreignAndLive) {
+      if (this.owner) {
+        this.owner = false;
+        log.warn("A newer container holds the backup lease: this container stops uploading and hands over.");
+        this.onLostOwnership();
+      }
+      return false;
+    }
+    if (!this.owner) log.warn("The backup lease was abandoned by the newer container; this container is taking it back.");
+    this.owner = true;
+    await this.sync.writeLease(this.instanceId);
+    return true;
+  }
 
   start(): void {
     this.retryTimer = setInterval(() => {
+      // Refreshes the lease every tick even with nothing to upload, so it never looks abandoned.
       if (this.dirty) void this.runUpload();
+      else void this.holdLease().catch((err) => log.error(`Could not refresh the backup lease: ${describe(err)}`));
     }, this.retryMs);
   }
 
@@ -140,6 +208,7 @@ export class BackupScheduler {
   private async uploadOnce(): Promise<void> {
     this.dirty = false;
     try {
+      if (!(await this.holdLease())) return;
       mkdirSync(dirname(this.snapshotPath), { recursive: true });
       if (existsSync(this.snapshotPath)) rmSync(this.snapshotPath);
       await this.db.snapshotTo(this.snapshotPath);

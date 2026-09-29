@@ -263,6 +263,8 @@ export interface SendingState {
   strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
+  /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */
+  lastFeedFetcher?: string | null;
   preview: {
     rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string; stake: number }>;
     skipped: Array<{ pickId: number; strategy: string; match: string; reason: string }>;

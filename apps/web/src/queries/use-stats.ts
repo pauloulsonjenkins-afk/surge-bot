@@ -10,12 +10,12 @@ export type { HitRateRow, HitRateStats, StrategyStats };
 export function useHitRateStats(days: number | null, strategy: string | null = null) {
   return useQuery({
     queryKey: ["hit-rate-stats", days, strategy],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const query = new URLSearchParams();
       if (days) query.set("days", String(days));
       if (strategy) query.set("strategy", strategy);
       const qs = query.toString();
-      return getJson<HitRateStats>(`/api/stats${qs ? `?${qs}` : ""}`, "stats");
+      return getJson<HitRateStats>(`/api/stats${qs ? `?${qs}` : ""}`, "stats", signal);
     },
     // Keep showing the previous figures while a different strategy loads, so the page doesn't flash.
     placeholderData: (previous) => previous,

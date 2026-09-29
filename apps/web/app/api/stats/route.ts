@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { engineUnavailable } from "@/server/public-error";
 import { fetchHitRateStats } from "@/server/engine-client";
 import { cached } from "@/server/cache";
 import { canViewData } from "@/server/access";
@@ -18,6 +19,6 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json(await cached(`stats:${days}:${strategy ?? ""}`, 5000, () => fetchHitRateStats(days, strategy)));
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
+    return engineUnavailable("api/stats", err);
   }
 }

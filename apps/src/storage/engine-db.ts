@@ -155,8 +155,7 @@ function leagueKeyPart(s: string): string {
 }
 
 /** Who a pick's league is: the same league gets the same key however many alerts it has. */
-function leagueIdentity(competition: string | null, rawText: string): { key: string; league: string; country: string | null } {
-  const country = leagueCountryFromText(rawText);
+function leagueIdentity(competition: string | null, country: string | null): { key: string; league: string; country: string | null } {
   const cleaned = (competition ?? "").replace(/[\u{E0020}-\u{E007F}]/gu, "").trim();
   const league = stripCountryPrefix(cleaned, country) || "Unknown league";
   return { key: `${leagueKeyPart(country ?? "")}|${leagueKeyPart(league)}`, league, country };
@@ -194,6 +193,8 @@ export interface LivePick {
   chatId: string;
   messageId: number;
   firstSeenAt: string;
+  /** When Telegram says the alert was posted. Null for alerts stored before this was recorded. */
+  messageAt: string | null;
   updatedAt: string;
   strategy: string;
   market: string | null;
@@ -236,6 +237,9 @@ export class EngineDb {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.onChange = onChange;
+    // WAL lets reads carry on while a write or a backup snapshot is in progress.
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("synchronous = NORMAL");
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS inplayguru_webhooks (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -318,6 +322,23 @@ export class EngineDb {
     if (!liveCols.some((c) => c.name === "sent_row")) {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_row TEXT`);
     }
+    if (!liveCols.some((c) => c.name === "message_at")) {
+      // Telegram's own posting time. The bet feed's age check uses it, so an alert delivered late is never treated as fresh.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN message_at TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "country")) {
+      // The league's country, read from the flag once when the alert is stored, instead of on every stats request.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN country TEXT`);
+      const rows = this.db.prepare(`SELECT id, raw_text FROM live_picks`).all() as Array<{ id: number; raw_text: string }>;
+      const upd = this.db.prepare(`UPDATE live_picks SET country = ? WHERE id = ?`);
+      this.db.transaction(() => {
+        for (const r of rows) upd.run(leagueCountryFromText(r.raw_text), r.id);
+      })();
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_live_picks_first_seen ON live_picks (first_seen_at);
+      CREATE INDEX IF NOT EXISTS idx_live_picks_sent_at ON live_picks (sent_at);
+    `);
   }
 
   /** Stores a webhook. Returns false if an identical body was already stored (a retry or replay). */
@@ -380,7 +401,17 @@ export class EngineDb {
    * (i.e. this is the edit that adds the full-time result), updates that same
    * row. Returns "inserted" or "updated".
    */
-  upsertLivePick(chatId: string, messageId: number, rawText: string, parsed: ParsedAlert): "inserted" | "updated" {
+  /**
+   * Stores or updates one alert. `messageAt` is Telegram's posting time (ISO); it is kept from the first
+   * time the alert is seen, so later edits and re-syncs can't make an old alert look new.
+   */
+  upsertLivePick(
+    chatId: string,
+    messageId: number,
+    rawText: string,
+    parsed: ParsedAlert,
+    messageAt: string | null = null,
+  ): "inserted" | "updated" {
     const now = new Date().toISOString();
     const settled = parsed.result !== null || parsed.ftScore !== null;
     const status: LivePick["status"] = settled
@@ -400,8 +431,8 @@ export class EngineDb {
         `INSERT INTO live_picks (
            chat_id, message_id, first_seen_at, updated_at, strategy, market, selection, competition,
            home, away, minute, timer_raw, goals_home, goals_away, ht_score, ft_score, result,
-           status, sendable, flags_json, parsed_json, raw_text
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           status, sendable, flags_json, parsed_json, raw_text, message_at, country
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(chat_id, message_id) DO UPDATE SET
            updated_at  = excluded.updated_at,
            strategy    = excluded.strategy,
@@ -421,7 +452,9 @@ export class EngineDb {
            sendable    = excluded.sendable,
            flags_json  = excluded.flags_json,
            parsed_json = excluded.parsed_json,
-           raw_text    = excluded.raw_text`,
+           raw_text    = excluded.raw_text,
+           message_at  = COALESCE(live_picks.message_at, excluded.message_at),
+           country     = excluded.country`,
       )
       .run(
         chatId,
@@ -447,10 +480,38 @@ export class EngineDb {
         JSON.stringify(parsed.flags),
         JSON.stringify(parsed),
         rawText,
+        messageAt,
+        leagueCountryFromText(rawText),
       );
 
     this.onChange();
     return existing ? "updated" : "inserted";
+  }
+
+  /**
+   * Every strategy with stored picks, with its market, ignoring the Leagues page's hide/reset
+   * choices. The Sending page uses this, so a strategy whose alerts all come from hidden leagues
+   * still appears there and can be switched off.
+   */
+  listStrategiesSeen(): Array<{ label: string; market: string | null }> {
+    const rows = this.db
+      .prepare(`SELECT strategy, market FROM live_picks WHERE excluded = 0 GROUP BY strategy, market`)
+      .all() as Array<{ strategy: string; market: string | null }>;
+    const out = new Map<string, { label: string; market: string | null }>();
+    for (const r of rows) {
+      const label = strategyLabel(r.strategy);
+      const cur = out.get(label.toLowerCase());
+      if (!cur || (cur.market === null && r.market !== null)) out.set(label.toLowerCase(), { label, market: r.market });
+    }
+    return [...out.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  /** The stored text of one alert, or null if it isn't stored yet. */
+  getLivePickText(chatId: string, messageId: number): string | null {
+    const row = this.db
+      .prepare(`SELECT raw_text FROM live_picks WHERE chat_id = ? AND message_id = ?`)
+      .get(chatId, messageId) as { raw_text: string } | undefined;
+    return row ? row.raw_text : null;
   }
 
   countLivePicks(): number {
@@ -483,6 +544,7 @@ export class EngineDb {
         chatId: String(r.chat_id),
         messageId: Number(r.message_id),
         firstSeenAt: String(r.first_seen_at),
+        messageAt: (r.message_at as string | null) ?? null,
         updatedAt: String(r.updated_at),
         strategy: String(r.strategy),
         market: (r.market as string | null) ?? null,
@@ -521,13 +583,13 @@ export class EngineDb {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const allRows = (
       since === null
-        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, raw_text,
+        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, country,
                   COALESCE(result_override, result) AS result,
                   CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
            FROM live_picks WHERE excluded = 0 ORDER BY id`).all()
         : this.db
             .prepare(
-              `SELECT first_seen_at, strategy, market, competition, minute, raw_text,
+              `SELECT first_seen_at, strategy, market, competition, minute, country,
                       COALESCE(result_override, result) AS result,
                       CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
                FROM live_picks WHERE first_seen_at >= ? AND excluded = 0 ORDER BY id`,
@@ -539,7 +601,7 @@ export class EngineDb {
       market: string | null;
       competition: string | null;
       minute: number | null;
-      raw_text: string;
+      country: string | null;
       result: string | null;
       status: string;
     }>;
@@ -626,7 +688,7 @@ export class EngineDb {
    */
   performanceCells(days: number | null): PerformanceCell[] {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const cols = `first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, raw_text`;
+    const cols = `first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, country`;
     const rows = (
       since === null
         ? this.db.prepare(`SELECT ${cols} FROM live_picks WHERE excluded = 0`).all()
@@ -637,13 +699,13 @@ export class EngineDb {
       competition: string | null;
       minute: number | null;
       result: string | null;
-      raw_text: string;
+      country: string | null;
     }>;
 
     const prefs = this.readLeaguePrefs().leagues;
     const cells = new Map<string, PerformanceCell>();
     for (const r of rows) {
-      const id = leagueIdentity(r.competition, r.raw_text);
+      const id = leagueIdentity(r.competition, r.country);
       const pref = prefs[id.key];
       if (pref?.hidden) continue;
       if (pref?.resetAt && r.first_seen_at < pref.resetAt) continue;
@@ -689,11 +751,11 @@ export class EngineDb {
   }
 
   /** Drops picks from leagues that are hidden, or from before that league's last reset. */
-  private applyLeaguePrefs<T extends { first_seen_at: string; competition: string | null; raw_text: string }>(rows: T[]): T[] {
+  private applyLeaguePrefs<T extends { first_seen_at: string; competition: string | null; country: string | null }>(rows: T[]): T[] {
     const prefs = this.readLeaguePrefs().leagues;
     if (!Object.values(prefs).some((p) => p.hidden || p.resetAt)) return rows;
     return rows.filter((r) => {
-      const pref = prefs[leagueIdentity(r.competition, r.raw_text).key];
+      const pref = prefs[leagueIdentity(r.competition, r.country).key];
       if (!pref) return true;
       if (pref.hidden) return false;
       if (pref.resetAt && r.first_seen_at < pref.resetAt) return false;
@@ -706,14 +768,14 @@ export class EngineDb {
     const prefs = this.readLeaguePrefs().leagues;
     const rows = this.db
       .prepare(
-        `SELECT first_seen_at, competition, COALESCE(result_override, result) AS result, raw_text
+        `SELECT first_seen_at, competition, COALESCE(result_override, result) AS result, country
          FROM live_picks WHERE excluded = 0`,
       )
-      .all() as Array<{ first_seen_at: string; competition: string | null; result: string | null; raw_text: string }>;
+      .all() as Array<{ first_seen_at: string; competition: string | null; result: string | null; country: string | null }>;
 
     const out = new Map<string, AdminLeagueRow>();
     for (const r of rows) {
-      const id = leagueIdentity(r.competition, r.raw_text);
+      const id = leagueIdentity(r.competition, r.country);
       const pref = prefs[id.key];
       const row =
         out.get(id.key) ??

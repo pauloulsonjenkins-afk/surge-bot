@@ -58,8 +58,8 @@ export function useSetPickResult() {
 export function useLivePicks(limit = 50) {
   return useQuery({
     queryKey: ["live-picks", limit],
-    queryFn: async (): Promise<PublicPick[]> => {
-      const data = await getJson<{ picks: PublicPick[] }>(`/api/live?limit=${limit}`, "live picks");
+    queryFn: async ({ signal }): Promise<PublicPick[]> => {
+      const data = await getJson<{ picks: PublicPick[] }>(`/api/live?limit=${limit}`, "live picks", signal);
       return data.picks;
     },
     // Alerts arrive, and get their result edited in, in real time.

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { engineUnavailable } from "@/server/public-error";
 import { fetchLivePicks, toPublicPick } from "@/server/engine-client";
 import { cached } from "@/server/cache";
 import { canViewData } from "@/server/access";
@@ -18,6 +19,6 @@ export async function GET(request: Request) {
     const picks = await cached(`live:${limit}`, 4000, async () => (await fetchLivePicks(limit)).map(toPublicPick));
     return NextResponse.json({ picks });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
+    return engineUnavailable("api/live", err);
   }
 }

@@ -39,8 +39,8 @@ import { verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
 import { handleVerifiedPick } from "../inplayguru/receiver";
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
-import { startTelegramListener } from "../telegram/listener";
-import { buildFeed, getLastFeedFetchAt, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
+import { getListenerStatus, startTelegramListener } from "../telegram/listener";
+import { buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
@@ -120,7 +120,15 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (req.method === "GET" && path === "/health") {
       // Stays 200 even if backups are failing: a failed health check makes
       // DigitalOcean restart the container, which would lose un-backed-up data.
-      send(res, 200, { ok: true, webhooksStored: db.countWebhooks(), livePicks: db.countLivePicks(), backup: backups.getStatus() });
+      // Always 200: a failing health check makes DigitalOcean restart the container. Problems are reported, not enforced.
+      send(res, 200, {
+        ok: true,
+        webhooksStored: db.countWebhooks(),
+        livePicks: db.countLivePicks(),
+        backup: backups.getStatus(),
+        telegram: getListenerStatus(),
+        feedLastFetchedAt: getLastFeedFetchAt(),
+      });
       return;
     }
 
@@ -271,7 +279,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 404, { error: "not_found" });
         return;
       }
-      noteFeedFetched();
+      const ua = req.headers["user-agent"];
+      noteFeedFetched(Array.isArray(ua) ? ua[0] : ua);
       const feed = buildFeed(db, { markSent: true });
       if (feed.newlySent > 0) {
         log.info(`Bet feed: ${feed.newlySent} new pick(s) handed over (${feed.rows.length} row(s) served).`);
@@ -427,7 +436,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const preview = buildFeed(db, { markSent: false });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
       const seen = new Map<string, { label: string; market: string | null; enabled: boolean; stake: number | null }>();
-      for (const st of db.hitRateStats(null).byStrategy) {
+      // Every strategy ever seen, whatever the Leagues page hides, so a switch can always be turned off.
+      for (const st of db.listStrategiesSeen()) {
         const key = st.label.toLowerCase();
         seen.set(key, { label: st.label, market: st.market, enabled: settings.strategies[key] === true, stake: settings.stakes[key] ?? null });
       }
@@ -436,6 +446,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         strategies: [...seen.values()],
         feedTokenConfigured: Boolean(process.env.BET_FEED_TOKEN),
         lastFeedFetchAt: getLastFeedFetchAt(),
+        lastFeedFetcher: getLastFeedFetcher(),
         preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), csv: preview.csv, blockedReason: preview.blockedReason },
       });
       return;

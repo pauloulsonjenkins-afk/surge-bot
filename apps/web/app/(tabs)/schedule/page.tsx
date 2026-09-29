@@ -14,17 +14,21 @@ const OPEN_BY_DEFAULT = 3;
 
 const ukTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
 const ukDateLong = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "long", day: "numeric", month: "long" });
+const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
+const ukDayShort = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
+const FRESH_MS = 24 * 60 * 60 * 1000;
 
 function kickoffTime(f: ScheduleFixture): string {
   return ukTime.format(new Date(f.timestamp * 1000));
 }
 
-type Phase = "upcoming" | "started" | "postponed" | "cancelled" | "tbc";
+type Phase = "upcoming" | "started" | "finished" | "postponed" | "cancelled" | "tbc";
 
 function phaseOf(f: ScheduleFixture, nowSec: number): Phase {
   if (f.status === "PST" || f.status === "SUSP" || f.status === "INT") return "postponed";
   if (f.status === "CANC" || f.status === "ABD" || f.status === "AWD" || f.status === "WO") return "cancelled";
   if (f.status === "TBD") return "tbc";
+  if (f.status === "FT" || f.status === "AET" || f.status === "PEN") return "finished";
   if (f.status !== "NS") return "started";
   return f.timestamp <= nowSec ? "started" : "upcoming";
 }
@@ -32,7 +36,15 @@ function phaseOf(f: ScheduleFixture, nowSec: number): Phase {
 function PhaseChip({ phase }: { phase: Phase }) {
   if (phase === "upcoming") return null;
   const text =
-    phase === "started" ? "Kicked off" : phase === "postponed" ? "Postponed" : phase === "cancelled" ? "Cancelled" : "Time TBC";
+    phase === "started"
+      ? "Kicked off"
+      : phase === "finished"
+        ? "Finished"
+        : phase === "postponed"
+          ? "Postponed"
+          : phase === "cancelled"
+            ? "Cancelled"
+            : "Time TBC";
   const colour = phase === "postponed" || phase === "cancelled" ? "text-danger" : "text-ink-muted";
   return <span className={`shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-medium ${colour}`}>{text}</span>;
 }
@@ -126,7 +138,15 @@ export default function SchedulePage() {
   const setAll = (value: boolean) => setOpen(Object.fromEntries(groups.map((g) => [g.country, value])));
 
   const dayLabel = data ? ukDateLong.format(new Date(`${data.date}T12:00:00Z`)) : "";
-  const updated = data?.pulledAt ? ukTime.format(new Date(data.pulledAt)) : null;
+  // "Updated 15:00", or "Updated 28 Sep, 15:00" when the list is from an earlier day.
+  const pulled = data?.pulledAt ? new Date(data.pulledAt) : null;
+  const updated = pulled
+    ? ukDay.format(pulled) === ukDay.format(new Date(nowSec * 1000))
+      ? ukTime.format(pulled)
+      : `${ukDayShort.format(pulled)}, ${ukTime.format(pulled)}`
+    : null;
+  // Green if the list was refreshed in the last 24 hours, red if not.
+  const fresh = pulled !== null && nowSec * 1000 - pulled.getTime() < FRESH_MS;
 
   return (
     <div className="space-y-4 px-4 py-4">
@@ -171,7 +191,7 @@ export default function SchedulePage() {
                 ? `The last pull failed: ${data.pull.lastError}`
                 : data.pulledAt
                   ? "API-Football listed no games for this day."
-                  : "Fixtures arrive each morning at 06:00 UK time."
+                  : "Fixtures arrive at 06:00 and 15:00 UK time."
             }
           />
         </div>
@@ -186,9 +206,17 @@ export default function SchedulePage() {
               <span className="font-medium tabular-nums">{summary.countries}</span> countries
             </p>
             {updated && (
-              <p className="mt-2 text-[11px] text-ink-muted">
-                Updated {updated} from API-Football
-                {data.pull.lastError && " · the latest refresh failed, showing the last good list"}
+              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-ink-muted">
+                <span
+                  role="img"
+                  aria-label={fresh ? "Updated in the last 24 hours" : "Not updated in the last 24 hours"}
+                  title={fresh ? "Updated in the last 24 hours" : "Not updated in the last 24 hours"}
+                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${fresh ? "bg-hit" : "bg-danger"}`}
+                />
+                <span>
+                  Updated {updated}
+                  {data.pull.lastError && " · the latest refresh failed, showing the last good list"}
+                </span>
               </p>
             )}
           </section>
@@ -293,7 +321,7 @@ export default function SchedulePage() {
             </ul>
           )}
           <p className="text-center text-[11px] text-ink-muted">
-            Times are UK time. Kick-offs are from this morning&apos;s list, not live scores.
+            Times are UK time. Refreshed at 06:00 and 15:00, not live scores.
           </p>
         </>
       )}

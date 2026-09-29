@@ -9,7 +9,9 @@
  *   3. The pick must be `sendable` (recognised strategy, complete, consistent
  *      with the alert's own odds line, not settled).
  *   4. The pick must be recent (default 10 minutes), so an old alert can't
- *      be sent late.
+ *      be sent late. "Recent" is measured from when Telegram says the alert
+ *      was posted, not when this app received it, so an alert that arrives
+ *      late (after a dropped connection or a restart) is never treated as new.
  *   5. A daily limit on how many NEW picks can be handed over.
  *   6. Only markets whose exact code is known are sent. Corners are not.
  *   7. A stake must be set for the strategy, and it must not exceed the
@@ -240,7 +242,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
   const cutoff = now.getTime() - settings.maxAgeMinutes * 60 * 1000;
   const recent = db
     .listLivePicks(200)
-    .filter((p) => new Date(p.firstSeenAt).getTime() >= cutoff)
+    .filter((p) => alertTime(p) >= cutoff)
     .sort((a, b) => a.id - b.id);
 
   if (!settings.enabled) {
@@ -266,6 +268,18 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
     if (p.status === "settled") continue;
     // "Didn't actually bet" picks are never (re)sent, settled or not.
     if (p.excluded) continue;
+
+    // A pick already handed over is repeated exactly as sent until it ages out, whatever the
+    // switches say now. Otherwise turning a strategy off and on again could make its row vanish
+    // and reappear, which betting software may read as a second tip.
+    if (p.sentAt !== null) {
+      const frozen = parseFrozenRow(p);
+      if (frozen) {
+        rows.push(frozen);
+        continue;
+      }
+    }
+
     if (!settings.strategies[label.toLowerCase()]) {
       skipped.push(skip(p, "This strategy's switch is off."));
       continue;
@@ -280,15 +294,6 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
     }
 
     const alreadySent = p.sentAt !== null;
-
-    // A pick that has already been handed over is repeated exactly as it was sent.
-    if (alreadySent) {
-      const frozen = parseFrozenRow(p);
-      if (frozen) {
-        rows.push(frozen);
-        continue;
-      }
-    }
 
     let market: { marketType: string; selectionName: string } | null = null;
     if (p.market === "NEXT_GOAL") {
@@ -340,6 +345,12 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
   return { rows, skipped, csv: toCsv(rows), newlySent: toMark.length, blockedReason: null };
 }
 
+/** When the alert was posted: Telegram's time if known, otherwise when it was received. */
+function alertTime(p: LivePick): number {
+  const posted = p.messageAt ? Date.parse(p.messageAt) : NaN;
+  return Number.isFinite(posted) ? posted : Date.parse(p.firstSeenAt);
+}
+
 function parseFrozenRow(p: LivePick): FeedRow | null {
   if (!p.sentRowJson) return null;
   try {
@@ -363,11 +374,18 @@ function skip(p: LivePick, reason: string): FeedSkip {
   return { pickId: p.id, strategy: strategyLabel(p.strategy), match: `${p.home ?? "?"} v ${p.away ?? "?"}`, reason };
 }
 
-// The last time the betting software fetched the feed. Kept in memory only.
+// The last time the feed was fetched, and by what (its User-Agent). Kept in memory only.
+// Every fetch counts picks as handed over, so a fetcher you don't recognise here (a browser,
+// a chat app previewing the link) is worth knowing about.
 let lastFeedFetchAt: string | null = null;
-export function noteFeedFetched(): void {
+let lastFeedFetcher: string | null = null;
+export function noteFeedFetched(userAgent?: string | null): void {
   lastFeedFetchAt = new Date().toISOString();
+  lastFeedFetcher = userAgent ? userAgent.slice(0, 120) : null;
 }
 export function getLastFeedFetchAt(): string | null {
   return lastFeedFetchAt;
+}
+export function getLastFeedFetcher(): string | null {
+  return lastFeedFetcher;
 }

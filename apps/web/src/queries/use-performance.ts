@@ -17,8 +17,8 @@ export function usePerformanceCells(days: number | null) {
     retry: false,
     staleTime: 0,
     refetchInterval: 30_000,
-    queryFn: async (): Promise<ResolvedCell[] | null> => {
-      const res = await fetch(`/api/performance/breakdown${days ? `?days=${days}` : ""}`, { cache: "no-store" });
+    queryFn: async ({ signal }): Promise<ResolvedCell[] | null> => {
+      const res = await fetch(`/api/performance/breakdown${days ? `?days=${days}` : ""}`, { cache: "no-store", signal });
       if (!res.ok) return null;
       const body = (await res.json()) as { cells?: PerformanceCell[] };
       return Array.isArray(body.cells) ? resolveCells(body.cells) : null;

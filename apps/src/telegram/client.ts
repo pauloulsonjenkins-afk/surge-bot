@@ -14,6 +14,9 @@ import { StringSession } from "telegram/sessions";
 export function createTelegramClient(apiId: number, apiHash: string, sessionString = ""): TelegramClient {
   const session = new StringSession(sessionString);
   return new TelegramClient(session, apiId, apiHash, {
-    connectionRetries: 5,
+    // Keep trying to reconnect after a drop instead of giving up after 5 tries and going quiet.
+    connectionRetries: Number.MAX_SAFE_INTEGER,
+    retryDelay: 2000,
+    autoReconnect: true,
   });
 }

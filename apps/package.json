@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test tests/*.test.ts",
     "verify:execution": "tsx scripts/verify-execution.ts"
   },
   "dependencies": {

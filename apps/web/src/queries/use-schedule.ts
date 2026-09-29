@@ -10,7 +10,7 @@ export type ScheduleWhen = "today" | "tomorrow";
 export function useSchedule(when: ScheduleWhen) {
   return useQuery({
     queryKey: ["schedule", when],
-    queryFn: () => getJson<ScheduleDay>(`/api/schedule${when === "tomorrow" ? "?day=tomorrow" : ""}`, "the schedule"),
+    queryFn: ({ signal }) => getJson<ScheduleDay>(`/api/schedule${when === "tomorrow" ? "?day=tomorrow" : ""}`, "the schedule", signal),
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: true,
