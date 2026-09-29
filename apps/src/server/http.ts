@@ -4,7 +4,8 @@
  *   GET  /health                               DigitalOcean's health check
  *   POST /webhooks/inplayguru/<path token>     InPlayGuru picks
  *   GET  /internal/picks                        recent captured picks (admin site only)
- *   GET  /internal/live                         parsed alerts for the Live tab (admin site only)
+ *   GET  /internal/live[?hours=N|?date=D]       parsed alerts for the Live tab and Results page, optionally for a window (admin site only)
+ *   GET  /internal/live/days                    UK days that have picks, with counts, for the Results page (admin site only)
  *   GET  /internal/stats?days=N[&strategy=X]    hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
@@ -14,6 +15,8 @@
  *   PUT  /internal/sending                      change the sending options (admin site only)
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
+ *   GET  /internal/strategies                   every strategy with its counts, switch, stake and merge (admin site only)
+ *   POST /internal/strategies/merge             report one strategy under another's name, or undo that (admin site only)
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
  *   POST /internal/picks/exclude                 mark (or unmark) a pick as "didn't actually bet" (admin site only)
@@ -40,10 +43,12 @@ import { handleVerifiedPick } from "../inplayguru/receiver";
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
+import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
+import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -163,7 +168,30 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const url = new URL(rawUrl, "http://internal");
       const limitParam = Number(url.searchParams.get("limit"));
       const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 50;
-      send(res, 200, { picks: db.listLivePicks(limit) });
+      // Optional window: ?hours=24 (the last 24 hours) or ?date=YYYY-MM-DD (one UK day). Without either, the latest picks.
+      const hoursParam = Number(url.searchParams.get("hours"));
+      const dateParam = url.searchParams.get("date") ?? "";
+      let range: { from: string; to: string } | undefined;
+      if (isUkDate(dateParam)) {
+        range = ukDayBounds(dateParam);
+      } else if (Number.isFinite(hoursParam) && hoursParam > 0) {
+        const now = Date.now();
+        range = { from: new Date(now - Math.min(hoursParam, 24 * 31) * 3_600_000).toISOString(), to: new Date(now + 60_000).toISOString() };
+      }
+      send(res, 200, { picks: db.listLivePicks(limit, range) });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/live/days") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      send(res, 200, { days: db.listPickDays() });
       return;
     }
 
@@ -385,6 +413,52 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
+    if (req.method === "GET" && path === "/internal/strategies") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const settings = getSendingSettings(db);
+      send(res, 200, {
+        strategies: db.listStrategiesForAdmin().map((x) => ({
+          ...x,
+          sendingOn: settings.strategies[x.label.toLowerCase()] === true,
+          stake: settings.stakes[x.label.toLowerCase()] ?? null,
+        })),
+      });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/strategies/merge") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const from = typeof body.from === "string" ? body.from.trim() : "";
+      const into = typeof body.into === "string" ? body.into.trim() : null;
+      if (!from || (body.into !== null && body.into !== undefined && !into)) {
+        send(res, 400, { error: "from_and_into_required" });
+        return;
+      }
+      const result = db.setStrategyMerge(from, into || null);
+      if (!result.ok) {
+        send(res, 409, { error: result.error });
+        return;
+      }
+      log.info(into ? `Strategy "${from}" is now reported under "${into}".` : `Strategy "${from}" is no longer merged.`);
+      send(res, 200, { ok: true });
+      return;
+    }
+
     if (req.method === "POST" && path === "/internal/strategies/remove") {
       if (!process.env.ADMIN_INTERNAL_KEY) {
         send(res, 500, { error: "not_configured" });
@@ -400,7 +474,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 400, { error: "label_required" });
         return;
       }
+      // A strategy that is still switched on for sending can't be deleted: switch it off first.
+      if (getSendingSettings(db).strategies[label.toLowerCase()] === true) {
+        send(res, 409, { error: "Switch this strategy off on the Sending page before deleting it." });
+        return;
+      }
       const result = db.removeStrategyPicks(label);
+      db.forgetStrategyMerges(label);
+      forgetStopLoss(db, label);
       const key = label.toLowerCase();
       saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null } });
       log.info(`Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ${result.keptBecauseSent} kept.`);
@@ -420,7 +501,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (req.method === "PUT") {
         try {
           const before = getSendingSettings(db);
-          const after = saveSendingSettings(db, await readJsonBody(req));
+          const body = await readJsonBody(req);
+          const after = saveSendingSettings(db, body);
+          // Stop loss limits ride along: { stopLoss: { "strategy name": { dailyLoss, lossRun, resume } } }
+          if (body.stopLoss && typeof body.stopLoss === "object") {
+            for (const [k, v] of Object.entries(body.stopLoss as Record<string, unknown>)) {
+              if (v && typeof v === "object") {
+                saveStopLossRule(db, k, v as Record<string, unknown>);
+                log.info(`Stop loss for "${k}" changed from the admin page (${Object.keys(v as object).join(", ")}).`);
+              }
+            }
+          }
           if (before.enabled !== after.enabled) {
             log.info(`Sending was switched ${after.enabled ? "ON" : "OFF"} from the admin page.`);
           }
@@ -435,11 +526,21 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const settings = getSendingSettings(db);
       const preview = buildFeed(db, { markSent: false });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
-      const seen = new Map<string, { label: string; market: string | null; enabled: boolean; stake: number | null }>();
+      const stops = computeStopLoss(db);
+      const seen = new Map<
+        string,
+        { label: string; market: string | null; enabled: boolean; stake: number | null; stopLoss: ReturnType<typeof computeStopLoss> extends Map<string, infer V> ? V | null : never }
+      >();
       // Every strategy ever seen, whatever the Leagues page hides, so a switch can always be turned off.
       for (const st of db.listStrategiesSeen()) {
         const key = st.label.toLowerCase();
-        seen.set(key, { label: st.label, market: st.market, enabled: settings.strategies[key] === true, stake: settings.stakes[key] ?? null });
+        seen.set(key, {
+          label: st.label,
+          market: st.market,
+          enabled: settings.strategies[key] === true,
+          stake: settings.stakes[key] ?? null,
+          stopLoss: stops.get(key) ?? null,
+        });
       }
       send(res, 200, {
         settings,

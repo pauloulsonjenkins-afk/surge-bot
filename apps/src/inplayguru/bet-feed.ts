@@ -17,6 +17,9 @@
  *   7. A stake must be set for the strategy, and it must not exceed the
  *      "highest stake allowed" ceiling. A strategy cannot be switched on
  *      without a stake.
+ *   8. A per-strategy stop loss (see stop-loss.ts): once a strategy has lost
+ *      its daily limit, or hit its losing run, no NEW picks for it are sent
+ *      for the rest of the UK day.
  * A pick that fails any gate is simply left out and the reason is recorded so
  * the Sending page can show it.
  *
@@ -29,6 +32,7 @@
  * pick it already has, which could otherwise place a second bet.
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
+import { computeStopLoss } from "./stop-loss";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -255,6 +259,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
   const alias = (name: string) => aliases.get(name.trim().toLowerCase()) ?? name.trim();
 
   const today = ukDay.format(now);
+  const stops = computeStopLoss(db, now);
   let sentToday = db.recentSentTimes().filter((t) => ukDay.format(new Date(t)) === today).length;
 
   const rows: FeedRow[] = [];
@@ -294,6 +299,16 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
     }
 
     const alreadySent = p.sentAt !== null;
+
+    // Stop loss: no NEW picks once a strategy has hit its limit today. Rows already handed over
+    // are repeated above and are never affected.
+    if (!alreadySent) {
+      const stop = stops.get(label.toLowerCase());
+      if (stop?.stopped) {
+        skipped.push(skip(p, `Stopped: ${stop.reason}`));
+        continue;
+      }
+    }
 
     let market: { marketType: string; selectionName: string } | null = null;
     if (p.market === "NEXT_GOAL") {

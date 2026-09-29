@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SendingSettings, SendingState } from "@/server/engine-client";
+import type { SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 
-export type { SendingSettings, SendingState };
+export type { SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus };
 
 const KEY = ["sending"];
 
@@ -43,7 +43,7 @@ export function useRemoveStrategy() {
 export function useSaveSending() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (patch: Partial<SendingSettings>): Promise<SendingState> => {
+    mutationFn: async (patch: SendingPatch): Promise<SendingState> => {
       const res = await fetch("/api/admin/sending", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

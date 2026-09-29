@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
-import { useAdminLivePicks, useSetPickExcluded, useSetPickResult, type LivePick } from "@/queries/use-live";
+import { usePickDays, useAdminPicksWindow, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -12,6 +13,13 @@ const whenFmt = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
   timeZone: "Europe/London",
 });
+
+const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+
+/** "2026-09-29" -> "Tue 29 Sep" (the date is a plain calendar date, so no time zone shifts it). */
+function dayLabel(date: string): string {
+  return dayFmt.format(new Date(`${date}T12:00:00Z`));
+}
 
 function label(raw: string): string {
   return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
@@ -24,7 +32,14 @@ function ResultChip({ pick }: { pick: LivePick }) {
 }
 
 export default function ResultsPage() {
-  const { data, isLoading, error } = useAdminLivePicks(100);
+  const [mode, setMode] = useState<"recent" | "date">("recent");
+  const [picked, setPicked] = useState<string | null>(null);
+  const days = usePickDays();
+  // By date starts on the newest day that has picks, until one is chosen.
+  const chosenDate = picked ?? days.data?.[0]?.date ?? null;
+  const range: ResultsWindow = mode === "recent" || chosenDate === null ? { kind: "recent" } : { kind: "date", date: chosenDate };
+  const waitingForDays = mode === "date" && chosenDate === null && days.isLoading;
+  const { data, isLoading, error } = useAdminPicksWindow(range);
   const setResult = useSetPickResult();
   const setExcluded = useSetPickExcluded();
 
@@ -48,14 +63,22 @@ export default function ResultsPage() {
   }
 
   if (error) return <QueryError error={error} next="/more/admin/results" />;
-  if (isLoading || !data) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-28 w-full" />
-        <Skeleton className="h-28 w-full" />
-      </div>
-    );
-  }
+  const rows = data ?? [];
+  const counted = rows.filter((p) => !p.excluded);
+  const summary = {
+    picks: counted.length,
+    hits: counted.filter((p) => p.result === "hit").length,
+    misses: counted.filter((p) => p.result === "miss").length,
+    pending: counted.filter((p) => p.result === null).length,
+    removed: rows.length - counted.length,
+  };
+
+  const dayList = days.data ?? [];
+  const dayIndex = chosenDate === null ? -1 : dayList.findIndex((d) => d.date === chosenDate);
+
+  const loading = isLoading || !data || waitingForDays;
+  // By date with no days to choose from: only the "no days" message is shown, not the last-24-hours list.
+  const noDays = mode === "date" && chosenDate === null && !days.isLoading;
 
   return (
     <div className="space-y-3">
@@ -67,11 +90,85 @@ export default function ResultsPage() {
         </p>
       </div>
 
+      <div role="tablist" aria-label="Which results" className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
+        {(
+          [
+            ["recent", "Last 24 hours"],
+            ["date", "By date"],
+          ] as const
+        ).map(([value, text]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={mode === value}
+            onClick={() => setMode(value)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              mode === value ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
+            }`}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+
+      {mode === "date" &&
+        (dayList.length === 0 ? (
+          <p className="text-sm text-ink-muted">{days.isLoading ? "Loading days…" : "No days with picks yet."}</p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Previous day"
+              disabled={dayIndex < 0 || dayIndex >= dayList.length - 1}
+              onClick={() => setPicked(dayList[dayIndex + 1]?.date ?? null)}
+              className="rounded-md border border-line px-2.5 py-1.5 text-sm text-ink disabled:opacity-40"
+            >
+              ‹
+            </button>
+            <select
+              value={chosenDate ?? ""}
+              onChange={(e) => setPicked(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+            >
+              {dayList.map((d) => (
+                <option key={d.date} value={d.date}>
+                  {dayLabel(d.date)} · {d.picks} pick{d.picks === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              aria-label="Next day"
+              disabled={dayIndex <= 0}
+              onClick={() => setPicked(dayList[dayIndex - 1]?.date ?? null)}
+              className="rounded-md border border-line px-2.5 py-1.5 text-sm text-ink disabled:opacity-40"
+            >
+              ›
+            </button>
+          </div>
+        ))}
+
+      {!loading && !noDays && (
+        <p className="text-xs text-ink-muted">
+          {mode === "recent" ? "Last 24 hours" : chosenDate ? dayLabel(chosenDate) : ""} · {summary.picks} pick{summary.picks === 1 ? "" : "s"} ·{" "}
+          {summary.hits} hit · {summary.misses} miss · {summary.pending} no result yet
+          {summary.removed > 0 ? ` · ${summary.removed} removed` : ""}
+        </p>
+      )}
+
       {setResult.error && <p className="text-sm text-danger">{setResult.error.message}</p>}
       {setExcluded.error && <p className="text-sm text-danger">{setExcluded.error.message}</p>}
 
-      {data.length === 0 ? (
-        <p className="text-sm text-ink-muted">No picks yet.</p>
+      {noDays ? null : loading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      ) : data.length === 0 ? (
+        <p className="text-sm text-ink-muted">
+          {mode === "recent" ? "No picks in the last 24 hours. Use By date to look further back." : "No picks on that day."}
+        </p>
       ) : (
         data.map((p) => (
           <article key={p.id} className={`rounded-xl border border-line bg-surface p-3.5 ${p.excluded ? "opacity-50" : ""}`}>

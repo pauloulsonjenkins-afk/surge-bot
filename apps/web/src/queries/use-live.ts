@@ -81,3 +81,35 @@ export function useAdminLivePicks(limit = 100) {
     refetchInterval: 15_000,
   });
 }
+
+/** Which picks the Results page shows: the last 24 hours, or one UK day (YYYY-MM-DD). */
+export type ResultsWindow = { kind: "recent" } | { kind: "date"; date: string };
+
+export function useAdminPicksWindow(window: ResultsWindow) {
+  const qs = window.kind === "recent" ? "hours=24" : `date=${window.date}`;
+  return useQuery({
+    queryKey: ["admin-live-picks", "window", qs],
+    queryFn: async ({ signal }): Promise<LivePick[]> => {
+      const data = await getJson<{ picks: LivePick[] }>(`/api/admin/live?${qs}`, "picks", signal);
+      return data.picks;
+    },
+    staleTime: 0,
+    // Past days don't change unless a result is amended by hand, so they refresh far less often.
+    refetchInterval: window.kind === "recent" ? 15_000 : 60_000,
+  });
+}
+
+export interface PickDay {
+  date: string;
+  picks: number;
+  hits: number;
+  misses: number;
+}
+
+export function usePickDays() {
+  return useQuery({
+    queryKey: ["admin-pick-days"],
+    queryFn: async ({ signal }): Promise<PickDay[]> => (await getJson<{ days: PickDay[] }>("/api/admin/live/days", "the days", signal)).days,
+    staleTime: 60_000,
+  });
+}

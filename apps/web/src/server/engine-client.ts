@@ -174,7 +174,10 @@ export function toAdminPick(p: LivePick): LivePick {
   return rest as LivePick;
 }
 
-export async function fetchLivePicks(limit = 50): Promise<LivePick[]> {
+/** Which picks to fetch: the latest ones, the last N hours, or one UK day (YYYY-MM-DD). */
+export type PickWindow = { hours: number } | { date: string } | null;
+
+export async function fetchLivePicks(limit = 50, window: PickWindow = null): Promise<LivePick[]> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -184,7 +187,10 @@ export async function fetchLivePicks(limit = 50): Promise<LivePick[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(`${baseUrl}/internal/live?limit=${limit}`, {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (window && "hours" in window) query.set("hours", String(window.hours));
+    if (window && "date" in window) query.set("date", window.date);
+    const res = await fetch(`${baseUrl}/internal/live?${query.toString()}`, {
       headers: { Authorization: `Bearer ${internalKey}` },
       cache: "no-store",
       signal: controller.signal,
@@ -258,9 +264,29 @@ export interface SendingSettings {
   aliases: string;
 }
 
+/** Where a strategy stands against its stop loss limits today. Null when it has no limits. Mirrors StopLossStatus in the engine's stop-loss.ts. */
+export interface StopLossStatus {
+  key: string;
+  dailyLoss: number | null;
+  lossRun: number | null;
+  resumedAt: string | null;
+  settledToday: number;
+  todayNet: number;
+  todayRun: number;
+  stopped: boolean;
+  reason: string | null;
+}
+
+/** What can be changed on one strategy's stop loss. null clears a limit; resume restarts today's count. */
+export interface StopLossPatch {
+  dailyLoss?: number | null;
+  lossRun?: number | null;
+  resume?: boolean;
+}
+
 export interface SendingState {
   settings: SendingSettings;
-  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null }>;
+  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; stopLoss: StopLossStatus | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
   /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */
@@ -273,7 +299,9 @@ export interface SendingState {
   };
 }
 
-async function sendingRequest(method: "GET" | "PUT", body?: Partial<SendingSettings>): Promise<SendingState> {
+export type SendingPatch = Partial<SendingSettings> & { stopLoss?: Record<string, StopLossPatch> };
+
+async function sendingRequest(method: "GET" | "PUT", body?: SendingPatch): Promise<SendingState> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -312,7 +340,10 @@ export async function removeStrategy(label: string): Promise<{ removed: number; 
       cache: "no-store",
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when removing the strategy.`);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? `Engine responded ${res.status} when removing the strategy.`);
+    }
     return (await res.json()) as { removed: number; keptBecauseSent: number };
   } finally {
     clearTimeout(timeout);
@@ -393,7 +424,7 @@ export async function setPickExcluded(id: number, excluded: boolean): Promise<vo
 }
 
 export const fetchSending = () => sendingRequest("GET");
-export const saveSending = (patch: Partial<SendingSettings>) => sendingRequest("PUT", patch);
+export const saveSending = (patch: SendingPatch) => sendingRequest("PUT", patch);
 
 /** Mirrors the engine's Win/Loss reply (winloss.ts). */
 export interface WinLossSettings {
@@ -612,6 +643,96 @@ export async function fetchSchedule(date: string | null): Promise<ScheduleDay> {
     });
     if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the schedule.`);
     return (await res.json()) as ScheduleDay;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** One strategy on the admin Strategies page. Mirrors AdminStrategyRow in the engine's engine-db.ts. */
+export interface AdminStrategy {
+  label: string;
+  market: string | null;
+  alerts: number;
+  hits: number;
+  misses: number;
+  sent: number;
+  lastAlertAt: string;
+  mergedInto: string | null;
+  sendingOn: boolean;
+  stake: number | null;
+}
+
+export async function fetchAdminStrategies(): Promise<AdminStrategy[]> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/strategies`, {
+      headers: { Authorization: `Bearer ${internalKey}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching strategies.`);
+    return ((await res.json()) as { strategies: AdminStrategy[] }).strategies;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Reports one strategy under another's name (into = null undoes it). Throws the engine's reason if it refuses. */
+export async function mergeAdminStrategy(from: string, into: string | null): Promise<void> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/strategies/merge`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, into }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? `Engine responded ${res.status} when merging.`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** One UK day that has picks. Mirrors listPickDays in the engine's engine-db.ts. */
+export interface PickDay {
+  date: string;
+  picks: number;
+  hits: number;
+  misses: number;
+}
+
+export async function fetchPickDays(): Promise<PickDay[]> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/live/days`, {
+      headers: { Authorization: `Bearer ${internalKey}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the pick days.`);
+    return ((await res.json()) as { days: PickDay[] }).days;
   } finally {
     clearTimeout(timeout);
   }

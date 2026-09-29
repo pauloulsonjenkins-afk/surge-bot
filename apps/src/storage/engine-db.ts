@@ -88,6 +88,12 @@ function strategyLabel(raw: string): string {
   return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
 }
 
+/** The name a strategy is reported under (Dashboard, stats): its own name unless it was merged into another. */
+function reportLabel(merges: Record<string, string>, raw: string): string {
+  const own = strategyLabel(raw);
+  return merges[own.toLowerCase()] ?? own;
+}
+
 const ukDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
 
 /** Match-minute buckets for the "when do alerts hit" chart. Upper bound is inclusive. */
@@ -159,6 +165,24 @@ function leagueIdentity(competition: string | null, country: string | null): { k
   const cleaned = (competition ?? "").replace(/[\u{E0020}-\u{E007F}]/gu, "").trim();
   const league = stripCountryPrefix(cleaned, country) || "Unknown league";
   return { key: `${leagueKeyPart(country ?? "")}|${leagueKeyPart(league)}`, league, country };
+}
+
+/** Strategy merges chosen on the admin Strategies page: lower-case strategy name -> the name it is reported under. */
+const STRATEGY_MERGES_KEY = "strategy_merges";
+
+/** One strategy as the admin Strategies page shows it. */
+export interface AdminStrategyRow {
+  label: string;
+  market: string | null;
+  /** Every stored pick of this strategy, including ones marked "didn't actually bet". */
+  alerts: number;
+  hits: number;
+  misses: number;
+  /** Picks already handed to the bet feed. They are kept if the strategy is deleted. */
+  sent: number;
+  lastAlertAt: string;
+  /** The strategy this one is reported under on the Dashboard, or null if it stands alone. */
+  mergedInto: string | null;
 }
 
 /**
@@ -506,6 +530,26 @@ export class EngineDb {
     return [...out.values()].sort((a, b) => a.label.localeCompare(b.label));
   }
 
+  /** UK days that have stored picks, newest first, with how many each and how they went. For the Results page's date picker. */
+  listPickDays(limit = 400): Array<{ date: string; picks: number; hits: number; misses: number }> {
+    const rows = this.db
+      .prepare(`SELECT first_seen_at, excluded, COALESCE(result_override, result) AS result FROM live_picks`)
+      .all() as Array<{ first_seen_at: string; excluded: number; result: string | null }>;
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
+    const days = new Map<string, { date: string; picks: number; hits: number; misses: number }>();
+    for (const r of rows) {
+      const date = fmt.format(new Date(r.first_seen_at));
+      const d = days.get(date) ?? { date, picks: 0, hits: 0, misses: 0 };
+      d.picks++;
+      if (r.excluded !== 1) {
+        if (r.result === "hit") d.hits++;
+        else if (r.result === "miss") d.misses++;
+      }
+      days.set(date, d);
+    }
+    return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, limit);
+  }
+
   /** The stored text of one alert, or null if it isn't stored yet. */
   getLivePickText(chatId: string, messageId: number): string | null {
     const row = this.db
@@ -520,11 +564,19 @@ export class EngineDb {
   }
 
   /** Most recent alerts, newest first. For the Live tab. */
-  listLivePicks(limit = 50): LivePick[] {
-    const capped = Math.min(Math.max(limit, 1), 200);
-    const rows = this.db
-      .prepare(`SELECT * FROM live_picks ORDER BY id DESC LIMIT ?`)
-      .all(capped) as Array<Record<string, unknown>>;
+  /**
+   * Newest first. With `range`, only picks first seen in [from, to) (ISO strings), and a higher cap so a
+   * whole busy day fits; without it, the latest `limit` picks (at most 200).
+   */
+  listLivePicks(limit = 50, range?: { from: string; to: string }): LivePick[] {
+    const capped = Math.min(Math.max(limit, 1), range ? 1000 : 200);
+    const rows = (
+      range
+        ? this.db
+            .prepare(`SELECT * FROM live_picks WHERE first_seen_at >= ? AND first_seen_at < ? ORDER BY id DESC LIMIT ?`)
+            .all(range.from, range.to, capped)
+        : this.db.prepare(`SELECT * FROM live_picks ORDER BY id DESC LIMIT ?`).all(capped)
+    ) as Array<Record<string, unknown>>;
 
     return rows.map((r) => {
       let detail: ParsedAlert | null = null;
@@ -608,8 +660,9 @@ export class EngineDb {
     // Leagues hidden or reset on the admin Leagues page leave the headline figures too.
     const visibleRows = this.applyLeaguePrefs(allRows);
     // Optional: only one strategy (matched on its name without any bracketed note).
+    const merges = this.readStrategyMerges();
     const wanted = strategy?.trim().toLowerCase() || null;
-    const rows = wanted ? visibleRows.filter((r) => strategyLabel(r.strategy).toLowerCase() === wanted) : visibleRows;
+    const rows = wanted ? visibleRows.filter((r) => reportLabel(merges, r.strategy).toLowerCase() === wanted) : visibleRows;
 
     let hits = 0;
     let misses = 0;
@@ -626,7 +679,7 @@ export class EngineDb {
       if (r.status === "captured") pending++;
       if (r.status === "flagged" || r.status === "unmapped") needsReview++;
 
-      const sLabel = strategyLabel(r.strategy);
+      const sLabel = reportLabel(merges, r.strategy);
       const s =
         strategies.get(sLabel.toLowerCase()) ??
         { label: sLabel, alerts: 0, hits: 0, misses: 0, hitRate: null, market: r.market, lastAlertAt: r.first_seen_at };
@@ -703,6 +756,7 @@ export class EngineDb {
     }>;
 
     const prefs = this.readLeaguePrefs().leagues;
+    const merges = this.readStrategyMerges();
     const cells = new Map<string, PerformanceCell>();
     for (const r of rows) {
       const id = leagueIdentity(r.competition, r.country);
@@ -710,7 +764,7 @@ export class EngineDb {
       if (pref?.hidden) continue;
       if (pref?.resetAt && r.first_seen_at < pref.resetAt) continue;
 
-      const strategy = strategyLabel(r.strategy);
+      const strategy = reportLabel(merges, r.strategy);
       const bucket = r.minute === null ? null : MINUTE_BUCKETS.findIndex((b) => r.minute! <= b.max);
       const bucketIdx = bucket !== null && bucket >= 0 ? bucket : null;
 
@@ -830,6 +884,94 @@ export class EngineDb {
     if (Object.keys(cur).length === 0) delete prefs.leagues[key];
     else prefs.leagues[key] = cur;
     this.setSetting(LEAGUE_PREFS_KEY, JSON.stringify(prefs));
+  }
+
+  private readStrategyMerges(): Record<string, string> {
+    try {
+      const raw = this.getSetting(STRATEGY_MERGES_KEY);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+      if (parsed && typeof parsed === "object") {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) if (typeof v === "string" && v) out[k] = v;
+        return out;
+      }
+    } catch {
+      // Unreadable setting: behave as if nothing was merged.
+    }
+    return {};
+  }
+
+  /**
+   * Reports strategy `from` under the name of strategy `into` (null undoes it). This only changes how
+   * the Dashboard and stats group alerts. The bet feed, stakes and switches are untouched, so each
+   * strategy keeps its own switch and stake.
+   */
+  setStrategyMerge(from: string, into: string | null): { ok: true } | { ok: false; error: string } {
+    const seen = new Map(this.listStrategiesSeen().map((x) => [x.label.toLowerCase(), x.label]));
+    const fromLabel = seen.get(strategyLabel(from).toLowerCase());
+    if (!fromLabel) return { ok: false, error: "That strategy isn't known." };
+    const merges = this.readStrategyMerges();
+    const fromKey = fromLabel.toLowerCase();
+
+    if (into === null) {
+      delete merges[fromKey];
+    } else {
+      const intoLabel = seen.get(strategyLabel(into).toLowerCase());
+      if (!intoLabel) return { ok: false, error: "The strategy to merge into isn't known." };
+      if (intoLabel.toLowerCase() === fromKey) return { ok: false, error: "A strategy can't be merged into itself." };
+      // Follow any existing merge so everything ends up under one final name.
+      let target = intoLabel;
+      for (let hops = 0; merges[target.toLowerCase()] && hops < 10; hops++) target = merges[target.toLowerCase()]!;
+      if (target.toLowerCase() === fromKey) return { ok: false, error: "That would merge the two into each other." };
+      merges[fromKey] = target;
+      // Anything that was merged into `from` now follows it to the new name.
+      for (const [k, v] of Object.entries(merges)) if (v.toLowerCase() === fromKey) merges[k] = target;
+    }
+    this.setSetting(STRATEGY_MERGES_KEY, JSON.stringify(merges));
+    return { ok: true };
+  }
+
+  /** Forgets every merge that involves a strategy (used when it is deleted). */
+  forgetStrategyMerges(label: string): void {
+    const key = strategyLabel(label).toLowerCase();
+    const merges = this.readStrategyMerges();
+    let changed = false;
+    for (const [k, v] of Object.entries(merges)) {
+      if (k === key || v.toLowerCase() === key) {
+        delete merges[k];
+        changed = true;
+      }
+    }
+    if (changed) this.setSetting(STRATEGY_MERGES_KEY, JSON.stringify(merges));
+  }
+
+  /** Every strategy with stored picks, for the admin Strategies page. Ignores the Leagues page's choices. */
+  listStrategiesForAdmin(): AdminStrategyRow[] {
+    const merges = this.readStrategyMerges();
+    const rows = this.db
+      .prepare(
+        `SELECT strategy, market, excluded, sent_at, first_seen_at, COALESCE(result_override, result) AS result
+         FROM live_picks ORDER BY id`,
+      )
+      .all() as Array<{ strategy: string; market: string | null; excluded: number; sent_at: string | null; first_seen_at: string; result: string | null }>;
+    const out = new Map<string, AdminStrategyRow>();
+    for (const r of rows) {
+      const label = strategyLabel(r.strategy);
+      const key = label.toLowerCase();
+      const row =
+        out.get(key) ??
+        { label, market: r.market, alerts: 0, hits: 0, misses: 0, sent: 0, lastAlertAt: r.first_seen_at, mergedInto: merges[key] ?? null };
+      row.alerts++;
+      row.market = r.market ?? row.market;
+      if (r.sent_at !== null) row.sent++;
+      if (r.excluded !== 1) {
+        if (r.result === "hit") row.hits++;
+        else if (r.result === "miss") row.misses++;
+      }
+      row.lastAlertAt = r.first_seen_at;
+      out.set(key, row);
+    }
+    return [...out.values()].sort((a, b) => a.label.localeCompare(b.label));
   }
 
   /**

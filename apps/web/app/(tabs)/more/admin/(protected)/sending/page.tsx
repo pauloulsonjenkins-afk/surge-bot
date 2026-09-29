@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
+import { StopLossControls } from "@/components/admin/StopLossControls";
 import { useRemoveStrategy, useSaveSending, useSending, type SendingSettings } from "@/queries/use-sending";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
@@ -268,6 +269,13 @@ export default function SendingPage() {
                       )}
                       {!dirty && s.stake === null && <span className="text-xs text-danger">Needed to switch on</span>}
                     </div>
+                  )}
+                  {supported && (
+                    <StopLossControls
+                      status={s.stopLoss}
+                      busy={save.isPending}
+                      onSave={(patch) => save.mutate({ stopLoss: { [key]: patch } })}
+                    />
                   )}
                 </li>
               );
