@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal } from "lucide-react";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
+import { TAB_PAGE } from "@/lib/user-pages";
+import { useMe } from "@/queries/use-me";
 
 const TABS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, isMore: false },
@@ -17,6 +19,15 @@ const TABS = [
 export default function BottomNav() {
   const pathname = usePathname();
   const lastMoreRoute = useUiStore((s) => s.lastMoreRoute);
+  const { data: me } = useMe();
+
+  // A signed-in user only sees the tabs the admin has given them. Signed-out visitors and the admin see them all
+  // (a signed-out visitor who taps one is offered the sign-in).
+  const tabs = TABS.filter((t) => {
+    const needs = TAB_PAGE[t.href] ?? null;
+    if (!needs || !me || me.admin || !me.user) return true;
+    return me.pages.includes(needs);
+  });
 
   return (
     <nav
@@ -25,7 +36,7 @@ export default function BottomNav() {
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-1">
-        {TABS.map(({ href, label, icon: Icon, isMore }) => {
+        {tabs.map(({ href, label, icon: Icon, isMore }) => {
           const target = isMore ? (isValidMoreRoute(lastMoreRoute) ? lastMoreRoute : "/more") : href;
           const active = isMore
             ? pathname.startsWith("/more")

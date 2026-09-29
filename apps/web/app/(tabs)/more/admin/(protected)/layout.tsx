@@ -11,6 +11,7 @@ const ADMIN_SECTIONS = [
   { href: "/more/admin/winloss", label: "Win/Loss" },
   { href: "/more/admin/leagues", label: "Leagues" },
   { href: "/more/admin/strategies", label: "Strategies" },
+  { href: "/more/admin/users", label: "Users" },
   { href: "/more/admin/settings", label: "Settings" },
 ];
 

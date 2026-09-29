@@ -15,6 +15,7 @@
  *   PUT  /internal/sending                      change the sending options (admin site only)
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
+ *   /internal/users/*                           website user sign-up, sign-in and page access (admin site only; see users-routes.ts)
  *   GET  /internal/strategies                   every strategy with its counts, switch, stake and merge (admin site only)
  *   POST /internal/strategies/ignore            stop or start ignoring a strategy's new alerts (admin site only)
  *   POST /internal/strategies/merge             report one strategy under another's name, or undo that (admin site only)
@@ -47,6 +48,7 @@ import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
+import { handleUsersRoute } from "./users-routes";
 import { computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { isUkDate, ukDayBounds } from "./uk-time";
@@ -340,6 +342,27 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
       }
       send(res, 200, { ...computeWinLoss(db) });
+      return;
+    }
+
+    if (path === "/internal/users" || path.startsWith("/internal/users/")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      await handleUsersRoute({
+        method: req.method ?? "GET",
+        path,
+        url: new URL(rawUrl, "http://internal"),
+        db,
+        res,
+        send,
+        readJsonBody: () => readJsonBody(req),
+      });
       return;
     }
 

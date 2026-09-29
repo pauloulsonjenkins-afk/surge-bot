@@ -255,6 +255,19 @@ export interface LivePick {
   rawText: string;
 }
 
+/** One website user as stored. pages is the raw JSON text; server/users.ts parses and checks it. */
+export interface AppUserRow {
+  id: number;
+  email: string;
+  name: string;
+  passwordHash: string;
+  pages: string;
+  active: boolean;
+  sessionVersion: number;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
 export class EngineDb {
   private readonly db: Database.Database;
   private readonly onChange: () => void;
@@ -339,6 +352,20 @@ export class EngineDb {
         venue        TEXT,
         pulled_at    TEXT NOT NULL,
         PRIMARY KEY (uk_date, fixture_id)
+      );
+
+      -- Website users who signed up. Passwords are stored only as salted scrypt hashes.
+      -- pages is a JSON list of the page groups the admin has switched on for this person.
+      CREATE TABLE IF NOT EXISTS app_users (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        email            TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        name             TEXT NOT NULL DEFAULT '',
+        password_hash    TEXT NOT NULL,
+        pages            TEXT NOT NULL DEFAULT '[]',
+        active           INTEGER NOT NULL DEFAULT 1,
+        session_version  INTEGER NOT NULL DEFAULT 1,
+        created_at       TEXT NOT NULL,
+        last_login_at    TEXT
       );
     `);
 
@@ -1186,6 +1213,79 @@ export class EngineDb {
         sentStake,
       };
     });
+  }
+
+  // ---- website users -------------------------------------------------------------------------
+
+  private toAppUser(r: Record<string, unknown>): AppUserRow {
+    return {
+      id: Number(r.id),
+      email: String(r.email),
+      name: String(r.name ?? ""),
+      passwordHash: String(r.password_hash),
+      pages: String(r.pages ?? "[]"),
+      active: Number(r.active) === 1,
+      sessionVersion: Number(r.session_version),
+      createdAt: String(r.created_at),
+      lastLoginAt: r.last_login_at === null || r.last_login_at === undefined ? null : String(r.last_login_at),
+    };
+  }
+
+  /** Adds a user with no page access yet. Returns null when that email is already registered. */
+  createAppUser(email: string, name: string, passwordHash: string): AppUserRow | null {
+    try {
+      const info = this.db
+        .prepare(`INSERT INTO app_users (email, name, password_hash, created_at) VALUES (?, ?, ?, ?)`)
+        .run(email, name, passwordHash, new Date().toISOString());
+      this.onChange();
+      return this.getAppUserById(Number(info.lastInsertRowid));
+    } catch (err) {
+      if (err instanceof Error && /UNIQUE/i.test(err.message)) return null;
+      throw err;
+    }
+  }
+
+  getAppUserByEmail(email: string): AppUserRow | null {
+    const r = this.db.prepare(`SELECT * FROM app_users WHERE email = ?`).get(email) as Record<string, unknown> | undefined;
+    return r ? this.toAppUser(r) : null;
+  }
+
+  getAppUserById(id: number): AppUserRow | null {
+    const r = this.db.prepare(`SELECT * FROM app_users WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
+    return r ? this.toAppUser(r) : null;
+  }
+
+  listAppUsers(): AppUserRow[] {
+    return (this.db.prepare(`SELECT * FROM app_users ORDER BY created_at DESC, id DESC`).all() as Array<Record<string, unknown>>).map((r) => this.toAppUser(r));
+  }
+
+  /** Changes only the fields given. signOutEverywhere makes every existing sign-in for this user invalid. */
+  updateAppUser(
+    id: number,
+    patch: { name?: string; pages?: string; active?: boolean; passwordHash?: string; signOutEverywhere?: boolean },
+  ): boolean {
+    const sets: string[] = [];
+    const values: Array<string | number> = [];
+    if (patch.name !== undefined) { sets.push("name = ?"); values.push(patch.name); }
+    if (patch.pages !== undefined) { sets.push("pages = ?"); values.push(patch.pages); }
+    if (patch.active !== undefined) { sets.push("active = ?"); values.push(patch.active ? 1 : 0); }
+    if (patch.passwordHash !== undefined) { sets.push("password_hash = ?"); values.push(patch.passwordHash); }
+    if (patch.signOutEverywhere || patch.passwordHash !== undefined || patch.active === false) sets.push("session_version = session_version + 1");
+    if (sets.length === 0) return this.getAppUserById(id) !== null;
+    const info = this.db.prepare(`UPDATE app_users SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
+    if (info.changes > 0) this.onChange();
+    return info.changes > 0;
+  }
+
+  /** Deliberately does not trigger a backup: a sign-in shouldn't upload the database. */
+  touchAppUserLogin(id: number): void {
+    this.db.prepare(`UPDATE app_users SET last_login_at = ? WHERE id = ?`).run(new Date().toISOString(), id);
+  }
+
+  deleteAppUser(id: number): boolean {
+    const info = this.db.prepare(`DELETE FROM app_users WHERE id = ?`).run(id);
+    if (info.changes > 0) this.onChange();
+    return info.changes > 0;
   }
 
   getSetting(key: string): string | null {
