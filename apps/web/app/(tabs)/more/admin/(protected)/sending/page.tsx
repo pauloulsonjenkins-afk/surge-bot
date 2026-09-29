@@ -5,7 +5,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
 import { StopLossControls } from "@/components/admin/StopLossControls";
-import { useRemoveStrategy, useSaveSending, useSending, type SendingSettings } from "@/queries/use-sending";
+import { useSaveSending, useSending, type SendingSettings } from "@/queries/use-sending";
+import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -51,7 +52,7 @@ const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-2 te
 export default function SendingPage() {
   const { data, isLoading, error } = useSending();
   const save = useSaveSending();
-  const remove = useRemoveStrategy();
+  const remove = useDeleteStrategyFlow();
   const [form, setForm] = useState<Form | null>(null);
   const [saved, setSaved] = useState(false);
   // What has been typed into each strategy's stake box but not saved yet, keyed by lower-case name.
@@ -84,20 +85,6 @@ export default function SendingPage() {
       if (!ok) return;
     }
     save.mutate({ enabled: turningOn });
-  }
-
-  function removeStrategy(label: string) {
-    const ok = window.confirm(
-      `Remove "${label}" from the app?\n\nIts saved alerts are deleted, along with its stake and switch. Alerts that were already sent are kept. Nothing changes in your betting software.`,
-    );
-    if (!ok) return;
-    remove.mutate(label, {
-      onSuccess: (r) => {
-        if (r.keptBecauseSent > 0) {
-          window.alert(`${r.removed} alert(s) removed. ${r.keptBecauseSent} were already sent, so they were kept.`);
-        }
-      },
-    });
   }
 
   function saveStake(key: string) {
@@ -237,15 +224,17 @@ export default function SendingPage() {
                       />
                     </button>
                   </div>
-                  {!supported && !s.enabled && (
+                  {!s.enabled ? (
                     <button
                       type="button"
-                      onClick={() => removeStrategy(s.label)}
+                      onClick={() => remove.run(s.label, { alerts: s.alerts, sent: s.sent })}
                       disabled={remove.isPending}
                       className="mt-1 text-xs text-danger underline disabled:opacity-50"
                     >
                       Remove this strategy
                     </button>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-ink-muted">To remove this strategy, switch it off first.</p>
                   )}
                   {supported && (
                     <div className="mt-2 flex items-center gap-2">

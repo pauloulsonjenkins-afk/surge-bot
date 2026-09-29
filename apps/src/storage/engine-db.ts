@@ -314,6 +314,15 @@ export class EngineDb {
         UNIQUE (chat_id, message_id)
       );
 
+      -- Alerts deleted with a strategy. Telegram still holds those messages, so without this note the
+      -- catch-up sync (or a full-time edit) would put them straight back.
+      CREATE TABLE IF NOT EXISTS deleted_picks (
+        chat_id     TEXT NOT NULL,
+        message_id  INTEGER NOT NULL,
+        deleted_at  TEXT NOT NULL,
+        PRIMARY KEY (chat_id, message_id)
+      );
+
       CREATE TABLE IF NOT EXISTS schedule_fixtures (
         uk_date      TEXT NOT NULL,
         fixture_id   INTEGER NOT NULL,
@@ -550,6 +559,11 @@ export class EngineDb {
       days.set(date, d);
     }
     return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, limit);
+  }
+
+  /** True if this Telegram message was deleted along with its strategy, so it must never be stored again. */
+  isPickDeleted(chatId: string, messageId: number): boolean {
+    return this.db.prepare(`SELECT 1 FROM deleted_picks WHERE chat_id = ? AND message_id = ?`).get(chatId, messageId) !== undefined;
   }
 
   /** The stored text of one alert, or null if it isn't stored yet. */
@@ -1037,15 +1051,26 @@ export class EngineDb {
    */
   removeStrategyPicks(label: string): { removed: number; keptBecauseSent: number } {
     const target = label.trim().toLowerCase();
-    const rows = this.db.prepare(`SELECT id, strategy, sent_at FROM live_picks`).all() as Array<{
+    const rows = this.db.prepare(`SELECT id, strategy, sent_at, chat_id, message_id FROM live_picks`).all() as Array<{
       id: number;
       strategy: string;
       sent_at: string | null;
+      chat_id: string;
+      message_id: number;
     }>;
     const mine = rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === target);
-    const deletable = mine.filter((r) => r.sent_at === null).map((r) => r.id);
+    const deletable = mine.filter((r) => r.sent_at === null);
     const del = this.db.prepare(`DELETE FROM live_picks WHERE id = ?`);
-    for (const id of deletable) del.run(id);
+    const note = this.db.prepare(`INSERT OR REPLACE INTO deleted_picks (chat_id, message_id, deleted_at) VALUES (?, ?, ?)`);
+    const now = new Date().toISOString();
+    this.db.transaction(() => {
+      for (const r of deletable) {
+        note.run(r.chat_id, r.message_id, now);
+        del.run(r.id);
+      }
+      // Telegram only ever re-delivers recent messages, so old notes can go.
+      this.db.prepare(`DELETE FROM deleted_picks WHERE deleted_at < ?`).run(new Date(Date.now() - 60 * 24 * 3_600_000).toISOString());
+    })();
     if (deletable.length > 0) this.onChange();
     return { removed: deletable.length, keptBecauseSent: mine.length - deletable.length };
   }

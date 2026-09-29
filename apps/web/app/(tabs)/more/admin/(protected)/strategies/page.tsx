@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, type AdminStrategy } from "@/queries/use-strategies";
+import { useAdminStrategies, useIgnoreStrategy, useMergeStrategy, type AdminStrategy } from "@/queries/use-strategies";
+import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 import { marketName } from "@/lib/markets";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
@@ -128,7 +129,7 @@ function StrategyCard({
 export default function StrategiesPage() {
   const { data, isLoading, error } = useAdminStrategies();
   const merge = useMergeStrategy();
-  const remove = useDeleteStrategy();
+  const remove = useDeleteStrategyFlow();
   const ignore = useIgnoreStrategy();
   const strategies = data?.strategies ?? [];
   const ignored = data?.ignored ?? [];
@@ -142,34 +143,7 @@ export default function StrategiesPage() {
   }, [strategies]);
 
   function deleteStrategy(row: AdminStrategy) {
-    const ok = window.confirm(
-      `Delete “${row.label}”?\n\n` +
-        `Its ${row.alerts} saved alert${row.alerts === 1 ? "" : "s"} are deleted for good, so it disappears from the Dashboard, Trade Log and Win/Loss.` +
-        (row.sent > 0
-          ? `\n\n${row.sent} of them were already sent to bet. Those are kept as records but taken out of every result and figure (unless sent in the last 2 hours), and can be put back from the Results page.`
-          : "") +
-        `\n\nNothing changes in your betting software. If you only want to combine it with another strategy, use “Merge” instead.`,
-    );
-    if (!ok) return;
-    // New alerts with this name would otherwise bring the strategy straight back.
-    const ignoreFuture = window.confirm(
-      `Also ignore new “${row.label}” alerts?\n\nOK = ignore them from now on, so this strategy stays gone.\nCancel = let new ones in, and it will reappear here when one arrives.\n\nYou can stop ignoring it later from the bottom of this page.`,
-    );
-    remove.mutate(
-      { label: row.label, ignoreFuture },
-      {
-        onSuccess: (r) => {
-          const parts = [`${r.removed} alert${r.removed === 1 ? "" : "s"} deleted.`];
-          if (r.keptBecauseSent > 0) {
-            const hidden = r.hiddenFromResults ?? 0;
-            parts.push(`${r.keptBecauseSent} already sent to bet: kept as records, ${hidden} taken out of your results.`);
-            if (hidden < r.keptBecauseSent) parts.push("Any sent in the last 2 hours still count. Delete again later to clear them.");
-          }
-          if (r.ignoring) parts.push("New alerts with this name will be ignored.");
-          window.alert(parts.join("\n"));
-        },
-      },
-    );
+    remove.run(row.label, { alerts: row.alerts, sent: row.sent });
   }
 
   const busy = merge.isPending || remove.isPending || ignore.isPending;

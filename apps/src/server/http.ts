@@ -558,9 +558,18 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const preview = buildFeed(db, { markSent: false });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
       const stops = computeStopLoss(db);
+      const counts = new Map(db.listStrategiesForAdmin().map((x) => [x.label.toLowerCase(), x]));
       const seen = new Map<
         string,
-        { label: string; market: string | null; enabled: boolean; stake: number | null; stopLoss: ReturnType<typeof computeStopLoss> extends Map<string, infer V> ? V | null : never }
+        {
+          label: string;
+          market: string | null;
+          enabled: boolean;
+          stake: number | null;
+          alerts: number;
+          sent: number;
+          stopLoss: ReturnType<typeof computeStopLoss> extends Map<string, infer V> ? V | null : never;
+        }
       >();
       // Every strategy ever seen, whatever the Leagues page hides, so a switch can always be turned off.
       for (const st of db.listStrategiesSeen()) {
@@ -570,6 +579,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           market: st.market,
           enabled: settings.strategies[key] === true,
           stake: settings.stakes[key] ?? null,
+          alerts: counts.get(key)?.alerts ?? 0,
+          sent: counts.get(key)?.sent ?? 0,
           stopLoss: stops.get(key) ?? null,
         });
       }

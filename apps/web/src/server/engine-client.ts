@@ -286,7 +286,7 @@ export interface StopLossPatch {
 
 export interface SendingState {
   settings: SendingSettings;
-  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; stopLoss: StopLossStatus | null }>;
+  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
   /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */

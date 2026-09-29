@@ -101,6 +101,9 @@ function isIgnored(db: EngineDb, text: string): boolean {
 function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boolean {
   const messageAt = new Date(m.date * 1000).toISOString();
 
+  // An alert deleted along with its strategy stays deleted: not by the catch-up sync, not by a late full-time edit.
+  if (db.isPickDeleted(m.chatKey, m.messageId)) return false;
+
   // A strategy that was deleted with "ignore new alerts" is dropped here, before anything is stored.
   if (isIgnored(db, m.text)) {
     if (how === "new") log.info(`Telegram message ${m.messageId} is for an ignored strategy; not stored.`);
