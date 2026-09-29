@@ -6,11 +6,19 @@ import { getJson } from "./fetch-json";
 
 export type { HitRateRow, HitRateStats, StrategyStats };
 
-/** days = null means all time. */
-export function useHitRateStats(days: number | null) {
+/** days = null means all time. strategy = null means every strategy. */
+export function useHitRateStats(days: number | null, strategy: string | null = null) {
   return useQuery({
-    queryKey: ["hit-rate-stats", days],
-    queryFn: () => getJson<HitRateStats>(`/api/stats${days ? `?days=${days}` : ""}`, "stats"),
+    queryKey: ["hit-rate-stats", days, strategy],
+    queryFn: () => {
+      const query = new URLSearchParams();
+      if (days) query.set("days", String(days));
+      if (strategy) query.set("strategy", strategy);
+      const qs = query.toString();
+      return getJson<HitRateStats>(`/api/stats${qs ? `?${qs}` : ""}`, "stats");
+    },
+    // Keep showing the previous figures while a different strategy loads, so the page doesn't flash.
+    placeholderData: (previous) => previous,
     staleTime: 0,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,

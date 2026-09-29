@@ -218,7 +218,7 @@ export interface HitRateStats {
   daily: Array<{ date: string; hits: number; misses: number; hitRate: number | null }>;
 }
 
-export async function fetchHitRateStats(days: number | null): Promise<HitRateStats> {
+export async function fetchHitRateStats(days: number | null, strategy: string | null = null): Promise<HitRateStats> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -228,7 +228,11 @@ export async function fetchHitRateStats(days: number | null): Promise<HitRateSta
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(`${baseUrl}/internal/stats${days ? `?days=${days}` : ""}`, {
+    const query = new URLSearchParams();
+    if (days) query.set("days", String(days));
+    if (strategy) query.set("strategy", strategy);
+    const qs = query.toString();
+    const res = await fetch(`${baseUrl}/internal/stats${qs ? `?${qs}` : ""}`, {
       headers: { Authorization: `Bearer ${internalKey}` },
       cache: "no-store",
       signal: controller.signal,
@@ -559,6 +563,53 @@ export async function updateAdminLeague(key: string, patch: LeaguePatch): Promis
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`Engine responded ${res.status} when saving the league.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** One match on the Schedule tab. Mirrors ScheduleFixture in the engine's fixtures/api-football.ts. */
+export interface ScheduleFixture {
+  id: number;
+  kickoff: string;
+  timestamp: number;
+  status: string;
+  statusLong: string;
+  leagueId: number;
+  league: string;
+  country: string;
+  round: string | null;
+  home: string;
+  away: string;
+  venue: string | null;
+}
+
+/** The engine's /internal/schedule reply. */
+export interface ScheduleDay {
+  date: string;
+  today: string;
+  tomorrow: string;
+  pulledAt: string | null;
+  fixtures: ScheduleFixture[];
+  pull: { configured: boolean; lastSuccessAt: string | null; lastError: string | null };
+}
+
+export async function fetchSchedule(date: string | null): Promise<ScheduleDay> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/schedule${date ? `?date=${encodeURIComponent(date)}` : ""}`, {
+      headers: { Authorization: `Bearer ${internalKey}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the schedule.`);
+    return (await res.json()) as ScheduleDay;
   } finally {
     clearTimeout(timeout);
   }

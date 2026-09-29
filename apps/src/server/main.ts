@@ -12,6 +12,7 @@ import { BackupScheduler, SpacesSync } from "../storage/spaces-sync";
 import { createTelegramClient } from "../telegram/client";
 import { startTelegramListener } from "../telegram/listener";
 import { log } from "./log";
+import { startDailyFixturePull } from "../fixtures/daily-pull";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -50,6 +51,14 @@ async function main(): Promise<void> {
 
   const server = createEngineHttpServer(env, db, backups);
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));
+
+  // Daily fixtures for the Schedule tab. Nothing happens until the key is set.
+  const apiFootballKey = process.env.API_FOOTBALL_KEY?.trim();
+  if (apiFootballKey) {
+    startDailyFixturePull(db, apiFootballKey);
+  } else {
+    log.info("API_FOOTBALL_KEY is not set; the Schedule tab's daily fixture pull is off.");
+  }
 
   // If a Telegram session was already completed via the admin Telegram tab
   // and saved as env vars, resume listening on restart without needing to

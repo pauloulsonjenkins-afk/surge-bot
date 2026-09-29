@@ -5,6 +5,8 @@
  *   inplayguru_webhooks  every verified webhook, stored exactly as received
  *   trade_log            the trade log (one row per TradeLogSink entry)
  *   settings             small key/value store (currently the "sending" options)
+ *   schedule_fixtures    the day's matches from API-Football, for the Schedule tab
+ *                        (today and tomorrow, refreshed each morning at 06:00 UK)
  *   live_picks           one row per Telegram alert, parsed into fields. Keyed by
  *                        (chat_id, message_id) so that when Telegram EDITS the
  *                        alert after full time, the same row is updated with the
@@ -19,6 +21,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { leagueCountryFromText, type ParsedAlert } from "../inplayguru/parse-alert";
+import type { ScheduleFixture } from "../fixtures/api-football";
 
 export interface CapturedWebhook {
   receivedAt: string;
@@ -280,6 +283,24 @@ export class EngineDb {
         raw_text       TEXT NOT NULL,
         UNIQUE (chat_id, message_id)
       );
+
+      CREATE TABLE IF NOT EXISTS schedule_fixtures (
+        uk_date      TEXT NOT NULL,
+        fixture_id   INTEGER NOT NULL,
+        kickoff      TEXT NOT NULL,
+        kickoff_ts   INTEGER NOT NULL,
+        status       TEXT NOT NULL,
+        status_long  TEXT NOT NULL,
+        league_id    INTEGER NOT NULL,
+        league       TEXT NOT NULL,
+        country      TEXT NOT NULL,
+        round        TEXT,
+        home         TEXT NOT NULL,
+        away         TEXT NOT NULL,
+        venue        TEXT,
+        pulled_at    TEXT NOT NULL,
+        PRIMARY KEY (uk_date, fixture_id)
+      );
     `);
 
     // Databases created before the bet feed existed don't have sent_at yet.
@@ -496,7 +517,7 @@ export class EngineDb {
    * league and UK calendar day. A pick counts as a hit or miss only when the
    * alert itself carries a Hit/Miss marker, so nothing here is guessed.
    */
-  hitRateStats(days: number | null): HitRateStats {
+  hitRateStats(days: number | null, strategy: string | null = null): HitRateStats {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const allRows = (
       since === null
@@ -523,7 +544,10 @@ export class EngineDb {
       status: string;
     }>;
     // Leagues hidden or reset on the admin Leagues page leave the headline figures too.
-    const rows = this.applyLeaguePrefs(allRows);
+    const visibleRows = this.applyLeaguePrefs(allRows);
+    // Optional: only one strategy (matched on its name without any bracketed note).
+    const wanted = strategy?.trim().toLowerCase() || null;
+    const rows = wanted ? visibleRows.filter((r) => strategyLabel(r.strategy).toLowerCase() === wanted) : visibleRows;
 
     let hits = 0;
     let misses = 0;
@@ -910,6 +934,70 @@ export class EngineDb {
       .prepare(`SELECT sent_at FROM live_picks WHERE sent_at IS NOT NULL AND sent_at >= ?`)
       .all(since) as Array<{ sent_at: string }>;
     return rows.map((r) => r.sent_at);
+  }
+
+  /** Replaces one UK day's schedule with a fresh pull from API-Football. */
+  replaceScheduleDay(ukDate: string, fixtures: ScheduleFixture[], pulledAt: string): void {
+    const del = this.db.prepare(`DELETE FROM schedule_fixtures WHERE uk_date = ?`);
+    const ins = this.db.prepare(
+      `INSERT OR REPLACE INTO schedule_fixtures
+         (uk_date, fixture_id, kickoff, kickoff_ts, status, status_long, league_id, league, country, round, home, away, venue, pulled_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    this.db.transaction(() => {
+      del.run(ukDate);
+      for (const f of fixtures) {
+        ins.run(ukDate, f.id, f.kickoff, f.timestamp, f.status, f.statusLong, f.leagueId, f.league, f.country, f.round, f.home, f.away, f.venue, pulledAt);
+      }
+    })();
+    this.onChange();
+  }
+
+  /** Drops schedule days before `ukDate`, so only a couple of days are ever kept. */
+  pruneScheduleBefore(ukDate: string): void {
+    const info = this.db.prepare(`DELETE FROM schedule_fixtures WHERE uk_date < ?`).run(ukDate);
+    if (info.changes > 0) this.onChange();
+  }
+
+  /** One UK day's matches in kick-off order, and when they were pulled (null if that day was never pulled). */
+  getScheduleDay(ukDate: string): { fixtures: ScheduleFixture[]; pulledAt: string | null } {
+    const rows = this.db
+      .prepare(
+        `SELECT fixture_id, kickoff, kickoff_ts, status, status_long, league_id, league, country, round, home, away, venue, pulled_at
+         FROM schedule_fixtures WHERE uk_date = ? ORDER BY kickoff_ts, country, league, home`,
+      )
+      .all(ukDate) as Array<{
+      fixture_id: number;
+      kickoff: string;
+      kickoff_ts: number;
+      status: string;
+      status_long: string;
+      league_id: number;
+      league: string;
+      country: string;
+      round: string | null;
+      home: string;
+      away: string;
+      venue: string | null;
+      pulled_at: string;
+    }>;
+    return {
+      pulledAt: rows[0]?.pulled_at ?? null,
+      fixtures: rows.map((r) => ({
+        id: r.fixture_id,
+        kickoff: r.kickoff,
+        timestamp: r.kickoff_ts,
+        status: r.status,
+        statusLong: r.status_long,
+        leagueId: r.league_id,
+        league: r.league,
+        country: r.country,
+        round: r.round,
+        home: r.home,
+        away: r.away,
+        venue: r.venue,
+      })),
+    };
   }
 
   /** Writes a consistent copy of the whole database to `destPath`, safe while the service is running. */

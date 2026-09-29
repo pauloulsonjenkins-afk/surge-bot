@@ -5,7 +5,8 @@
  *   POST /webhooks/inplayguru/<path token>     InPlayGuru picks
  *   GET  /internal/picks                        recent captured picks (admin site only)
  *   GET  /internal/live                         parsed alerts for the Live tab (admin site only)
- *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
+ *   GET  /internal/stats?days=N[&strategy=X]    hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
+ *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N           totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
@@ -43,6 +44,7 @@ import { buildFeed, getLastFeedFetchAt, getSendingSettings, noteFeedFetched, sav
 import { getPublicView, setPublicView } from "./access-settings";
 import { computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
+import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
@@ -170,7 +172,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const url = new URL(rawUrl, "http://internal");
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
-      send(res, 200, { ...db.hitRateStats(days) });
+      const strategy = url.searchParams.get("strategy")?.trim().slice(0, 120) || null;
+      send(res, 200, { ...db.hitRateStats(days, strategy) });
       return;
     }
 
@@ -188,6 +191,36 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
       send(res, 200, { cells: db.performanceCells(days) });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/schedule") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const url = new URL(rawUrl, "http://internal");
+      const today = ukDateOf(new Date());
+      const asked = url.searchParams.get("date") ?? "";
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today;
+      const day = db.getScheduleDay(date);
+      const status = readPullStatus(db);
+      send(res, 200, {
+        date,
+        today,
+        tomorrow: addDays(today, 1),
+        pulledAt: day.pulledAt,
+        fixtures: day.fixtures,
+        pull: {
+          configured: Boolean(process.env.API_FOOTBALL_KEY),
+          lastSuccessAt: status.lastSuccessAt,
+          lastError: status.lastError,
+        },
+      });
       return;
     }
 

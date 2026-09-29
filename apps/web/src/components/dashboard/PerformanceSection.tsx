@@ -47,10 +47,18 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
  * Hit rate by league (grouped by country or tier), strategy and alert minute.
  * Tapping a country, tier, league or strategy re-filters everything on this section.
  */
-export function PerformanceSection({ cells }: { cells: ResolvedCell[] }) {
+export function PerformanceSection({
+  cells,
+  strategy,
+  onStrategyChange,
+}: {
+  cells: ResolvedCell[];
+  /** The strategy the whole dashboard is filtered to, or null for every strategy. */
+  strategy: string | null;
+  onStrategyChange: (strategy: string | null) => void;
+}) {
   const [grouping, setGrouping] = useState<Grouping>("country");
   const [leagueFilter, setLeagueFilter] = useState<LeagueFilter>({ type: "all" });
-  const [strategy, setStrategy] = useState<string | null>(null);
   const [topOnly, setTopOnly] = useState(true);
 
   const byStrategy = useMemo(() => (strategy ? cells.filter((a) => a.strategy === strategy) : cells), [cells, strategy]);
@@ -130,7 +138,7 @@ export function PerformanceSection({ cells }: { cells: ResolvedCell[] }) {
               type="button"
               onClick={() => {
                 setLeagueFilter({ type: "all" });
-                setStrategy(null);
+                onStrategyChange(null);
               }}
               className="ml-1 text-ink-muted underline"
             >
@@ -259,7 +267,7 @@ export function PerformanceSection({ cells }: { cells: ResolvedCell[] }) {
                   <button
                     type="button"
                     aria-pressed={active}
-                    onClick={() => setStrategy((cur) => (cur === r.name ? null : r.name))}
+                    onClick={() => onStrategyChange(strategy === r.name ? null : r.name)}
                     className={`w-full rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
                       active ? "bg-accent text-accent-ink" : "text-ink"
                     }`}
@@ -301,7 +309,7 @@ export function PerformanceSection({ cells }: { cells: ResolvedCell[] }) {
               );
             })}
           </ul>
-          <p className="mt-2 text-[11px] text-ink-muted">Tap a strategy to see its best minutes.</p>
+          <p className="mt-2 text-[11px] text-ink-muted">Tap a strategy to filter the whole dashboard to it.</p>
         </section>
       </div>
     </div>

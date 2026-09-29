@@ -19,7 +19,8 @@ import { QueryError } from "@/components/ui/QueryError";
 export default function DashboardPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("7D");
   const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
-  const { data, isLoading, error } = useHitRateStats(days);
+  const [strategy, setStrategy] = useState<string | null>(null);
+  const { data, isLoading, error } = useHitRateStats(days, strategy);
   const performance = usePerformanceCells(days);
   const performanceCells = performance.data ?? [];
 
@@ -43,6 +44,15 @@ export default function DashboardPage() {
         </div>
       </div>
       <TimeframeToggle value={timeframe} onChange={setTimeframe} />
+      {strategy && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-ink-muted">Showing only</span>
+          <span className="rounded-full bg-accent px-2.5 py-0.5 font-medium text-accent-ink">{strategy}</span>
+          <button type="button" onClick={() => setStrategy(null)} className="ml-1 text-ink-muted underline">
+            Show all strategies
+          </button>
+        </div>
+      )}
 
       {error ? (
         <QueryError error={error} next="/dashboard" />
@@ -53,7 +63,7 @@ export default function DashboardPage() {
           <HitRateTrendChart stats={data} isLoading={isLoading} />
 
           {performanceCells.length > 0 ? (
-            <PerformanceSection key={days ?? "all"} cells={performanceCells} />
+            <PerformanceSection key={days ?? "all"} cells={performanceCells} strategy={strategy} onStrategyChange={setStrategy} />
           ) : (
             <>
               <ChartCard title="By strategy" subtitle="Hit rate from settled picks">
