@@ -1,4 +1,4 @@
-import { LEAGUE_CATALOGUE, LeagueInfo, OTHER_COUNTRY, PerformanceAlert, ResolvedAlert } from "@/domain/performance";
+import { LEAGUE_CATALOGUE, LeagueInfo, OTHER_COUNTRY, PerformanceCell, ResolvedCell } from "@/domain/performance";
 
 function norm(s: string): string {
   return s
@@ -26,6 +26,14 @@ export function resolveLeague(
   return { leagueId: `other:${norm(country)}:${norm(name)}`, leagueName: name, country, tier: 0 };
 }
 
-export function resolveAlerts(alerts: PerformanceAlert[]): ResolvedAlert[] {
-  return alerts.map((a) => ({ ...a, ...resolveLeague(a.league, a.country) }));
+export function resolveCells(cells: PerformanceCell[]): ResolvedCell[] {
+  return cells.map((cell) => {
+    const r = resolveLeague(cell.league, cell.country);
+    return {
+      ...cell,
+      ...r,
+      country: cell.countryOverride?.trim() || r.country,
+      tier: cell.tierOverride ?? r.tier,
+    };
+  });
 }

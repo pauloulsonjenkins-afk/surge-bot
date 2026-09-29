@@ -1,4 +1,4 @@
-import { LeagueFilter, LOW_SAMPLE, MINUTE_BUCKETS, OTHER_COUNTRY, ResolvedAlert } from "@/domain/performance";
+import { LeagueFilter, LOW_SAMPLE, OTHER_COUNTRY, ResolvedCell } from "@/domain/performance";
 
 export interface Agg {
   alerts: number;
@@ -11,28 +11,28 @@ export interface Agg {
   lowSample: boolean;
 }
 
-export function aggregate(rows: ResolvedAlert[]): Agg {
+export function aggregate(rows: ResolvedCell[]): Agg {
+  let alerts = 0;
   let hits = 0;
   let misses = 0;
-  let pending = 0;
   for (const r of rows) {
-    if (r.outcome === "hit") hits++;
-    else if (r.outcome === "miss") misses++;
-    else pending++;
+    alerts += r.alerts;
+    hits += r.hits;
+    misses += r.misses;
   }
   const settled = hits + misses;
   return {
-    alerts: rows.length,
+    alerts,
     hits,
     misses,
-    pending,
+    pending: alerts - settled,
     settled,
     hitRate: settled > 0 ? hits / settled : null,
     lowSample: settled < LOW_SAMPLE,
   };
 }
 
-export function matchesLeague(a: ResolvedAlert, f: LeagueFilter): boolean {
+export function matchesLeague(a: ResolvedCell, f: LeagueFilter): boolean {
   switch (f.type) {
     case "all":
       return true;
@@ -43,11 +43,6 @@ export function matchesLeague(a: ResolvedAlert, f: LeagueFilter): boolean {
     case "league":
       return a.leagueId === f.leagueId;
   }
-}
-
-export function bucketIndex(minute: number): number {
-  const i = MINUTE_BUCKETS.findIndex((b) => minute >= b.from && minute <= b.to);
-  return i === -1 ? MINUTE_BUCKETS.length - 1 : i;
 }
 
 export interface LeagueRow {
@@ -67,8 +62,8 @@ export interface LeagueGroup {
 }
 
 /** Builds the By league list, grouped by country or by tier, from whatever alerts are passed in. */
-export function groupLeagues(rows: ResolvedAlert[], by: "country" | "tier"): LeagueGroup[] {
-  const perLeague = new Map<string, ResolvedAlert[]>();
+export function groupLeagues(rows: ResolvedCell[], by: "country" | "tier"): LeagueGroup[] {
+  const perLeague = new Map<string, ResolvedCell[]>();
   for (const r of rows) {
     const list = perLeague.get(r.leagueId);
     if (list) list.push(r);

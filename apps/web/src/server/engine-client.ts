@@ -460,18 +460,21 @@ async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch): Promi
 export const fetchWinLoss = () => winLossRequest("GET");
 export const saveWinLoss = (patch: WinLossPatch) => winLossRequest("PUT", patch);
 
-/** One alert for the Dashboard's league / strategy / minute breakdown. Mirrors PerformanceAlertRow in the engine's engine-db.ts. */
-export interface EnginePerformanceAlert {
-  id: string;
-  firedAt: number;
+/** Totals for one league / strategy / minute bucket. Mirrors PerformanceCell in the engine's engine-db.ts. */
+export interface EnginePerformanceCell {
+  leagueKey: string;
   league: string;
   country: string | null;
+  countryOverride: string | null;
+  tierOverride: number | null;
   strategy: string;
-  minute: number | null;
-  outcome: "hit" | "miss" | "pending";
+  bucket: number | null;
+  alerts: number;
+  hits: number;
+  misses: number;
 }
 
-export async function fetchPerformanceAlerts(days: number | null): Promise<EnginePerformanceAlert[]> {
+export async function fetchPerformanceCells(days: number | null): Promise<EnginePerformanceCell[]> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -486,9 +489,76 @@ export async function fetchPerformanceAlerts(days: number | null): Promise<Engin
       cache: "no-store",
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching alert history.`);
-    const data = (await res.json()) as { alerts: EnginePerformanceAlert[] };
-    return data.alerts;
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the breakdown.`);
+    const data = (await res.json()) as { cells: EnginePerformanceCell[] };
+    return data.cells;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** One league on the admin Leagues page. Mirrors AdminLeagueRow in the engine's engine-db.ts. */
+export interface AdminLeagueRow {
+  key: string;
+  league: string;
+  country: string | null;
+  alerts: number;
+  hits: number;
+  misses: number;
+  earlierAlerts: number;
+  lastAlertAt: string;
+  hidden: boolean;
+  resetAt: string | null;
+  countryOverride: string | null;
+  tierOverride: number | null;
+}
+
+/** What can be changed on one league. Mirrors LeaguePatch in the engine's engine-db.ts. */
+export interface LeaguePatch {
+  hidden?: boolean;
+  reset?: boolean;
+  country?: string | null;
+  tier?: number | null;
+}
+
+export async function fetchAdminLeagues(): Promise<AdminLeagueRow[]> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/leagues`, {
+      headers: { Authorization: `Bearer ${internalKey}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching leagues.`);
+    return ((await res.json()) as { leagues: AdminLeagueRow[] }).leagues;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function updateAdminLeague(key: string, patch: LeaguePatch): Promise<void> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/leagues/update`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ key, ...patch }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving the league.`);
   } finally {
     clearTimeout(timeout);
   }

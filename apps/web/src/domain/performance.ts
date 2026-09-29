@@ -1,18 +1,23 @@
-export type AlertOutcome = "hit" | "miss" | "pending";
-
-/** One alert as the engine records it. `league` is the raw text from the alert, not yet mapped. */
-export interface PerformanceAlert {
-  id: string;
-  firedAt: number; // epoch ms
+/** Totals for one league / strategy / alert-minute bucket, as the engine sends them. */
+export interface PerformanceCell {
+  /** Identifies the league for the admin Leagues page. */
+  leagueKey?: string;
+  /** League name as the alert gave it, without the country. */
   league: string;
   /** Country read from the alert's flag emoji, when it had one. Used for leagues not in the catalogue. */
   country?: string | null;
+  /** Set on the admin Leagues page; these win over the built-in country and tier. */
+  countryOverride?: string | null;
+  tierOverride?: number | null;
   strategy: string;
-  minute: number | null; // match minute when the alert fired, if the alert said
-  outcome: AlertOutcome;
+  /** Index into MINUTE_BUCKETS, or null when the alert had no minute. */
+  bucket: number | null;
+  alerts: number;
+  hits: number;
+  misses: number;
 }
 
-export interface ResolvedAlert extends PerformanceAlert {
+export interface ResolvedCell extends PerformanceCell {
   leagueId: string;
   leagueName: string;
   country: string;
@@ -82,3 +87,6 @@ export type LeagueFilter =
   | { type: "league"; leagueId: string };
 
 export type Grouping = "country" | "tier";
+
+/** How many leagues the Dashboard's By league list shows while "Top 10 leagues only" is ticked. */
+export const TOP_LEAGUES = 10;

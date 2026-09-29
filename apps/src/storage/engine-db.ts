@@ -97,16 +97,86 @@ const MINUTE_BUCKETS: Array<{ label: string; max: number }> = [
   { label: "76'+", max: Infinity },
 ];
 
-/** One alert for the Dashboard's league / strategy / minute breakdown. */
-export interface PerformanceAlertRow {
-  id: string;
-  /** Epoch ms when the alert first arrived. */
-  firedAt: number;
+/**
+ * Choices made on the admin Leagues page, one entry per league. Stored as JSON in the
+ * settings table. Nothing here deletes a pick: hiding and resetting only change what the
+ * Dashboard counts.
+ */
+export interface LeaguePref {
+  /** Left out of the Dashboard (its list and its headline figures). */
+  hidden?: boolean;
+  /** ISO time of the last reset: only alerts that arrived at or after it are counted. */
+  resetAt?: string;
+  countryOverride?: string;
+  tierOverride?: number;
+}
+interface LeaguePrefs {
+  leagues: Record<string, LeaguePref>;
+}
+const LEAGUE_PREFS_KEY = "league_prefs";
+
+export interface LeaguePatch {
+  hidden?: boolean;
+  /** true = start counting again from now; false = undo a reset. */
+  reset?: boolean;
+  /** Empty or null clears the override. */
+  country?: string | null;
+  /** 1-9, or null to clear the override. */
+  tier?: number | null;
+}
+
+/** One league as the admin Leagues page shows it. */
+export interface AdminLeagueRow {
+  key: string;
   league: string;
   country: string | null;
+  /** What the Dashboard currently counts (alerts since the last reset). */
+  alerts: number;
+  hits: number;
+  misses: number;
+  /** Alerts from before the last reset. Still stored, just not counted. */
+  earlierAlerts: number;
+  lastAlertAt: string;
+  hidden: boolean;
+  resetAt: string | null;
+  countryOverride: string | null;
+  tierOverride: number | null;
+}
+
+function leagueKeyPart(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** Who a pick's league is: the same league gets the same key however many alerts it has. */
+function leagueIdentity(competition: string | null, rawText: string): { key: string; league: string; country: string | null } {
+  const country = leagueCountryFromText(rawText);
+  const cleaned = (competition ?? "").replace(/[\u{E0020}-\u{E007F}]/gu, "").trim();
+  const league = stripCountryPrefix(cleaned, country) || "Unknown league";
+  return { key: `${leagueKeyPart(country ?? "")}|${leagueKeyPart(league)}`, league, country };
+}
+
+/**
+ * Totals for one league / strategy / minute-bucket combination, for the Dashboard's breakdown.
+ * Counts only: no timestamps, ids or individual alerts, the same as the other stats.
+ */
+export interface PerformanceCell {
+  /** Identifies the league for the admin Leagues page. */
+  leagueKey: string;
+  league: string;
+  country: string | null;
+  /** Set on the admin Leagues page; replaces the built-in country / tier for this league. */
+  countryOverride: string | null;
+  tierOverride: number | null;
   strategy: string;
-  minute: number | null;
-  outcome: "hit" | "miss" | "pending";
+  /** Index into MINUTE_BUCKETS (0 = 1-15', 5 = 76'+), or null when the alert had no minute. */
+  bucket: number | null;
+  alerts: number;
+  hits: number;
+  misses: number;
 }
 
 function stripCountryPrefix(league: string, country: string | null): string {
@@ -428,15 +498,15 @@ export class EngineDb {
    */
   hitRateStats(days: number | null): HitRateStats {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const rows = (
+    const allRows = (
       since === null
-        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute,
+        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, raw_text,
                   COALESCE(result_override, result) AS result,
                   CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
            FROM live_picks WHERE excluded = 0 ORDER BY id`).all()
         : this.db
             .prepare(
-              `SELECT first_seen_at, strategy, market, competition, minute,
+              `SELECT first_seen_at, strategy, market, competition, minute, raw_text,
                       COALESCE(result_override, result) AS result,
                       CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
                FROM live_picks WHERE first_seen_at >= ? AND excluded = 0 ORDER BY id`,
@@ -448,9 +518,12 @@ export class EngineDb {
       market: string | null;
       competition: string | null;
       minute: number | null;
+      raw_text: string;
       result: string | null;
       status: string;
     }>;
+    // Leagues hidden or reset on the admin Leagues page leave the headline figures too.
+    const rows = this.applyLeaguePrefs(allRows);
 
     let hits = 0;
     let misses = 0;
@@ -521,23 +594,20 @@ export class EngineDb {
   }
 
   /**
-   * Alerts over the last `days` days (null = all time), one row each, for the Dashboard's
-   * breakdown by league, strategy and alert minute. Uses the same rules as hitRateStats:
+   * Totals over the last `days` days (null = all time), grouped by league, strategy and
+   * alert-minute bucket, for the Dashboard's breakdown. Uses the same rules as hitRateStats:
    * picks marked "didn't actually bet" are left out, and an amended result wins over the
    * parsed one. The country is read from the flag in the stored alert text, so alerts saved
    * before the parser knew about countries are covered too.
    */
-  listPerformanceAlerts(days: number | null): PerformanceAlertRow[] {
+  performanceCells(days: number | null): PerformanceCell[] {
     const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const cols = `id, first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, raw_text`;
+    const cols = `first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, raw_text`;
     const rows = (
       since === null
-        ? this.db.prepare(`SELECT ${cols} FROM live_picks WHERE excluded = 0 ORDER BY id DESC LIMIT 20000`).all()
-        : this.db
-            .prepare(`SELECT ${cols} FROM live_picks WHERE first_seen_at >= ? AND excluded = 0 ORDER BY id DESC LIMIT 20000`)
-            .all(since)
+        ? this.db.prepare(`SELECT ${cols} FROM live_picks WHERE excluded = 0`).all()
+        : this.db.prepare(`SELECT ${cols} FROM live_picks WHERE first_seen_at >= ? AND excluded = 0`).all(since)
     ) as Array<{
-      id: number;
       first_seen_at: string;
       strategy: string;
       competition: string | null;
@@ -546,19 +616,134 @@ export class EngineDb {
       raw_text: string;
     }>;
 
-    return rows.map((r) => {
-      const country = leagueCountryFromText(r.raw_text);
-      const cleaned = (r.competition ?? "").replace(/[\u{E0020}-\u{E007F}]/gu, "").trim();
-      return {
-        id: String(r.id),
-        firedAt: Date.parse(r.first_seen_at),
-        league: stripCountryPrefix(cleaned, country) || "Unknown league",
-        country,
-        strategy: strategyLabel(r.strategy),
-        minute: r.minute === null ? null : Number(r.minute),
-        outcome: r.result === "hit" ? "hit" : r.result === "miss" ? "miss" : "pending",
-      };
+    const prefs = this.readLeaguePrefs().leagues;
+    const cells = new Map<string, PerformanceCell>();
+    for (const r of rows) {
+      const id = leagueIdentity(r.competition, r.raw_text);
+      const pref = prefs[id.key];
+      if (pref?.hidden) continue;
+      if (pref?.resetAt && r.first_seen_at < pref.resetAt) continue;
+
+      const strategy = strategyLabel(r.strategy);
+      const bucket = r.minute === null ? null : MINUTE_BUCKETS.findIndex((b) => r.minute! <= b.max);
+      const bucketIdx = bucket !== null && bucket >= 0 ? bucket : null;
+
+      const key = `${id.key}|${strategy}|${bucketIdx ?? ""}`;
+      const cell =
+        cells.get(key) ??
+        {
+          leagueKey: id.key,
+          league: id.league,
+          country: id.country,
+          countryOverride: pref?.countryOverride ?? null,
+          tierOverride: pref?.tierOverride ?? null,
+          strategy,
+          bucket: bucketIdx,
+          alerts: 0,
+          hits: 0,
+          misses: 0,
+        };
+      cell.alerts++;
+      if (r.result === "hit") cell.hits++;
+      else if (r.result === "miss") cell.misses++;
+      cells.set(key, cell);
+    }
+    return [...cells.values()];
+  }
+
+  private readLeaguePrefs(): LeaguePrefs {
+    try {
+      const raw = this.getSetting(LEAGUE_PREFS_KEY);
+      const parsed = raw ? (JSON.parse(raw) as Partial<LeaguePrefs>) : null;
+      if (parsed && typeof parsed === "object" && parsed.leagues && typeof parsed.leagues === "object") {
+        return { leagues: parsed.leagues };
+      }
+    } catch {
+      // Unreadable setting: behave as if nothing was ever hidden or reset.
+    }
+    return { leagues: {} };
+  }
+
+  /** Drops picks from leagues that are hidden, or from before that league's last reset. */
+  private applyLeaguePrefs<T extends { first_seen_at: string; competition: string | null; raw_text: string }>(rows: T[]): T[] {
+    const prefs = this.readLeaguePrefs().leagues;
+    if (!Object.values(prefs).some((p) => p.hidden || p.resetAt)) return rows;
+    return rows.filter((r) => {
+      const pref = prefs[leagueIdentity(r.competition, r.raw_text).key];
+      if (!pref) return true;
+      if (pref.hidden) return false;
+      if (pref.resetAt && r.first_seen_at < pref.resetAt) return false;
+      return true;
     });
+  }
+
+  /** Every league with stored picks, for the admin Leagues page. Hidden leagues are included. */
+  listLeaguesForAdmin(): AdminLeagueRow[] {
+    const prefs = this.readLeaguePrefs().leagues;
+    const rows = this.db
+      .prepare(
+        `SELECT first_seen_at, competition, COALESCE(result_override, result) AS result, raw_text
+         FROM live_picks WHERE excluded = 0`,
+      )
+      .all() as Array<{ first_seen_at: string; competition: string | null; result: string | null; raw_text: string }>;
+
+    const out = new Map<string, AdminLeagueRow>();
+    for (const r of rows) {
+      const id = leagueIdentity(r.competition, r.raw_text);
+      const pref = prefs[id.key];
+      const row =
+        out.get(id.key) ??
+        {
+          key: id.key,
+          league: id.league,
+          country: id.country,
+          alerts: 0,
+          hits: 0,
+          misses: 0,
+          earlierAlerts: 0,
+          lastAlertAt: r.first_seen_at,
+          hidden: pref?.hidden === true,
+          resetAt: pref?.resetAt ?? null,
+          countryOverride: pref?.countryOverride ?? null,
+          tierOverride: pref?.tierOverride ?? null,
+        };
+      if (pref?.resetAt && r.first_seen_at < pref.resetAt) {
+        row.earlierAlerts++;
+      } else {
+        row.alerts++;
+        if (r.result === "hit") row.hits++;
+        else if (r.result === "miss") row.misses++;
+      }
+      if (r.first_seen_at > row.lastAlertAt) row.lastAlertAt = r.first_seen_at;
+      out.set(id.key, row);
+    }
+    return [...out.values()].sort(
+      (a, b) => b.hits + b.misses - (a.hits + a.misses) || b.alerts - a.alerts || a.league.localeCompare(b.league),
+    );
+  }
+
+  /** Saves a change made on the admin Leagues page. Never deletes any picks. */
+  updateLeague(key: string, patch: LeaguePatch): void {
+    const prefs = this.readLeaguePrefs();
+    const cur: LeaguePref = { ...(prefs.leagues[key] ?? {}) };
+    if (patch.hidden !== undefined) {
+      if (patch.hidden) cur.hidden = true;
+      else delete cur.hidden;
+    }
+    if (patch.reset === true) cur.resetAt = new Date().toISOString();
+    else if (patch.reset === false) delete cur.resetAt;
+    if (patch.country !== undefined) {
+      const country = patch.country?.trim();
+      if (country) cur.countryOverride = country.slice(0, 60);
+      else delete cur.countryOverride;
+    }
+    if (patch.tier !== undefined) {
+      if (patch.tier !== null && Number.isInteger(patch.tier) && patch.tier >= 1 && patch.tier <= 9) cur.tierOverride = patch.tier;
+      else delete cur.tierOverride;
+    }
+    if (Object.keys(cur).length === 0) delete prefs.leagues[key];
+    else prefs.leagues[key] = cur;
+    this.setSetting(LEAGUE_PREFS_KEY, JSON.stringify(prefs));
   }
 
   /**

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import { useHitRateStats } from "@/queries/use-stats";
-import { usePerformanceAlerts } from "@/queries/use-performance";
+import { usePerformanceCells } from "@/queries/use-performance";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { TIMEFRAMES, TimeframeToggle, type Timeframe } from "@/components/dashboard/TimeframeToggle";
@@ -20,8 +20,8 @@ export default function DashboardPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("7D");
   const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
   const { data, isLoading, error } = useHitRateStats(days);
-  const performance = usePerformanceAlerts(days);
-  const performanceAlerts = performance.data ?? [];
+  const performance = usePerformanceCells(days);
+  const performanceCells = performance.data ?? [];
 
   // Leagues with nothing settled are left out of the chart; the busiest eight are shown.
   const leagues = (data?.byLeague ?? []).filter((l) => l.hits + l.misses > 0).slice(0, 8);
@@ -52,8 +52,8 @@ export default function DashboardPage() {
           <DailyResultsChart stats={data} isLoading={isLoading} />
           <HitRateTrendChart stats={data} isLoading={isLoading} />
 
-          {performanceAlerts.length > 0 ? (
-            <PerformanceSection key={days ?? "all"} alerts={performanceAlerts} />
+          {performanceCells.length > 0 ? (
+            <PerformanceSection key={days ?? "all"} cells={performanceCells} />
           ) : (
             <>
               <ChartCard title="By strategy" subtitle="Hit rate from settled picks">

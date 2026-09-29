@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Grouping, LeagueFilter, MINUTE_BUCKETS, OTHER_COUNTRY, ResolvedAlert, TIER_LABEL } from "@/domain/performance";
-import { Agg, aggregate, bucketIndex, groupLeagues, matchesLeague } from "@/lib/performance/derive";
+import { Grouping, LeagueFilter, MINUTE_BUCKETS, OTHER_COUNTRY, ResolvedCell, TIER_LABEL, TOP_LEAGUES } from "@/domain/performance";
+import { Agg, aggregate, groupLeagues, matchesLeague } from "@/lib/performance/derive";
 
 const TINT = "color-mix(in srgb, var(--accent) 14%, transparent)";
 
@@ -22,7 +22,7 @@ function tierTitle(tier: number): string {
   return tier === 0 ? (TIER_LABEL[0] ?? "Other") : `Tier ${tier} · ${TIER_LABEL[tier] ?? ""}`;
 }
 
-function filterLabel(f: LeagueFilter, alerts: ResolvedAlert[]): string {
+function filterLabel(f: LeagueFilter, cells: ResolvedCell[]): string {
   switch (f.type) {
     case "all":
       return "All leagues";
@@ -31,7 +31,7 @@ function filterLabel(f: LeagueFilter, alerts: ResolvedAlert[]): string {
     case "tier":
       return tierTitle(f.tier);
     case "league":
-      return alerts.find((a) => a.leagueId === f.leagueId)?.leagueName ?? "League";
+      return cells.find((a) => a.leagueId === f.leagueId)?.leagueName ?? "League";
   }
 }
 
@@ -47,26 +47,27 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
  * Hit rate by league (grouped by country or tier), strategy and alert minute.
  * Tapping a country, tier, league or strategy re-filters everything on this section.
  */
-export function PerformanceSection({ alerts }: { alerts: ResolvedAlert[] }) {
+export function PerformanceSection({ cells }: { cells: ResolvedCell[] }) {
   const [grouping, setGrouping] = useState<Grouping>("country");
   const [leagueFilter, setLeagueFilter] = useState<LeagueFilter>({ type: "all" });
   const [strategy, setStrategy] = useState<string | null>(null);
+  const [topOnly, setTopOnly] = useState(true);
 
-  const byStrategy = useMemo(() => (strategy ? alerts.filter((a) => a.strategy === strategy) : alerts), [alerts, strategy]);
-  const byLeague = useMemo(() => alerts.filter((a) => matchesLeague(a, leagueFilter)), [alerts, leagueFilter]);
+  const byStrategy = useMemo(() => (strategy ? cells.filter((a) => a.strategy === strategy) : cells), [cells, strategy]);
+  const byLeague = useMemo(() => cells.filter((a) => matchesLeague(a, leagueFilter)), [cells, leagueFilter]);
   const scoped = useMemo(() => byLeague.filter((a) => (strategy ? a.strategy === strategy : true)), [byLeague, strategy]);
   const total = useMemo(() => aggregate(scoped), [scoped]);
 
   const strategyRows = useMemo(() => {
-    const names = Array.from(new Set(alerts.map((a) => a.strategy))).sort();
+    const names = Array.from(new Set(cells.map((a) => a.strategy))).sort();
     return names.map((name) => ({ name, agg: aggregate(byLeague.filter((a) => a.strategy === name)) }));
-  }, [alerts, byLeague]);
+  }, [cells, byLeague]);
 
   const minuteRows = useMemo(
     () =>
       MINUTE_BUCKETS.map((b, i) => ({
         label: b.label,
-        agg: aggregate(scoped.filter((a) => a.minute !== null && bucketIndex(a.minute) === i)),
+        agg: aggregate(scoped.filter((a) => a.bucket === i)),
       })),
     [scoped],
   );
@@ -83,6 +84,27 @@ export function PerformanceSection({ alerts }: { alerts: ResolvedAlert[] }) {
   }, [minuteRows]);
 
   const groups = useMemo(() => groupLeagues(byStrategy, grouping), [byStrategy, grouping]);
+
+  // The busiest leagues by settled alerts. Ranked on everything, not the current filters, so the list doesn't reshuffle.
+  const { topIds, leagueCount } = useMemo(() => {
+    const totals = new Map<string, { settled: number; alerts: number }>();
+    for (const c of cells) {
+      const t = totals.get(c.leagueId) ?? { settled: 0, alerts: 0 };
+      t.settled += c.hits + c.misses;
+      t.alerts += c.alerts;
+      totals.set(c.leagueId, t);
+    }
+    const ranked = [...totals.entries()].sort((a, b) => b[1].settled - a[1].settled || b[1].alerts - a[1].alerts);
+    return { topIds: new Set(ranked.slice(0, TOP_LEAGUES).map(([id]) => id)), leagueCount: ranked.length };
+  }, [cells]);
+  const limiting = topOnly && leagueCount > TOP_LEAGUES;
+  const shownGroups = useMemo(() => {
+    if (!limiting) return groups;
+    const activeId = leagueFilter.type === "league" ? leagueFilter.leagueId : null;
+    return groups
+      .map((g) => ({ ...g, rows: g.rows.filter((r) => topIds.has(r.leagueId) || r.leagueId === activeId) }))
+      .filter((g) => g.rows.length > 0);
+  }, [groups, limiting, topIds, leagueFilter]);
   const filtered = leagueFilter.type !== "all" || strategy !== null;
 
   function pickLeagueFilter(next: LeagueFilter) {
@@ -101,7 +123,7 @@ export function PerformanceSection({ alerts }: { alerts: ResolvedAlert[] }) {
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="text-ink-muted">Showing</span>
             <span className="rounded-full bg-accent px-2.5 py-0.5 font-medium text-accent-ink">
-              {filterLabel(leagueFilter, alerts)}
+              {filterLabel(leagueFilter, cells)}
             </span>
             {strategy && <span className="rounded-full bg-accent px-2.5 py-0.5 font-medium text-accent-ink">{strategy}</span>}
             <button
@@ -137,6 +159,21 @@ export function PerformanceSection({ alerts }: { alerts: ResolvedAlert[] }) {
           <div>
             <h2 className="text-sm font-medium text-ink">By league</h2>
             <p className="text-xs text-ink-muted">Tap a country, tier or league to filter this section</p>
+            {leagueCount > TOP_LEAGUES && (
+              <label className="mt-1.5 flex items-center gap-1.5 text-xs text-ink">
+                <input
+                  type="checkbox"
+                  checked={topOnly}
+                  onChange={(e) => setTopOnly(e.target.checked)}
+                  style={{ accentColor: "var(--accent)" }}
+                  className="h-3.5 w-3.5"
+                />
+                <span>
+                  Top {TOP_LEAGUES} leagues only
+                  {topOnly && <span className="text-ink-muted"> · {leagueCount - TOP_LEAGUES} more hidden</span>}
+                </span>
+              </label>
+            )}
           </div>
           <div role="tablist" aria-label="Group leagues by" className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
             {(["country", "tier"] as const).map((g) => (
@@ -157,7 +194,7 @@ export function PerformanceSection({ alerts }: { alerts: ResolvedAlert[] }) {
         </div>
 
         <div className="space-y-3">
-          {groups.map((g) => {
+          {shownGroups.map((g) => {
             const groupActive = sameFilter(leagueFilter, g.filter);
             const title =
               grouping === "tier" ? tierTitle(Number(g.key)) : g.key === OTHER_COUNTRY ? "Other leagues" : g.title;

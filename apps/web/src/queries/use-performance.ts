@@ -1,28 +1,27 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { PerformanceAlert, ResolvedAlert } from "@/domain/performance";
-import { resolveAlerts } from "@/lib/performance/leagues";
+import { PerformanceCell, ResolvedCell } from "@/domain/performance";
+import { resolveCells } from "@/lib/performance/leagues";
 
 /**
- * Alert history for the dashboard's league / strategy / minute breakdown.
+ * Totals by league, strategy and alert minute for the dashboard's breakdown.
  *
- * Reads GET /api/performance/alerts?days=N and expects { alerts: PerformanceAlert[] }
- * (league, country, strategy, minute, outcome for each alert in the window).
- *
- * If that endpoint doesn't exist yet or fails, this returns null and the dashboard keeps
- * showing its existing By strategy / By league cards. No placeholder numbers are ever shown.
+ * Reads GET /api/performance/breakdown?days=N and expects { cells: PerformanceCell[] }.
+ * If that route is missing or fails, this returns null and the dashboard keeps showing
+ * its existing By strategy / By alert minute / By league cards.
  */
-export function usePerformanceAlerts(days: number | null) {
+export function usePerformanceCells(days: number | null) {
   return useQuery({
-    queryKey: ["performance", "alerts", days],
+    queryKey: ["performance", "cells", days],
     retry: false,
-    refetchInterval: (query) => (query.state.data ? 60_000 : false),
-    queryFn: async (): Promise<ResolvedAlert[] | null> => {
-      const res = await fetch(`/api/performance/alerts${days ? `?days=${days}` : ""}`, { cache: "no-store" });
+    staleTime: 0,
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<ResolvedCell[] | null> => {
+      const res = await fetch(`/api/performance/breakdown${days ? `?days=${days}` : ""}`, { cache: "no-store" });
       if (!res.ok) return null;
-      const body = (await res.json()) as { alerts?: PerformanceAlert[] };
-      return Array.isArray(body.alerts) ? resolveAlerts(body.alerts) : null;
+      const body = (await res.json()) as { cells?: PerformanceCell[] };
+      return Array.isArray(body.cells) ? resolveCells(body.cells) : null;
     },
   });
 }

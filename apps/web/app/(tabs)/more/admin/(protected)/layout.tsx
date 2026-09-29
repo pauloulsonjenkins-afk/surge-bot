@@ -9,6 +9,7 @@ const ADMIN_SECTIONS = [
   { href: "/more/admin/results", label: "Results" },
   { href: "/more/admin/sending", label: "Sending" },
   { href: "/more/admin/winloss", label: "Win/Loss" },
+  { href: "/more/admin/leagues", label: "Leagues" },
   { href: "/more/admin/settings", label: "Settings" },
 ];
 

@@ -6,7 +6,9 @@
  *   GET  /internal/picks                        recent captured picks (admin site only)
  *   GET  /internal/live                         parsed alerts for the Live tab (admin site only)
  *   GET  /internal/stats?days=N                 hit-rate figures for Dashboard / Strategies (admin site only)
- *   GET  /internal/performance?days=N           one row per alert, for the Dashboard's league/strategy/minute breakdown (admin site only)
+ *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
+ *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
+ *   GET  /internal/performance?days=N           totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
@@ -185,7 +187,46 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const url = new URL(rawUrl, "http://internal");
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
-      send(res, 200, { alerts: db.listPerformanceAlerts(days) });
+      send(res, 200, { cells: db.performanceCells(days) });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/leagues") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      send(res, 200, { leagues: db.listLeaguesForAdmin() });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/leagues/update") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const key = typeof body.key === "string" ? body.key.trim() : "";
+      if (!key || key.length > 200) {
+        send(res, 400, { error: "key_required" });
+        return;
+      }
+      const patch: { hidden?: boolean; reset?: boolean; country?: string | null; tier?: number | null } = {};
+      if (typeof body.hidden === "boolean") patch.hidden = body.hidden;
+      if (typeof body.reset === "boolean") patch.reset = body.reset;
+      if (typeof body.country === "string" || body.country === null) patch.country = body.country;
+      if (typeof body.tier === "number" || body.tier === null) patch.tier = body.tier;
+      db.updateLeague(key, patch);
+      log.info(`League "${key}" updated from the admin Leagues page (${Object.keys(patch).join(", ") || "no changes"}).`);
+      send(res, 200, { ok: true });
       return;
     }
 
