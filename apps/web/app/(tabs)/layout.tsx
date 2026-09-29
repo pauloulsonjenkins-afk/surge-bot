@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import AppHeader from "@/components/nav/AppHeader";
 import BottomNav from "@/components/nav/BottomNav";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
@@ -22,7 +21,6 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="flex min-h-dvh flex-col bg-app text-ink">
-      <AppHeader />
       <main className="flex-1 overflow-y-auto pb-[calc(64px+env(safe-area-inset-bottom,0px))]">
         {children}
       </main>
