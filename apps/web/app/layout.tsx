@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import Providers from "@/queries/Providers";
 import ThemeSync from "@/components/ui/ThemeSync";
@@ -25,8 +26,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="bg-app text-ink antialiased">
-        <ThemeSync />
-        <Providers>{children}</Providers>
+        <ClerkProvider>
+          <ThemeSync />
+          <Providers>{children}</Providers>
+        </ClerkProvider>
       </body>
     </html>
   );
