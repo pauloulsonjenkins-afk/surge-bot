@@ -15,6 +15,7 @@ import { RateBarChart } from "@/components/dashboard/RateBarChart";
 import { PerformanceSection } from "@/components/dashboard/PerformanceSection";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
+import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 
 /**
  * The breakdowns from the plain hit-rate stats, used until the per-league performance figures have loaded
@@ -65,8 +66,9 @@ export default function DashboardPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("7D");
   const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
   const [strategy, setStrategy] = useState<string | null>(null);
-  const { data, isLoading, error } = useHitRateStats(days, strategy);
-  const performance = usePerformanceCells(days);
+  const mode = usePickMode();
+  const { data, isLoading, error } = useHitRateStats(days, strategy, mode);
+  const performance = usePerformanceCells(days, mode);
   const performanceCells = performance.data ?? [];
 
   return (
@@ -92,6 +94,7 @@ export default function DashboardPage() {
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <TimeframeToggle value={timeframe} onChange={setTimeframe} />
+          <ModeToggle />
           {strategy && (
             <span className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{strategy}</span>
@@ -102,7 +105,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {!error && <HeroRow stats={data} isLoading={isLoading} timeframe={timeframe} strategy={strategy} />}
+        {!error && <HeroRow stats={data} isLoading={isLoading} timeframe={timeframe} strategy={strategy} mode={mode} />}
       </div>
 
       {error ? (
@@ -113,7 +116,7 @@ export default function DashboardPage() {
           <HitRateTrendChart stats={data} isLoading={isLoading} />
 
           {performanceCells.length > 0 ? (
-            <PerformanceSection key={days ?? "all"} cells={performanceCells} strategy={strategy} onStrategyChange={setStrategy} />
+            <PerformanceSection key={`${days ?? "all"}:${mode}`} cells={performanceCells} strategy={strategy} onStrategyChange={setStrategy} />
           ) : (
             <SimpleBreakdown stats={data} isLoading={isLoading} />
           )}

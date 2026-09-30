@@ -11,6 +11,8 @@ import { DailyPnlChart } from "@/components/admin/DailyPnlChart";
 import { marketName } from "@/lib/markets";
 import { useSaveSending } from "@/queries/use-sending";
 import { useSaveWinLoss, useWinLoss, type WinLossState } from "@/queries/use-winloss";
+import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
+import type { PickMode } from "@/server/engine-client";
 
 type PeriodKey = "d1" | "d7" | "mtd" | "ytd";
 const PERIODS: Array<{ key: PeriodKey; label: string }> = [
@@ -67,7 +69,8 @@ function monthName(ym: string): string {
 }
 
 export default function WinLossPage() {
-  const { data, isLoading, error } = useWinLoss();
+  const mode = usePickMode();
+  const { data, isLoading, error } = useWinLoss(mode);
 
   if (error) return <QueryError error={error} next="/more/admin/winloss" />;
   if (isLoading || !data) {
@@ -78,13 +81,19 @@ export default function WinLossPage() {
       </div>
     );
   }
-  return <WinLoss state={data} />;
+  return <WinLoss state={data} mode={mode} />;
 }
 
-function WinLoss({ state }: { state: WinLossState }) {
+const MODE_NOTE: Record<PickMode, string> = {
+  all: "Every settled pick, bet or not.",
+  live: "Live: only picks that were sent to your betting software, at the stake they were sent with.",
+  sim: "Sim: only picks that were recorded but not sent, priced at each strategy's stake as if they had been.",
+};
+
+function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
   const qc = useQueryClient();
   const saveSending = useSaveSending();
-  const saveWinLoss = useSaveWinLoss();
+  const saveWinLoss = useSaveWinLoss(mode);
   const [period, setPeriod] = useState<PeriodKey>("mtd");
   const [stakeDraft, setStakeDraft] = useState<Record<string, string>>({});
   const [oddsDraft, setOddsDraft] = useState<Record<string, string>>({});
@@ -195,6 +204,11 @@ function WinLoss({ state }: { state: WinLossState }) {
         }
       />
 
+      <div className="space-y-1.5">
+        <ModeToggle />
+        <p className="text-xs text-ink-muted">{MODE_NOTE[mode]}</p>
+      </div>
+
       {message && <p className="text-sm text-destructive">{message}</p>}
       {(saveSending.error || saveWinLoss.error) && (
         <p className="text-sm text-destructive">{(saveSending.error ?? saveWinLoss.error)?.message}</p>
@@ -202,14 +216,21 @@ function WinLoss({ state }: { state: WinLossState }) {
 
       {/* ---- figures ---- */}
       <Card title="Profit and loss" subtitle="Settled picks only. Today, last 7 days, month to date and year to date.">
-        {strategies.length === 0 ? (
-          <EmptyState title="Nothing settled yet" detail="Figures appear once picks have results." />
+        {lines.length === 0 ? (
+          <EmptyState
+            title={mode === "live" ? "No live picks settled yet" : mode === "sim" ? "No simulation picks settled yet" : "Nothing settled yet"}
+            detail="Figures appear once picks have results."
+          />
         ) : (
           <div>
             {lines.map((s) => (
               <Figures key={s.key} title={s.label} values={PERIODS.map((p) => state.periods[p.key].strategies[s.key] ?? 0)} />
             ))}
-            <Figures title="Total" bold values={PERIODS.map((p) => state.periods[p.key].total)} />
+            <Figures
+              title={mode === "live" ? "Live total" : mode === "sim" ? "Sim total" : "Total"}
+              bold
+              values={PERIODS.map((p) => state.periods[p.key].total)}
+            />
             {expenditureRows && (
               <>
                 <Figures
@@ -222,7 +243,7 @@ function WinLoss({ state }: { state: WinLossState }) {
             )}
           </div>
         )}
-        {strategies.length > 0 && !anyMoney && (
+        {lines.length > 0 && !anyMoney && (
           <p className="mt-3 text-xs text-warn">
             No pick has both a stake and odds yet, so every figure is £0.00. Set a stake (and odds where the alert has
             none) under Strategies below.

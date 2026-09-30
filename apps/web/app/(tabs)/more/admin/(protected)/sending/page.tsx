@@ -210,7 +210,7 @@ export default function SendingPage() {
           <div className="min-w-0">
             <p className="text-sm font-medium text-ink">{settings.enabled ? "Sending is ON" : "Sending is OFF"}</p>
             <p className="mt-0.5 text-xs text-ink-muted">
-              {settings.enabled ? `${onCount} of ${data.strategies.length} strategies switched on` : "Nothing is handed over while this is off."}
+              {settings.enabled ? `${onCount} of ${data.strategies.length} strategies Live` : "Nothing is handed over while this is off, so every strategy runs as Sim."}
               {stoppedCount > 0 && <span className="text-warn"> · {stoppedCount} stopped by stop loss today</span>}
             </p>
             <p className="mt-0.5 text-xs text-ink-muted">
@@ -235,7 +235,7 @@ export default function SendingPage() {
       </section>
 
       {/* 2. Strategies: one compact row each; open a row to change its stake, minimum odds or stop loss. */}
-      <Card title="Strategies" subtitle="Tap a strategy to set its stake, minimum odds and stop loss. Each one is off until you switch it on.">
+      <Card title="Strategies" subtitle="Every strategy starts in Sim: its picks are recorded, settled and priced as if bet, but never sent. Switch one to Live to send its new picks. Tap a strategy to set its stake, minimum odds and stop loss.">
         {stakeError && <p className="mb-2 text-xs text-destructive">{stakeError}</p>}
         {minError && <p className="mb-2 text-xs text-destructive">{minError}</p>}
         {data.strategies.length === 0 ? (
@@ -268,8 +268,8 @@ export default function SendingPage() {
                     .join(" · ");
               return (
                 <li key={s.label} className="py-2.5">
-                  {idx === 0 && onCount > 0 && <p className="-mt-1 mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">Switched on</p>}
-                  {firstOff && <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">Switched off</p>}
+                  {idx === 0 && onCount > 0 && <p className="-mt-1 mb-1.5 text-xs font-medium text-ink-muted">Live · sent to your betting software</p>}
+                  {firstOff && <p className="mb-1.5 text-xs font-medium text-ink-muted">Sim · recorded and settled, never sent</p>}
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
@@ -291,28 +291,41 @@ export default function SendingPage() {
                     {s.stopLoss?.stopped && (
                       <span className="shrink-0 rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>
                     )}
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={s.enabled}
-                      aria-label={`Send ${s.label}`}
-                      disabled={!canSwitch}
-                      title={!supported ? "This strategy can't be sent yet" : s.stake === null ? "Set a stake first" : undefined}
-                      onClick={() => save.mutate({ strategies: { [key]: !s.enabled } })}
-                      className={`h-6 w-11 shrink-0 rounded-full p-0.5 ring-1 ring-inset ring-line transition-colors disabled:opacity-40 ${
-                        s.enabled ? "bg-hit" : "bg-surface-2"
-                      }`}
+                    {/* Live sends new picks to the betting software; Sim only records them. Sim is the default. */}
+                    <div
+                      role="radiogroup"
+                      aria-label={`${s.label}: live or simulation`}
+                      title={!supported ? "This strategy can't be sent yet, so it stays in Sim" : s.stake === null ? "Set a stake before going Live" : undefined}
+                      className="inline-flex shrink-0 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5"
                     >
-                      <span
-                        className={`block h-5 w-5 rounded-full bg-white shadow ring-1 ring-black/10 transition-transform ${s.enabled ? "translate-x-5" : ""}`}
-                      />
-                    </button>
+                      {([false, true] as const).map((live) => {
+                        const selected = s.enabled === live;
+                        return (
+                          <button
+                            key={String(live)}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            disabled={selected || (live && !canSwitch) || save.isPending}
+                            onClick={() => {
+                              if (live && !window.confirm(`Put ${s.label} Live?\n\nIts new picks will be sent to your betting software at £${s.stake?.toFixed(2)} each${settings.enabled ? "" : " once the master switch above is on"}.`)) return;
+                              save.mutate({ strategies: { [key]: live } });
+                            }}
+                            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-default ${
+                              selected ? (live ? "bg-hit text-app" : "bg-surface text-ink shadow-sm") : "text-ink-muted hover:text-ink disabled:opacity-40"
+                            }`}
+                          >
+                            {live ? "Live" : "Sim"}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {isOpen && (
                     <div className="mt-2 space-y-3 pl-5">
-                      {supported && (
-                        <div className="grid grid-cols-2 gap-3">
+                      {/* The stake is asked for every strategy: Sim profit is priced at it even where the market can't be sent. */}
+                      <div className="grid grid-cols-2 gap-3">
                           <label className="text-xs text-ink-muted">
                             Stake (£)
                             <div className="mt-1 flex gap-1.5">
@@ -334,8 +347,10 @@ export default function SendingPage() {
                                 </button>
                               )}
                             </div>
-                            {!dirty && s.stake === null && <span className="mt-1 block text-warn">Needed to switch on</span>}
+                            {!dirty && s.stake === null && <span className="mt-1 block text-warn">Needed to go Live, and for Sim profit</span>}
                           </label>
+                          {supported && (
+                            <>
                           <label className="text-xs text-ink-muted">
                             Minimum odds
                             <div className="mt-1 flex gap-1.5">
@@ -363,8 +378,9 @@ export default function SendingPage() {
                               ? `Your betting software waits for odds of ${s.minOdds.toFixed(2)} or better before it places the bet. Applies to new picks only.`
                               : "Minimum odds are optional: your betting software waits for at least this price before it places the bet."}
                           </p>
-                        </div>
-                      )}
+                            </>
+                          )}
+                      </div>
                       {supported && (
                         <StopLossControls
                           status={s.stopLoss}
@@ -382,7 +398,7 @@ export default function SendingPage() {
                           Remove this strategy
                         </button>
                       ) : (
-                        <p className="text-xs text-ink-muted">To remove this strategy, switch it off first.</p>
+                        <p className="text-xs text-ink-muted">To remove this strategy, put it back to Sim first.</p>
                       )}
                     </div>
                   )}

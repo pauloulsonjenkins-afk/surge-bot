@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { PickMode } from "@/server/engine-client";
 
 interface UiState {
   theme: "dark" | "light";
@@ -8,6 +9,10 @@ interface UiState {
   /** Last non-admin sub-route visited under /more, so re-opening the tab returns there. */
   lastMoreRoute: string;
   setLastMoreRoute: (path: string) => void;
+
+  /** Admin only: whether the Dashboard, Win/Loss and Strategies show live picks, simulation picks or both. */
+  pickMode: PickMode;
+  setPickMode: (mode: PickMode) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -18,10 +23,13 @@ export const useUiStore = create<UiState>()(
 
       lastMoreRoute: "/more",
       setLastMoreRoute: (lastMoreRoute) => set({ lastMoreRoute }),
+
+      pickMode: "all",
+      setPickMode: (pickMode) => set({ pickMode }),
     }),
     {
       name: "surge-ui", // localStorage key
-      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute }),
+      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode }),
     }
   )
 );

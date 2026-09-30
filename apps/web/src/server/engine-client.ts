@@ -224,7 +224,17 @@ export interface HitRateStats {
   daily: Array<{ date: string; hits: number; misses: number; hitRate: number | null }>;
 }
 
-export async function fetchHitRateStats(days: number | null, strategy: string | null = null): Promise<HitRateStats> {
+/**
+ * Live or simulation. A pick is live when it was actually handed to the bet feed, and a simulation pick
+ * otherwise. Mirrors PickMode in the engine's engine-db.ts. "all" means both.
+ */
+export type PickMode = "live" | "sim" | "all";
+
+export function parsePickMode(v: unknown): PickMode {
+  return v === "live" || v === "sim" ? v : "all";
+}
+
+export async function fetchHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all"): Promise<HitRateStats> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -237,6 +247,7 @@ export async function fetchHitRateStats(days: number | null, strategy: string | 
     const query = new URLSearchParams();
     if (days) query.set("days", String(days));
     if (strategy) query.set("strategy", strategy);
+    if (mode !== "all") query.set("mode", mode);
     const qs = query.toString();
     const res = await fetch(`${baseUrl}/internal/stats${qs ? `?${qs}` : ""}`, {
       headers: { Authorization: `Bearer ${internalKey}` },
@@ -482,6 +493,8 @@ export interface WinLossReported {
   members: string[];
 }
 export interface WinLossState {
+  /** Which picks the figures cover (missing only while the engine is still on an older version). */
+  mode?: PickMode;
   today: string;
   settings: WinLossSettings;
   maxStake: number;
@@ -499,7 +512,7 @@ export interface WinLossPatch {
   expenditure?: { enabled?: boolean; monthly?: number; startMonth?: string };
 }
 
-async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch): Promise<WinLossState> {
+async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch, mode: PickMode = "all"): Promise<WinLossState> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -508,7 +521,7 @@ async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch): Promi
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const res = await fetch(`${baseUrl}/internal/winloss`, {
+    const res = await fetch(`${baseUrl}/internal/winloss${mode !== "all" ? `?mode=${mode}` : ""}`, {
       method,
       headers: { Authorization: `Bearer ${internalKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
@@ -522,8 +535,8 @@ async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch): Promi
   }
 }
 
-export const fetchWinLoss = () => winLossRequest("GET");
-export const saveWinLoss = (patch: WinLossPatch) => winLossRequest("PUT", patch);
+export const fetchWinLoss = (mode: PickMode = "all") => winLossRequest("GET", undefined, mode);
+export const saveWinLoss = (patch: WinLossPatch, mode: PickMode = "all") => winLossRequest("PUT", patch, mode);
 
 /** Totals for one league / strategy / minute bucket. Mirrors PerformanceCell in the engine's engine-db.ts. */
 export interface EnginePerformanceCell {
@@ -539,7 +552,7 @@ export interface EnginePerformanceCell {
   misses: number;
 }
 
-export async function fetchPerformanceCells(days: number | null): Promise<EnginePerformanceCell[]> {
+export async function fetchPerformanceCells(days: number | null, mode: PickMode = "all"): Promise<EnginePerformanceCell[]> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -549,7 +562,11 @@ export async function fetchPerformanceCells(days: number | null): Promise<Engine
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(`${baseUrl}/internal/performance${days ? `?days=${days}` : ""}`, {
+    const query = new URLSearchParams();
+    if (days) query.set("days", String(days));
+    if (mode !== "all") query.set("mode", mode);
+    const qs = query.toString();
+    const res = await fetch(`${baseUrl}/internal/performance${qs ? `?${qs}` : ""}`, {
       headers: { Authorization: `Bearer ${internalKey}` },
       cache: "no-store",
       signal: controller.signal,
@@ -686,10 +703,17 @@ export interface AdminStrategy {
   alertsSince: number;
   hits: number;
   misses: number;
+  /** The same hits and misses, split into picks that were sent (live) and not (simulation). */
+  liveHits: number;
+  liveMisses: number;
+  simHits: number;
+  simMisses: number;
   sent: number;
   lastAlertAt: string;
   mergedInto: string | null;
   sendingOn: boolean;
+  /** Live when its switch and the master switch are both on; its new picks are simulated otherwise. */
+  mode: "live" | "sim";
   stake: number | null;
 }
 

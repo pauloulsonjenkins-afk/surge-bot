@@ -17,11 +17,16 @@
  * This is an estimate from the alert's price, not from the bets your betting
  * software actually matched, so it will differ a little from the real account.
  *
+ * Live and simulation (see PickMode in engine-db.ts): with mode "live" only picks that were actually
+ * handed to the bet feed are priced, at the stake they were sent with; with "sim" only the ones that were
+ * not, at the strategy's stake today. "all" prices both, as before. The per-strategy settings list
+ * (stakes, assumed odds) always covers every strategy, whatever the mode, so none can be hidden from editing.
+ *
  * Expenditure is a fixed monthly cost. It is OFF unless it has been ticked, and
  * it applies to the Month and Year figures only, charged on the 1st of each
  * month from the start month onwards.
  */
-import type { EngineDb } from "../storage/engine-db";
+import type { EngineDb, PickMode } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 
 export interface WinLossSettings {
@@ -166,6 +171,8 @@ export interface WinLossReported {
 }
 
 export interface WinLossState {
+  /** Which picks the figures, lines and graphs cover. */
+  mode: PickMode;
   today: string;
   settings: WinLossSettings;
   maxStake: number;
@@ -187,7 +194,7 @@ function addDays(iso: string, n: number): string {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
+export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = "all"): WinLossState {
   const settings = getWinLossSettings(db);
   const sending = getSendingSettings(db);
   const today = ukDay.format(now);
@@ -205,6 +212,8 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
   interface Priced { day: string; time: string; key: string; gkey: string; profit: number }
   const priced: Priced[] = [];
   const tally = new Map<string, WinLossStrategy>();
+  /** Strategies with at least one settled pick in the chosen mode; only these get a line of their own. */
+  const inMode = new Set<string>();
   const commission = settings.commission / 100;
 
   for (const r of rows) {
@@ -227,9 +236,11 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
         noOdds: 0,
         usedAlertOdds: 0,
       };
-    t.settled++;
     t.market = r.market ?? t.market;
     tally.set(key, t);
+    if ((mode === "live" && !r.sent) || (mode === "sim" && r.sent)) continue;
+    t.settled++;
+    inMode.add(key);
 
     const stake = r.sentStake ?? sending.stakes[key] ?? null;
     if (stake === null) {
@@ -271,6 +282,7 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
   // ---- the lines shown: original strategies grouped by what they are merged into ----
   const lines = new Map<string, WinLossReported & { settled: number }>();
   for (const t of tally.values()) {
+    if (mode !== "all" && !inMode.has(t.key)) continue;
     const label = reportedAs(t.key, t.label);
     const gkey = label.toLowerCase();
     const line = lines.get(gkey) ?? { key: gkey, label, members: [], settled: 0 };
@@ -339,6 +351,7 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
   for (let d = start.mtd; d <= today; d = addDays(d, 1)) mtdDaily.push({ date: d, pnl: r2(dayTotals.get(d) ?? 0) });
 
   return {
+    mode,
     today,
     settings,
     maxStake: sending.maxStake,

@@ -7,6 +7,7 @@ import { formatNumber } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { gbp } from "@/components/admin/WinLossLines";
 import type { Timeframe } from "./TimeframeToggle";
+import type { PickMode } from "@/server/engine-client";
 import { profitFor, useDashboardWinLoss } from "./WinLossSummary";
 
 /**
@@ -18,13 +19,15 @@ export function HeroRow({
   isLoading,
   timeframe,
   strategy,
+  mode,
 }: {
   stats: HitRateStats | undefined;
   isLoading: boolean;
   timeframe: Timeframe;
   strategy: string | null;
+  mode: PickMode;
 }) {
-  const winLoss = useDashboardWinLoss();
+  const winLoss = useDashboardWinLoss(mode);
 
   if (isLoading || !stats) {
     return (
@@ -69,7 +72,7 @@ export function HeroRow({
         />
         {profit && (
           <HeroStat
-            label={`Profit · ${profit.label}`}
+            label={`${mode === "sim" ? "Sim profit" : mode === "live" ? "Live profit" : "Profit"} · ${profit.label}`}
             tone={moneyTone(profit.value)}
             value={profit.value === 0 ? "£0.00" : gbp(profit.value)}
             sub={

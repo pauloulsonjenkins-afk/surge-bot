@@ -38,7 +38,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { TelegramClient } from "telegram";
-import type { EngineDb } from "../storage/engine-db";
+import { parsePickMode, type EngineDb } from "../storage/engine-db";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
 import { verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
@@ -213,7 +213,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
       const strategy = url.searchParams.get("strategy")?.trim().slice(0, 120) || null;
-      send(res, 200, { ...db.hitRateStats(days, strategy) });
+      send(res, 200, { ...db.hitRateStats(days, strategy, parsePickMode(url.searchParams.get("mode"))) });
       return;
     }
 
@@ -230,7 +230,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const url = new URL(rawUrl, "http://internal");
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
-      send(res, 200, { cells: db.performanceCells(days) });
+      send(res, 200, { cells: db.performanceCells(days, parsePickMode(url.searchParams.get("mode"))) });
       return;
     }
 
@@ -364,7 +364,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           log.info(`Expenditure was switched ${after.expenditure.enabled ? "ON" : "OFF"} on the Win/Loss page.`);
         }
       }
-      send(res, 200, { ...computeWinLoss(db) });
+      const winLossMode = parsePickMode(new URL(rawUrl, "http://internal").searchParams.get("mode"));
+      send(res, 200, { ...computeWinLoss(db, new Date(), winLossMode) });
       return;
     }
 
@@ -475,6 +476,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         strategies: db.listStrategiesForAdmin().map((x) => ({
           ...x,
           sendingOn: settings.strategies[x.label.toLowerCase()] === true,
+          // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
+          mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
           stake: settings.stakes[x.label.toLowerCase()] ?? null,
         })),
       });

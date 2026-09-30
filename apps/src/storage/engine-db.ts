@@ -173,9 +173,31 @@ const STRATEGY_MERGES_KEY = "strategy_merges";
 const IGNORED_STRATEGIES_KEY = "ignored_strategies";
 
 /** One strategy as the admin Strategies page shows it. */
+/**
+ * Live or simulation. A pick is LIVE when it was actually handed to the bet feed (it has a sent time), and a
+ * SIMULATION pick otherwise: the alert was recorded and settled exactly the same way, but no bet was placed.
+ * It is decided per pick, not by a strategy's switch today, so switching a strategy to Live never rewrites
+ * its history. "all" means both.
+ */
+export type PickMode = "live" | "sim" | "all";
+
+export function parsePickMode(v: unknown): PickMode {
+  return v === "live" || v === "sim" ? v : "all";
+}
+
+/** SQL condition for a mode, to add to a WHERE clause on live_picks. */
+function modeSql(mode: PickMode): string {
+  return mode === "live" ? " AND sent_at IS NOT NULL" : mode === "sim" ? " AND sent_at IS NULL" : "";
+}
+
 export interface AdminStrategyRow {
   label: string;
   market: string | null;
+  /** Hits and misses since the "fresh start" date, split into picks that were sent (live) and not (simulation). */
+  liveHits: number;
+  liveMisses: number;
+  simHits: number;
+  simMisses: number;
   /** Every stored pick of this strategy, including ones marked "didn't actually bet". Used for the delete messages. */
   alerts: number;
   /** Stored picks since the "fresh start" date (all of them when there is none). */
@@ -678,20 +700,20 @@ export class EngineDb {
    * league and UK calendar day. A pick counts as a hit or miss only when the
    * alert itself carries a Hit/Miss marker, so nothing here is guessed.
    */
-  hitRateStats(days: number | null, strategy: string | null = null): HitRateStats {
+  hitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all"): HitRateStats {
     const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
     const allRows = (
       since === null
         ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, country,
                   COALESCE(result_override, result) AS result,
                   CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
-           FROM live_picks WHERE excluded = 0 ORDER BY id`).all()
+           FROM live_picks WHERE excluded = 0${modeSql(mode)} ORDER BY id`).all()
         : this.db
             .prepare(
               `SELECT first_seen_at, strategy, market, competition, minute, country,
                       COALESCE(result_override, result) AS result,
                       CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
-               FROM live_picks WHERE first_seen_at >= ? AND excluded = 0 ORDER BY id`,
+               FROM live_picks WHERE first_seen_at >= ? AND excluded = 0${modeSql(mode)} ORDER BY id`,
             )
             .all(since)
     ) as Array<{
@@ -786,13 +808,13 @@ export class EngineDb {
    * parsed one. The country is read from the flag in the stored alert text, so alerts saved
    * before the parser knew about countries are covered too.
    */
-  performanceCells(days: number | null): PerformanceCell[] {
+  performanceCells(days: number | null, mode: PickMode = "all"): PerformanceCell[] {
     const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
     const cols = `first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, country`;
     const rows = (
       since === null
-        ? this.db.prepare(`SELECT ${cols} FROM live_picks WHERE excluded = 0`).all()
-        : this.db.prepare(`SELECT ${cols} FROM live_picks WHERE first_seen_at >= ? AND excluded = 0`).all(since)
+        ? this.db.prepare(`SELECT ${cols} FROM live_picks WHERE excluded = 0${modeSql(mode)}`).all()
+        : this.db.prepare(`SELECT ${cols} FROM live_picks WHERE first_seen_at >= ? AND excluded = 0${modeSql(mode)}`).all(since)
     ) as Array<{
       first_seen_at: string;
       strategy: string;
@@ -1087,15 +1109,37 @@ export class EngineDb {
       const key = label.toLowerCase();
       const row =
         out.get(key) ??
-        { label, market: r.market, alerts: 0, alertsSince: 0, hits: 0, misses: 0, sent: 0, lastAlertAt: r.first_seen_at, mergedInto: merges[key] ?? null };
+        {
+          label,
+          market: r.market,
+          alerts: 0,
+          alertsSince: 0,
+          hits: 0,
+          misses: 0,
+          liveHits: 0,
+          liveMisses: 0,
+          simHits: 0,
+          simMisses: 0,
+          sent: 0,
+          lastAlertAt: r.first_seen_at,
+          mergedInto: merges[key] ?? null,
+        };
       row.alerts++;
       row.market = r.market ?? row.market;
       if (r.sent_at !== null) row.sent++;
       if (floor === null || r.first_seen_at >= floor) {
         row.alertsSince++;
         if (r.excluded !== 1) {
-          if (r.result === "hit") row.hits++;
-          else if (r.result === "miss") row.misses++;
+          const live = r.sent_at !== null;
+          if (r.result === "hit") {
+            row.hits++;
+            if (live) row.liveHits++;
+            else row.simHits++;
+          } else if (r.result === "miss") {
+            row.misses++;
+            if (live) row.liveMisses++;
+            else row.simMisses++;
+          }
         }
       }
       row.lastAlertAt = r.first_seen_at;
@@ -1200,10 +1244,12 @@ export class EngineDb {
     /** For favourite-to-win picks: the favourite's live win price printed in the alert. */
     favouriteOdds: number | null;
     sentStake: number | null;
+    /** True when the pick was handed to the bet feed (a live bet), false for a simulation pick. */
+    sent: boolean;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row
+        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at
          FROM live_picks
          WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
@@ -1216,6 +1262,7 @@ export class EngineDb {
       result: "hit" | "miss";
       parsed_json: string;
       sent_row: string | null;
+      sent_at: string | null;
     }>;
 
     return rows.map((r) => {
@@ -1256,6 +1303,7 @@ export class EngineDb {
         overOdds,
         favouriteOdds,
         sentStake,
+        sent: r.sent_at !== null,
       };
     });
   }

@@ -1,0 +1,9 @@
+# Installed packages and build output: recreated by npm install / npm run build, never committed.
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+
+# Local environment files can hold secrets.
+.env
+.env.*

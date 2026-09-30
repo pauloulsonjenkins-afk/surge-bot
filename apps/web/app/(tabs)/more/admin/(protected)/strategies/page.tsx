@@ -8,8 +8,20 @@ import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow"
 import { marketName } from "@/lib/markets";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
+import { ModeBadge, ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function record(hits: number, misses: number) {
+  const settled = hits + misses;
+  return { hits, misses, settled, hitRate: settled > 0 ? Math.round((hits / settled) * 1000) / 10 : null };
+}
+
+/** Live when its picks are being sent to the betting software; Sim when they are only recorded. */
+function modeOf(row: AdminStrategy): "live" | "sim" {
+  // An engine that isn't updated yet doesn't send `mode`; its switch is then the best guide.
+  return row.mode ?? (row.sendingOn ? "live" : "sim");
+}
 
 function StrategyCard({
   row,
@@ -36,8 +48,12 @@ function StrategyCard({
 }) {
   const [merging, setMerging] = useState(false);
   const [target, setTarget] = useState("");
-  const settled = row.hits + row.misses;
-  const hitRate = settled > 0 ? Math.round((row.hits / settled) * 1000) / 10 : null;
+  const pickMode = usePickMode();
+  const live = record(row.liveHits ?? 0, row.liveMisses ?? 0);
+  const sim = record(row.simHits ?? 0, row.simMisses ?? 0);
+  // The headline figures follow the All / Live / Sim choice.
+  const shown = pickMode === "live" ? live : pickMode === "sim" ? sim : record(row.hits, row.misses);
+  const { hits, misses, settled, hitRate } = shown;
   const options = all.filter((o) => o.label !== row.label);
 
   return (
@@ -56,7 +72,10 @@ function StrategyCard({
           />
         )}
         <div className="min-w-0 flex-1">
-          <p className="break-words text-sm font-medium text-ink">{row.label}</p>
+          <p className="flex flex-wrap items-center gap-2 break-words text-sm font-medium text-ink">
+            {row.label}
+            <ModeBadge mode={modeOf(row)} />
+          </p>
           <p className={`text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>{marketName(row.market) ?? "No market set"}</p>
         </div>
         <p className="shrink-0 text-xl font-medium tabular-nums text-ink">{hitRate === null ? "–" : `${hitRate}%`}</p>
@@ -65,14 +84,35 @@ function StrategyCard({
         <div className="h-full rounded-full bg-chart" style={{ width: `${hitRate ?? 0}%` }} />
       </div>
       <p className="mt-2 text-xs text-ink-muted">
-        {row.hits} hit{row.hits === 1 ? "" : "s"} · {row.misses} miss{row.misses === 1 ? "" : "es"} · {row.alertsSince} alert{row.alertsSince === 1 ? "" : "s"}
+        {hits} hit{hits === 1 ? "" : "s"} · {misses} miss{misses === 1 ? "" : "es"}
+        {pickMode === "all" && ` · ${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"}`}
         {settled > 0 && settled < 30 ? " · small sample" : ""} · last {lastSeen.format(new Date(row.lastAlertAt))}
       </p>
+      {/* Live and simulation side by side, so a strategy's real results can be checked against what it does unbet. */}
+      {(live.settled > 0 || sim.settled > 0) && (
+        <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-md bg-surface-2 px-2.5 py-1.5">
+            <dt className="text-ink-muted">Live</dt>
+            <dd className="tabular-nums text-ink">{live.settled === 0 ? "No bets yet" : `${live.hits}–${live.misses} · ${live.hitRate}%`}</dd>
+          </div>
+          <div className="rounded-md bg-surface-2 px-2.5 py-1.5">
+            <dt className="text-ink-muted">Sim</dt>
+            <dd className="tabular-nums text-ink">{sim.settled === 0 ? "None" : `${sim.hits}–${sim.misses} · ${sim.hitRate}%`}</dd>
+          </div>
+        </dl>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{row.mergedInto}”</span>}
         {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.join(", ")}</span>}
-        {row.sendingOn && <span className="rounded-full bg-hit/15 px-2 py-0.5 font-medium text-hit">Sending on{row.stake !== null ? ` · £${row.stake.toFixed(2)}` : ""}</span>}
+        {row.stake !== null && (
+          <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">
+            {modeOf(row) === "live" ? "Betting" : "Simulating at"} £{row.stake.toFixed(2)}
+          </span>
+        )}
+        {modeOf(row) === "sim" && row.stake === null && (
+          <span className="rounded-full bg-warn/15 px-2 py-0.5 text-warn">No stake: sim profit can’t be worked out</span>
+        )}
         {row.sent > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">{row.sent} sent to bet</span>}
       </div>
 
@@ -244,7 +284,7 @@ export default function StrategiesPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         as="h2"
         title="Strategies"
@@ -255,6 +295,8 @@ export default function StrategiesPage() {
           </>
         }
       />
+
+      <ModeToggle />
 
       {data && strategies.length > 0 && (
         <div className="space-y-2">
@@ -324,22 +366,41 @@ export default function StrategiesPage() {
       ) : (
         <>
           {failed && <p className="rounded-md border border-line bg-surface p-2 text-xs text-destructive">{failed.message}</p>}
-          <ul className="space-y-2">
-            {strategies.map((r) => (
-              <StrategyCard
-                key={r.label}
-                row={r}
-                all={strategies}
-                includes={includesOf.get(r.label.toLowerCase()) ?? []}
-                busy={busy}
-                selecting={selecting}
-                selected={picked.has(r.label)}
-                onToggle={() => toggle(r.label)}
-                onMerge={(into) => merge.mutate({ from: r.label, into })}
-                onDelete={() => deleteStrategy(r)}
-              />
-            ))}
-          </ul>
+          {(["live", "sim"] as const).map((m) => {
+            const group = strategies.filter((r) => modeOf(r) === m);
+            if (group.length === 0) return null;
+            return (
+              <section key={m} className="space-y-3">
+                <div>
+                  <h3 className="text-base font-semibold text-ink">
+                    {m === "live" ? "Live strategies" : "Simulation strategies"}{" "}
+                    <span className="text-sm font-normal text-ink-muted">· {group.length}</span>
+                  </h3>
+                  <p className="text-xs text-ink-muted">
+                    {m === "live"
+                      ? "New picks are sent to your betting software."
+                      : "New picks are recorded and settled, but never sent. Switch one to Live on the Sending page."}
+                  </p>
+                </div>
+                <ul className="space-y-2">
+                  {group.map((r) => (
+                    <StrategyCard
+                      key={r.label}
+                      row={r}
+                      all={strategies}
+                      includes={includesOf.get(r.label.toLowerCase()) ?? []}
+                      busy={busy}
+                      selecting={selecting}
+                      selected={picked.has(r.label)}
+                      onToggle={() => toggle(r.label)}
+                      onMerge={(into) => merge.mutate({ from: r.label, into })}
+                      onDelete={() => deleteStrategy(r)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
 
           {ignored.length > 0 && (
             <section className="rounded-xl border border-line bg-surface p-3">
