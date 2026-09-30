@@ -17,7 +17,13 @@
  * order later, so anything doubtful is flagged instead.
  */
 
-export type MarketCode = "NEXT_GOAL" | "BOTH_TEAMS_TO_SCORE" | "FIRST_HALF_CORNERS" | "UNDERDOG_DOUBLE_CHANCE" | "FAVOURITE_TO_WIN";
+export type MarketCode =
+  | "NEXT_GOAL"
+  | "BOTH_TEAMS_TO_SCORE"
+  | "FIRST_HALF_CORNERS"
+  | "UNDERDOG_DOUBLE_CHANCE"
+  | "FAVOURITE_TO_WIN"
+  | "FIRST_HALF_GOALS";
 
 export type PickResult = "hit" | "miss";
 
@@ -35,8 +41,10 @@ export interface ParsedAlert {
   favourite: "home" | "away" | null;
   /** Human wording of the bet, e.g. "Over 1.5" or "Yes". Null when unmapped. */
   selection: string | null;
-  /** The line a bet targets: goals + 0.5 for Next Goal, 5.5 for 1st half corners. */
+  /** The line a bet targets: goals + 0.5 for Next Goal, 5.5 for 1st half corners, 0.5 for 1st half goals. */
   targetLine: number | null;
+  /** The "Kickoff: In 1 hour" line of a pre-match alert, as written. Null when the alert has none. */
+  kickoffRaw: string | null;
 
   competition: string | null;
   /** Country from the flag emoji on the league line ("Argentina"). Null for the globe (international) or no flag. */
@@ -92,6 +100,8 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "Underdog taking charge action" backs the underdog to win or draw. This must come before the
   // "momentum" / "action" rules below, which would otherwise read it as an Over goals bet.
   { test: /\bunderdog\b/, market: "UNDERDOG_DOUBLE_CHANCE" },
+  // "First Half Goal": a PRE-MATCH alert (no timer, no score) backing Over 0.5 goals in the first half.
+  { test: /\b(?:first|1st|1h)\s*half\s+goals?\b/, market: "FIRST_HALF_GOALS" },
   // "Time to fight": Over the next goal, the same bet as Momentum (line = goals so far + 0.5).
   { test: /time to fight/, market: "NEXT_GOAL" },
   // "Pass Master 1st half": back the favourite (shortest live price) in Match Odds.
@@ -251,7 +261,14 @@ export function parseAlert(text: string): ParsedAlert {
     const g = l.match(/^Last Goal:\s*(.+)$/i);
     if (g?.[1]) lastGoal = g[1].trim();
   }
-  if (minute === null) flags.push("Could not read the match timer.");
+  // A pre-match alert says "Kickoff: In 1 hour" instead of carrying a timer and a score.
+  let kickoffRaw: string | null = null;
+  for (const l of lines) {
+    const k = l.replace(DECORATION, "").trim().match(/^Kick-?off:\s*(.+)$/i);
+    if (k?.[1]) kickoffRaw = k[1].trim();
+  }
+  const preMatchMarket = market === "FIRST_HALF_GOALS";
+  if (minute === null && !preMatchMarket) flags.push("Could not read the match timer.");
 
   // ---- "Label: a - b" stats ----
   const stats: Record<string, [number, number]> = {};
@@ -266,7 +283,7 @@ export function parseAlert(text: string): ParsedAlert {
   const goals = stats["Goals"] ?? null;
   const goalsHome = goals ? goals[0] : null;
   const goalsAway = goals ? goals[1] : null;
-  if (!goals) flags.push("Could not read the current score (Goals line).");
+  if (!goals && !preMatchMarket) flags.push("Could not read the current score (Goals line).");
 
   // ---- odds ----
   const odds: ParsedAlert["odds"] = {
@@ -366,6 +383,17 @@ export function parseAlert(text: string): ParsedAlert {
     if (goalsHome !== null && goalsAway !== null && goalsHome > 0 && goalsAway > 0 && !settled) {
       flags.push("Both teams have already scored, so this Both Teams to Score pick is not live.");
     }
+  } else if (market === "FIRST_HALF_GOALS") {
+    // Fixed line: Over 0.5 goals in the first half, backed before the match starts.
+    targetLine = 0.5;
+    selection = "Over 0.5 first-half goals";
+    if (!settled) {
+      if (!kickoffRaw) flags.push("No Kickoff line in the alert, so it can't be confirmed as a pre-match alert.");
+      if (minute !== null) flags.push("The alert has a match timer, so the match is already under way. This bet is pre-match only.");
+      if (goalsHome !== null && goalsAway !== null && goalsHome + goalsAway > 0) {
+        flags.push("A goal has already been scored, so Over 0.5 first-half goals is already decided.");
+      }
+    }
   } else if (market === "FIRST_HALF_CORNERS") {
     // Fixed line: the bet is corners Over 5.5 in the first half.
     targetLine = 5.5;
@@ -411,15 +439,21 @@ export function parseAlert(text: string): ParsedAlert {
     }
   }
 
+  // First-half goals is graded on the half-time score, not the full-time one.
+  const ht = htScore ? htScore.match(/^(\d+)-(\d+)$/) : null;
+  if (market === "FIRST_HALF_GOALS" && ht && ht[1] !== undefined && ht[2] !== undefined) {
+    finalResult = Number(ht[1]) + Number(ht[2]) > 0 ? "hit" : "miss";
+    resultSource = "score";
+  }
+
+  const hasLiveState = preMatchMarket ? kickoffRaw !== null : minute !== null && goalsHome !== null && goalsAway !== null;
   const sendable =
     flags.length === 0 &&
     market !== null &&
     selection !== null &&
     home !== null &&
     away !== null &&
-    minute !== null &&
-    goalsHome !== null &&
-    goalsAway !== null &&
+    hasLiveState &&
     !settled;
 
   return {
@@ -431,6 +465,7 @@ export function parseAlert(text: string): ParsedAlert {
     favourite,
     selection,
     targetLine,
+    kickoffRaw,
     competition,
     country,
     positions,
