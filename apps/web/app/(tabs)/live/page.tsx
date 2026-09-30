@@ -72,7 +72,9 @@ function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
     ...(cornersFirst ? [] : corners),
   ];
   const shownStats = keyStats.filter(([, v]) => v !== null) as Array<[string, string]>;
-  const minute = pick.minute !== null ? `${pick.minute}'` : (pick.timerRaw ?? "–");
+  // Pre-match alerts (First Half Goal) arrive before kick-off, so they have no match minute.
+  const preMatch = pick.minute === null && pick.market === "FIRST_HALF_GOALS";
+  const minute = pick.minute !== null ? `${pick.minute}'` : preMatch ? "Pre" : (pick.timerRaw ?? "–");
 
   return (
     <li>
@@ -83,7 +85,7 @@ function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
         className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-surface-2/60"
       >
         <span
-          title="Match minute when the alert fired"
+          title={preMatch ? "Sent before kick-off" : "Match minute when the alert fired"}
           className="mt-0.5 w-10 shrink-0 rounded-md bg-surface-2 py-0.5 text-center text-xs font-semibold tabular-nums text-ink"
         >
           {minute}
@@ -114,7 +116,7 @@ function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
       {open && (
         <div className="space-y-3 border-t border-line bg-surface-2/40 py-3 pl-16 pr-3">
           <p className="text-xs text-ink-muted">
-            {[pick.competition, `Alert at ${minute}`, fmtTime(pick.firstSeenAt)].filter(Boolean).join(" · ")}
+            {[pick.competition, preMatch ? "Pre-match alert" : `Alert at ${minute}`, fmtTime(pick.firstSeenAt)].filter(Boolean).join(" · ")}
           </p>
 
           {shownStats.length > 0 && (

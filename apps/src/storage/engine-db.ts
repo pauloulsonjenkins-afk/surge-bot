@@ -518,8 +518,11 @@ export class EngineDb {
     rawText: string,
     parsed: ParsedAlert,
     messageAt: string | null = null,
+    /** When a new pick counts as first seen. Defaults to now; the catch-up sync passes the posting time. Never changes an existing pick. */
+    firstSeenAt?: string,
   ): "inserted" | "updated" {
     const now = new Date().toISOString();
+    const seen = firstSeenAt && firstSeenAt < now ? firstSeenAt : now;
     const settled = parsed.result !== null || parsed.ftScore !== null;
     const status: LivePick["status"] = settled
       ? "settled"
@@ -566,7 +569,7 @@ export class EngineDb {
       .run(
         chatId,
         messageId,
-        now,
+        seen,
         now,
         parsed.strategyRaw,
         parsed.market,

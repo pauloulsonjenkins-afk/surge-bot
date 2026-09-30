@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
-import { parseAlert } from "../src/inplayguru/parse-alert";
+import { isRealAlert, parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 
 const ALERT = [
@@ -122,4 +122,24 @@ test("an alert that has gone stale before it is fetched is not sent", () => {
   saveSendingSettings(db, { enabled: true, stakes: { "first half goal": 2 }, strategies: { "first half goal": true } });
   db.upsertLivePick("chat", 1, ALERT, parseAlert(ALERT), new Date(Date.now() - 30 * 60_000).toISOString());
   assert.equal(buildFeed(db, { markSent: false }).rows.length, 0);
+});
+
+test("the Telegram listener treats it as an alert, though it has no match timer", () => {
+  // The listener and its catch-up sync only store messages that pass this check. Before pre-match alerts
+  // were allowed, every First Half Goal alert was dropped here as "not an alert" and never became a pick.
+  assert.equal(isRealAlert(parseAlert(ALERT)), true);
+  assert.equal(isRealAlert(parseAlert(settled("1-0", "1-0"))), true);
+  // in-play alerts still count; messages with no teams, or with neither a timer nor a kickoff line, still don't
+  assert.equal(isRealAlert(parseAlert(ALERT.replace("⌛ Kickoff: In 1 hour", "Timer: 12'\nGoals: 0 - 0"))), true);
+  assert.equal(isRealAlert(parseAlert("Welcome to the channel! New alerts start tomorrow.")), false);
+  assert.equal(isRealAlert(parseAlert(ALERT.replace("⌛ Kickoff: In 1 hour\n", ""))), false);
+});
+
+test("once stored it appears in the strategy lists, and a recovered alert is dated when it was posted", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const posted = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString();
+  db.upsertLivePick("chat", 1, settled("1-0", "2-0"), parseAlert(settled("1-0", "2-0")), posted, posted);
+  assert.deepEqual(db.listStrategiesSeen().map((s) => s.label), ["First Half Goal"]);
+  assert.equal(db.listStrategiesForAdmin()[0]?.hits, 1);
+  assert.equal(db.listLivePicks(10)[0]?.firstSeenAt, posted);
 });

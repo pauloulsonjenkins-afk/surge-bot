@@ -186,6 +186,15 @@ function pair(line: string | undefined): [number, number] | null {
   return a != null && b != null ? [a, b] : null;
 }
 
+/**
+ * True for a real alert, as opposed to a welcome message or announcement: two team names, and either a match
+ * timer (in-play alerts) or a Kickoff line (pre-match alerts such as "First Half Goal"). The Telegram listener
+ * and its catch-up sync both use this to decide what becomes a pick.
+ */
+export function isRealAlert(p: Pick<ParsedAlert, "home" | "away" | "minute" | "kickoffRaw">): boolean {
+  return Boolean(p.home && p.away && (p.minute !== null || p.kickoffRaw !== null));
+}
+
 export function parseAlert(text: string): ParsedAlert {
   const flags: string[] = [];
   const lines = text

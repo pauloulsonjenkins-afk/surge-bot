@@ -31,12 +31,18 @@ import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMe
 import type { Api } from "telegram";
 import type { EngineDb } from "../storage/engine-db";
 import { handleVerifiedPick } from "../inplayguru/receiver";
-import { parseAlert } from "../inplayguru/parse-alert";
+import { isRealAlert, parseAlert } from "../inplayguru/parse-alert";
 import { recordSimBets } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 
 const SYNC_EVERY_MS = 2 * 60 * 1000;
 const SYNC_MESSAGES = 40;
+/**
+ * The first sync after the engine starts looks further back, so alerts missed while it was down, or that an
+ * older version didn't recognise (pre-match "First Half Goal" alerts had no timer and were skipped), come back
+ * with their final results. Messages already stored and unchanged are skipped, so this is cheap.
+ */
+const BACKFILL_MESSAGES = 500;
 
 /** What /health reports about the listener. */
 export interface ListenerStatus {
@@ -79,11 +85,10 @@ interface IncomingText {
   senderLabel: string;
 }
 
-/** True for real alerts: two team names and a match timer. Welcome messages and announcements aren't. */
+/** True for real alerts (see isRealAlert). Welcome messages and announcements aren't. */
 function isAlert(text: string): boolean {
   try {
-    const p = parseAlert(text);
-    return Boolean(p.home && p.away && p.minute !== null);
+    return isRealAlert(parseAlert(text));
   } catch {
     return false;
   }
@@ -127,13 +132,14 @@ function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boo
   // A parse problem must never lose the raw capture above, so it is caught on its own.
   try {
     const parsed = parseAlert(m.text);
-    // A real alert always has two team names and a match timer. Welcome messages,
-    // announcements and the like don't, so they stay in the raw log only.
-    if (!parsed.home || !parsed.away || parsed.minute === null) {
+    // A real alert has two team names and a match timer, or a Kickoff line if it is pre-match. Welcome
+    // messages, announcements and the like don't, so they stay in the raw log only.
+    if (!isRealAlert(parsed)) {
       if (how === "new") log.info(`Telegram message ${m.messageId} is not an alert; not added to the live picks.`);
       return false;
     }
-    const what = db.upsertLivePick(m.chatKey, m.messageId, m.text, parsed, messageAt);
+    // An alert recovered by the catch-up sync is dated when it was posted, so a late recovery lands on the right day.
+    const what = db.upsertLivePick(m.chatKey, m.messageId, m.text, parsed, messageAt, how === "sync" ? messageAt : undefined);
     status.lastAlertAt = new Date().toISOString();
     // Record the simulated bet straight away, so it uses the stake and limits in force when the alert arrived.
     try {
@@ -203,6 +209,7 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
   const chatRef = Number(chatId);
 
   let syncing = false;
+  let backfilled = false;
   const sync = async () => {
     if (syncing || stopped) return;
     syncing = true;
@@ -211,14 +218,16 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
         log.warn("Telegram client is disconnected; reconnecting before the catch-up sync.");
         await client.connect();
       }
+      const limit = backfilled ? SYNC_MESSAGES : BACKFILL_MESSAGES;
       let messages: Api.Message[];
       try {
-        messages = await client.getMessages(chatRef, { limit: SYNC_MESSAGES });
+        messages = await client.getMessages(chatRef, { limit });
       } catch {
         // A freshly restored session may not know this chat yet; loading the chat list teaches it.
         await client.getDialogs({ limit: 100 });
-        messages = await client.getMessages(chatRef, { limit: SYNC_MESSAGES });
+        messages = await client.getMessages(chatRef, { limit });
       }
+      backfilled = true;
       let recovered = 0;
       // Oldest first, so picks are stored in the order they were posted.
       for (const m of [...messages].reverse()) {
