@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
 import { useAdminLeagues, useUpdateLeague, type AdminLeagueRow } from "@/queries/use-leagues";
 import { resolveLeague } from "@/lib/performance/leagues";
@@ -234,13 +235,16 @@ export default function LeaguesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-medium tracking-tight text-ink">Leagues</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <PageHeader
+        as="h2"
+        title="Leagues"
+        subtitle={
+          <>
           Every league the Dashboard has seen. Tap a league to hide it, reset its stats or set its country and tier. Nothing is
           deleted, so all of it can be undone. Win/loss figures are not affected.
-        </p>
-      </div>
+          </>
+        }
+      />
 
       {error ? (
         <QueryError error={error} next="/more/admin/leagues" />

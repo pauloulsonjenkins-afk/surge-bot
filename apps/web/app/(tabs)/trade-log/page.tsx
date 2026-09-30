@@ -1,9 +1,10 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
-import { marketName } from "@/lib/markets";
+import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
@@ -17,7 +18,7 @@ function Row({ pick }: { pick: LivePick }) {
           {pick.home ?? "Unknown"} v {pick.away ?? "Unknown"}
         </p>
         <p className="truncate text-xs text-ink-muted">
-          {[pick.strategy.replace(/\([^)]*\)/g, "").trim(), marketName(pick.market), pick.selection]
+          {[pick.strategy.replace(/\([^)]*\)/g, "").trim(), betText(pick.market, pick.selection)]
             .filter(Boolean)
             .join(" · ")}
         </p>
@@ -49,10 +50,7 @@ export default function TradeLogPage() {
 
   return (
     <div className="space-y-4 px-4 py-4">
-      <div>
-        <h1 className="text-lg font-medium tracking-tight text-ink">Trade Log</h1>
-        <p className="text-xs text-ink-muted">Settled picks, most recent first</p>
-      </div>
+      <PageHeader title="Trade Log" subtitle="Settled picks, most recent first" />
 
       {error ? (
         <QueryError error={error} next="/trade-log" />

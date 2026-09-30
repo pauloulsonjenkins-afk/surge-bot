@@ -8,7 +8,7 @@ import { isValidMoreRoute } from "@/lib/routes";
 import { TAB_PAGE } from "@/lib/user-pages";
 import { useMe } from "@/queries/use-me";
 
-const TABS = [
+export const TABS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, isMore: false },
   { href: "/live", label: "Live", icon: Radio, isMore: false },
   { href: "/trade-log", label: "Trade Log", icon: ListChecks, isMore: false },
@@ -16,23 +16,27 @@ const TABS = [
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
 ] as const;
 
-export default function BottomNav() {
-  const pathname = usePathname();
-  const lastMoreRoute = useUiStore((s) => s.lastMoreRoute);
+/** A signed-in user only sees the tabs the admin has given them. Signed-out visitors and the admin see them all
+ * (a signed-out visitor who taps one is offered the sign-in). */
+export function useVisibleTabs() {
   const { data: me } = useMe();
-
-  // A signed-in user only sees the tabs the admin has given them. Signed-out visitors and the admin see them all
-  // (a signed-out visitor who taps one is offered the sign-in).
-  const tabs = TABS.filter((t) => {
+  return TABS.filter((t) => {
     const needs = TAB_PAGE[t.href] ?? null;
     if (!needs || !me || me.admin || !me.user) return true;
     return me.pages.includes(needs);
   });
+}
+
+/** The tab bar along the bottom of the screen on phones and tablets. Wide screens use the sidebar instead. */
+export default function BottomNav() {
+  const pathname = usePathname();
+  const lastMoreRoute = useUiStore((s) => s.lastMoreRoute);
+  const tabs = useVisibleTabs();
 
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80"
+      className="fixed inset-x-0 bottom-0 z-40 border-t lg:hidden border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-1">

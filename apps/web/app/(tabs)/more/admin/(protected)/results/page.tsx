@@ -1,9 +1,10 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
-import { marketName } from "@/lib/markets";
+import { betText } from "@/lib/markets";
 import { usePickDays, useAdminPicksWindow, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
@@ -82,13 +83,16 @@ export default function ResultsPage() {
 
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="text-lg font-medium tracking-tight text-ink">Results</h2>
-        <p className="text-xs text-ink-muted">
+      <PageHeader
+        as="h2"
+        title="Results"
+        subtitle={
+          <>
           Change a result by hand if the alert got it wrong. Your change is kept even if the alert is edited again, and
           you can put the original back at any time.
-        </p>
-      </div>
+          </>
+        }
+      />
 
       <div role="tablist" aria-label="Which results" className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
         {(
@@ -187,7 +191,7 @@ export default function ResultsPage() {
                 .join(" · ")}
             </p>
             <p className="mt-1 text-xs text-ink-muted">
-              {p.market ? `${marketName(p.market)}${p.selection ? ` · ${p.selection}` : ""}` : "No market set"}
+              {betText(p.market, p.selection) ?? "No market set"}
             </p>
 
             {p.excluded && (

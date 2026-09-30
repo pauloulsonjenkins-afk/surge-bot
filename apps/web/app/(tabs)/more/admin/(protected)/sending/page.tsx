@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
 import { StopLossControls } from "@/components/admin/StopLossControls";
@@ -47,16 +48,6 @@ function toForm(s: SendingSettings): Form {
     favouriteAwaySelection: s.favouriteAwaySelection,
     aliases: s.aliases,
   };
-}
-
-function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-xl border border-line bg-surface p-3.5">
-      <h2 className="text-sm font-medium text-ink">{title}</h2>
-      {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}
-      <div className="mt-3">{children}</div>
-    </section>
-  );
 }
 
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink";
@@ -205,10 +196,7 @@ export default function SendingPage() {
 
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="text-lg font-medium tracking-tight text-ink">Sending</h2>
-        <p className="text-xs text-ink-muted">Controls which picks are handed to your betting software.</p>
-      </div>
+      <PageHeader as="h2" title="Sending" subtitle="Controls which picks are handed to your betting software." />
 
       {save.error && <p className="text-sm text-danger">{save.error.message}</p>}
       {remove.error && <p className="text-sm text-danger">{remove.error.message}</p>}

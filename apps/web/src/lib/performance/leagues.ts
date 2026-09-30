@@ -19,7 +19,13 @@ export function resolveLeague(
   raw: string,
   countryHint?: string | null,
 ): { leagueId: string; leagueName: string; country: string; tier: number } {
-  const hit = INDEX.get(norm(raw)) ?? (countryHint ? INDEX.get(norm(`${countryHint} ${raw}`)) : undefined);
+  // A league name alone (e.g. "Serie A") can belong to several countries: when the alert's flag gave a country,
+  // the catalogue entry only counts if it is for that country (or an international competition).
+  const sameCountry = (l: LeagueInfo | undefined) =>
+    l !== undefined && (!countryHint || l.country === "International" || norm(l.country) === norm(countryHint));
+  const byName = INDEX.get(norm(raw));
+  const byCountryAndName = countryHint ? INDEX.get(norm(`${countryHint} ${raw}`)) : undefined;
+  const hit = sameCountry(byCountryAndName) ? byCountryAndName : sameCountry(byName) ? byName : undefined;
   if (hit) return { leagueId: hit.id, leagueName: hit.name, country: hit.country, tier: hit.tier };
   const name = raw.trim() || "Unknown league";
   const country = countryHint?.trim() || OTHER_COUNTRY;

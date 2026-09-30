@@ -1,3 +1,4 @@
+import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
 import { Bot, ChevronRight, ClipboardList, Send, TrendingUp, Trophy } from "lucide-react";
 import AccountCard from "@/components/account/AccountCard";
@@ -14,7 +15,7 @@ const ITEMS = [
 export default function MorePage() {
   return (
     <div className="px-4 py-4">
-      <h1 className="mb-4 text-lg font-medium tracking-tight text-ink">More</h1>
+      <div className="mb-4"><PageHeader title="More" /></div>
 
       <AccountCard />
 

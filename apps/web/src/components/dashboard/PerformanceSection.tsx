@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Card } from "@/components/ui/Card";
 import { Grouping, LeagueFilter, MINUTE_BUCKETS, OTHER_COUNTRY, ResolvedCell, TIER_LABEL, TOP_LEAGUES } from "@/domain/performance";
 import { Agg, aggregate, groupLeagues, matchesLeague } from "@/lib/performance/derive";
 
@@ -37,10 +38,6 @@ function filterLabel(f: LeagueFilter, cells: ResolvedCell[]): string {
 
 function LowSample() {
   return <span className="ml-1 text-[10px] text-ink-muted">low n</span>;
-}
-
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-xl border border-line bg-surface p-4 ${className}`}>{children}</section>;
 }
 
 /**

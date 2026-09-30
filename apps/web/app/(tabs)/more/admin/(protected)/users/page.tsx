@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
@@ -142,10 +143,7 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="text-lg font-medium tracking-tight text-ink">Users</h2>
-        <p className="text-xs text-ink-muted">People who signed up on the site. Choose which pages each one can see.</p>
-      </div>
+      <PageHeader as="h2" title="Users" subtitle="People who signed up on the site. Choose which pages each one can see." />
 
       {publicView === true && (
         <p className="rounded-xl border border-line bg-surface-2 p-3 text-xs text-ink">

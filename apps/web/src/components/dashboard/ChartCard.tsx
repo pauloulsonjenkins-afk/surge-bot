@@ -1,3 +1,6 @@
+import { Card } from "@/components/ui/Card";
+
+/** A dashboard chart panel: the shared Card with a title, an optional line under it and optional buttons. */
 export function ChartCard({
   title,
   subtitle,
@@ -10,15 +13,8 @@ export function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-medium text-ink">{title}</h2>
-          {subtitle && <p className="text-xs text-ink-muted">{subtitle}</p>}
-        </div>
-        {actions}
-      </div>
+    <Card title={title} subtitle={subtitle} actions={actions}>
       {children}
-    </section>
+    </Card>
   );
 }

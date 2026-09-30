@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
 import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, type AdminStrategy } from "@/queries/use-strategies";
 import { useFreshStart } from "@/queries/use-fresh-start";
@@ -244,13 +245,16 @@ export default function StrategiesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-medium tracking-tight text-ink">Strategies</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <PageHeader
+        as="h2"
+        title="Strategies"
+        subtitle={
+          <>
           Every strategy the app has seen, with its hit rate from settled alerts (counted from your fresh start, if you have set one in Settings). <span className="text-ink">Merge</span> counts one strategy’s alerts under another on the Dashboard and stats
           (nothing is deleted and it can be undone). <span className="text-ink">Delete</span> removes a strategy’s saved alerts for good.
-        </p>
-      </div>
+          </>
+        }
+      />
 
       {data && strategies.length > 0 && (
         <div className="space-y-2">

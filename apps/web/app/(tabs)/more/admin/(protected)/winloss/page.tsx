@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
 import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLines";
 import { DailyPnlChart } from "@/components/admin/DailyPnlChart";
@@ -23,16 +24,6 @@ const PERIODS: Array<{ key: PeriodKey; label: string }> = [
 const PALETTE = ["#d98a00", "#0fa37f", "#3f7ce0", "#a266d9", "#d6497a", "#2ea3b5"];
 
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink";
-
-function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-xl border border-line bg-surface p-3.5">
-      <h2 className="text-sm font-medium text-ink">{title}</h2>
-      {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
 
 function Money({ value, className = "" }: { value: number; className?: string }) {
   const tone = value > 0 ? "text-hit" : value < 0 ? "text-danger" : "text-ink-muted";
@@ -193,13 +184,16 @@ function WinLoss({ state }: { state: WinLossState }) {
 
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="text-lg font-medium tracking-tight text-ink">Win / Loss</h2>
-        <p className="text-xs text-ink-muted">
+      <PageHeader
+        as="h2"
+        title="Win / Loss"
+        subtitle={
+          <>
           An estimate in pounds, from the odds printed in each alert and the stake set for its strategy. It is not taken
           from the bets your betting software actually matched, so expect small differences from your real account.
-        </p>
-      </div>
+          </>
+        }
+      />
 
       {message && <p className="text-sm text-danger">{message}</p>}
       {(saveSending.error || saveWinLoss.error) && (

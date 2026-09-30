@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "@/components/nav/BottomNav";
+import SideNav from "@/components/nav/SideNav";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
 
@@ -19,10 +20,14 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
     }
   }, [pathname, setLastMoreRoute]);
 
+  // Pages full of charts get more room on wide screens; lists and forms read best at a narrower width.
+  const wide = pathname.startsWith("/dashboard") || pathname.startsWith("/more/admin/winloss");
+
   return (
     <div className="flex min-h-dvh flex-col bg-app text-ink">
-      <main className="flex-1 overflow-y-auto pb-[calc(64px+env(safe-area-inset-bottom,0px))]">
-        {children}
+      <SideNav />
+      <main className="flex-1 overflow-y-auto pb-[calc(64px+env(safe-area-inset-bottom,0px))] lg:pb-10 lg:pl-60">
+        <div className={`mx-auto w-full ${wide ? "max-w-5xl" : "max-w-3xl"} lg:pt-4`}>{children}</div>
       </main>
       <BottomNav />
     </div>

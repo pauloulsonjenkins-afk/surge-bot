@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Card } from "@/components/ui/Card";
 import { useQuery } from "@tanstack/react-query";
 import type { WinLossState } from "@/queries/use-winloss";
 import { getJson } from "@/queries/fetch-json";
@@ -31,17 +32,16 @@ export function WinLossSummary({ strategy }: { strategy: string | null }) {
   const showCost = key === null && data.settings.expenditure.enabled && data.periods.mtd.expenditure > 0;
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-medium text-ink">Win / loss</h2>
-          <p className="mt-0.5 truncate text-xs text-ink-muted">{strategy ?? "All strategies"} · estimate from alert odds</p>
-        </div>
-        <Link href="/more/admin/winloss" className="shrink-0 text-xs text-ink-muted underline">
+    <Card
+      title="Win / loss"
+      subtitle={`${strategy ?? "All strategies"} · estimate from alert odds`}
+      actions={
+        <Link href="/more/admin/winloss" className="text-xs text-ink-muted underline">
           Details
         </Link>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      }
+    >
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <p className="text-xs text-ink-muted">Last 7 days</p>
           <Amount value={pick("d7")} />
@@ -56,6 +56,6 @@ export function WinLossSummary({ strategy }: { strategy: string | null }) {
           )}
         </div>
       </div>
-    </section>
+    </Card>
   );
 }

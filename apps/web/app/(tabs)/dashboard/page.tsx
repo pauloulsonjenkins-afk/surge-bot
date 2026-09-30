@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { useState } from "react";
 import Link from "next/link";
 import { Lock } from "lucide-react";
@@ -31,19 +32,21 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4 px-4 py-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-medium tracking-tight text-ink">Dashboard</h1>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
+      <PageHeader
+        title="Dashboard"
+        actions={
+          <>
+          <span className="lg:hidden"><ThemeToggle /></span>
           <Link
             href="/more/admin/sending"
-            className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
+            className="flex items-center lg:hidden gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
           >
             <Lock size={13} />
             Admin
           </Link>
-        </div>
-      </div>
+          </>
+        }
+      />
       <TimeframeToggle value={timeframe} onChange={setTimeframe} />
       {strategy && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs">

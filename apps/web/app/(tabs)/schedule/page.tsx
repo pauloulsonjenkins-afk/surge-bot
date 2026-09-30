@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -165,28 +166,21 @@ export default function SchedulePage() {
 
   return (
     <div className="space-y-4 px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-lg font-medium tracking-tight text-ink">Schedule</h1>
-          {dayLabel && <p className="truncate text-xs text-ink-muted">{dayLabel}</p>}
-        </div>
-        <div role="tablist" aria-label="Day" className="inline-flex shrink-0 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
-          {(["today", "tomorrow"] as const).map((w) => (
-            <button
-              key={w}
-              type="button"
-              role="tab"
-              aria-selected={when === w}
-              onClick={() => setWhen(w)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                when === w ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
-              }`}
-            >
-              {w === "today" ? "Today" : "Tomorrow"}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="Schedule"
+        subtitle={dayLabel ?? undefined}
+        actions={
+          <Segmented
+            label="Day"
+            value={when}
+            onChange={setWhen}
+            options={[
+              { value: "today", label: "Today" },
+              { value: "tomorrow", label: "Tomorrow" },
+            ]}
+          />
+        }
+      />
 
       {error ? (
         <QueryError error={error} next="/schedule" />
@@ -270,22 +264,15 @@ export default function SchedulePage() {
                 </button>
               )}
             </div>
-            <div role="tablist" aria-label="Order" className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
-              {(["time", "country"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  role="tab"
-                  aria-selected={view === v}
-                  onClick={() => setView(v)}
-                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                    view === v ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
-                  }`}
-                >
-                  {v === "time" ? "By kick-off time" : "By country"}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              label="Order"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "time", label: "By kick-off time" },
+                { value: "country", label: "By country" },
+              ]}
+            />
           </div>
 
           {shownFixtures.length === 0 ? (

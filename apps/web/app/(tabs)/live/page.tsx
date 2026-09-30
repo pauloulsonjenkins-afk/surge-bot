@@ -1,10 +1,11 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { QueryError } from "@/components/ui/QueryError";
-import { marketName } from "@/lib/markets";
+import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 
 // An alert that has had no result edited in after this long is treated as
@@ -82,7 +83,7 @@ function PickCard({ pick }: { pick: LivePick }) {
       <div className="mt-3 flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm">
         <span className="text-ink-muted">Bet</span>
         <span className="font-medium text-ink">
-          {pick.market ? `${marketName(pick.market)}${pick.selection ? ` · ${pick.selection}` : ""}` : "No market set"}
+          {betText(pick.market, pick.selection) ?? "No market set"}
         </span>
       </div>
 
@@ -142,7 +143,7 @@ export default function LivePage() {
   if (error) {
     return (
       <div className="space-y-3 px-4 py-4">
-        <h1 className="text-lg font-medium tracking-tight text-ink">Live</h1>
+        <PageHeader title="Live" subtitle="Alerts as they arrive, newest first" />
         <QueryError error={error} next="/live" />
       </div>
     );
@@ -155,7 +156,7 @@ export default function LivePage() {
 
   return (
     <div className="space-y-5 px-4 py-4">
-      <h1 className="text-lg font-medium tracking-tight text-ink">Live</h1>
+      <PageHeader title="Live" subtitle="Alerts as they arrive, newest first" />
 
       {picks.length === 0 ? (
         <EmptyState title="No picks yet" detail="New picks appear here as they arrive." />

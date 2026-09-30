@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import TelegramConnection from "@/components/admin/TelegramConnection";
@@ -125,7 +126,7 @@ function PublicViewCard() {
 export default function SettingsPage() {
   return (
     <div className="space-y-3">
-      <h2 className="text-lg font-medium tracking-tight text-ink">Settings</h2>
+      <PageHeader as="h2" title="Settings" />
       <PublicViewCard />
       <FreshStartCard />
       <section className="rounded-xl border border-line bg-surface p-3.5">
