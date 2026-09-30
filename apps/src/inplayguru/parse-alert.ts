@@ -90,6 +90,8 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "Underdog taking charge action" backs the underdog to win or draw. This must come before the
   // "momentum" / "action" rules below, which would otherwise read it as an Over goals bet.
   { test: /\bunderdog\b/, market: "UNDERDOG_DOUBLE_CHANCE" },
+  // "Time to fight": Over the next goal, the same bet as Momentum (line = goals so far + 0.5).
+  { test: /time to fight/, market: "NEXT_GOAL" },
   { test: /momentum/, market: "NEXT_GOAL" },
   { test: /action/, market: "NEXT_GOAL" },
 ];
