@@ -48,13 +48,13 @@ export function HitRateTrendChart({ stats, isLoading }: { stats: HitRateStats | 
                     label={props.label}
                     payload={props.payload as unknown as ChartTooltipProps["payload"]}
                     series={{
-                      rate: { label: "Hit rate", color: "var(--accent)", format: (v) => `${v}%` },
+                      rate: { label: "Hit rate", color: "var(--chart)", format: (v) => `${v}%` },
                       settled: { label: "Settled", color: "var(--ink-muted)", format: (v) => String(v) },
                     }}
                   />
                 )}
               />
-              <Line isAnimationActive={false} type="monotone" dataKey="rate" stroke="var(--accent)" strokeWidth={2} dot={{ r: 3, fill: "var(--accent)" }} />
+              <Line isAnimationActive={false} type="monotone" dataKey="rate" stroke="var(--chart)" strokeWidth={2} dot={{ r: 3, fill: "var(--chart)" }} />
               <Line isAnimationActive={false} dataKey="settled" stroke="transparent" dot={false} activeDot={false} legendType="none" />
             </LineChart>
           </ResponsiveContainer>

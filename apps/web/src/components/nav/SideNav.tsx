@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Lock } from "lucide-react";
 import { useVisibleTabs } from "./BottomNav";
 import { useMe } from "@/queries/use-me";
-import { ADMIN_SECTIONS } from "@/lib/admin-sections";
+import { ADMIN_GROUPS } from "@/lib/admin-sections";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 const itemCls = (active: boolean) =>
@@ -48,22 +48,27 @@ export default function SideNav() {
 
         {me?.admin && (
           <>
-            <p className="mb-1 mt-6 flex items-center gap-1.5 px-3 text-xs font-medium text-ink-muted">
+            <p className="mb-1 mt-6 flex items-center gap-1.5 px-3 text-xs font-semibold text-ink">
               <Lock size={12} /> Admin
             </p>
-            <ul className="space-y-0.5">
-              {ADMIN_SECTIONS.map((s) => {
-                const active = isActive(s.href);
-                return (
-                  <li key={s.href}>
-                    <Link href={s.href} aria-current={active ? "page" : undefined} className={itemCls(active)}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-accent" : "bg-transparent"}`} aria-hidden />
-                      {s.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            {ADMIN_GROUPS.map((g) => (
+              <div key={g.label} className="mt-3">
+                <p className="mb-0.5 px-3 text-xs text-ink-muted">{g.label}</p>
+                <ul className="space-y-0.5">
+                  {g.items.map((s) => {
+                    const active = isActive(s.href);
+                    return (
+                      <li key={s.href}>
+                        <Link href={s.href} aria-current={active ? "page" : undefined} className={itemCls(active)}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-accent" : "bg-transparent"}`} aria-hidden />
+                          {s.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </>
         )}
       </nav>

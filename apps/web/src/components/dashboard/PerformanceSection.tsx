@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Card } from "@/components/ui/Card";
+import { Card, Segmented, ToggleChip } from "@/components/ui/Card";
 import { Grouping, LeagueFilter, MINUTE_BUCKETS, OTHER_COUNTRY, ResolvedCell, TIER_LABEL, TOP_LEAGUES } from "@/domain/performance";
 import { Agg, aggregate, groupLeagues, matchesLeague } from "@/lib/performance/derive";
 
@@ -37,11 +37,11 @@ function filterLabel(f: LeagueFilter, cells: ResolvedCell[]): string {
 }
 
 function LowSample() {
-  return <span className="ml-1 text-[10px] text-ink-muted">low n</span>;
+  return <span className="ml-1 text-xs text-ink-muted">low n</span>;
 }
 
 /**
- * Hit rate by league (grouped by country or tier), strategy and alert minute.
+ * Hit rate by strategy, alert minute and league (grouped by country or tier), as tabs on one card.
  * Tapping a country, tier, league or strategy re-filters everything on this section.
  */
 export function PerformanceSection({
@@ -57,6 +57,7 @@ export function PerformanceSection({
   const [grouping, setGrouping] = useState<Grouping>("country");
   const [leagueFilter, setLeagueFilter] = useState<LeagueFilter>({ type: "all" });
   const [topOnly, setTopOnly] = useState(true);
+  const [tab, setTab] = useState<"strategy" | "minute" | "league">("strategy");
 
   const byStrategy = useMemo(() => (strategy ? cells.filter((a) => a.strategy === strategy) : cells), [cells, strategy]);
   const byLeague = useMemo(() => cells.filter((a) => matchesLeague(a, leagueFilter)), [cells, leagueFilter]);
@@ -121,142 +122,53 @@ export function PerformanceSection({
     if (leagueFilter.type === "country" || leagueFilter.type === "tier") setLeagueFilter({ type: "all" });
   }
 
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {filtered && (
-        <div className="space-y-2.5">
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-ink-muted">Showing</span>
-            <span className="rounded-full bg-accent px-2.5 py-0.5 font-medium text-accent-ink">
-              {filterLabel(leagueFilter, cells)}
-            </span>
-            {strategy && <span className="rounded-full bg-accent px-2.5 py-0.5 font-medium text-accent-ink">{strategy}</span>}
-            <button
-              type="button"
-              onClick={() => {
-                setLeagueFilter({ type: "all" });
-                onStrategyChange(null);
-              }}
-              className="ml-1 text-ink-muted underline"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-xl border border-line bg-surface p-3">
-              <p className="text-xs text-ink-muted">Hit rate</p>
-              <p className="text-2xl font-medium tabular-nums text-ink">{pct(total)}</p>
-              <p className="text-[11px] text-ink-muted">
-                {total.hits} of {total.settled} settled
-              </p>
-            </div>
-            <div className="rounded-xl border border-line bg-surface p-3">
-              <p className="text-xs text-ink-muted">Alerts</p>
-              <p className="text-2xl font-medium tabular-nums text-ink">{total.alerts}</p>
-              <p className="text-[11px] text-ink-muted">{total.pending} still open</p>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-ink-muted">Showing</span>
+          <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{filterLabel(leagueFilter, cells)}</span>
+          {strategy && <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{strategy}</span>}
+          <span className="tabular-nums text-ink-muted">
+            · {pct(total)} from {total.settled} settled · {total.alerts} alerts
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setLeagueFilter({ type: "all" });
+              onStrategyChange(null);
+            }}
+            className="ml-1 text-ink-muted underline"
+          >
+            Clear
+          </button>
         </div>
       )}
 
-      <Card>
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-medium text-ink">By league</h2>
-            <p className="text-xs text-ink-muted">Tap a country, tier or league to filter this section</p>
-            {leagueCount > TOP_LEAGUES && (
-              <label className="mt-1.5 flex items-center gap-1.5 text-xs text-ink">
-                <input
-                  type="checkbox"
-                  checked={topOnly}
-                  onChange={(e) => setTopOnly(e.target.checked)}
-                  style={{ accentColor: "var(--accent)" }}
-                  className="h-3.5 w-3.5"
-                />
-                <span>
-                  Top {TOP_LEAGUES} leagues only
-                  {topOnly && <span className="text-ink-muted"> · {leagueCount - TOP_LEAGUES} more hidden</span>}
-                </span>
-              </label>
-            )}
-          </div>
-          <div role="tablist" aria-label="Group leagues by" className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
-            {(["country", "tier"] as const).map((g) => (
-              <button
-                key={g}
-                type="button"
-                role="tab"
-                aria-selected={grouping === g}
-                onClick={() => changeGrouping(g)}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  grouping === g ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
-                }`}
-              >
-                {g === "country" ? "Country" : "Tier"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {shownGroups.map((g) => {
-            const groupActive = sameFilter(leagueFilter, g.filter);
-            const title =
-              grouping === "tier" ? tierTitle(Number(g.key)) : g.key === OTHER_COUNTRY ? "Other leagues" : g.title;
-            return (
-              <div key={g.key}>
-                <button
-                  type="button"
-                  aria-pressed={groupActive}
-                  onClick={() => pickLeagueFilter(g.filter)}
-                  className={`flex w-full items-baseline justify-between rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
-                    groupActive ? "bg-accent text-accent-ink" : "bg-surface-2 text-ink"
-                  }`}
-                >
-                  <span className="font-medium">{title}</span>
-                  <span className="tabular-nums">
-                    {pct(g.agg)} <span className={groupActive ? "" : "text-ink-muted"}>· {g.agg.alerts}</span>
-                  </span>
-                </button>
-                <ul className="mt-1 grid grid-cols-2 gap-1.5">
-                  {g.rows.map((r) => {
-                    const active = leagueFilter.type === "league" && leagueFilter.leagueId === r.leagueId;
-                    return (
-                      <li key={r.leagueId}>
-                        <button
-                          type="button"
-                          aria-pressed={active}
-                          onClick={() => pickLeagueFilter({ type: "league", leagueId: r.leagueId })}
-                          style={active ? { background: TINT } : undefined}
-                          className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs text-ink transition-colors ${
-                            active ? "border-accent" : "border-line"
-                          }`}
-                        >
-                          <span className="block truncate">{r.name}</span>
-                          <span className="flex items-baseline justify-between gap-2">
-                            <span className="font-medium tabular-nums">
-                              {pct(r.agg)}
-                              {r.agg.lowSample && <LowSample />}
-                            </span>
-                            <span className="truncate text-[11px] text-ink-muted">
-                              {grouping === "tier" ? r.country : `T${r.tier || "–"}`} · {r.agg.alerts}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-2 gap-2.5">
-        <section className="rounded-xl border border-line bg-surface p-3">
-          <h3 className="mb-2 text-xs font-medium text-ink-muted">By strategy</h3>
-          <ul className="space-y-1">
+      <Card
+        title="Breakdown"
+        subtitle={
+          tab === "strategy"
+            ? "Tap a strategy to filter the whole dashboard to it"
+            : tab === "minute"
+              ? "Hit rate by the match minute the alert fired"
+              : "Tap a country, tier or league to filter this section"
+        }
+      >
+        <Segmented
+          label="Break down by"
+          value={tab}
+          onChange={setTab}
+          className="mb-4"
+          options={[
+            { value: "strategy", label: "Strategy" },
+            { value: "minute", label: "Minute" },
+            { value: "league", label: "League" },
+          ]}
+        />
+        {tab === "strategy" && (
+          <ul className="divide-y divide-line">
             {strategyRows.map((r) => {
               const active = strategy === r.name;
               return (
@@ -265,40 +177,44 @@ export function PerformanceSection({
                     type="button"
                     aria-pressed={active}
                     onClick={() => onStrategyChange(strategy === r.name ? null : r.name)}
-                    className={`w-full rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
-                      active ? "bg-accent text-accent-ink" : "text-ink"
+                    className={`flex w-full items-baseline justify-between gap-3 rounded-lg px-2 py-2.5 text-left transition-colors ${
+                      active ? "bg-accent/15" : "hover:bg-surface-2"
                     }`}
                   >
-                    <span className="flex items-baseline justify-between gap-2">
-                      <span className="leading-tight">{r.name}</span>
-                      <span className="font-medium tabular-nums">{pct(r.agg)}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm text-ink">{r.name}</span>
+                      <span className="text-xs text-ink-muted">
+                        {r.agg.alerts} alerts
+                        {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}
+                      </span>
                     </span>
-                    <span className={`text-[11px] ${active ? "" : "text-ink-muted"}`}>
-                      {r.agg.alerts} alerts
-                      {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}
-                    </span>
+                    <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{pct(r.agg)}</span>
                   </button>
                 </li>
               );
             })}
           </ul>
-        </section>
+        )}
 
-        <section className="rounded-xl border border-line bg-surface p-3">
-          <h3 className="mb-2 text-xs font-medium text-ink-muted">By alert minute</h3>
-          <ul className="space-y-2">
+        {tab === "minute" && (
+          <ul className="space-y-3">
             {minuteRows.map((r, i) => {
               const best = i === bestMinute;
               const width = r.agg.hitRate === null ? 0 : Math.round(r.agg.hitRate * 100);
               return (
-                <li key={r.label} className="text-xs">
+                <li key={r.label} className="text-sm">
                   <div className="flex justify-between text-ink">
-                    <span className={best ? "font-medium" : ""}>{r.label}</span>
-                    <span className="tabular-nums">{pct(r.agg)}</span>
+                    <span className={best ? "font-semibold" : ""}>
+                      {r.label}
+                      {best && <span className="ml-2 text-xs font-normal text-ink-muted">best</span>}
+                    </span>
+                    <span className="tabular-nums">
+                      {pct(r.agg)} <span className="text-xs text-ink-muted">· {r.agg.settled}</span>
+                    </span>
                   </div>
-                  <div className="mt-0.5 h-1.5 rounded-full bg-surface-2">
+                  <div className="mt-1 h-1.5 rounded-full bg-surface-2">
                     <div
-                      className={`h-1.5 rounded-full ${best ? "bg-accent" : "bg-ink-muted opacity-50"}`}
+                      className={`h-1.5 rounded-full ${best ? "bg-chart" : "bg-chart/40"}`}
                       style={{ width: `${width}%` }}
                     />
                   </div>
@@ -306,9 +222,79 @@ export function PerformanceSection({
               );
             })}
           </ul>
-          <p className="mt-2 text-[11px] text-ink-muted">Tap a strategy to filter the whole dashboard to it.</p>
-        </section>
-      </div>
+        )}
+
+        {tab === "league" && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Segmented
+                label="Group leagues by"
+                value={grouping}
+                onChange={changeGrouping}
+                options={[
+                  { value: "country", label: "Country" },
+                  { value: "tier", label: "Tier" },
+                ]}
+              />
+              {leagueCount > TOP_LEAGUES && (
+                <ToggleChip checked={topOnly} onChange={setTopOnly}>
+                  Top {TOP_LEAGUES} only{topOnly && ` · ${leagueCount - TOP_LEAGUES} hidden`}
+                </ToggleChip>
+              )}
+            </div>
+
+            {shownGroups.map((g) => {
+              const groupActive = sameFilter(leagueFilter, g.filter);
+              const title =
+                grouping === "tier" ? tierTitle(Number(g.key)) : g.key === OTHER_COUNTRY ? "Other leagues" : g.title;
+              return (
+                <div key={g.key}>
+                  <button
+                    type="button"
+                    aria-pressed={groupActive}
+                    onClick={() => pickLeagueFilter(g.filter)}
+                    className={`flex w-full items-baseline justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
+                      groupActive ? "bg-accent/15 text-ink shadow-[inset_2px_0_0_var(--accent)]" : "bg-surface-2 text-ink"
+                    }`}
+                  >
+                    <span className="font-medium">{title}</span>
+                    <span className="tabular-nums">
+                      {pct(g.agg)} <span className="text-xs text-ink-muted">· {g.agg.alerts}</span>
+                    </span>
+                  </button>
+                  <ul className="mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    {g.rows.map((r) => {
+                      const active = leagueFilter.type === "league" && leagueFilter.leagueId === r.leagueId;
+                      return (
+                        <li key={r.leagueId}>
+                          <button
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => pickLeagueFilter({ type: "league", leagueId: r.leagueId })}
+                            style={active ? { background: TINT } : undefined}
+                            className={`flex w-full items-baseline justify-between gap-2 rounded-lg border px-2 py-1.5 text-left text-sm text-ink transition-colors ${
+                              active ? "border-accent" : "border-line"
+                            }`}
+                          >
+                            <span className="min-w-0 truncate">{r.name}</span>
+                            <span className="shrink-0 tabular-nums">
+                              <span className="font-medium">{pct(r.agg)}</span>
+                              {r.agg.lowSample && <LowSample />}
+                              <span className="ml-1.5 text-xs text-ink-muted">
+                                {grouping === "tier" ? r.country : `T${r.tier || "–"}`} · {r.agg.alerts}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

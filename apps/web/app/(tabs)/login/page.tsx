@@ -66,7 +66,7 @@ function LoginForm() {
             className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           />
 
-          {error && <p className="text-sm text-danger">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <button
             type="submit"

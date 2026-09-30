@@ -64,12 +64,12 @@ export function StopLossControls({
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-ink">Stop loss</p>
         {status?.stopped && (
-          <span className="rounded-full bg-danger px-2 py-0.5 text-[10px] font-medium text-white">Stopped for today</span>
+          <span className="rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped for today</span>
         )}
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <label className="text-[11px] text-ink-muted">
+        <label className="text-xs text-ink-muted">
           Stop if down (£) today
           <input
             inputMode="decimal"
@@ -79,7 +79,7 @@ export function StopLossControls({
             onChange={(e) => setLoss(e.target.value)}
           />
         </label>
-        <label className="text-[11px] text-ink-muted">
+        <label className="text-xs text-ink-muted">
           Stop after losses in a row
           <input
             inputMode="numeric"
@@ -91,7 +91,7 @@ export function StopLossControls({
         </label>
       </div>
 
-      {error && <p className="mt-1.5 text-[11px] text-danger">{error}</p>}
+      {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {dirty && (
@@ -117,7 +117,7 @@ export function StopLossControls({
       </div>
 
       {hasLimits ? (
-        <p className={`mt-2 text-[11px] ${status.stopped ? "text-danger" : "text-ink-muted"}`}>
+        <p className={`mt-2 text-xs ${status.stopped ? "text-warn" : "text-ink-muted"}`}>
           {status.stopped
             ? `Stopped: ${status.reason}`
             : status.settledToday === 0
@@ -127,7 +127,7 @@ export function StopLossControls({
                 }.`}
         </p>
       ) : (
-        <p className="mt-2 text-[11px] text-ink-muted">No stop loss set. Only picks actually sent to bet are counted, and it resets at UK midnight.</p>
+        <p className="mt-2 text-xs text-ink-muted">No stop loss set. Only picks actually sent to bet are counted, and it resets at UK midnight.</p>
       )}
     </div>
   );

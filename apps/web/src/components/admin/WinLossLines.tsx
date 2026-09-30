@@ -28,7 +28,7 @@ function LinesTooltip({
   if (!active || !payload?.length) return null;
   return (
     <div className="max-w-[220px] rounded-lg border border-line bg-surface px-3 py-2 shadow-xl">
-      <p className="mb-1 text-[11px] font-medium text-ink">{label}</p>
+      <p className="mb-1 text-xs font-medium text-ink">{label}</p>
       <ul className="space-y-0.5">
         {series.map((s) => {
           const v = payload.find((p) => p.dataKey === s.key)?.value;
@@ -89,7 +89,7 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
       </div>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
         {series.map((s) => (
-          <li key={s.key} className="flex items-center gap-1.5 text-[11px] text-ink-muted">
+          <li key={s.key} className="flex items-center gap-1.5 text-xs text-ink-muted">
             <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
             {s.name}
           </li>

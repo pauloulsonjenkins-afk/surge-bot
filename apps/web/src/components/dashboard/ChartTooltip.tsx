@@ -22,7 +22,7 @@ export function ChartTooltip({ active, label, payload, series }: ChartTooltipPro
 
   return (
     <div className="max-w-[220px] rounded-lg border border-line bg-surface-2 px-3 py-2 shadow-xl">
-      {label !== undefined && <p className="mb-1 text-[11px] text-ink-muted">{label}</p>}
+      {label !== undefined && <p className="mb-1 text-xs text-ink-muted">{label}</p>}
       <div className="space-y-1">
         {payload.map((entry) => {
           const key = String(entry.dataKey ?? "");

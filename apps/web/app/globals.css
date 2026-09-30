@@ -7,39 +7,57 @@
  * an amber, closer to a dot-matrix sportsbook board than a generic
  * acid-green "AI dashboard" glow. Numerals use tabular-nums throughout so
  * scores and prices don't jitter as digits change.
+ *
+ * Colour roles — each colour has one job:
+ *   accent       "tap this" and "this is selected" only
+ *   hit / loss   a winning / losing pick or amount (loss is a cool red, well away from the amber)
+ *   warn         something needs attention: a missing setting, a flag, a stopped strategy
+ *   destructive  error messages and buttons that delete or remove
+ *   chart        the data colour for single-series charts and bars (a calm blue, so charts don't compete with actions)
+ *   On/off switches and "Sending on" use hit green: they report a state, they aren't a call to action.
+ *
+ * Cards are lifted a clear step above the page, so their borders can stay faint.
  */
 :root {
   --app: #0e1116;
-  --surface: #12161d;
-  --surface-2: #171c25;
-  --line: #242a33;
+  --surface: #171c24;
+  --surface-2: #1f252f;
+  --line: #262d38;
   --ink: #e7e9ec;
-  --ink-muted: #8b93a1;
+  --ink-muted: #939bab;
   --accent: #e8a33d;
   --accent-ink: #17110a;
-  --danger: #e8613d;
   --hit: #3fbf8f;
+  --loss: #ef5f78;
+  --warn: #e6cf4f;
+  --warn-ink: #1a1605;
+  --destructive: #e5484d;
+  --chart: #7aa7f5;
   color-scheme: dark;
 }
 
 /*
  * Light theme ("day"): warm paper for the page, clean off-white cards, the
  * same amber as the accent but deepened so it stays readable on light
- * backgrounds (4.7:1 as text on a card), and a deeper green and red for hits
- * and misses. Every text colour here passes 4.5:1 on the surface it is used on,
+ * backgrounds (4.7:1 as text on a card), and deeper colours for every role.
+ * Every text colour here passes 4.5:1 on the surface it is used on,
  * apart from muted text on the page background, which sits at 4.7:1.
  */
 :root[data-theme="light"] {
   --app: #f3f0e8;
   --surface: #fffefb;
   --surface-2: #efeadf;
-  --line: #ded8ca;
+  --line: #e2dccf;
   --ink: #1c1f26;
   --ink-muted: #666b76;
   --accent: #a86200;
   --accent-ink: #fffdf8;
-  --danger: #b83a17;
   --hit: #0c6f4d;
+  --loss: #b8203f;
+  --warn: #7d6400;
+  --warn-ink: #fffdf8;
+  --destructive: #c42b2f;
+  --chart: #2d62c4;
   color-scheme: light;
 }
 

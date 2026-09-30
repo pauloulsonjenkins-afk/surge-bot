@@ -1,8 +1,9 @@
 "use client";
 
-import { PageHeader } from "@/components/ui/Card";
-import { useState } from "react";
+import { PageHeader, Segmented } from "@/components/ui/Card";
+import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { RawAlerts } from "@/components/admin/RawAlerts";
 import { QueryError } from "@/components/ui/QueryError";
 import { betText } from "@/lib/markets";
 import { usePickDays, useAdminPicksWindow, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
@@ -28,11 +29,11 @@ function label(raw: string): string {
 
 function ResultChip({ pick }: { pick: LivePick }) {
   if (pick.result === "hit") return <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-hit">Hit</span>;
-  if (pick.result === "miss") return <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-danger">Miss</span>;
+  if (pick.result === "miss") return <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-loss">Miss</span>;
   return <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-ink-muted">No result yet</span>;
 }
 
-export default function ResultsPage() {
+function SettledPicks() {
   const [mode, setMode] = useState<"recent" | "date">("recent");
   const [picked, setPicked] = useState<string | null>(null);
   const days = usePickDays();
@@ -58,7 +59,7 @@ export default function ResultsPage() {
   function toggleExcluded(pick: LivePick) {
     const wording = pick.excluded
       ? "Put this pick back into your results and stats?"
-      : "Remove this pick from your results?\n\nUse this when the bet was wrong or never actually went on. It comes out of the Dashboard, Trade Log and Win/Loss straight away. The original alert stays on the Picks page, and you can put it back at any time.";
+      : "Remove this pick from your results?\n\nUse this when the bet was wrong or never actually went on. It comes out of the Dashboard, Trade Log and Win/Loss straight away. The original alert stays on the Raw alerts tab, and you can put it back at any time.";
     const ok = window.confirm(`${wording}\n\n${pick.home ?? "?"} v ${pick.away ?? "?"}`);
     if (ok) setExcluded.mutate({ id: pick.id, excluded: !pick.excluded });
   }
@@ -83,38 +84,20 @@ export default function ResultsPage() {
 
   return (
     <div className="space-y-3">
-      <PageHeader
-        as="h2"
-        title="Results"
-        subtitle={
-          <>
-          Change a result by hand if the alert got it wrong. Your change is kept even if the alert is edited again, and
-          you can put the original back at any time.
-          </>
-        }
-      />
+      <p className="text-sm text-ink-muted">
+        Change a result by hand if the alert got it wrong. Your change is kept even if the alert is edited again, and
+        you can put the original back at any time.
+      </p>
 
-      <div role="tablist" aria-label="Which results" className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
-        {(
-          [
-            ["recent", "Last 24 hours"],
-            ["date", "By date"],
-          ] as const
-        ).map(([value, text]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={mode === value}
-            onClick={() => setMode(value)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              mode === value ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
-            }`}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        label="Which results"
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: "recent", label: "Last 24 hours" },
+          { value: "date", label: "By date" },
+        ]}
+      />
 
       {mode === "date" &&
         (dayList.length === 0 ? (
@@ -161,8 +144,8 @@ export default function ResultsPage() {
         </p>
       )}
 
-      {setResult.error && <p className="text-sm text-danger">{setResult.error.message}</p>}
-      {setExcluded.error && <p className="text-sm text-danger">{setExcluded.error.message}</p>}
+      {setResult.error && <p className="text-sm text-destructive">{setResult.error.message}</p>}
+      {setExcluded.error && <p className="text-sm text-destructive">{setExcluded.error.message}</p>}
 
       {noDays ? null : loading ? (
         <div className="space-y-3">
@@ -176,7 +159,7 @@ export default function ResultsPage() {
       ) : (
         data.map((p) => (
           <article key={p.id} className={`rounded-xl border border-line bg-surface p-3.5 ${p.excluded ? "opacity-50" : ""}`}>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">{label(p.strategy)}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label(p.strategy)}</p>
             <p className="mt-1 text-sm font-medium text-ink">
               {p.home ?? "Unknown"} v {p.away ?? "Unknown"}
             </p>
@@ -203,13 +186,13 @@ export default function ResultsPage() {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <ResultChip pick={p} />
               {p.resultOverridden && (
-                <span className="text-[11px] text-ink-muted">
+                <span className="text-xs text-ink-muted">
                   Amended{p.originalResult ? ` (before: ${p.originalResult === "hit" ? "Hit" : "Miss"})` : ""}
                 </span>
               )}
             </div>
             {p.detail?.resultSource === "score" && p.detail.alertResult && p.detail.alertResult !== p.detail.result && (
-              <p className="mt-2 text-[11px] text-ink-muted">
+              <p className="mt-2 text-xs text-ink-muted">
                 The alert&rsquo;s own tick said {p.detail.alertResult === "hit" ? "Hit" : "Miss"}, but the final score
                 makes it a {p.detail.result === "hit" ? "Hit" : "Miss"}, so that is what is used.
               </p>
@@ -229,7 +212,7 @@ export default function ResultsPage() {
                   type="button"
                   disabled={setResult.isPending || p.result === "miss"}
                   onClick={() => change(p, "miss")}
-                  className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-danger disabled:opacity-40"
+                  className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-loss disabled:opacity-40"
                 >
                   Set Miss
                 </button>
@@ -251,7 +234,7 @@ export default function ResultsPage() {
                 type="button"
                 disabled={setExcluded.isPending}
                 onClick={() => toggleExcluded(p)}
-                className={`text-xs underline disabled:opacity-40 ${p.excluded ? "text-ink-muted" : "text-danger"}`}
+                className={`text-xs underline disabled:opacity-40 ${p.excluded ? "text-ink-muted" : "text-destructive"}`}
               >
                 {p.excluded ? "Put back" : "Remove from results"}
               </button>
@@ -259,6 +242,41 @@ export default function ResultsPage() {
           </article>
         ))
       )}
+    </div>
+  );
+}
+
+/**
+ * The admin's editing view of the Trade Log: settled picks with buttons to correct them, and the alerts exactly as
+ * they arrived. Opened from the Trade Log's "Amend results" button or the admin menu.
+ */
+export default function AmendResultsPage() {
+  const [view, setView] = useState<"settled" | "raw">("settled");
+
+  // The old Picks page sends people here with ?view=raw.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("view") === "raw") setView("raw");
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        as="h2"
+        title="Amend results"
+        subtitle="The Trade Log, with the tools to correct it."
+        actions={
+          <Segmented
+            label="View"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "settled", label: "Picks" },
+              { value: "raw", label: "Raw alerts" },
+            ]}
+          />
+        }
+      />
+      {view === "settled" ? <SettledPicks /> : <RawAlerts />}
     </div>
   );
 }

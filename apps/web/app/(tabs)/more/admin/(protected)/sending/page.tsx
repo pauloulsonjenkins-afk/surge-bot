@@ -198,12 +198,12 @@ export default function SendingPage() {
     <div className="space-y-3">
       <PageHeader as="h2" title="Sending" subtitle="Controls which picks are handed to your betting software." />
 
-      {save.error && <p className="text-sm text-danger">{save.error.message}</p>}
-      {remove.error && <p className="text-sm text-danger">{remove.error.message}</p>}
+      {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
+      {remove.error && <p className="text-sm text-destructive">{remove.error.message}</p>}
 
       {/* 1. Status: the one thing that matters most, always at the top. */}
       <section
-        className={`rounded-xl border p-3.5 ${settings.enabled ? "border-accent bg-surface" : "border-line bg-surface"}`}
+        className={`rounded-xl border p-3.5 ${settings.enabled ? "border-hit/40 bg-surface" : "border-line bg-surface"}`}
         aria-label="Sending status"
       >
         <div className="flex items-center justify-between gap-3">
@@ -211,11 +211,11 @@ export default function SendingPage() {
             <p className="text-sm font-medium text-ink">{settings.enabled ? "Sending is ON" : "Sending is OFF"}</p>
             <p className="mt-0.5 text-xs text-ink-muted">
               {settings.enabled ? `${onCount} of ${data.strategies.length} strategies switched on` : "Nothing is handed over while this is off."}
-              {stoppedCount > 0 && <span className="text-danger"> · {stoppedCount} stopped by stop loss today</span>}
+              {stoppedCount > 0 && <span className="text-warn"> · {stoppedCount} stopped by stop loss today</span>}
             </p>
-            <p className="mt-0.5 text-[11px] text-ink-muted">
+            <p className="mt-0.5 text-xs text-ink-muted">
               {!data.feedTokenConfigured ? (
-                <span className="text-danger">No feed link set up: see the Feed tab below.</span>
+                <span className="text-warn">No feed link set up: see the Feed tab below.</span>
               ) : (
                 <>Betting software last checked: {data.lastFeedFetchAt ? whenFmt.format(new Date(data.lastFeedFetchAt)) : "not yet"}</>
               )}
@@ -236,8 +236,8 @@ export default function SendingPage() {
 
       {/* 2. Strategies: one compact row each; open a row to change its stake, minimum odds or stop loss. */}
       <Card title="Strategies" subtitle="Tap a strategy to set its stake, minimum odds and stop loss. Each one is off until you switch it on.">
-        {stakeError && <p className="mb-2 text-xs text-danger">{stakeError}</p>}
-        {minError && <p className="mb-2 text-xs text-danger">{minError}</p>}
+        {stakeError && <p className="mb-2 text-xs text-destructive">{stakeError}</p>}
+        {minError && <p className="mb-2 text-xs text-destructive">{minError}</p>}
         {data.strategies.length === 0 ? (
           <p className="text-xs text-ink-muted">Strategies appear here as picks arrive.</p>
         ) : (
@@ -268,8 +268,8 @@ export default function SendingPage() {
                     .join(" · ");
               return (
                 <li key={s.label} className="py-2.5">
-                  {idx === 0 && onCount > 0 && <p className="-mt-1 mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted">Switched on</p>}
-                  {firstOff && <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted">Switched off</p>}
+                  {idx === 0 && onCount > 0 && <p className="-mt-1 mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">Switched on</p>}
+                  {firstOff && <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">Switched off</p>}
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
@@ -282,14 +282,14 @@ export default function SendingPage() {
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm text-ink">{s.label}</span>
-                        <span className={`block truncate text-xs ${supported ? "text-ink-muted" : "text-danger"}`}>
+                        <span className={`block truncate text-xs ${supported ? "text-ink-muted" : "text-warn"}`}>
                           {note}
-                          {summary && <span className={s.stake === null ? "text-danger" : ""}> · {summary}</span>}
+                          {summary && <span className={s.stake === null ? "text-warn" : ""}> · {summary}</span>}
                         </span>
                       </span>
                     </button>
                     {s.stopLoss?.stopped && (
-                      <span className="shrink-0 rounded-full bg-danger px-2 py-0.5 text-[10px] font-medium text-white">Stopped today</span>
+                      <span className="shrink-0 rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>
                     )}
                     <button
                       type="button"
@@ -300,7 +300,7 @@ export default function SendingPage() {
                       title={!supported ? "This strategy can't be sent yet" : s.stake === null ? "Set a stake first" : undefined}
                       onClick={() => save.mutate({ strategies: { [key]: !s.enabled } })}
                       className={`h-6 w-11 shrink-0 rounded-full p-0.5 ring-1 ring-inset ring-line transition-colors disabled:opacity-40 ${
-                        s.enabled ? "bg-accent" : "bg-surface-2"
+                        s.enabled ? "bg-hit" : "bg-surface-2"
                       }`}
                     >
                       <span
@@ -313,7 +313,7 @@ export default function SendingPage() {
                     <div className="mt-2 space-y-3 pl-5">
                       {supported && (
                         <div className="grid grid-cols-2 gap-3">
-                          <label className="text-[11px] text-ink-muted">
+                          <label className="text-xs text-ink-muted">
                             Stake (£)
                             <div className="mt-1 flex gap-1.5">
                               <input
@@ -334,9 +334,9 @@ export default function SendingPage() {
                                 </button>
                               )}
                             </div>
-                            {!dirty && s.stake === null && <span className="mt-1 block text-danger">Needed to switch on</span>}
+                            {!dirty && s.stake === null && <span className="mt-1 block text-warn">Needed to switch on</span>}
                           </label>
-                          <label className="text-[11px] text-ink-muted">
+                          <label className="text-xs text-ink-muted">
                             Minimum odds
                             <div className="mt-1 flex gap-1.5">
                               <input
@@ -358,7 +358,7 @@ export default function SendingPage() {
                               )}
                             </div>
                           </label>
-                          <p className="col-span-2 -mt-1 text-[11px] text-ink-muted">
+                          <p className="col-span-2 -mt-1 text-xs text-ink-muted">
                             {s.minOdds !== null
                               ? `Your betting software waits for odds of ${s.minOdds.toFixed(2)} or better before it places the bet. Applies to new picks only.`
                               : "Minimum odds are optional: your betting software waits for at least this price before it places the bet."}
@@ -377,12 +377,12 @@ export default function SendingPage() {
                           type="button"
                           onClick={() => remove.run(s.label, { alerts: s.alerts, sent: s.sent })}
                           disabled={remove.isPending}
-                          className="text-xs text-danger underline disabled:opacity-50"
+                          className="text-xs text-destructive underline disabled:opacity-50"
                         >
                           Remove this strategy
                         </button>
                       ) : (
-                        <p className="text-[11px] text-ink-muted">To remove this strategy, switch it off first.</p>
+                        <p className="text-xs text-ink-muted">To remove this strategy, switch it off first.</p>
                       )}
                     </div>
                   )}
@@ -440,7 +440,7 @@ export default function SendingPage() {
               role="tab"
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
-              className={`rounded-md px-1 py-1.5 text-[11px] font-medium leading-tight transition-colors sm:text-xs ${
+              className={`rounded-md px-1 py-1.5 text-xs font-medium leading-tight transition-colors sm:text-xs ${
                 tab === t.id ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
               }`}
             >
@@ -519,7 +519,7 @@ export default function SendingPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-ink">Underdog win or draw</p>
-                <p className="mt-0.5 text-[11px] text-ink-muted">Double Chance on the side with the longer pre-match price.</p>
+                <p className="mt-0.5 text-xs text-ink-muted">Double Chance on the side with the longer pre-match price.</p>
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label className="text-xs text-ink-muted">
                     Market code
@@ -537,7 +537,7 @@ export default function SendingPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-ink">Favourite to win</p>
-                <p className="mt-0.5 text-[11px] text-ink-muted">Match Odds on the side with the shorter live price in the alert.</p>
+                <p className="mt-0.5 text-xs text-ink-muted">Match Odds on the side with the shorter live price in the alert.</p>
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label className="text-xs text-ink-muted">
                     Market code
@@ -564,7 +564,7 @@ export default function SendingPage() {
                   <span className="break-all font-mono text-ink">/feeds/bets/YOUR-TOKEN.csv</span>.
                 </p>
               ) : (
-                <p className="text-xs text-danger">
+                <p className="text-xs text-warn">
                   No link exists yet. On the engine component, add a variable named <span className="font-mono">BET_FEED_TOKEN</span> with a long
                   random value (letters and numbers only), then redeploy the engine.
                 </p>
@@ -573,7 +573,7 @@ export default function SendingPage() {
                 Last checked by your betting software:{" "}
                 <span className="text-ink">{data.lastFeedFetchAt ? whenFmt.format(new Date(data.lastFeedFetchAt)) : "not yet"}</span>
                 {data.lastFeedFetcher && (
-                  <span className="block truncate text-[11px] text-ink-muted" title={data.lastFeedFetcher}>
+                  <span className="block truncate text-xs text-ink-muted" title={data.lastFeedFetcher}>
                     by {data.lastFeedFetcher}
                   </span>
                 )}
@@ -602,7 +602,7 @@ export default function SendingPage() {
                 >
                   Undo
                 </button>
-                <span className="text-[11px] text-ink-muted">Unsaved changes (saving covers all tabs)</span>
+                <span className="text-xs text-ink-muted">Unsaved changes (saving covers all tabs)</span>
               </>
             )}
           </div>

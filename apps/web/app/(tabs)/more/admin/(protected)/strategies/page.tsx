@@ -57,22 +57,22 @@ function StrategyCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="break-words text-sm font-medium text-ink">{row.label}</p>
-          <p className={`text-xs ${row.market ? "text-ink-muted" : "text-danger"}`}>{marketName(row.market) ?? "No market set"}</p>
+          <p className={`text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>{marketName(row.market) ?? "No market set"}</p>
         </div>
         <p className="shrink-0 text-xl font-medium tabular-nums text-ink">{hitRate === null ? "–" : `${hitRate}%`}</p>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={hitRate === null ? "No settled alerts yet" : `Hit rate ${hitRate}%`}>
-        <div className="h-full rounded-full bg-accent" style={{ width: `${hitRate ?? 0}%` }} />
+        <div className="h-full rounded-full bg-chart" style={{ width: `${hitRate ?? 0}%` }} />
       </div>
-      <p className="mt-2 text-[11px] text-ink-muted">
+      <p className="mt-2 text-xs text-ink-muted">
         {row.hits} hit{row.hits === 1 ? "" : "s"} · {row.misses} miss{row.misses === 1 ? "" : "es"} · {row.alertsSince} alert{row.alertsSince === 1 ? "" : "s"}
         {settled > 0 && settled < 30 ? " · small sample" : ""} · last {lastSeen.format(new Date(row.lastAlertAt))}
       </p>
 
-      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{row.mergedInto}”</span>}
         {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.join(", ")}</span>}
-        {row.sendingOn && <span className="rounded-full bg-accent px-2 py-0.5 font-medium text-accent-ink">Sending on{row.stake !== null ? ` · £${row.stake.toFixed(2)}` : ""}</span>}
+        {row.sendingOn && <span className="rounded-full bg-hit/15 px-2 py-0.5 font-medium text-hit">Sending on{row.stake !== null ? ` · £${row.stake.toFixed(2)}` : ""}</span>}
         {row.sent > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">{row.sent} sent to bet</span>}
       </div>
 
@@ -102,12 +102,12 @@ function StrategyCard({
           disabled={busy || row.sendingOn}
           onClick={onDelete}
           title={row.sendingOn ? "Switch sending off for this strategy first (Sending page)" : undefined}
-          className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-danger hover:bg-surface-2 disabled:opacity-40"
+          className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-destructive hover:bg-surface-2 disabled:opacity-40"
         >
           Delete strategy
         </button>
       </div>
-      {row.sendingOn && <p className="mt-1.5 text-[11px] text-ink-muted">To delete this one, switch it off on the Sending page first.</p>}
+      {row.sendingOn && <p className="mt-1.5 text-xs text-ink-muted">To delete this one, switch it off on the Sending page first.</p>}
 
       {merging && !row.mergedInto && (
         <div className="mt-3 space-y-2 rounded-lg bg-surface-2 p-2.5">
@@ -126,7 +126,7 @@ function StrategyCard({
               ))}
             </select>
           </label>
-          <p className="text-[11px] text-ink-muted">
+          <p className="text-xs text-ink-muted">
             The Dashboard and stats then treat both as one strategy, and nothing is deleted. Sending is not affected: each strategy keeps its own
             switch and stake.
           </p>
@@ -301,7 +301,7 @@ export default function StrategiesPage() {
                 type="button"
                 disabled={picked.size === 0 || bulkBusy}
                 onClick={() => void deleteSelected()}
-                className="rounded-md bg-danger px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
               >
                 {bulkBusy ? "Deleting…" : `Delete ${picked.size || ""} selected`.replace("  ", " ")}
               </button>
@@ -323,7 +323,7 @@ export default function StrategiesPage() {
         <p className="text-sm text-ink-muted">Strategies appear here once alerts arrive.</p>
       ) : (
         <>
-          {failed && <p className="rounded-md border border-line bg-surface p-2 text-xs text-danger">{failed.message}</p>}
+          {failed && <p className="rounded-md border border-line bg-surface p-2 text-xs text-destructive">{failed.message}</p>}
           <ul className="space-y-2">
             {strategies.map((r) => (
               <StrategyCard
@@ -352,7 +352,7 @@ export default function StrategiesPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => void clearIgnored()}
-                  className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-danger hover:bg-surface-2 disabled:opacity-50"
+                  className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-destructive hover:bg-surface-2 disabled:opacity-50"
                 >
                   Clear list
                 </button>

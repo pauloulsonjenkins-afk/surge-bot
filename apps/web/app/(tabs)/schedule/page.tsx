@@ -1,8 +1,8 @@
 "use client";
 
-import { PageHeader, Segmented } from "@/components/ui/Card";
+import { PageHeader, Segmented, ToggleChip } from "@/components/ui/Card";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
@@ -46,8 +46,8 @@ function PhaseChip({ phase }: { phase: Phase }) {
           : phase === "cancelled"
             ? "Cancelled"
             : "Time TBC";
-  const colour = phase === "postponed" || phase === "cancelled" ? "text-danger" : "text-ink-muted";
-  return <span className={`shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-medium ${colour}`}>{text}</span>;
+  const colour = phase === "postponed" || phase === "cancelled" ? "text-warn" : "text-ink-muted";
+  return <span className={`shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium ${colour}`}>{text}</span>;
 }
 
 interface LeagueGroup {
@@ -82,16 +82,6 @@ function groupByCountry(fixtures: ScheduleFixture[]): CountryGroup[] {
     return i === -1 ? PINNED_COUNTRIES.length : i;
   };
   return out.sort((a, b) => pin(a.country) - pin(b.country) || b.games - a.games || a.country.localeCompare(b.country));
-}
-
-function StatCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return (
-    <div className="rounded-xl border border-line bg-surface p-3">
-      <p className="text-xs text-ink-muted">{label}</p>
-      <p className="text-xl font-medium tabular-nums text-ink">{value}</p>
-      {detail && <p className="truncate text-[11px] text-ink-muted">{detail}</p>}
-    </div>
-  );
 }
 
 export default function SchedulePage() {
@@ -165,7 +155,7 @@ export default function SchedulePage() {
   const fresh = pulled !== null && nowSec * 1000 - pulled.getTime() < FRESH_MS;
 
   return (
-    <div className="space-y-4 px-4 py-4">
+    <div className="space-y-6 px-4 py-4">
       <PageHeader
         title="Schedule"
         subtitle={dayLabel ?? undefined}
@@ -206,73 +196,75 @@ export default function SchedulePage() {
         </div>
       ) : (
         <>
-          <section className="rounded-xl border border-line bg-surface p-4">
-            <p className="text-3xl font-medium tabular-nums tracking-tight text-ink">
-              {summary.games} <span className="text-base font-normal text-ink-muted">games</span>
+          {/* One line in place of four summary cards: "14 games · 9 to start · next 14:09 Primera C". */}
+          <section aria-label="Summary" className="space-y-1">
+            <p className="text-sm text-ink">
+              <span className="font-semibold tabular-nums">{summary.games}</span> games
+              <span className="text-ink-muted"> · </span>
+              <span className="font-semibold tabular-nums">{summary.toStart}</span> to start
+              <span className="text-ink-muted"> · </span>
+              {summary.next ? (
+                <>
+                  next <span className="font-semibold tabular-nums">{kickoffTime(summary.next)}</span>{" "}
+                  <span className="text-ink-muted">{summary.next.league}</span>
+                </>
+              ) : (
+                <span className="text-ink-muted">{when === "today" ? "all under way" : "no kick-off times yet"}</span>
+              )}
+              {summary.off > 0 && <span className="text-warn"> · {summary.off} off</span>}
             </p>
-            <p className="mt-0.5 text-sm text-ink">
-              across <span className="font-medium tabular-nums">{summary.leagues}</span> leagues in{" "}
-              <span className="font-medium tabular-nums">{summary.countries}</span> countries
-            </p>
-            {updated && (
-              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-ink-muted">
+            <p className="flex items-center gap-1.5 text-xs text-ink-muted">
+              {updated && (
                 <span
                   role="img"
                   aria-label={fresh ? "Updated in the last 24 hours" : "Not updated in the last 24 hours"}
                   title={fresh ? "Updated in the last 24 hours" : "Not updated in the last 24 hours"}
-                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${fresh ? "bg-hit" : "bg-danger"}`}
+                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${fresh ? "bg-hit" : "bg-warn"}`}
                 />
-                <span>
-                  Updated {updated}
-                  {data.pull.lastError && " · the latest refresh failed, showing the last good list"}
-                </span>
-              </p>
-            )}
+              )}
+              <span>
+                {summary.leagues} leagues in {summary.countries} countries
+                {updated && ` · updated ${updated}`}
+                {data.pull.lastError && " · the latest refresh failed, showing the last good list"}
+              </span>
+            </p>
           </section>
 
-          <div className="grid grid-cols-3 gap-2">
-            <StatCard label="Still to start" value={String(summary.toStart)} />
-            <StatCard
-              label="Next kick-off"
-              value={summary.next ? kickoffTime(summary.next) : "–"}
-              detail={summary.next ? summary.next.league : when === "today" ? "All under way" : undefined}
-            />
-            <StatCard label="Off / postponed" value={String(summary.off)} />
-          </div>
-
+          {/* The toolbar: search and order on one row, the filter chip and expand-all underneath. */}
           <div className="space-y-2">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search team, league or country"
-              className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
-            />
-            <div className="flex items-center justify-between text-xs">
-              <label className="flex items-center gap-1.5 text-ink">
+            <div className="flex items-center gap-2">
+              <label className="relative min-w-0 flex-1">
+                <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
                 <input
-                  type="checkbox"
-                  checked={hideStarted}
-                  onChange={(e) => setHideStarted(e.target.checked)}
-                  style={{ accentColor: "var(--accent)" }}
-                  className="h-3.5 w-3.5"
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search"
+                  aria-label="Search by team, league or country"
+                  className="w-full rounded-lg border border-line bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-muted"
                 />
-                Only games still to start
               </label>
+              <Segmented
+                label="Order"
+                value={view}
+                onChange={setView}
+                className="shrink-0"
+                options={[
+                  { value: "time", label: "By time" },
+                  { value: "country", label: "By country" },
+                ]}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <ToggleChip checked={hideStarted} onChange={setHideStarted}>
+                Only upcoming
+              </ToggleChip>
               {view === "country" && groups.length > 1 && (
-                <button type="button" onClick={() => setAll(!allOpen)} className="text-ink-muted underline">
+                <button type="button" onClick={() => setAll(!allOpen)} className="text-xs text-ink-muted underline">
                   {allOpen ? "Collapse all" : "Expand all"}
                 </button>
               )}
             </div>
-            <Segmented
-              label="Order"
-              value={view}
-              onChange={setView}
-              options={[
-                { value: "time", label: "By kick-off time" },
-                { value: "country", label: "By country" },
-              ]}
-            />
           </div>
 
           {shownFixtures.length === 0 ? (
@@ -286,17 +278,17 @@ export default function SchedulePage() {
                 return (
                   <li key={f.id}>
                     {startsNewBlock && (
-                      <p className="bg-surface-2 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                      <p className="bg-surface-2 px-3 py-1 text-xs font-medium text-ink-muted">
                         Already started, finished or off
                       </p>
                     )}
                     <div className={`flex items-center gap-3 px-3 py-2 text-sm ${phase === "upcoming" ? "" : "opacity-60"}`}>
-                      <span className="w-11 shrink-0 tabular-nums text-ink-muted">{phase === "tbc" ? "TBC" : kickoffTime(f)}</span>
+                      <span className="w-11 shrink-0 font-medium tabular-nums text-ink">{phase === "tbc" ? "TBC" : kickoffTime(f)}</span>
                       <span className="min-w-0 flex-1 text-ink">
                         <span className="block truncate">
                           {f.home} <span className="text-ink-muted">v</span> {f.away}
                         </span>
-                        <span className="block truncate text-[11px] text-ink-muted">
+                        <span className="block truncate text-xs text-ink-muted">
                           {f.league} · {f.country === "World" ? "International" : f.country}
                         </span>
                       </span>
@@ -324,7 +316,7 @@ export default function SchedulePage() {
                         <span className="block truncate text-sm font-medium text-ink">
                           {g.country === "World" ? "International" : g.country}
                         </span>
-                        <span className="text-[11px] text-ink-muted">
+                        <span className="text-xs text-ink-muted">
                           {g.games} {g.games === 1 ? "game" : "games"} · {g.leagues.length}{" "}
                           {g.leagues.length === 1 ? "league" : "leagues"}
                         </span>
@@ -339,7 +331,7 @@ export default function SchedulePage() {
                       <div className="border-t border-line">
                         {g.leagues.map((l) => (
                           <div key={l.key} className="px-3 py-2">
-                            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted">{l.league}</p>
+                            <p className="mb-1 text-xs font-medium text-ink-muted">{l.league}</p>
                             <ul className="divide-y divide-line">
                               {l.fixtures.map((f) => {
                                 const phase = phaseOf(f, nowSec);
@@ -348,7 +340,7 @@ export default function SchedulePage() {
                                     key={f.id}
                                     className={`flex items-center gap-3 py-1.5 text-sm ${phase === "upcoming" ? "" : "opacity-60"}`}
                                   >
-                                    <span className="w-11 shrink-0 tabular-nums text-ink-muted">
+                                    <span className="w-11 shrink-0 font-medium tabular-nums text-ink">
                                       {phase === "tbc" ? "TBC" : kickoffTime(f)}
                                     </span>
                                     <span className="min-w-0 flex-1 text-ink">
@@ -369,7 +361,7 @@ export default function SchedulePage() {
               })}
             </ul>
           )}
-          <p className="text-center text-[11px] text-ink-muted">
+          <p className="text-center text-xs text-ink-muted">
             Times are UK time. Refreshed at 06:00 and 15:00, not live scores.
           </p>
         </>

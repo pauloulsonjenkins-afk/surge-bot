@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
+import { ChevronDown } from "lucide-react";
 import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
@@ -9,7 +12,7 @@ import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 
 // An alert that has had no result edited in after this long is treated as
-// "earlier" rather than still in play.
+// finished rather than still in play. Finished picks live on the Trade Log.
 const STILL_LIVE_MS = 3 * 60 * 60 * 1000;
 
 function fmtTime(iso: string): string {
@@ -20,118 +23,123 @@ function pairText(pair: [number, number] | undefined): string | null {
   return pair ? `${pair[0]} – ${pair[1]}` : null;
 }
 
+/** Strategy names carry a bracketed note from the alert ("Goal Brewing (v2)"); the row only has room for the name. */
+function shortStrategy(raw: string): string {
+  return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
+}
+
+/** The newest score we have: half-time once it is in, otherwise the score when the alert fired. */
+function latestScore(pick: LivePick): string {
+  if (pick.htScore) return pick.htScore.replace(/\s*[-–]\s*/, " – ");
+  return pick.goalsHome !== null && pick.goalsAway !== null ? `${pick.goalsHome} – ${pick.goalsAway}` : "– –";
+}
+
 function StatusChip({ pick }: { pick: LivePick }) {
   let label = "Captured";
   let cls = "bg-surface-2 text-ink-muted";
-  if (pick.status === "settled") {
-    if (pick.result === "hit") {
-      label = "Hit";
-      cls = "bg-surface-2 text-hit";
-    } else if (pick.result === "miss") {
-      label = "Miss";
-      cls = "bg-surface-2 text-danger";
-    } else {
-      label = "Settled";
-    }
-  } else if (pick.sentAt) {
+  if (pick.sentAt) {
     label = "Sent to bet";
-    cls = "bg-accent text-accent-ink";
+    cls = "bg-accent/15 text-accent";
   } else if (pick.status === "flagged") {
     label = "Needs review";
-    cls = "bg-surface-2 text-danger";
+    cls = "bg-warn/15 text-warn";
   } else if (pick.status === "unmapped") {
     label = "Unmapped";
-    cls = "bg-surface-2 text-danger";
+    cls = "bg-warn/15 text-warn";
   }
-  return <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>{label}</span>;
+  return <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
 }
 
-function PickCard({ pick }: { pick: LivePick }) {
-  const settled = pick.status === "settled";
+/**
+ * One alert as a compact row (about 72px): the minute, the teams and the score on the first line, the strategy
+ * and bet on the second. Tapping it opens the match stats underneath.
+ */
+function PickRow({ pick }: { pick: LivePick }) {
+  const [open, setOpen] = useState(false);
   const stats = pick.detail?.stats ?? {};
-  // Corners lead for the corners strategy; the rest fill the remaining slots.
+  // Corners lead for the corners strategy; for the rest they come last.
   const cornersFirst = pick.market === "FIRST_HALF_CORNERS";
+  const corners: Array<[string, string | null]> = [["Corners", pairText(stats["Corners"])]];
   const keyStats: Array<[string, string | null]> = [
-    ...(cornersFirst ? ([["Corners", pairText(stats["Corners"])]] as Array<[string, string | null]>) : []),
+    ...(cornersFirst ? corners : []),
     ["Momentum", pairText(stats["Momentum"])],
     ["xG", pairText(stats["xG"])],
     ["Shots on target", pairText(stats["Shots On Target"])],
+    ...(cornersFirst ? [] : corners),
   ];
-  const shownStats = (keyStats.filter(([, v]) => v !== null) as Array<[string, string]>).slice(0, 3);
-  const score =
-    pick.goalsHome !== null && pick.goalsAway !== null ? `${pick.goalsHome} – ${pick.goalsAway}` : "– –";
+  const shownStats = keyStats.filter(([, v]) => v !== null) as Array<[string, string]>;
+  const minute = pick.minute !== null ? `${pick.minute}'` : (pick.timerRaw ?? "–");
 
   return (
-    <article className="rounded-lg border border-line bg-surface p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-ink-muted">{pick.strategy}</p>
-        <StatusChip pick={pick} />
-      </div>
-
-      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <p className="text-sm font-medium text-ink">{pick.home ?? "Unknown"}</p>
-        <p className="text-lg font-semibold tabular-nums text-ink">{score}</p>
-        <p className="text-right text-sm font-medium text-ink">{pick.away ?? "Unknown"}</p>
-      </div>
-
-      <p className="mt-1 text-center text-xs text-ink-muted">
-        {[pick.competition, settled ? null : pick.timerRaw ? `Alerted at ${pick.timerRaw}` : null, fmtTime(pick.firstSeenAt)]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-
-      <div className="mt-3 flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm">
-        <span className="text-ink-muted">Bet</span>
-        <span className="font-medium text-ink">
-          {betText(pick.market, pick.selection) ?? "No market set"}
+    <li>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-surface-2/60"
+      >
+        <span
+          title="Match minute when the alert fired"
+          className="mt-0.5 w-10 shrink-0 rounded-md bg-surface-2 py-0.5 text-center text-xs font-semibold tabular-nums text-ink"
+        >
+          {minute}
         </span>
-      </div>
 
-      {shownStats.length > 0 && (
-        <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-          {shownStats.map(([label, value]) => (
-            <div key={label}>
-              <dt className="text-[11px] text-ink-muted">{label}</dt>
-              <dd className="text-xs font-medium tabular-nums text-ink">{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline justify-between gap-3">
+            <span className="truncate text-sm font-medium text-ink">
+              {pick.home ?? "Unknown"} <span className="text-ink-muted">v</span> {pick.away ?? "Unknown"}
+            </span>
+            <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{latestScore(pick)}</span>
+          </span>
+          <span className="mt-1 flex items-center justify-between gap-3">
+            <span className="truncate text-xs text-ink-muted">
+              {[shortStrategy(pick.strategy), betText(pick.market, pick.selection) ?? "No market set"].join(" · ")}
+            </span>
+            <StatusChip pick={pick} />
+          </span>
+        </span>
+
+        <ChevronDown
+          size={16}
+          aria-hidden
+          className={`mt-1 shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t border-line bg-surface-2/40 py-3 pl-16 pr-3">
+          <p className="text-xs text-ink-muted">
+            {[pick.competition, `Alert at ${minute}`, fmtTime(pick.firstSeenAt)].filter(Boolean).join(" · ")}
+          </p>
+
+          {shownStats.length > 0 && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+              {shownStats.map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-xs text-ink-muted">{label}</dt>
+                  <dd className="text-sm font-medium tabular-nums text-ink">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {pick.flags.length > 0 && (
+            <ul className="space-y-1 text-xs text-warn">
+              {pick.flags.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          )}
+
+          {pick.detail?.matched != null && pick.detail.strikeRate != null && (
+            <p className="text-xs text-ink-muted">
+              {formatCurrency(pick.detail.matched)} matched · {pick.detail.strikeRate}% strike rate
+            </p>
+          )}
+        </div>
       )}
-
-      {settled && (
-        <p className="mt-3 text-center text-xs text-ink-muted">
-          {[pick.htScore ? `Half-time ${pick.htScore}` : null, pick.ftScore ? `Full-time ${pick.ftScore}` : null]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-      )}
-
-      {!settled && pick.flags.length > 0 && (
-        <ul className="mt-3 space-y-1 text-xs text-danger">
-          {pick.flags.map((f) => (
-            <li key={f}>{f}</li>
-          ))}
-        </ul>
-      )}
-
-      {pick.detail?.matched != null && pick.detail.strikeRate != null && !settled && (
-        <p className="mt-3 text-center text-[11px] text-ink-muted">
-          {formatCurrency(pick.detail.matched)} matched · {pick.detail.strikeRate}% strike rate
-        </p>
-      )}
-    </article>
-  );
-}
-
-function Section({ title, picks }: { title: string; picks: LivePick[] }) {
-  if (picks.length === 0) return null;
-  return (
-    <section className="space-y-2">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-ink-muted">{title}</h2>
-      {picks.map((p) => (
-        <PickCard key={p.id} pick={p} />
-      ))}
-    </section>
+    </li>
   );
 }
 
@@ -140,32 +148,43 @@ export default function LivePage() {
 
   if (isLoading) return <ListSkeleton />;
 
+  const header = <PageHeader title="Live" subtitle="Alerts for matches in play, newest first" />;
+
   if (error) {
     return (
-      <div className="space-y-3 px-4 py-4">
-        <PageHeader title="Live" subtitle="Alerts as they arrive, newest first" />
+      <div className="space-y-6 px-4 py-4">
+        {header}
         <QueryError error={error} next="/live" />
       </div>
     );
   }
 
-  const picks = data ?? [];
   const now = Date.now();
-  const inPlay = picks.filter((p) => p.status !== "settled" && now - new Date(p.firstSeenAt).getTime() < STILL_LIVE_MS);
-  const earlier = picks.filter((p) => !inPlay.includes(p));
+  const inPlay = (data ?? []).filter(
+    (p) => p.status !== "settled" && now - new Date(p.firstSeenAt).getTime() < STILL_LIVE_MS,
+  );
 
   return (
-    <div className="space-y-5 px-4 py-4">
-      <PageHeader title="Live" subtitle="Alerts as they arrive, newest first" />
+    <div className="space-y-6 px-4 py-4">
+      {header}
 
-      {picks.length === 0 ? (
-        <EmptyState title="No picks yet" detail="New picks appear here as they arrive." />
+      {inPlay.length === 0 ? (
+        <EmptyState title="Nothing in play" detail="New alerts appear here as they arrive." />
       ) : (
-        <>
-          <Section title="Live in play" picks={inPlay} />
-          <Section title="Earlier" picks={earlier} />
-        </>
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+          {inPlay.map((p) => (
+            <PickRow key={p.id} pick={p} />
+          ))}
+        </ul>
       )}
+
+      <p className="text-center text-xs text-ink-muted">
+        Finished matches move to the{" "}
+        <Link href="/trade-log" className="text-ink underline">
+          Trade Log
+        </Link>
+        .
+      </p>
     </div>
   );
 }

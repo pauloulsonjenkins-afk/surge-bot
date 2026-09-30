@@ -18,9 +18,9 @@ export function RateList({ rows, emptyDetail }: { rows: HitRateRow[]; emptyDetai
               </span>
             </div>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
-              <div className="h-full rounded-full bg-accent" style={{ width: `${r.hitRate ?? 0}%` }} />
+              <div className="h-full rounded-full bg-chart" style={{ width: `${r.hitRate ?? 0}%` }} />
             </div>
-            <p className="mt-1 text-[11px] text-ink-muted">
+            <p className="mt-1 text-xs text-ink-muted">
               {r.hits} hit{r.hits === 1 ? "" : "s"} · {r.misses} miss{r.misses === 1 ? "" : "es"} · {r.alerts} alert
               {r.alerts === 1 ? "" : "s"}
               {settled < 30 && settled > 0 ? " · small sample" : ""}

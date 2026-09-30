@@ -10,12 +10,12 @@ export default function AccountCard() {
   const { data: me, isLoading } = useMe();
   const signOut = useSignOut();
 
-  if (isLoading || !me) return <Skeleton className="mb-4 h-16 w-full" />;
+  if (isLoading || !me) return <Skeleton className="h-16 w-full" />;
 
   if (me.user) {
     const label = me.user.name || me.user.email;
     return (
-      <section className="mb-4 rounded-lg border border-line p-3">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-ink">{label}</p>
@@ -41,7 +41,7 @@ export default function AccountCard() {
 
   if (me.admin) {
     return (
-      <section className="mb-4 rounded-lg border border-line p-3">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <p className="text-sm font-medium text-ink">Signed in as admin</p>
         <p className="mt-0.5 text-xs text-ink-muted">You can see every page.</p>
       </section>
@@ -49,7 +49,7 @@ export default function AccountCard() {
   }
 
   return (
-    <section className="mb-4 rounded-lg border border-line p-3">
+    <section className="rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium text-ink">Not signed in</p>
       <div className="mt-2 flex gap-2">
         <Link href="/login" className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink">

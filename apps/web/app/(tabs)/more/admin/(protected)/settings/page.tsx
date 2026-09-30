@@ -33,7 +33,7 @@ function FreshStartCard() {
       <p className="mt-0.5 text-xs text-ink-muted">
         Restarts the Dashboard, strategy hit rates, Win/Loss and profit figures from zero, without deleting anything.
       </p>
-      {save.error && <p className="mt-2 text-xs text-danger">{save.error.message}</p>}
+      {save.error && <p className="mt-2 text-xs text-destructive">{save.error.message}</p>}
       {at === null ? (
         <button
           type="button"
@@ -90,7 +90,7 @@ function PublicViewCard() {
 
   return (
     <section className="rounded-xl border border-line bg-surface p-3.5">
-      {save.error && <p className="mb-2 text-sm text-danger">{save.error.message}</p>}
+      {save.error && <p className="mb-2 text-sm text-destructive">{save.error.message}</p>}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium text-ink">Public view</h3>
@@ -104,7 +104,7 @@ function PublicViewCard() {
           disabled={save.isPending}
           onClick={toggle}
           className={`h-6 w-11 shrink-0 rounded-full p-0.5 ring-1 ring-inset ring-line transition-colors disabled:opacity-50 ${
-            publicView ? "bg-accent" : "bg-surface-2"
+            publicView ? "bg-hit" : "bg-surface-2"
           }`}
         >
           <span className={`block h-5 w-5 rounded-full bg-white shadow ring-1 ring-black/10 transition-transform ${publicView ? "translate-x-5" : ""}`} />

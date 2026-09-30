@@ -33,5 +33,5 @@ export function QueryError({ error, next }: { error: Error; next: string }) {
   if (error instanceof ApiFetchError && error.status === 403) {
     return <p className="text-sm text-ink-muted">Your account doesn&apos;t have access to this page yet. Ask the admin to switch it on.</p>;
   }
-  return <p className="text-sm text-danger">{error.message}</p>;
+  return <p className="text-sm text-destructive">{error.message}</p>;
 }

@@ -1,61 +1,46 @@
 "use client";
 
-import Link from "next/link";
-import { Card } from "@/components/ui/Card";
 import { useQuery } from "@tanstack/react-query";
 import type { WinLossState } from "@/queries/use-winloss";
 import { getJson } from "@/queries/fetch-json";
-import { gbp } from "@/components/admin/WinLossLines";
-
-function Amount({ value }: { value: number }) {
-  const tone = value > 0 ? "text-hit" : value < 0 ? "text-danger" : "text-ink-muted";
-  return <span className={`text-2xl font-medium tabular-nums ${tone}`}>{value === 0 ? "£0.00" : gbp(value)}</span>;
-}
+import type { Timeframe } from "./TimeframeToggle";
 
 /**
- * Win / loss in pounds for the last 7 days and the month so far. Money figures are private, so this only
- * appears for a signed-in admin: for anyone else the request is refused and the card simply isn't there.
- * When the Dashboard is filtered to one strategy, it shows that strategy's figures instead of the overall ones.
+ * Win / loss in pounds, for the Dashboard's hero row. Money figures are private, so this only loads for a
+ * signed-in admin: for anyone else the request is refused and the hook returns no data.
  */
-export function WinLossSummary({ strategy }: { strategy: string | null }) {
-  const { data } = useQuery({
+export function useDashboardWinLoss() {
+  return useQuery({
     queryKey: ["winloss"],
     queryFn: ({ signal }) => getJson<WinLossState>("/api/admin/winloss", "the win/loss figures", signal),
     retry: false, // a signed-out visitor is refused once, not three times
     staleTime: 0,
     refetchInterval: 30_000,
   });
-  if (!data) return null;
+}
 
-  const key = strategy?.toLowerCase() ?? null;
-  const pick = (p: "d7" | "mtd"): number => (key === null ? data.periods[p].total : (data.periods[p].strategies[key] ?? 0));
-  const showCost = key === null && data.settings.expenditure.enabled && data.periods.mtd.expenditure > 0;
+/**
+ * The engine keeps profit for today, the last 7 days, the month so far and the year so far. Each Dashboard
+ * timeframe uses the nearest of those, and says which one it is.
+ */
+const PERIOD_FOR: Record<Timeframe, { key: keyof WinLossState["periods"]; label: string }> = {
+  "1D": { key: "d1", label: "Today" },
+  "7D": { key: "d7", label: "Last 7 days" },
+  "30D": { key: "mtd", label: "Month to date" },
+  ALL: { key: "ytd", label: "Year to date" },
+};
 
-  return (
-    <Card
-      title="Win / loss"
-      subtitle={`${strategy ?? "All strategies"} · estimate from alert odds`}
-      actions={
-        <Link href="/more/admin/winloss" className="text-xs text-ink-muted underline">
-          Details
-        </Link>
-      }
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className="text-xs text-ink-muted">Last 7 days</p>
-          <Amount value={pick("d7")} />
-        </div>
-        <div>
-          <p className="text-xs text-ink-muted">Month to date</p>
-          <Amount value={pick("mtd")} />
-          {showCost && (
-            <p className="mt-0.5 text-[11px] text-ink-muted">
-              <span className="tabular-nums">{gbp(data.periods.mtd.totalAfter)}</span> after monthly cost
-            </p>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
+/** Profit for the chosen timeframe, for every strategy or just the one the Dashboard is filtered to. */
+export function profitFor(
+  data: WinLossState,
+  timeframe: Timeframe,
+  strategy: string | null,
+): { value: number; label: string; afterCost: number | null } {
+  const { key, label } = PERIOD_FOR[timeframe];
+  const period = data.periods[key];
+  const value = strategy === null ? period.total : (period.strategies[strategy.toLowerCase()] ?? 0);
+  // The monthly running cost only applies to the whole account, and only once it has been switched on.
+  const afterCost =
+    strategy === null && data.settings.expenditure.enabled && period.expenditure > 0 ? period.totalAfter : null;
+  return { value, label, afterCost };
 }

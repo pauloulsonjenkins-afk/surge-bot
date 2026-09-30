@@ -26,7 +26,7 @@ const PALETTE = ["#d98a00", "#0fa37f", "#3f7ce0", "#a266d9", "#d6497a", "#2ea3b5
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink";
 
 function Money({ value, className = "" }: { value: number; className?: string }) {
-  const tone = value > 0 ? "text-hit" : value < 0 ? "text-danger" : "text-ink-muted";
+  const tone = value > 0 ? "text-hit" : value < 0 ? "text-loss" : "text-ink-muted";
   return <span className={`tabular-nums ${tone} ${className}`}>{value === 0 ? "\u00a30.00" : gbp(value)}</span>;
 }
 
@@ -40,7 +40,7 @@ function Figures({ title, values, bold, muted }: { title: string; values: Array<
           const v = values[i];
           return (
             <div key={p.key}>
-              <p className="text-[10px] uppercase tracking-wide text-ink-muted">{p.label}</p>
+              <p className="text-xs uppercase tracking-wide text-ink-muted">{p.label}</p>
               {v === null || v === undefined ? (
                 <p className="text-xs text-ink-muted">{"\u2013"}</p>
               ) : muted ? (
@@ -121,9 +121,9 @@ function WinLoss({ state }: { state: WinLossState }) {
   const combinedSeries: LineSeries[] = showAfter
     ? [
         { key: "total", name: "Before expenditure", color: "var(--ink-muted)", dashed: true },
-        { key: "after", name: "After expenditure", color: "var(--accent)" },
+        { key: "after", name: "After expenditure", color: "var(--chart)" },
       ]
-    : [{ key: "total", name: "Profit / loss", color: "var(--accent)" }];
+    : [{ key: "total", name: "Profit / loss", color: "var(--chart)" }];
   const combinedData = points.map((p) => ({ label: dateLabel(p.label), total: p.total, after: p.totalAfter }));
 
   const strategySeries: LineSeries[] = lines.map((s, i) => ({ key: `k${i}`, name: s.label, color: PALETTE[i % PALETTE.length]! }));
@@ -195,9 +195,9 @@ function WinLoss({ state }: { state: WinLossState }) {
         }
       />
 
-      {message && <p className="text-sm text-danger">{message}</p>}
+      {message && <p className="text-sm text-destructive">{message}</p>}
       {(saveSending.error || saveWinLoss.error) && (
-        <p className="text-sm text-danger">{(saveSending.error ?? saveWinLoss.error)?.message}</p>
+        <p className="text-sm text-destructive">{(saveSending.error ?? saveWinLoss.error)?.message}</p>
       )}
 
       {/* ---- figures ---- */}
@@ -223,7 +223,7 @@ function WinLoss({ state }: { state: WinLossState }) {
           </div>
         )}
         {strategies.length > 0 && !anyMoney && (
-          <p className="mt-3 text-xs text-danger">
+          <p className="mt-3 text-xs text-warn">
             No pick has both a stake and odds yet, so every figure is £0.00. Set a stake (and odds where the alert has
             none) under Strategies below.
           </p>
@@ -264,7 +264,7 @@ function WinLoss({ state }: { state: WinLossState }) {
           <WinLossLines data={combinedData} series={combinedSeries} />
         )}
         {ex.enabled && (period === "d1" || period === "d7") && (
-          <p className="mt-2 text-[11px] text-ink-muted">Expenditure is monthly, so it only shows on the MTD and YTD views.</p>
+          <p className="mt-2 text-xs text-ink-muted">Expenditure is monthly, so it only shows on the MTD and YTD views.</p>
         )}
       </Card>
 
@@ -314,7 +314,7 @@ function WinLoss({ state }: { state: WinLossState }) {
                       </span>
                     </span>
                     {leftOut > 0 && (
-                      <span className="shrink-0 rounded-full bg-danger px-2 py-0.5 text-[10px] font-medium text-white">{leftOut} left out</span>
+                      <span className="shrink-0 rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">{leftOut} left out</span>
                     )}
                   </button>
 
@@ -356,14 +356,14 @@ function WinLoss({ state }: { state: WinLossState }) {
                     )}
                   </div>
 
-                  <p className="mt-2 text-[11px] text-ink-muted">
+                  <p className="mt-2 text-xs text-ink-muted">
                     {s.counted} of {s.settled} settled picks this year counted
                     {s.usedAlertOdds > 0 ? ` (${s.usedAlertOdds} at the alert's own odds)` : ""}
                     {s.noStake > 0 ? ` · ${s.noStake} left out: no stake set` : ""}
                     {s.noOdds > 0 ? ` · ${s.noOdds} left out: no odds` : ""}
                   </p>
                   {overMax && (
-                    <p className="mt-1 text-[11px] text-ink-muted">
+                    <p className="mt-1 text-xs text-ink-muted">
                       This stake is above your highest stake allowed (£{state.maxStake}). It counts here, but a stake that high is never sent to bet.
                     </p>
                   )}
@@ -394,7 +394,7 @@ function WinLoss({ state }: { state: WinLossState }) {
               </button>
             )}
           </label>
-          <p className="mt-1 text-[11px] text-ink-muted">Left at 0 unless you set it. Betfair takes commission from winning bets.</p>
+          <p className="mt-1 text-xs text-ink-muted">Left at 0 unless you set it. Betfair takes commission from winning bets.</p>
         </div>
       </Card>
 

@@ -61,7 +61,7 @@ function LeagueCard({
         </div>
         <div className="shrink-0 text-right">
           <p className="text-sm font-medium tabular-nums text-ink">{rate}</p>
-          <p className="text-[11px] text-ink-muted">
+          <p className="text-xs text-ink-muted">
             {row.alerts} alerts · {settled} settled
           </p>
         </div>
@@ -70,7 +70,7 @@ function LeagueCard({
       {open && (
       <>
       {(row.hidden || row.resetAt) && (
-        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           {row.hidden && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Hidden from dashboard</span>}
           {row.resetAt && (
             <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">

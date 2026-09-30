@@ -32,7 +32,7 @@ function RateTooltip({ active, payload }: { active?: boolean; payload?: Readonly
   if (!active || !row) return null;
   return (
     <div className="max-w-[220px] rounded-lg border border-line bg-surface-2 px-3 py-2 shadow-xl">
-      <p className="mb-1 text-[11px] font-medium text-ink">{row.label}</p>
+      <p className="mb-1 text-xs font-medium text-ink">{row.label}</p>
       {row.settled === 0 ? (
         <p className="text-xs text-ink-muted">No settled picks yet</p>
       ) : (
@@ -99,7 +99,7 @@ export function RateBarChart({
               <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(props) => <RateTooltip active={props.active} payload={props.payload} />} />
               <Bar isAnimationActive={false} dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
                 {data.map((d) => (
-                  <Cell key={d.label} fill="var(--accent)" fillOpacity={d.settled >= SOLID_FROM ? 1 : 0.4} />
+                  <Cell key={d.label} fill="var(--chart)" fillOpacity={d.settled >= SOLID_FROM ? 1 : 0.4} />
                 ))}
                 <LabelList dataKey="value" position="right" formatter={pctLabel} fill="var(--ink)" fontSize={11} />
               </Bar>
@@ -118,7 +118,7 @@ export function RateBarChart({
               <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(props) => <RateTooltip active={props.active} payload={props.payload} />} />
               <Bar isAnimationActive={false} dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={30}>
                 {data.map((d) => (
-                  <Cell key={d.label} fill="var(--accent)" fillOpacity={d.settled >= SOLID_FROM ? 1 : 0.4} />
+                  <Cell key={d.label} fill="var(--chart)" fillOpacity={d.settled >= SOLID_FROM ? 1 : 0.4} />
                 ))}
                 <LabelList dataKey="value" position="top" formatter={pctLabel} fill="var(--ink)" fontSize={11} />
               </Bar>
@@ -126,7 +126,7 @@ export function RateBarChart({
           )}
         </ResponsiveContainer>
       </div>
-      <p className="mt-2 text-[11px] text-ink-muted">Faded bars have fewer than {SOLID_FROM} settled picks. Tap a bar for details.</p>
+      <p className="mt-2 text-xs text-ink-muted">Faded bars have fewer than {SOLID_FROM} settled picks. Tap a bar for details.</p>
     </>
   );
 }

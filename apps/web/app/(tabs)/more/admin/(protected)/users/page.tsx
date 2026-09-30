@@ -11,7 +11,7 @@ import { USER_PAGES, USER_PAGE_LABEL, type UserPage } from "@/lib/user-pages";
 const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
 
 function statusOf(u: AdminUser): { text: string; className: string } {
-  if (!u.active) return { text: "Disabled", className: "bg-danger/15 text-danger" };
+  if (!u.active) return { text: "Disabled", className: "bg-warn/15 text-warn" };
   if (u.pages.length === 0) return { text: "Waiting for access", className: "bg-surface-2 text-ink-muted" };
   return { text: "Active", className: "bg-hit/15 text-hit" };
 }
@@ -61,12 +61,12 @@ function UserCard({ user }: { user: AdminUser }) {
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-ink">{user.name || user.email}</p>
           {user.name && <p className="truncate text-xs text-ink-muted">{user.email}</p>}
-          <p className="mt-0.5 text-[11px] text-ink-muted">
+          <p className="mt-0.5 text-xs text-ink-muted">
             Joined {dateFmt.format(new Date(user.createdAt))}
             {user.lastLoginAt ? ` · last signed in ${dateFmt.format(new Date(user.lastLoginAt))}` : " · never signed in"}
           </p>
         </div>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${status.className}`}>{status.text}</span>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>{status.text}</span>
       </div>
 
       <fieldset className="mt-3 space-y-1.5" disabled={busy}>
@@ -76,13 +76,13 @@ function UserCard({ user }: { user: AdminUser }) {
             <input type="checkbox" checked={user.pages.includes(page)} onChange={() => togglePage(page)} className="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
             <span>
               {USER_PAGE_LABEL[page].title}
-              <span className="block text-[11px] text-ink-muted">{USER_PAGE_LABEL[page].detail}</span>
+              <span className="block text-xs text-ink-muted">{USER_PAGE_LABEL[page].detail}</span>
             </span>
           </label>
         ))}
       </fieldset>
 
-      {error && <p className="mt-2 text-xs text-danger">{error.message}</p>}
+      {error && <p className="mt-2 text-xs text-destructive">{error.message}</p>}
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         <button type="button" className={btn} disabled={busy} onClick={toggleActive}>
@@ -94,7 +94,7 @@ function UserCard({ user }: { user: AdminUser }) {
         <button type="button" className={btn} disabled={busy} onClick={signOutEverywhere}>
           Sign out everywhere
         </button>
-        <button type="button" className={`${btn} text-danger`} disabled={busy} onClick={deleteUser}>
+        <button type="button" className={`${btn} text-destructive`} disabled={busy} onClick={deleteUser}>
           Delete
         </button>
       </div>
@@ -122,12 +122,12 @@ function SignupsCard({ open }: { open: boolean }) {
           aria-label="Allow new sign-ups"
           disabled={save.isPending}
           onClick={() => save.mutate(!open)}
-          className={`h-6 w-11 shrink-0 rounded-full p-0.5 ring-1 ring-inset ring-line transition-colors disabled:opacity-50 ${open ? "bg-accent" : "bg-surface-2"}`}
+          className={`h-6 w-11 shrink-0 rounded-full p-0.5 ring-1 ring-inset ring-line transition-colors disabled:opacity-50 ${open ? "bg-hit" : "bg-surface-2"}`}
         >
           <span className={`block h-5 w-5 rounded-full bg-white shadow ring-1 ring-black/10 transition-transform ${open ? "translate-x-5" : ""}`} />
         </button>
       </div>
-      {save.error && <p className="mt-2 text-xs text-danger">{save.error.message}</p>}
+      {save.error && <p className="mt-2 text-xs text-destructive">{save.error.message}</p>}
     </section>
   );
 }

@@ -1,44 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useRecentPicks } from "@/queries/use-picks";
-
+/** The raw alerts now sit on a tab of Amend results. Kept so old links and bookmarks still land somewhere. */
 export default function PicksPage() {
-  const { data, isLoading, error } = useRecentPicks(50);
-
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-2">Picks received</h1>
-      <p className="text-sm text-muted-foreground mb-6">
-        Every alert the engine has captured, exactly as first received, most recent first. Results
-        and parsed details are on the Live and Trade Log tabs.
-      </p>
-
-      {isLoading && <p>Loading…</p>}
-      {error && <p className="text-red-600">{(error as Error).message}</p>}
-      {data && data.length === 0 && <p>No picks captured yet.</p>}
-
-      {data && data.length > 0 && (
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="text-left border-b">
-              <th className="py-2 pr-4">Received</th>
-              <th className="py-2 pr-4">Signature verified</th>
-              <th className="py-2">Body</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((p) => (
-              <tr key={p.id} className="border-b align-top">
-                <td className="py-2 pr-4 whitespace-nowrap">
-                  {new Date(p.receivedAt).toLocaleString()}
-                </td>
-                <td className="py-2 pr-4">{p.signatureVerified ? "Yes" : "No"}</td>
-                <td className="py-2 font-mono text-xs whitespace-pre-wrap break-all">{p.body}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
+  redirect("/more/admin/results?view=raw");
 }

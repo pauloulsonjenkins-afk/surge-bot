@@ -4,7 +4,7 @@ import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis
 import { gbp } from "./WinLossLines";
 
 const GAIN = "var(--hit)";
-const LOSS = "var(--danger)";
+const LOSS = "var(--loss)";
 
 export interface DailyBar {
   /** UK calendar date, YYYY-MM-DD. */
@@ -44,8 +44,8 @@ function DayTooltip({ active, payload }: { active?: boolean; payload?: ReadonlyA
   if (!active || !d) return null;
   return (
     <div className="rounded-lg border border-line bg-surface px-3 py-2 shadow-xl">
-      <p className="text-[11px] font-medium text-ink">{label(d.date, longFmt)}</p>
-      <p className={`text-xs tabular-nums ${d.pnl > 0 ? "text-hit" : d.pnl < 0 ? "text-danger" : "text-ink-muted"}`}>
+      <p className="text-xs font-medium text-ink">{label(d.date, longFmt)}</p>
+      <p className={`text-xs tabular-nums ${d.pnl > 0 ? "text-hit" : d.pnl < 0 ? "text-loss" : "text-ink-muted"}`}>
         {d.pnl === 0 ? "£0.00" : gbp(d.pnl)}
       </p>
     </div>
@@ -88,7 +88,7 @@ export function DailyPnlChart({ days }: { days: DailyBar[] }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-2 text-[11px] text-ink-muted">
+      <p className="mt-2 text-xs text-ink-muted">
         {s.green} green day{s.green === 1 ? "" : "s"} · {s.red} red day{s.red === 1 ? "" : "s"}
         {s.best ? ` · best ${gbp(s.best.pnl)} (${label(s.best.date, shortFmt)})` : ""}
         {s.worst ? ` · worst ${gbp(s.worst.pnl)} (${label(s.worst.date, shortFmt)})` : ""}

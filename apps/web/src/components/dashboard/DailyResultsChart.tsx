@@ -8,7 +8,7 @@ import { EmptyState } from "./EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 const HIT = "var(--hit)";
-const MISS = "var(--danger)";
+const MISS = "var(--loss)";
 
 function shortDate(iso: string): string {
   const d = new Date(`${iso}T12:00:00Z`);
@@ -44,7 +44,7 @@ export function DailyResultsChart({ stats, isLoading }: { stats: HitRateStats | 
                     payload={props.payload as unknown as ChartTooltipProps["payload"]}
                     series={{
                       hits: { label: "Hits", color: "var(--hit)", format: (v) => String(v) },
-                      misses: { label: "Misses", color: "var(--danger)", format: (v) => String(v) },
+                      misses: { label: "Misses", color: "var(--loss)", format: (v) => String(v) },
                     }}
                   />
                 )}

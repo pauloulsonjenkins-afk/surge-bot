@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
+import { PencilLine } from "lucide-react";
 import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { betText } from "@/lib/markets";
+import { useMe } from "@/queries/use-me";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
@@ -12,21 +15,23 @@ const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeri
 function Row({ pick }: { pick: LivePick }) {
   const hit = pick.result === "hit";
   return (
-    <li className="flex items-center gap-3 px-3 py-2.5">
+    <li className="flex items-center gap-3 px-3 py-3">
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-ink">
-          {pick.home ?? "Unknown"} v {pick.away ?? "Unknown"}
+          {pick.home ?? "Unknown"} <span className="text-ink-muted">v</span> {pick.away ?? "Unknown"}
         </p>
-        <p className="truncate text-xs text-ink-muted">
+        <p className="mt-0.5 truncate text-xs text-ink-muted">
           {[pick.strategy.replace(/\([^)]*\)/g, "").trim(), betText(pick.market, pick.selection)]
             .filter(Boolean)
             .join(" · ")}
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className={`text-xs font-medium ${hit ? "text-hit" : "text-danger"}`}>{hit ? "Hit" : "Miss"}</p>
-        <p className="text-[11px] tabular-nums text-ink-muted">{pick.ftScore ?? "–"}</p>
-        {pick.resultOverridden && <p className="text-[10px] text-ink-muted">amended</p>}
+        <p className={`text-sm font-semibold ${hit ? "text-hit" : "text-loss"}`}>{hit ? "Hit" : "Miss"}</p>
+        <p className="text-xs tabular-nums text-ink-muted">
+          {pick.ftScore ?? "–"}
+          {pick.resultOverridden && " · amended"}
+        </p>
       </div>
     </li>
   );
@@ -34,39 +39,69 @@ function Row({ pick }: { pick: LivePick }) {
 
 export default function TradeLogPage() {
   const { data, isLoading, error } = useLivePicks(200);
+  const { data: me } = useMe();
 
   if (isLoading) return <ListSkeleton />;
 
   const settled = (data ?? []).filter((p) => p.result === "hit" || p.result === "miss");
 
   // Group by UK day, newest first (the list already arrives newest first).
-  const groups: Array<{ day: string; picks: LivePick[] }> = [];
+  const groups: Array<{ day: string; picks: LivePick[]; hits: number }> = [];
   for (const p of settled) {
     const day = dayFmt.format(new Date(p.firstSeenAt));
-    const last = groups[groups.length - 1];
-    if (last && last.day === day) last.picks.push(p);
-    else groups.push({ day, picks: [p] });
+    let last = groups[groups.length - 1];
+    if (!last || last.day !== day) {
+      last = { day, picks: [], hits: 0 };
+      groups.push(last);
+    }
+    last.picks.push(p);
+    if (p.result === "hit") last.hits += 1;
   }
 
   return (
-    <div className="space-y-4 px-4 py-4">
-      <PageHeader title="Trade Log" subtitle="Settled picks, most recent first" />
+    <div className="space-y-6 px-4 py-4">
+      <PageHeader
+        title="Trade Log"
+        subtitle="Every settled pick, most recent first"
+        actions={
+          me?.admin ? (
+            <Link
+              href="/more/admin/results"
+              className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
+            >
+              <PencilLine size={14} />
+              Amend results
+            </Link>
+          ) : undefined
+        }
+      />
 
       {error ? (
         <QueryError error={error} next="/trade-log" />
       ) : settled.length === 0 ? (
         <EmptyState title="No settled picks yet" detail="Results appear here once matches finish." />
       ) : (
-        groups.map((g) => (
-          <section key={g.day} className="space-y-1.5">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-ink-muted">{g.day}</h2>
-            <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
-              {g.picks.map((p) => (
-                <Row key={p.id} pick={p} />
-              ))}
-            </ul>
-          </section>
-        ))
+        groups.map((g) => {
+          const misses = g.picks.length - g.hits;
+          return (
+            <section key={g.day} className="space-y-3">
+              <h2 className="flex items-baseline justify-between text-base font-semibold text-ink">
+                {g.day}
+                <span className="text-xs font-medium tabular-nums">
+                  <span className="text-hit">{g.hits}</span>
+                  <span className="text-ink-muted"> – </span>
+                  <span className="text-loss">{misses}</span>
+                  <span className="text-ink-muted"> · {Math.round((g.hits / g.picks.length) * 100)}%</span>
+                </span>
+              </h2>
+              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+                {g.picks.map((p) => (
+                  <Row key={p.id} pick={p} />
+                ))}
+              </ul>
+            </section>
+          );
+        })
       )}
     </div>
   );
