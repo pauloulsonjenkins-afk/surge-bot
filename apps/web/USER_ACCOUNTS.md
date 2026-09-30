@@ -6,7 +6,7 @@ gives them pages. The admin (password) sign-in is separate and unchanged.
 ## What each person can be given (Admin > Users)
 | Choice | Opens |
 |---|---|
-| Dashboard | Dashboard and Strategies (hit rates) |
+| Dashboard | Dashboard (hit rates) |
 | Live | Live and Trade Log (the alerts) |
 | Schedule | Schedule |
 
@@ -28,7 +28,10 @@ shows a warning while it is on.
 - Sign-in is limited to 10 tries per address per 5 minutes and 10 per email per 15 minutes.
   Sign-up is limited to 5 per address per hour.
 
+## Forgotten passwords
+There is no self-service reset. To help someone, open Admin > Users, press **Reset password** on their card,
+type a new password (10+ characters) and tell them it yourself. They are signed out everywhere.
+
 ## Not included
-Emailed verification or password-reset links (there is no email service). To help someone who has forgotten
-their password, use Admin > Users > Reset password and tell them the new one.
-Users can't change their own password yet.
+Emailed verification when signing up, and any emailed links. Users can't change their own password while signed in yet;
+you reset it for them on the Users page.

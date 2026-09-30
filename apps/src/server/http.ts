@@ -534,7 +534,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       db.forgetStrategyMerges(label);
       forgetStopLoss(db, label);
       const key = label.toLowerCase();
-      saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null } });
+      saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null }, minOdds: { [key]: null } });
       log.info(
         `Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ${result.keptBecauseSent} sent pick(s) kept ` +
           `(${hiddenFromResults} taken out of results)${ignoreFuture ? ", new alerts ignored" : ""}.`,
@@ -589,6 +589,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           market: string | null;
           enabled: boolean;
           stake: number | null;
+          minOdds: number | null;
           alerts: number;
           sent: number;
           stopLoss: ReturnType<typeof computeStopLoss> extends Map<string, infer V> ? V | null : never;
@@ -602,6 +603,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           market: st.market,
           enabled: settings.strategies[key] === true,
           stake: settings.stakes[key] ?? null,
+          minOdds: settings.minOdds[key] ?? null,
           alerts: counts.get(key)?.alerts ?? 0,
           sent: counts.get(key)?.sent ?? 0,
           stopLoss: stops.get(key) ?? null,

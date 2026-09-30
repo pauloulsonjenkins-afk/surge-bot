@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
+import { buildFeed, getSendingSettings, saveSendingSettings, toCsv } from "../src/inplayguru/bet-feed";
 
 const NOW = new Date();
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
@@ -100,4 +100,48 @@ test("the preview never marks anything as sent", () => {
   add(alert("Lens", "Lille"), minutesAgo(1));
   buildFeed(db, { markSent: false, now: NOW });
   assert.equal(buildFeed(db, { markSent: true, now: NOW }).newlySent, 1);
+});
+test("minimum odds: the feed is unchanged until one is set, then every row carries a MinPrice", () => {
+  const { db, add } = setup();
+  add(alert("Lens", "Lille"), minutesAgo(1));
+  const before = buildFeed(db, { markSent: false, now: NOW });
+  assert.ok(!before.csv.includes("MinPrice"), "no MinPrice column while no minimum is set");
+  assert.equal(before.csv.split("\r\n")[0], '"Provider","MarketType","SelectionName","EventName","BetType","Size"');
+
+  saveSendingSettings(db, { minOdds: { "blistering momentum": 1.85 } });
+  const after = buildFeed(db, { markSent: false, now: NOW });
+  assert.equal(after.rows[0]?.minPrice, 1.85);
+  const lines = after.csv.split("\r\n");
+  assert.equal(lines[0], '"Provider","MarketType","SelectionName","EventName","BetType","Size","MinPrice"');
+  assert.ok(lines[1]?.endsWith('"2.00","1.85"'), lines[1]);
+});
+
+test("minimum odds: a strategy without one gets 1.01 (no limit) once the column is on", () => {
+  const { db, add } = setup();
+  saveSendingSettings(db, { minOdds: { "some other strategy": 2.5 } });
+  add(alert("Lens", "Lille"), minutesAgo(1));
+  const feed = buildFeed(db, { markSent: false, now: NOW });
+  assert.equal(feed.rows[0]?.minPrice, null);
+  assert.ok(feed.csv.split("\r\n")[1]?.endsWith('"2.00","1.01"'));
+});
+
+test("minimum odds: a pick already sent keeps the minimum it was sent with", () => {
+  const { db, add } = setup();
+  saveSendingSettings(db, { minOdds: { "blistering momentum": 1.85 } });
+  add(alert("Lens", "Lille"), minutesAgo(1));
+  const first = buildFeed(db, { markSent: true, now: NOW });
+  saveSendingSettings(db, { minOdds: { "blistering momentum": 2.4 } }); // changed afterwards
+  const second = buildFeed(db, { markSent: true, now: NOW });
+  assert.equal(second.newlySent, 0);
+  assert.equal(second.csv, first.csv);
+  assert.equal(second.rows[0]?.minPrice, 1.85);
+});
+
+test("minimum odds: bad values are ignored and null clears one", () => {
+  const { db } = setup();
+  saveSendingSettings(db, { minOdds: { A: 1.9, b: 0.5, c: "junk", d: 5000, e: "2.345" } });
+  assert.deepEqual(getSendingSettings(db).minOdds, { a: 1.9, e: 2.35 });
+  saveSendingSettings(db, { minOdds: { a: null } });
+  assert.deepEqual(getSendingSettings(db).minOdds, { e: 2.35 });
+  assert.ok(toCsv([], true).includes("MinPrice"));
 });

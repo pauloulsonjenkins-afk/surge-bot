@@ -28,24 +28,25 @@ function StrategyCard({
   const [merging, setMerging] = useState(false);
   const [target, setTarget] = useState("");
   const settled = row.hits + row.misses;
-  const rate = settled > 0 ? `${Math.round((row.hits / settled) * 1000) / 10}%` : "–";
+  const hitRate = settled > 0 ? Math.round((row.hits / settled) * 1000) / 10 : null;
   const options = all.filter((o) => o.label !== row.label);
 
   return (
-    <li className="rounded-xl border border-line bg-surface p-3">
+    <li className="rounded-xl border border-line bg-surface p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="break-words text-sm font-medium text-ink">{row.label}</p>
           <p className={`text-xs ${row.market ? "text-ink-muted" : "text-danger"}`}>{marketName(row.market) ?? "No market set"}</p>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-sm font-medium tabular-nums text-ink">{rate}</p>
-          <p className="text-[11px] text-ink-muted">
-            {row.hits} hit · {row.misses} miss · {row.alerts} alerts
-          </p>
-        </div>
+        <p className="shrink-0 text-xl font-medium tabular-nums text-ink">{hitRate === null ? "–" : `${hitRate}%`}</p>
       </div>
-      <p className="mt-1 text-[11px] text-ink-muted">Last alert {lastSeen.format(new Date(row.lastAlertAt))}</p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={hitRate === null ? "No settled alerts yet" : `Hit rate ${hitRate}%`}>
+        <div className="h-full rounded-full bg-accent" style={{ width: `${hitRate ?? 0}%` }} />
+      </div>
+      <p className="mt-2 text-[11px] text-ink-muted">
+        {row.hits} hit{row.hits === 1 ? "" : "s"} · {row.misses} miss{row.misses === 1 ? "" : "es"} · {row.alerts} alert{row.alerts === 1 ? "" : "s"}
+        {settled > 0 && settled < 30 ? " · small sample" : ""} · last {lastSeen.format(new Date(row.lastAlertAt))}
+      </p>
 
       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
         {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{row.mergedInto}”</span>}
@@ -154,7 +155,7 @@ export default function StrategiesPage() {
       <div>
         <h2 className="text-base font-medium tracking-tight text-ink">Strategies</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          Every strategy the app has seen. <span className="text-ink">Merge</span> counts one strategy’s alerts under another on the Dashboard and stats
+          Every strategy the app has seen, with its all-time hit rate from settled alerts. <span className="text-ink">Merge</span> counts one strategy’s alerts under another on the Dashboard and stats
           (nothing is deleted and it can be undone). <span className="text-ink">Delete</span> removes a strategy’s saved alerts for good.
         </p>
       </div>

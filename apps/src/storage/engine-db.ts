@@ -367,6 +367,7 @@ export class EngineDb {
         created_at       TEXT NOT NULL,
         last_login_at    TEXT
       );
+
     `);
 
     // Databases created before the bet feed existed don't have sent_at yet.
@@ -1130,14 +1131,17 @@ export class EngineDb {
    */
   recomputeSettledResults(parse: (text: string) => ParsedAlert): number {
     const rows = this.db
-      .prepare(`SELECT id, raw_text, result FROM live_picks WHERE ft_score IS NOT NULL`)
-      .all() as Array<{ id: number; raw_text: string; result: string | null }>;
+      .prepare(`SELECT id, raw_text, result, market FROM live_picks WHERE ft_score IS NOT NULL`)
+      .all() as Array<{ id: number; raw_text: string; result: string | null; market: string | null }>;
     const upd = this.db.prepare(`UPDATE live_picks SET result = ?, parsed_json = ? WHERE id = ?`);
+    // When a rule change moves a strategy to a different bet type, the stored market and wording follow it.
+    const updMarket = this.db.prepare(`UPDATE live_picks SET market = ?, selection = ? WHERE id = ?`);
     let changed = 0;
     for (const r of rows) {
       try {
         const p = parse(r.raw_text);
         upd.run(p.result, JSON.stringify(p), r.id);
+        if ((p.market ?? null) !== (r.market ?? null)) updMarket.run(p.market, p.selection, r.id);
         if ((p.result ?? null) !== (r.result ?? null)) changed++;
       } catch {
         // leave this row as it was

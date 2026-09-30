@@ -194,3 +194,4 @@ export async function updateUser(db: EngineDb, id: number, patch: UserPatch): Pr
   const row = db.getAppUserById(id);
   return row ? { ok: true, user: toPublicUser(row) } : { ok: false, error: "not_found" };
 }
+

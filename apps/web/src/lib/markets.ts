@@ -3,6 +3,7 @@ export const MARKET_LABEL: Record<string, string> = {
   NEXT_GOAL: "Next goal",
   BOTH_TEAMS_TO_SCORE: "Both teams to score",
   FIRST_HALF_CORNERS: "1st half corners",
+  UNDERDOG_DOUBLE_CHANCE: "Underdog win or draw",
 };
 
 export function marketName(market: string | null): string | null {

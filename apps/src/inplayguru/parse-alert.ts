@@ -17,7 +17,7 @@
  * order later, so anything doubtful is flagged instead.
  */
 
-export type MarketCode = "NEXT_GOAL" | "BOTH_TEAMS_TO_SCORE" | "FIRST_HALF_CORNERS";
+export type MarketCode = "NEXT_GOAL" | "BOTH_TEAMS_TO_SCORE" | "FIRST_HALF_CORNERS" | "UNDERDOG_DOUBLE_CHANCE";
 
 export type PickResult = "hit" | "miss";
 
@@ -29,6 +29,8 @@ export interface ParsedAlert {
   /** Which strategy names were found, split on "/". */
   strategyParts: string[];
   market: MarketCode | null;
+  /** For the underdog strategy: which side is the underdog (the longer pre-match price). Null for every other strategy. */
+  underdog: "home" | "away" | null;
   /** Human wording of the bet, e.g. "Over 1.5" or "Yes". Null when unmapped. */
   selection: string | null;
   /** The line a bet targets: goals + 0.5 for Next Goal, 5.5 for 1st half corners. */
@@ -85,6 +87,9 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /both teams to score/, market: "BOTH_TEAMS_TO_SCORE" },
   // "1st Half Corners", "First Half Corner", "1H Corners", "Corners 1st Half" ...
   { test: /\b(?:first|1st|1h)\b[^/]*\bcorners?\b|\bcorners?\b[^/]*\b(?:first|1st|1h)\b/, market: "FIRST_HALF_CORNERS" },
+  // "Underdog taking charge action" backs the underdog to win or draw. This must come before the
+  // "momentum" / "action" rules below, which would otherwise read it as an Over goals bet.
+  { test: /\bunderdog\b/, market: "UNDERDOG_DOUBLE_CHANCE" },
   { test: /momentum/, market: "NEXT_GOAL" },
   { test: /action/, market: "NEXT_GOAL" },
 ];
@@ -310,8 +315,20 @@ export function parseAlert(text: string): ParsedAlert {
   // ---- market + selection ----
   let selection: string | null = null;
   let targetLine: number | null = null;
+  let underdog: "home" | "away" | null = null;
 
-  if (market === "NEXT_GOAL") {
+  if (market === "UNDERDOG_DOUBLE_CHANCE") {
+    // The underdog is the side with the longer pre-match win price (1X2 line: home, draw, away).
+    const pre = odds.preMatch1x2;
+    if (!pre) {
+      flags.push("No pre-match 1X2 odds in the alert, so the underdog can't be worked out.");
+    } else if (pre[0] === pre[2]) {
+      flags.push("Home and away pre-match odds are equal, so there is no underdog.");
+    } else {
+      underdog = pre[0] > pre[2] ? "home" : "away";
+      selection = "Underdog to win or draw";
+    }
+  } else if (market === "NEXT_GOAL") {
     if (goalsHome !== null && goalsAway !== null) {
       targetLine = goalsHome + goalsAway + 0.5;
       selection = `Over ${targetLine}`;
@@ -362,6 +379,10 @@ export function parseAlert(text: string): ParsedAlert {
     // Over (goals at the alert + 0.5): wins if the final total is above that line.
     if (market === "NEXT_GOAL" && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
     else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";
+    // Underdog win or draw: hits unless the underdog lost.
+    else if (market === "UNDERDOG_DOUBLE_CHANCE" && underdog !== null) {
+      computed = (underdog === "home" ? a >= b : b >= a) ? "hit" : "miss";
+    }
     if (computed) {
       finalResult = computed;
       resultSource = "score";
@@ -384,6 +405,7 @@ export function parseAlert(text: string): ParsedAlert {
     strategyKey,
     strategyParts,
     market,
+    underdog,
     selection,
     targetLine,
     competition,

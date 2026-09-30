@@ -256,11 +256,16 @@ export interface SendingSettings {
   strategies: Record<string, boolean>;
   /** Stake in pounds per strategy (lower-case name). Send null to clear one. */
   stakes: Record<string, number | null>;
+  /** Minimum back odds per strategy (lower-case name), sent to the betting software as MinPrice. Send null to clear one. */
+  minOdds: Record<string, number | null>;
   maxStake: number;
   maxAgeMinutes: number;
   dailyCap: number;
   bttsMarketType: string;
   bttsSelection: string;
+  underdogMarketType: string;
+  underdogHomeSelection: string;
+  underdogAwaySelection: string;
   aliases: string;
 }
 
@@ -286,13 +291,13 @@ export interface StopLossPatch {
 
 export interface SendingState {
   settings: SendingSettings;
-  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null }>;
+  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; minOdds: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
   /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */
   lastFeedFetcher?: string | null;
   preview: {
-    rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string; stake: number }>;
+    rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string; stake: number; minPrice: number | null }>;
     skipped: Array<{ pickId: number; strategy: string; match: string; reason: string }>;
     csv: string;
     blockedReason: string | null;

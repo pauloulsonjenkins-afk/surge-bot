@@ -1,20 +1,14 @@
 import Link from "next/link";
-import { ShieldCheck, Bot, ChevronRight } from "lucide-react";
+import { Bot, ChevronRight, ClipboardList, Send, TrendingUp, Trophy } from "lucide-react";
 import AccountCard from "@/components/account/AccountCard";
 
+// All password protected: each opens the admin area (asking for the admin password if needed).
 const ITEMS = [
-  {
-    href: "/more/bots",
-    label: "Strategies",
-    description: "Hit rate and activity for each strategy.",
-    icon: Bot,
-  },
-  {
-    href: "/more/admin/sending",
-    label: "Admin",
-    description: "Sending, results, win/loss and settings — password protected.",
-    icon: ShieldCheck,
-  },
+  { href: "/more/admin/results", label: "Results", description: "Settled alerts by day, with hits and misses.", icon: ClipboardList },
+  { href: "/more/admin/sending", label: "Sending", description: "What is sent to your betting software, and stakes.", icon: Send },
+  { href: "/more/admin/winloss", label: "Win/Loss", description: "Estimated profit and loss by day and strategy.", icon: TrendingUp },
+  { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier.", icon: Trophy },
+  { href: "/more/admin/strategies", label: "Strategies", description: "Hit rate for each strategy, merge or delete.", icon: Bot },
 ];
 
 export default function MorePage() {
