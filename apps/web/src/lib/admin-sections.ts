@@ -28,4 +28,6 @@ export const ADMIN_GROUPS = [
   },
 ] as const;
 
-export const ADMIN_SECTIONS = ADMIN_GROUPS.flatMap((g) => g.items);
+export type AdminSection = (typeof ADMIN_GROUPS)[number]["items"][number];
+
+export const ADMIN_SECTIONS: AdminSection[] = ADMIN_GROUPS.flatMap((g): readonly AdminSection[] => g.items);
