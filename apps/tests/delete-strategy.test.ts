@@ -114,3 +114,28 @@ test("deleting forgets the strategy's stop loss and stops it being sent", () => 
   assert.equal(buildFeed(db, { markSent: false }).rows.length, 0);
   assert.deepEqual(getStopLossRules(db), {});
 });
+test("delete completely: sent records from before today go for good, today's stay, and none come back", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const alert = (a: string, b: string) =>
+    ["🔔 Old Strategy", "", "🇫🇷 France Ligue 1 (3rd vs 9th)", `${a} vs ${b}`, "", "Timer: 60'", "Goals: 1 - 0", "Over/Under 1.50 Odds:", "1.80 2.00"].join("\n");
+  const long = new Date(Date.now() - 40 * 3_600_000).toISOString();
+  const recent = new Date().toISOString();
+  const ids: number[] = [];
+  [["A", "B"], ["C", "D"], ["E", "F"]].forEach(([h, a], i) => {
+    const text = alert(h!, a!);
+    db.upsertLivePick("chat", i + 1, text, parseAlert(text), recent);
+    ids.push(db.listLivePicks(10).find((p) => p.messageId === i + 1)!.id);
+  });
+  db.markSent([{ id: ids[0]!, rowJson: "{}" }, { id: ids[1]!, rowJson: "{}" }]);
+  // pretend the first was sent long ago and the second just now
+  (db as unknown as { db: { prepare(s: string): { run(...a: unknown[]): void } } }).db
+    .prepare(`UPDATE live_picks SET sent_at = ? WHERE id = ?`)
+    .run(long, ids[0]);
+
+  const cutoff = new Date(Date.now() - 2 * 3_600_000).toISOString();
+  assert.equal(db.removeStrategyPicks("Old Strategy").removed, 1, "the unsent one goes as before");
+  assert.equal(db.removeSentRecords("Old Strategy", cutoff), 1, "only the one sent long ago");
+  assert.equal(db.countLivePicks(), 1, "the one sent just now is kept");
+  assert.equal(db.isPickDeleted("chat", 1), true, "noted so the sync can't restore it");
+  assert.equal(db.removeSentRecords("Some Other Strategy", cutoff), 0);
+});

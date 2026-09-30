@@ -202,13 +202,18 @@ export default function StrategiesPage() {
         `\n\nNothing changes in your betting software. If one of these names ever arrives again, it will reappear.`,
     );
     if (!ok) return;
+    const includeSent =
+      sent > 0 &&
+      window.confirm(
+        `Also delete the ${sent} sent record${sent === 1 ? "" : "s"} for good?\n\nOK = delete them too, so these strategies disappear completely from every list. Records of picks sent today are kept until tomorrow.\nCancel = keep them as records; the strategies will still show in the lists.`,
+      );
     setBulkBusy(true);
     setBulkMessage(null);
     let done = 0;
     let removedAlerts = 0;
     try {
       for (const s of chosen) {
-        const r = await removeMany.mutateAsync({ label: s.label, ignoreFuture: false });
+        const r = await removeMany.mutateAsync({ label: s.label, ignoreFuture: false, includeSent });
         removedAlerts += r.removed;
         done++;
       }

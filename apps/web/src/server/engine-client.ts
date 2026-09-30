@@ -333,11 +333,13 @@ export interface RemoveStrategyResult {
   removed: number;
   /** Picks already sent to bet. They are never deleted, only taken out of results once over 2 hours old. */
   keptBecauseSent: number;
+  /** Sent records permanently deleted (only when asked for). Ones sent today are kept until tomorrow. */
+  sentRecordsDeleted?: number;
   hiddenFromResults?: number;
   ignoring?: boolean;
 }
 
-export async function removeStrategy(label: string, ignoreFuture = false): Promise<RemoveStrategyResult> {
+export async function removeStrategy(label: string, ignoreFuture = false, includeSent = false): Promise<RemoveStrategyResult> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -349,7 +351,7 @@ export async function removeStrategy(label: string, ignoreFuture = false): Promi
     const res = await fetch(`${baseUrl}/internal/strategies/remove`, {
       method: "POST",
       headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ label, ignoreFuture }),
+      body: JSON.stringify({ label, ignoreFuture, includeSent }),
       cache: "no-store",
       signal: controller.signal,
     });

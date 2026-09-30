@@ -47,7 +47,7 @@ export function useMergeStrategy() {
 export function useDeleteStrategy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { label: string; ignoreFuture: boolean }): Promise<RemoveStrategyResult> => {
+    mutationFn: async (v: { label: string; ignoreFuture: boolean; includeSent?: boolean }): Promise<RemoveStrategyResult> => {
       const res = await fetch("/api/admin/strategies/remove", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

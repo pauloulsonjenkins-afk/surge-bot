@@ -549,8 +549,16 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const result = db.removeStrategyPicks(label);
-      // Picks already sent to bet are kept as records but taken out of every result and figure once they are
-      // over 2 hours old, so a deleted strategy can't keep skewing the Dashboard and Win/Loss.
+      // With includeSent, picks sent to bet before today (and over 2 hours ago) are deleted for good too, so the
+      // strategy disappears completely. Ones sent today still count towards the daily limit, so they stay until tomorrow.
+      let sentRecordsDeleted = 0;
+      if (body.includeSent === true) {
+        const twoHoursAgo = Date.now() - 2 * 3_600_000;
+        const startOfToday = Date.parse(ukDayBounds(ukDateOf(new Date())).from);
+        sentRecordsDeleted = db.removeSentRecords(label, new Date(Math.min(twoHoursAgo, startOfToday)).toISOString());
+      }
+      // Sent picks still kept are taken out of every result and figure once they are over 2 hours old, so a
+      // deleted strategy can't keep skewing the Dashboard and Win/Loss.
       const hiddenFromResults = db.excludeSentPicks(label, new Date(Date.now() - 2 * 3_600_000).toISOString());
       const ignoreFuture = body.ignoreFuture === true;
       if (ignoreFuture) db.setStrategyIgnored(label, true);
@@ -559,10 +567,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const key = label.toLowerCase();
       saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null }, minOdds: { [key]: null } });
       log.info(
-        `Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ${result.keptBecauseSent} sent pick(s) kept ` +
-          `(${hiddenFromResults} taken out of results)${ignoreFuture ? ", new alerts ignored" : ""}.`,
+        `Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ` +
+          `${result.keptBecauseSent - sentRecordsDeleted} sent pick(s) kept (${hiddenFromResults} taken out of results), ` +
+          `${sentRecordsDeleted} sent record(s) deleted${ignoreFuture ? ", new alerts ignored" : ""}.`,
       );
-      send(res, 200, { ...result, hiddenFromResults, ignoring: ignoreFuture });
+      send(res, 200, {
+        ...result,
+        keptBecauseSent: result.keptBecauseSent - sentRecordsDeleted,
+        sentRecordsDeleted,
+        hiddenFromResults,
+        ignoring: ignoreFuture,
+      });
       return;
     }
 

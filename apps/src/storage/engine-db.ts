@@ -1032,6 +1032,31 @@ export class EngineDb {
     return ids.length;
   }
 
+  /**
+   * Permanently deletes a strategy's picks that were sent to bet before `beforeIso`, so the strategy disappears
+   * completely. Picks sent since then are left alone: they still count towards today's daily limit and the bet
+   * feed may still be repeating them. Each one is noted so the catch-up sync can't bring it back.
+   * Returns how many were deleted.
+   */
+  removeSentRecords(label: string, beforeIso: string): number {
+    const target = strategyLabel(label).toLowerCase();
+    const rows = this.db
+      .prepare(`SELECT id, strategy, chat_id, message_id FROM live_picks WHERE sent_at IS NOT NULL AND sent_at < ?`)
+      .all(beforeIso) as Array<{ id: number; strategy: string; chat_id: string; message_id: number }>;
+    const mine = rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === target);
+    const del = this.db.prepare(`DELETE FROM live_picks WHERE id = ?`);
+    const note = this.db.prepare(`INSERT OR REPLACE INTO deleted_picks (chat_id, message_id, deleted_at) VALUES (?, ?, ?)`);
+    const now = new Date().toISOString();
+    this.db.transaction(() => {
+      for (const r of mine) {
+        note.run(r.chat_id, r.message_id, now);
+        del.run(r.id);
+      }
+    })();
+    if (mine.length > 0) this.onChange();
+    return mine.length;
+  }
+
   /** Forgets every merge that involves a strategy (used when it is deleted). */
   forgetStrategyMerges(label: string): void {
     const key = strategyLabel(label).toLowerCase();

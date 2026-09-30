@@ -78,6 +78,7 @@ test("a fresh start in the past changes nothing, and only newer alerts count aft
   assert.equal(db.hitRateStats(null).totals.hits, 2);
   assert.equal(db.listResultsForWinLoss(aWeekAgo()).length, 2);
   // an alert that arrives after the start time counts; the two stored earlier do not
+  await new Promise((r) => setTimeout(r, 30)); // so the stored alerts are clearly older than the start time
   db.setFreshStart(new Date().toISOString());
   await new Promise((r) => setTimeout(r, 30));
   const text = settledAlert("Metz", "Reims");

@@ -27,11 +27,18 @@ export function useDeleteStrategyFlow() {
     const ignoreFuture = window.confirm(
       `Also ignore new “${label}” alerts?\n\nOK = ignore them from now on, so this strategy stays gone.\nCancel = let new ones in, and it will reappear when one arrives.\n\nYou can stop ignoring it later from the bottom of the Strategies page.`,
     );
+    // Sent picks are normally kept as records, which is why a strategy that has sent bets can still show in the lists.
+    const includeSent =
+      sent > 0 &&
+      window.confirm(
+        `Also delete the ${sent} sent record${sent === 1 ? "" : "s"} for good?\n\nOK = delete them too, so “${label}” disappears completely from every list. Nothing changes in your betting software. Records of picks sent today are kept until tomorrow, because they count towards today's daily limit.\nCancel = keep them as records; the strategy will still show in the lists.`,
+      );
     remove.mutate(
-      { label, ignoreFuture },
+      { label, ignoreFuture, includeSent },
       {
         onSuccess: (r) => {
           const parts = [`${r.removed} alert${r.removed === 1 ? "" : "s"} deleted.`];
+          if ((r.sentRecordsDeleted ?? 0) > 0) parts.push(`${r.sentRecordsDeleted} sent record${r.sentRecordsDeleted === 1 ? "" : "s"} deleted.`);
           if (r.keptBecauseSent > 0) {
             const hidden = r.hiddenFromResults ?? 0;
             parts.push(`${r.keptBecauseSent} already sent to bet: kept as records, ${hidden} taken out of your results.`);

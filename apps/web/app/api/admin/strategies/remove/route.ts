@@ -11,10 +11,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const body = (await request.json()) as { label?: unknown; ignoreFuture?: unknown };
+    const body = (await request.json()) as { label?: unknown; ignoreFuture?: unknown; includeSent?: unknown };
     const label = typeof body.label === "string" ? body.label.trim() : "";
     if (!label) return NextResponse.json({ error: "label is required" }, { status: 400 });
-    return NextResponse.json(await removeStrategy(label, body.ignoreFuture === true));
+    return NextResponse.json(await removeStrategy(label, body.ignoreFuture === true, body.includeSent === true));
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
   }
