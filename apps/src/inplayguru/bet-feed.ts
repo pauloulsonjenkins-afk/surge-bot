@@ -37,6 +37,7 @@
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
 import { computeStopLoss } from "./stop-loss";
+import { alertOddsOf } from "../server/pricing";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -482,6 +483,86 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
   if (opts.markSent) db.markSent(toMark);
 
   return { rows, skipped, csv: toCsv(rows, Object.keys(settings.minOdds).length > 0), newlySent: toMark.length, blockedReason: null };
+}
+
+// ---------------------------------------------------------------------------
+// Simulation
+
+const SIM_SINCE_KEY = "sim_recording_since";
+
+/** The price the alert printed for the bet it describes, read from the parsed alert (see alertOddsOf). */
+function alertOddsOfPick(p: LivePick): number | null {
+  const d = p.detail;
+  if (!d) return null;
+  const live = d.odds?.live1x2 ?? null;
+  const favouriteOdds = d.favourite && live ? (d.favourite === "home" ? live[0] : live[2]) : null;
+  return alertOddsOf({
+    market: p.market,
+    targetLine: d.targetLine ?? null,
+    overLine: d.odds?.overUnderLine ?? null,
+    overOdds: d.odds?.over ?? null,
+    favouriteOdds: typeof favouriteOdds === "number" ? favouriteOdds : null,
+  });
+}
+
+/**
+ * Records a simulated bet on every new pick that isn't being sent, as the bet it would have been if its
+ * strategy were Live. It is stored on the pick (never sent anywhere), and Sim profit is then worked out from it,
+ * so a Sim strategy is judged by the same rules as a Live one:
+ *   - the stake set for the strategy at the time (changing it later doesn't rewrite the past),
+ *   - the minimum odds: a pick whose alert price is below the minimum wouldn't have been matched,
+ *   - the per-strategy stop loss, run on the strategy's own simulated results,
+ *   - the daily limit, counting live and simulated bets together,
+ *   - the age limit: an alert that arrived too late wouldn't have been sent.
+ * Unlike the real feed it doesn't need the market to be one the exchange feed can name, so strategies that
+ * can't be sent yet (such as corners) can still be tried out in Sim.
+ *
+ * A pick of a Live strategy is left to the bet feed while it can still be sent. If it ages out without being
+ * sent (stop loss, daily limit, the feed wasn't read...), it is recorded here as not placed.
+ * Returns how many picks were recorded.
+ */
+export function recordSimBets(db: EngineDb, now = new Date()): number {
+  // Only picks that arrive after recording first started: older ones keep being priced at the strategy's
+  // stake, rather than being judged now as if they had arrived late.
+  let since = db.getSetting(SIM_SINCE_KEY);
+  if (!since) {
+    since = now.toISOString();
+    db.setSetting(SIM_SINCE_KEY, since);
+  }
+  const window = new Date(now.getTime() - 36 * 3_600_000).toISOString();
+  const candidates = db.listSimCandidates(since > window ? since : window).sort((a, b) => a.id - b.id);
+  if (candidates.length === 0) return 0;
+
+  const settings = getSendingSettings(db);
+  const cutoff = now.getTime() - settings.maxAgeMinutes * 60 * 1000;
+  const today = ukDay.format(now);
+  const stops = computeStopLoss(db, now, "sim");
+  let betsToday = [...db.recentSentTimes(), ...db.recentSimBetTimes()].filter((t) => ukDay.format(new Date(t)) === today).length;
+
+  const items: Array<{ id: number; rowJson: string }> = [];
+  for (const p of candidates) {
+    const key = strategyLabel(p.strategy).toLowerCase();
+    const fresh = alertTime(p) >= cutoff;
+    const liveNow = settings.enabled && settings.strategies[key] === true;
+    if (liveNow && fresh) continue; // the bet feed decides this one
+
+    const stake = settings.stakes[key] ?? null;
+    const minPrice = settings.minOdds[key] ?? null;
+    const odds = alertOddsOfPick(p);
+    let skipped: string | null = null;
+    if (liveNow) skipped = "Not sent by the bet feed in time.";
+    else if (!fresh) skipped = "The alert arrived too late to bet.";
+    else if (stake === null) skipped = "No stake set for this strategy.";
+    else if (stake > settings.maxStake) skipped = `Stake £${stake.toFixed(2)} is above the highest allowed (£${settings.maxStake}).`;
+    else if (minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
+    else if (stops.get(key)?.stopped) skipped = `Stopped: ${stops.get(key)!.reason}`;
+    else if (betsToday >= settings.dailyCap) skipped = "Daily limit reached.";
+
+    if (skipped === null) betsToday++;
+    items.push({ id: p.id, rowJson: JSON.stringify({ stake: skipped === null ? stake : null, minPrice, skipped }) });
+  }
+  db.setSimRows(items, now.toISOString());
+  return items.length;
 }
 
 /** When the alert was posted: Telegram's time if known, otherwise when it was received. */
