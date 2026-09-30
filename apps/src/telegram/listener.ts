@@ -32,6 +32,7 @@ import type { Api } from "telegram";
 import type { EngineDb } from "../storage/engine-db";
 import { handleVerifiedPick } from "../inplayguru/receiver";
 import { parseAlert } from "../inplayguru/parse-alert";
+import { recordSimBets } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 
 const SYNC_EVERY_MS = 2 * 60 * 1000;
@@ -134,6 +135,12 @@ function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boo
     }
     const what = db.upsertLivePick(m.chatKey, m.messageId, m.text, parsed, messageAt);
     status.lastAlertAt = new Date().toISOString();
+    // Record the simulated bet straight away, so it uses the stake and limits in force when the alert arrived.
+    try {
+      recordSimBets(db);
+    } catch (err) {
+      log.error(`Could not record the simulated bet: ${err instanceof Error ? err.message : String(err)}`);
+    }
     log.info(
       `Live pick for Telegram message ${m.messageId} ${what}` +
         `${how === "edit" ? " (edit)" : how === "sync" ? " (caught up by sync)" : ""}: strategy "${parsed.strategyRaw}", ` +

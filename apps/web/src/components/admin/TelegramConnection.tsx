@@ -130,7 +130,7 @@ export default function TelegramConnection() {
       <h3 className="text-sm font-medium text-ink">Telegram connection</h3>
       <p className="mt-1 text-xs text-ink-muted">
         Log in with your own Telegram account so the engine can read your alerts from the group/channel
-        you're already in.
+        you’re already in.
       </p>
 
       {error && (
@@ -159,7 +159,7 @@ export default function TelegramConnection() {
       ) : status === "logged_in" && chats ? (
         <div className="mt-4 space-y-2">
           <p className="text-sm text-ink-muted">
-            Pick the chat your alerts land in — look for the personal alerts bot (labelled "bot" below), not
+            Pick the chat your alerts land in — look for the personal alerts bot (labelled “bot” below), not
             a group.
           </p>
           <ul className="divide-y divide-line rounded-lg border border-line">
@@ -182,7 +182,7 @@ export default function TelegramConnection() {
           {sessionString && (
             <div className="mt-2">
               <p className="mb-1 text-xs font-medium text-ink-muted">
-                TELEGRAM_SESSION value — save this as an env var too, alongside your chosen chat's id:
+                TELEGRAM_SESSION value — save this as an env var too, alongside your chosen chat’s id:
               </p>
               <textarea
                 readOnly

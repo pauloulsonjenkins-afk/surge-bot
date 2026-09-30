@@ -50,7 +50,7 @@ import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru
 import { buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
-import { computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
+import { computePickProfits, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
@@ -182,7 +182,11 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         const now = Date.now();
         range = { from: new Date(now - Math.min(hoursParam, 24 * 31) * 3_600_000).toISOString(), to: new Date(now + 60_000).toISOString() };
       }
-      send(res, 200, { picks: db.listLivePicks(limit, range) });
+      const picks = db.listLivePicks(limit, range);
+      // Profit per settled pick, for the admin's Trade Log. Worked out exactly as Win/Loss does.
+      const oldest = picks.reduce<string | null>((min, p) => (min === null || p.firstSeenAt < min ? p.firstSeenAt : min), null);
+      const profits = oldest ? computePickProfits(db, oldest) : {};
+      send(res, 200, { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null })) });
       return;
     }
 
@@ -471,10 +475,12 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const settings = getSendingSettings(db);
+      const returns = computeStrategyReturns(db);
       send(res, 200, {
         ignored: Object.values(db.getIgnoredStrategies()).sort(),
         strategies: db.listStrategiesForAdmin().map((x) => ({
           ...x,
+          returns: returns[x.label.toLowerCase()] ?? null,
           sendingOn: settings.strategies[x.label.toLowerCase()] === true,
           // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
           mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
@@ -622,6 +628,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const preview = buildFeed(db, { markSent: false });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
       const stops = computeStopLoss(db);
+      // The same limits run on each strategy's simulated bets: "would have stopped" for Sim strategies.
+      const simStops = computeStopLoss(db, new Date(), "sim");
       const counts = new Map(db.listStrategiesForAdmin().map((x) => [x.label.toLowerCase(), x]));
       const seen = new Map<
         string,
@@ -634,6 +642,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           alerts: number;
           sent: number;
           stopLoss: ReturnType<typeof computeStopLoss> extends Map<string, infer V> ? V | null : never;
+          simStopLoss: ReturnType<typeof computeStopLoss> extends Map<string, infer V> ? V | null : never;
         }
       >();
       // Every strategy ever seen, whatever the Leagues page hides, so a switch can always be turned off.
@@ -648,6 +657,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           alerts: counts.get(key)?.alerts ?? 0,
           sent: counts.get(key)?.sent ?? 0,
           stopLoss: stops.get(key) ?? null,
+          simStopLoss: simStops.get(key) ?? null,
         });
       }
       send(res, 200, {

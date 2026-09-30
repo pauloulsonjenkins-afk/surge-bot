@@ -28,6 +28,7 @@
  */
 import type { EngineDb, PickMode } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
+import { priceResult } from "./pricing";
 
 export interface WinLossSettings {
   /** Betfair commission on winnings, in percent. */
@@ -158,6 +159,8 @@ export interface WinLossStrategy {
   counted: number;
   noStake: number;
   noOdds: number;
+  /** Simulation picks the bet feed's rules would have held back (minimum odds, stop loss, daily limit...). Not priced. */
+  notPlaced: number;
   usedAlertOdds: number;
 }
 
@@ -234,6 +237,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
         counted: 0,
         noStake: 0,
         noOdds: 0,
+        notPlaced: 0,
         usedAlertOdds: 0,
       };
     t.market = r.market ?? t.market;
@@ -242,32 +246,27 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     t.settled++;
     inMode.add(key);
 
-    const stake = r.sentStake ?? sending.stakes[key] ?? null;
-    if (stake === null) {
+    const out = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: settings.assumedOdds[key] ?? null, commission });
+    if (out.kind === "noStake") {
       t.noStake++;
       continue;
     }
-    // The price printed in the alert counts only when it is for the very line that was bet.
-    const alertOdds =
-      r.market === "NEXT_GOAL" && r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1
-        ? r.overOdds
-        : r.market === "FAVOURITE_TO_WIN"
-          ? r.favouriteOdds // the favourite's live win price in the alert
-          : null;
-    const odds = alertOdds ?? settings.assumedOdds[key] ?? null;
-    if (odds === null) {
+    if (out.kind === "noOdds") {
       t.noOdds++;
       continue;
     }
+    if (out.kind === "notPlaced") {
+      t.notPlaced++;
+      continue;
+    }
     t.counted++;
-    if (alertOdds !== null) t.usedAlertOdds++;
-
-    const profit = r.result === "hit" ? stake * (odds - 1) * (1 - commission) : -stake;
-    priced.push({ day, time: ukTime.format(new Date(r.firstSeenAt)), key, gkey: reportedAs(key, label).toLowerCase(), profit });
+    if (out.usedAlertOdds) t.usedAlertOdds++;
+    priced.push({ day, time: ukTime.format(new Date(r.firstSeenAt)), key, gkey: reportedAs(key, label).toLowerCase(), profit: out.profit });
   }
 
   // ---- expenditure: months charged in a period ----
-  const ex = settings.expenditure;
+  // A real cost, so it comes off the Live and All figures but not Sim: Sim shows what a strategy makes by itself.
+  const ex = { ...settings.expenditure, enabled: settings.expenditure.enabled && mode !== "sim" };
   const monthsCharged = (periodStart: string): number => {
     if (!ex.enabled || ex.startMonth === null) return 0;
     const from = periodStart.slice(0, 7) > ex.startMonth ? periodStart.slice(0, 7) : ex.startMonth;
@@ -361,4 +360,67 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     mtdDaily,
     series: { d1: oneDay(), d7: dailySeries("d7"), mtd: dailySeries("mtd"), ytd: dailySeries("ytd") },
   };
+}
+
+// ---------------------------------------------------------------------------
+
+/** Money figures for one strategy in one mode, all time (from any fresh start). */
+export interface StrategyReturn {
+  /** Settled picks in this mode. */
+  settled: number;
+  /** Of those, the ones that could be priced (stake and odds known, and for Sim, placed under the feed's rules). */
+  counted: number;
+  staked: number;
+  profit: number;
+  /** Profit per pound staked (0.12 = 12p back for every £1), or null when nothing was staked. */
+  roi: number | null;
+}
+
+/**
+ * Live and Sim returns for every strategy (keyed by lower-case name), for the Strategies page. Worked out pick by
+ * pick exactly as Win/Loss does, so the two always agree. Merged strategies are not combined here.
+ */
+export function computeStrategyReturns(db: EngineDb): Record<string, { live: StrategyReturn; sim: StrategyReturn }> {
+  const settings = getWinLossSettings(db);
+  const sending = getSendingSettings(db);
+  const commission = settings.commission / 100;
+  const out: Record<string, { live: StrategyReturn; sim: StrategyReturn }> = {};
+  const empty = (): StrategyReturn => ({ settled: 0, counted: 0, staked: 0, profit: 0, roi: null });
+
+  for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z")) {
+    const key = strategyLabel(r.strategy).toLowerCase();
+    const entry = (out[key] ??= { live: empty(), sim: empty() });
+    const bucket = r.sent ? entry.live : entry.sim;
+    bucket.settled++;
+    const priced = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: settings.assumedOdds[key] ?? null, commission });
+    if (priced.kind !== "priced") continue;
+    bucket.counted++;
+    bucket.staked += priced.stake;
+    bucket.profit += priced.profit;
+  }
+  for (const entry of Object.values(out)) {
+    for (const b of [entry.live, entry.sim]) {
+      b.staked = r2(b.staked);
+      b.profit = r2(b.profit);
+      b.roi = b.staked > 0 ? Math.round((b.profit / b.staked) * 1000) / 1000 : null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Profit in pounds for each settled pick since a date (keyed by pick id), for the admin's Trade Log. Picks
+ * that can't be priced, or that the feed's rules would have held back, are left out.
+ */
+export function computePickProfits(db: EngineDb, sinceIso: string): Record<number, { stake: number; profit: number }> {
+  const settings = getWinLossSettings(db);
+  const sending = getSendingSettings(db);
+  const commission = settings.commission / 100;
+  const out: Record<number, { stake: number; profit: number }> = {};
+  for (const r of db.listResultsForWinLoss(sinceIso)) {
+    const key = strategyLabel(r.strategy).toLowerCase();
+    const priced = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: settings.assumedOdds[key] ?? null, commission });
+    if (priced.kind === "priced") out[r.id] = { stake: r2(priced.stake), profit: r2(priced.profit) };
+  }
+  return out;
 }

@@ -1,4 +1,4 @@
-const gbp = new Intl.NumberFormat("en-GB", {
+const gbpFmt = new Intl.NumberFormat("en-GB", {
   style: "currency",
   currency: "GBP",
   signDisplay: "auto",
@@ -11,7 +11,7 @@ const gbpSigned = new Intl.NumberFormat("en-GB", {
 });
 
 export function formatCurrency(value: number, signed = false): string {
-  return (signed ? gbpSigned : gbp).format(value);
+  return (signed ? gbpSigned : gbpFmt).format(value);
 }
 
 export function formatPercent(value: number, digits = 1): string {
@@ -29,4 +29,10 @@ export function formatNumber(value: number): string {
 
 export function formatRatio(value: number): string {
   return value.toFixed(2);
+}
+
+/** Money as the app shows it: "+£4.00", "−£2.00" (a true minus sign), "£0.00". signed = false leaves off the "+". */
+export function gbp(n: number, signed = true): string {
+  const sign = n < 0 ? "−" : signed && n > 0 ? "+" : "";
+  return `${sign}£${Math.abs(n).toFixed(2)}`;
 }

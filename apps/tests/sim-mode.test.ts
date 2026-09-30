@@ -7,8 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb, parsePickMode } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { computeWinLoss } from "../src/server/winloss";
+import { recordSimBets, saveSendingSettings } from "../src/inplayguru/bet-feed";
+import { computeStrategyReturns, computeWinLoss, saveWinLossSettings } from "../src/server/winloss";
 
 const LIVE = "Blistering Momentum / Action-packed";
 const SIM = "Blistering Momentum / Action-packed OJ";
@@ -94,4 +94,83 @@ test("hit rates, the breakdown and the Strategies list split the same way", () =
   assert.deepEqual([rows[LIVE]?.liveHits, rows[LIVE]?.liveMisses, rows[LIVE]?.simHits], [1, 1, 0]);
   assert.deepEqual([rows[SIM]?.simHits, rows[SIM]?.liveHits], [1, 0]);
   assert.equal(rows[LIVE]?.hits, 1); // the combined figures are unchanged
+});
+
+// ---- simulated bets recorded on arrival ----
+
+/** Like setup(), but with recording switched on from the start, and settling done separately. */
+function recording() {
+  const db = new EngineDb(":memory:", () => {});
+  db.setSetting("sim_recording_since", "2000-01-01T00:00:00.000Z");
+  saveSendingSettings(db, { stakes: { [SIM.toLowerCase()]: 2 } });
+  let n = 1;
+  /** An alert arrives (in play), a simulated bet is recorded, then the result comes in. */
+  const play = (result: "hit" | "miss", beforeSettle?: () => void) => {
+    const inPlay = alert(SIM, n, result).split("\n⸻⸻")[0]!;
+    db.upsertLivePick("chat", n, inPlay, parseAlert(inPlay), new Date().toISOString());
+    recordSimBets(db);
+    beforeSettle?.();
+    const done = alert(SIM, n, result);
+    db.upsertLivePick("chat", n, done, parseAlert(done), new Date().toISOString());
+    n++;
+  };
+  return { db, play };
+}
+
+test("a Sim pick keeps the stake it was recorded with, even if the stake changes later", () => {
+  const { db, play } = recording();
+  play("hit");                                                           // recorded at £2: +£4 at 3.00
+  saveSendingSettings(db, { stakes: { [SIM.toLowerCase()]: 10 } });
+  assert.equal(computeWinLoss(db, new Date(), "sim").periods.d1.total, 4);
+});
+
+test("a Sim pick below the strategy's minimum odds is recorded as not placed and not priced", () => {
+  const { db, play } = recording();
+  saveSendingSettings(db, { minOdds: { [SIM.toLowerCase()]: 3.5 } });  // the alert price is 3.00
+  play("hit");
+  const wl = computeWinLoss(db, new Date(), "sim");
+  assert.equal(wl.periods.d1.total, 0);
+  assert.equal(wl.strategies.find((s) => s.label === SIM)?.notPlaced, 1);
+});
+
+test("the daily limit counts simulated bets too", () => {
+  const { db, play } = recording();
+  saveSendingSettings(db, { dailyCap: 1 });
+  play("hit"); // placed: +£4
+  play("hit"); // over the limit: not placed
+  assert.equal(computeWinLoss(db, new Date(), "sim").periods.d1.total, 4);
+});
+
+test("the stop loss runs on a Sim strategy's own simulated results", () => {
+  const { db, play } = recording();
+  db.setSetting("stop_loss", JSON.stringify({ [SIM.toLowerCase()]: { lossRun: 2 } }));
+  play("miss");
+  play("miss"); // two losses in a row: the strategy stops for the day
+  play("hit");  // would not have been placed
+  assert.equal(computeWinLoss(db, new Date(), "sim").periods.d1.total, -4);
+});
+
+test("a pick from a Live strategy is left to the bet feed while it can still be sent", () => {
+  const { db } = recording();
+  saveSendingSettings(db, { enabled: true, stakes: { [LIVE.toLowerCase()]: 2 }, strategies: { [LIVE.toLowerCase()]: true } });
+  const text = alert(LIVE, 99, "hit").split("\n⸻⸻")[0]!;
+  db.upsertLivePick("chat", 99, text, parseAlert(text), new Date().toISOString());
+  assert.equal(recordSimBets(db), 0);
+});
+
+test("the monthly cost comes off Live and All, but not Sim", () => {
+  const { db, play } = recording();
+  play("hit");
+  saveWinLossSettings(db, { expenditure: { enabled: true, monthly: 50 } });
+  assert.equal(computeWinLoss(db, new Date(), "sim").periods.mtd.expenditure, 0);
+  assert.equal(computeWinLoss(db, new Date(), "all").periods.mtd.expenditure, 50);
+});
+
+test("strategy returns give profit per pound staked, split into live and sim", () => {
+  const { db, play } = recording();
+  play("hit");  // +£4 on £2
+  play("miss"); // -£2 on £2
+  const r = computeStrategyReturns(db)[SIM.toLowerCase()]!;
+  assert.deepEqual([r.sim.staked, r.sim.profit, r.sim.roi], [4, 2, 0.5]);
+  assert.equal(r.live.settled, 0);
 });

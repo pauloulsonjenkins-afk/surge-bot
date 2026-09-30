@@ -6,19 +6,29 @@ import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
+import { ModeBadge } from "@/components/ui/ModeToggle";
 import { betText } from "@/lib/markets";
+import { gbp } from "@/lib/format";
 import { useMe } from "@/queries/use-me";
-import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
+import { useAdminLivePicks, useLivePicks, type LivePick, type PublicPick } from "@/queries/use-live";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
 
-function Row({ pick }: { pick: LivePick }) {
+/** A pick as this page shows it. Money and the Live / Sim tag are only there for the admin. */
+type Row = PublicPick & { pnl?: LivePick["pnl"]; excluded?: boolean };
+
+const moneyTone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink-muted");
+
+function PickRow({ pick, admin }: { pick: Row; admin: boolean }) {
   const hit = pick.result === "hit";
   return (
     <li className="flex items-center gap-3 px-3 py-3">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">
-          {pick.home ?? "Unknown"} <span className="text-ink-muted">v</span> {pick.away ?? "Unknown"}
+        <p className="flex items-center gap-2 text-sm font-medium text-ink">
+          <span className="truncate">
+            {pick.home ?? "Unknown"} <span className="text-ink-muted">v</span> {pick.away ?? "Unknown"}
+          </span>
+          {admin && <ModeBadge mode={pick.sentAt ? "live" : "sim"} />}
         </p>
         <p className="mt-0.5 truncate text-xs text-ink-muted">
           {[pick.strategy.replace(/\([^)]*\)/g, "").trim(), betText(pick.market, pick.selection)]
@@ -27,8 +37,13 @@ function Row({ pick }: { pick: LivePick }) {
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className={`text-sm font-semibold ${hit ? "text-hit" : "text-loss"}`}>{hit ? "Hit" : "Miss"}</p>
+        {admin && pick.pnl ? (
+          <p className={`text-sm font-semibold tabular-nums ${moneyTone(pick.pnl.profit)}`}>{gbp(pick.pnl.profit)}</p>
+        ) : (
+          <p className={`text-sm font-semibold ${hit ? "text-hit" : "text-loss"}`}>{hit ? "Hit" : "Miss"}</p>
+        )}
         <p className="text-xs tabular-nums text-ink-muted">
+          {admin && pick.pnl ? `${hit ? "Hit" : "Miss"} · ` : ""}
           {pick.ftScore ?? "–"}
           {pick.resultOverridden && " · amended"}
         </p>
@@ -38,33 +53,41 @@ function Row({ pick }: { pick: LivePick }) {
 }
 
 export default function TradeLogPage() {
-  const { data, isLoading, error } = useLivePicks(200);
-  const { data: me } = useMe();
+  const { data: me, isLoading: meLoading } = useMe();
+  const admin = me?.admin === true;
+  // The admin's list carries each pick's stake and profit; everyone else gets the public list.
+  const pub = useLivePicks(200, !meLoading && !admin);
+  const adm = useAdminLivePicks(200, admin);
+  const { data, isLoading, error } = admin ? adm : pub;
 
-  if (isLoading) return <ListSkeleton />;
+  if (meLoading || isLoading) return <ListSkeleton />;
 
-  const settled = (data ?? []).filter((p) => p.result === "hit" || p.result === "miss");
+  const settled = ((data ?? []) as Row[]).filter((p) => !p.excluded && (p.result === "hit" || p.result === "miss"));
 
   // Group by UK day, newest first (the list already arrives newest first).
-  const groups: Array<{ day: string; picks: LivePick[]; hits: number }> = [];
+  const groups: Array<{ day: string; picks: Row[]; hits: number; profit: number; priced: number }> = [];
   for (const p of settled) {
     const day = dayFmt.format(new Date(p.firstSeenAt));
     let last = groups[groups.length - 1];
     if (!last || last.day !== day) {
-      last = { day, picks: [], hits: 0 };
+      last = { day, picks: [], hits: 0, profit: 0, priced: 0 };
       groups.push(last);
     }
     last.picks.push(p);
     if (p.result === "hit") last.hits += 1;
+    if (p.pnl) {
+      last.profit += p.pnl.profit;
+      last.priced += 1;
+    }
   }
 
   return (
     <div className="space-y-6 px-4 py-4">
       <PageHeader
         title="Trade Log"
-        subtitle="Every settled pick, most recent first"
+        subtitle={admin ? "Every settled pick with its estimated profit, most recent first" : "Every settled pick, most recent first"}
         actions={
-          me?.admin ? (
+          admin ? (
             <Link
               href="/more/admin/results"
               className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
@@ -83,25 +106,33 @@ export default function TradeLogPage() {
       ) : (
         groups.map((g) => {
           const misses = g.picks.length - g.hits;
+          const profit = Math.round(g.profit * 100) / 100;
           return (
             <section key={g.day} className="space-y-3">
-              <h2 className="flex items-baseline justify-between text-base font-semibold text-ink">
+              <h2 className="flex items-baseline justify-between gap-3 text-base font-semibold text-ink">
                 {g.day}
                 <span className="text-xs font-medium tabular-nums">
                   <span className="text-hit">{g.hits}</span>
                   <span className="text-ink-muted"> – </span>
                   <span className="text-loss">{misses}</span>
                   <span className="text-ink-muted"> · {Math.round((g.hits / g.picks.length) * 100)}%</span>
+                  {admin && g.priced > 0 && <span className={moneyTone(profit)}> · {gbp(profit)}</span>}
                 </span>
               </h2>
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
                 {g.picks.map((p) => (
-                  <Row key={p.id} pick={p} />
+                  <PickRow key={p.id} pick={p} admin={admin} />
                 ))}
               </ul>
             </section>
           );
         })
+      )}
+
+      {admin && (
+        <p className="text-center text-xs text-ink-muted">
+          Profit is estimated from the odds in each alert, as on Win/Loss. Sim picks show what the bet would have made.
+        </p>
       )}
     </div>
   );

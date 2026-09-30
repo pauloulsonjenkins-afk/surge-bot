@@ -288,8 +288,16 @@ export default function SendingPage() {
                         </span>
                       </span>
                     </button>
-                    {s.stopLoss?.stopped && (
+                    {s.enabled && s.stopLoss?.stopped && (
                       <span className="shrink-0 rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>
+                    )}
+                    {!s.enabled && s.simStopLoss?.stopped && (
+                      <span
+                        title={s.simStopLoss.reason ?? undefined}
+                        className="shrink-0 rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn"
+                      >
+                        Would have stopped
+                      </span>
                     )}
                     {/* Live sends new picks to the betting software; Sim only records them. Sim is the default. */}
                     <div
@@ -387,6 +395,17 @@ export default function SendingPage() {
                           busy={save.isPending}
                           onSave={(patch) => save.mutate({ stopLoss: { [key]: patch } })}
                         />
+                      )}
+                      {/* In Sim, the same limits run on the simulated bets, so they can be tuned before going Live. */}
+                      {!s.enabled && s.simStopLoss && (
+                        <p className={`rounded-md bg-surface-2 px-2.5 py-1.5 text-xs ${s.simStopLoss.stopped ? "text-warn" : "text-ink-muted"}`}>
+                          In Sim today: {s.simStopLoss.todayNet < 0 ? "−" : ""}£{Math.abs(s.simStopLoss.todayNet).toFixed(2)} from{" "}
+                          {s.simStopLoss.settledToday} bet{s.simStopLoss.settledToday === 1 ? "" : "s"}
+                          {s.simStopLoss.todayRun > 0 && `, ${s.simStopLoss.todayRun} loss${s.simStopLoss.todayRun === 1 ? "" : "es"} in a row`}.{" "}
+                          {s.simStopLoss.stopped
+                            ? `If it were Live it would have stopped: ${s.simStopLoss.reason} Its later picks today are recorded as not placed.`
+                            : "It hasn't reached either limit."}
+                        </p>
                       )}
                       {!s.enabled ? (
                         <button

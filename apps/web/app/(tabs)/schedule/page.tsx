@@ -103,7 +103,7 @@ export default function SchedulePage() {
   // A new day's list starts with the default sections open.
   useEffect(() => setOpen({}), [when, data?.date]);
 
-  const all = data?.fixtures ?? [];
+  const all = useMemo(() => data?.fixtures ?? [], [data]);
   const summary = useMemo(() => {
     const leagues = new Set(all.map((f) => `${f.leagueId}|${f.league}`));
     const countries = new Set(all.map((f) => f.country));

@@ -10,6 +10,8 @@ import { formatCurrency } from "@/lib/format";
 import { QueryError } from "@/components/ui/QueryError";
 import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
+import { useMe } from "@/queries/use-me";
+import { ModeBadge } from "@/components/ui/ModeToggle";
 
 // An alert that has had no result edited in after this long is treated as
 // finished rather than still in play. Finished picks live on the Trade Log.
@@ -34,7 +36,9 @@ function latestScore(pick: LivePick): string {
   return pick.goalsHome !== null && pick.goalsAway !== null ? `${pick.goalsHome} – ${pick.goalsAway}` : "– –";
 }
 
-function StatusChip({ pick }: { pick: LivePick }) {
+function StatusChip({ pick, admin }: { pick: LivePick; admin: boolean }) {
+  // The admin sees which picks are only simulated; for everyone else it's just "Captured".
+  if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return <ModeBadge mode="sim" />;
   let label = "Captured";
   let cls = "bg-surface-2 text-ink-muted";
   if (pick.sentAt) {
@@ -54,7 +58,7 @@ function StatusChip({ pick }: { pick: LivePick }) {
  * One alert as a compact row (about 72px): the minute, the teams and the score on the first line, the strategy
  * and bet on the second. Tapping it opens the match stats underneath.
  */
-function PickRow({ pick }: { pick: LivePick }) {
+function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
   const [open, setOpen] = useState(false);
   const stats = pick.detail?.stats ?? {};
   // Corners lead for the corners strategy; for the rest they come last.
@@ -96,7 +100,7 @@ function PickRow({ pick }: { pick: LivePick }) {
             <span className="truncate text-xs text-ink-muted">
               {[shortStrategy(pick.strategy), betText(pick.market, pick.selection) ?? "No market set"].join(" · ")}
             </span>
-            <StatusChip pick={pick} />
+            <StatusChip pick={pick} admin={admin} />
           </span>
         </span>
 
@@ -145,6 +149,7 @@ function PickRow({ pick }: { pick: LivePick }) {
 
 export default function LivePage() {
   const { data, isLoading, error } = useLivePicks(50);
+  const admin = useMe().data?.admin === true;
 
   if (isLoading) return <ListSkeleton />;
 
@@ -173,7 +178,7 @@ export default function LivePage() {
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
           {inPlay.map((p) => (
-            <PickRow key={p.id} pick={p} />
+            <PickRow key={p.id} pick={p} admin={admin} />
           ))}
         </ul>
       )}

@@ -55,9 +55,10 @@ export function useSetPickResult() {
   });
 }
 
-export function useLivePicks(limit = 50) {
+export function useLivePicks(limit = 50, enabled = true) {
   return useQuery({
     queryKey: ["live-picks", limit],
+    enabled,
     queryFn: async ({ signal }): Promise<PublicPick[]> => {
       const data = await getJson<{ picks: PublicPick[] }>(`/api/live?limit=${limit}`, "live picks", signal);
       return data.picks;
@@ -70,9 +71,10 @@ export function useLivePicks(limit = 50) {
 }
 
 /** Signed-in view for the Results page (includes what is needed to amend a result). */
-export function useAdminLivePicks(limit = 100) {
+export function useAdminLivePicks(limit = 100, enabled = true) {
   return useQuery({
     queryKey: ["admin-live-picks", limit],
+    enabled,
     queryFn: async (): Promise<LivePick[]> => {
       const data = await getJson<{ picks: LivePick[] }>(`/api/admin/live?limit=${limit}`, "picks");
       return data.picks;

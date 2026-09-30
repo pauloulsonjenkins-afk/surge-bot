@@ -1,6 +1,7 @@
 "use client";
 
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { gbp } from "@/lib/format";
 
 export interface LineSeries {
   key: string;
@@ -9,10 +10,7 @@ export interface LineSeries {
   dashed?: boolean;
 }
 
-export function gbp(n: number, signed = true): string {
-  const sign = n < 0 ? "\u2212" : signed && n > 0 ? "+" : "";
-  return `${sign}\u00a3${Math.abs(n).toFixed(2)}`;
-}
+export { gbp };
 
 function LinesTooltip({
   active,

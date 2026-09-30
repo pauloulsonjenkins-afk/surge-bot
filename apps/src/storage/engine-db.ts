@@ -22,6 +22,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { leagueCountryFromText, type ParsedAlert } from "../inplayguru/parse-alert";
 import type { ScheduleFixture } from "../fixtures/api-football";
+import type { SimRecord } from "../server/pricing";
 
 export interface CapturedWebhook {
   receivedAt: string;
@@ -188,6 +189,19 @@ export function parsePickMode(v: unknown): PickMode {
 /** SQL condition for a mode, to add to a WHERE clause on live_picks. */
 function modeSql(mode: PickMode): string {
   return mode === "live" ? " AND sent_at IS NOT NULL" : mode === "sim" ? " AND sent_at IS NULL" : "";
+}
+
+function parseSimRow(raw: string | null): SimRecord | null {
+  if (!raw) return null;
+  try {
+    const s = JSON.parse(raw) as Partial<SimRecord>;
+    const stake = typeof s.stake === "number" && s.stake > 0 ? s.stake : null;
+    const minPrice = typeof s.minPrice === "number" && s.minPrice > 1 ? s.minPrice : null;
+    const skipped = typeof s.skipped === "string" && s.skipped ? s.skipped : null;
+    return { stake, minPrice, skipped: skipped ?? (stake === null ? "No stake set" : null) };
+  } catch {
+    return null;
+  }
 }
 
 export interface AdminStrategyRow {
@@ -409,6 +423,11 @@ export class EngineDb {
     }
     if (!liveCols.some((c) => c.name === "sent_row")) {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN sent_row TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "sim_row")) {
+      // The simulated bet recorded when a pick that isn't sent arrives (see recordSimBets in bet-feed.ts).
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN sim_row TEXT`);
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN sim_at TEXT`);
     }
     if (!liveCols.some((c) => c.name === "message_at")) {
       // Telegram's own posting time. The bet feed's age check uses it, so an alert delivered late is never treated as fresh.
@@ -1246,10 +1265,12 @@ export class EngineDb {
     sentStake: number | null;
     /** True when the pick was handed to the bet feed (a live bet), false for a simulation pick. */
     sent: boolean;
+    /** The simulated bet recorded when the pick arrived, or null (sent, or from before recording existed). */
+    sim: SimRecord | null;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at
+        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row
          FROM live_picks
          WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
@@ -1263,6 +1284,7 @@ export class EngineDb {
       parsed_json: string;
       sent_row: string | null;
       sent_at: string | null;
+      sim_row: string | null;
     }>;
 
     return rows.map((r) => {
@@ -1304,6 +1326,7 @@ export class EngineDb {
         favouriteOdds,
         sentStake,
         sent: r.sent_at !== null,
+        sim: r.sent_at === null ? parseSimRow(r.sim_row) : null,
       };
     });
   }
@@ -1425,6 +1448,38 @@ export class EngineDb {
    * Stamps sent_at, and stores the exact row that was handed over, on picks that
    * haven't been sent before. Already-stamped picks keep their first time and row.
    */
+  /** Picks that still need a simulated bet recorded: not sent, not excluded, none recorded yet. */
+  listSimCandidates(sinceIso: string): LivePick[] {
+    const ids = new Set(
+      (
+        this.db
+          .prepare(`SELECT id FROM live_picks WHERE first_seen_at >= ? AND sent_at IS NULL AND sim_row IS NULL AND excluded = 0`)
+          .all(sinceIso) as Array<{ id: number }>
+      ).map((r) => r.id),
+    );
+    if (ids.size === 0) return [];
+    return this.listLivePicks(1000, { from: sinceIso, to: new Date(Date.now() + 60_000).toISOString() }).filter((p) => ids.has(p.id));
+  }
+
+  /** Stores simulated bets. Never overwrites one already recorded, and never touches a pick that was sent. */
+  setSimRows(items: Array<{ id: number; rowJson: string }>, at: string): void {
+    if (items.length === 0) return;
+    const stmt = this.db.prepare(`UPDATE live_picks SET sim_row = ?, sim_at = ? WHERE id = ? AND sim_row IS NULL AND sent_at IS NULL`);
+    this.db.transaction(() => {
+      for (const it of items) stmt.run(it.rowJson, at, it.id);
+    })();
+    this.onChange();
+  }
+
+  /** When simulated bets that would have been placed were recorded, from roughly the last day and a half (for the daily limit). */
+  recentSimBetTimes(): string[] {
+    const since = new Date(Date.now() - 36 * 3_600_000).toISOString();
+    const rows = this.db
+      .prepare(`SELECT sim_at, sim_row FROM live_picks WHERE sim_at IS NOT NULL AND sim_at >= ? AND sent_at IS NULL`)
+      .all(since) as Array<{ sim_at: string; sim_row: string | null }>;
+    return rows.filter((r) => parseSimRow(r.sim_row)?.skipped === null).map((r) => r.sim_at);
+  }
+
   markSent(items: Array<{ id: number; rowJson: string }>): void {
     if (items.length === 0) return;
     const now = new Date().toISOString();

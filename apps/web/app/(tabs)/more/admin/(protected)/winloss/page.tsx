@@ -125,7 +125,9 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
 
   const anyMoney = strategies.some((s) => s.counted > 0);
   const points = state.series[period];
-  const showAfter = ex.enabled && (period === "mtd" || period === "ytd");
+  // The monthly cost is a real cost: it comes off Live and All, never Sim.
+  const costsApply = ex.enabled && mode !== "sim";
+  const showAfter = costsApply && (period === "mtd" || period === "ytd");
 
   const combinedSeries: LineSeries[] = showAfter
     ? [
@@ -189,7 +191,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
     );
   }
 
-  const expenditureRows = ex.enabled;
+  const expenditureRows = costsApply;
 
   return (
     <div className="space-y-3">
@@ -382,6 +384,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
                     {s.usedAlertOdds > 0 ? ` (${s.usedAlertOdds} at the alert's own odds)` : ""}
                     {s.noStake > 0 ? ` · ${s.noStake} left out: no stake set` : ""}
                     {s.noOdds > 0 ? ` · ${s.noOdds} left out: no odds` : ""}
+                    {(s.notPlaced ?? 0) > 0 ? ` · ${s.notPlaced} Sim pick${s.notPlaced === 1 ? "" : "s"} not placed (minimum odds, stop loss or daily limit)` : ""}
                   </p>
                   {overMax && (
                     <p className="mt-1 text-xs text-ink-muted">

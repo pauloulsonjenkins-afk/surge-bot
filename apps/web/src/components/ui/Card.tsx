@@ -3,9 +3,7 @@
  *
  *   <PageHeader>   the title at the top of a page, with an optional line under it and buttons on the right
  *   <Card>         a panel, optionally with a title, a line under it and buttons on the right
- *   <StatTile>     one headline number with a label, in a card
  *   <HeroStat>     one headline number with a label, with no card around it (the Dashboard's top row)
- *   <Badge>        a small coloured label (Hit, Miss, Stopped today ...)
  *   <Segmented>    a row of 2–4 options where one is selected
  *   <ToggleChip>   an on/off filter shaped like a chip, in place of a bare checkbox
  *
@@ -67,16 +65,6 @@ export function Card({
   );
 }
 
-export function StatTile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-line bg-surface p-4">
-      <p className="text-xs text-ink-muted">{label}</p>
-      <p className="mt-1.5 text-stat font-semibold tabular-nums text-ink">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-ink-muted">{sub}</p>}
-    </div>
-  );
-}
-
 export function HeroStat({
   label,
   value,
@@ -101,22 +89,6 @@ export function HeroStat({
 /** Text colour for an amount of money: green above zero, red below. */
 export function moneyTone(value: number): "hit" | "loss" | "muted" {
   return value > 0 ? "hit" : value < 0 ? "loss" : "muted";
-}
-
-const BADGE_TONE = {
-  neutral: "bg-surface-2 text-ink-muted",
-  accent: "bg-accent text-accent-ink",
-  hit: "bg-hit/15 text-hit",
-  loss: "bg-loss/15 text-loss",
-  warn: "bg-warn/15 text-warn",
-  /** A strategy or pick that has been switched off by the app (e.g. stop loss). */
-  stopped: "bg-warn text-warn-ink",
-} as const;
-
-export type BadgeTone = keyof typeof BADGE_TONE;
-
-export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; children: React.ReactNode }) {
-  return <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_TONE[tone]}`}>{children}</span>;
 }
 
 export function Segmented<T extends string>({

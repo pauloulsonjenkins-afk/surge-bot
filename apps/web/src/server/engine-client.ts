@@ -86,6 +86,8 @@ export interface LivePick {
   sendable: boolean;
   /** When the pick was first handed to the bet feed, or null. */
   sentAt: string | null;
+  /** Admin list only: stake and profit in pounds once settled and priced, as Win/Loss works it out. */
+  pnl?: { stake: number; profit: number } | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -305,7 +307,7 @@ export interface StopLossPatch {
 
 export interface SendingState {
   settings: SendingSettings;
-  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; minOdds: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null }>;
+  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; minOdds: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null; /** The same limits run on its simulated bets (missing on an older engine). */ simStopLoss?: StopLossStatus | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
   /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */
@@ -485,6 +487,8 @@ export interface WinLossStrategy {
   noStake: number;
   noOdds: number;
   usedAlertOdds: number;
+  /** Simulation picks the feed's rules would have held back, so not priced (missing on an older engine). */
+  notPlaced?: number;
 }
 /** One line on the Profit and loss table and the strategy graph (strategies merged on the Strategies page appear once). */
 export interface WinLossReported {
@@ -715,6 +719,18 @@ export interface AdminStrategy {
   /** Live when its switch and the master switch are both on; its new picks are simulated otherwise. */
   mode: "live" | "sim";
   stake: number | null;
+  /** Money figures, all time, split into live and sim (missing on an older engine). */
+  returns?: { live: StrategyReturn; sim: StrategyReturn } | null;
+}
+
+/** Mirrors StrategyReturn in the engine's winloss.ts. */
+export interface StrategyReturn {
+  settled: number;
+  counted: number;
+  staked: number;
+  profit: number;
+  /** Profit per pound staked (0.12 = 12p back for every £1), or null when nothing was staked. */
+  roi: number | null;
 }
 
 export interface AdminStrategies {

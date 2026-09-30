@@ -6,6 +6,7 @@ import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrat
 import { useFreshStart } from "@/queries/use-fresh-start";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 import { marketName } from "@/lib/markets";
+import { gbp } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { ModeBadge, ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
@@ -23,6 +24,42 @@ function modeOf(row: AdminStrategy): "live" | "sim" {
   return row.mode ?? (row.sendingOn ? "live" : "sim");
 }
 
+/** Below this many priced picks a return is too noisy to act on. */
+const SAMPLE = 50;
+
+/** 0.124 -> "+12.4%": the return on each £1 staked. */
+function roiText(roi: number | null): string {
+  if (roi === null) return "–";
+  const pct = Math.round(roi * 1000) / 10;
+  return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct)}%`;
+}
+
+function roiTone(roi: number | null): string {
+  return roi === null || roi === 0 ? "text-ink" : roi > 0 ? "text-hit" : "text-loss";
+}
+
+/** The money figures for the chosen mode; "all" adds live and sim together. */
+function returnsFor(row: AdminStrategy, mode: "all" | "live" | "sim") {
+  const r = row.returns;
+  if (!r) return null;
+  if (mode !== "all") return r[mode];
+  const staked = r.live.staked + r.sim.staked;
+  const profit = r.live.profit + r.sim.profit;
+  return { settled: r.live.settled + r.sim.settled, counted: r.live.counted + r.sim.counted, staked, profit, roi: staked > 0 ? profit / staked : null };
+}
+
+/** A nudge once there are enough picks to go on: a Sim strategy that makes money, or a Live one that loses it. */
+function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | null {
+  const r = row.returns;
+  if (!r) return null;
+  if (modeOf(row) === "sim" && r.sim.counted >= SAMPLE && r.sim.roi !== null && r.sim.roi > 0) {
+    return { tone: "good", text: `Profitable in Sim over ${r.sim.counted} picks: worth trying Live.` };
+  }
+  if (modeOf(row) === "live" && r.live.counted >= SAMPLE && r.live.roi !== null && r.live.roi < 0) {
+    return { tone: "warn", text: `Losing money over ${r.live.counted} live bets: consider putting it back to Sim.` };
+  }
+  return null;
+}
 function StrategyCard({
   row,
   all,
@@ -54,6 +91,8 @@ function StrategyCard({
   // The headline figures follow the All / Live / Sim choice.
   const shown = pickMode === "live" ? live : pickMode === "sim" ? sim : record(row.hits, row.misses);
   const { hits, misses, settled, hitRate } = shown;
+  const money = returnsFor(row, pickMode);
+  const hint = verdict(row);
   const options = all.filter((o) => o.label !== row.label);
 
   return (
@@ -78,30 +117,48 @@ function StrategyCard({
           </p>
           <p className={`text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>{marketName(row.market) ?? "No market set"}</p>
         </div>
-        <p className="shrink-0 text-xl font-medium tabular-nums text-ink">{hitRate === null ? "–" : `${hitRate}%`}</p>
+        {/* The headline is the return on each £1 staked: what decides whether a strategy is worth betting. */}
+        <div className="shrink-0 text-right">
+          <p className={`text-xl font-semibold tabular-nums ${roiTone(money?.roi ?? null)}`}>{roiText(money?.roi ?? null)}</p>
+          <p className="text-xs text-ink-muted">{money && money.staked > 0 ? `${gbp(money.profit)} on ${gbp(money.staked, false)}` : "return per £1"}</p>
+        </div>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={hitRate === null ? "No settled alerts yet" : `Hit rate ${hitRate}%`}>
         <div className="h-full rounded-full bg-chart" style={{ width: `${hitRate ?? 0}%` }} />
       </div>
       <p className="mt-2 text-xs text-ink-muted">
-        {hits} hit{hits === 1 ? "" : "s"} · {misses} miss{misses === 1 ? "" : "es"}
+        {hitRate === null ? "No results yet" : `${hitRate}% hit rate`} · {hits}–{misses}
         {pickMode === "all" && ` · ${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"}`}
-        {settled > 0 && settled < 30 ? " · small sample" : ""} · last {lastSeen.format(new Date(row.lastAlertAt))}
+        {settled > 0 && settled < SAMPLE ? " · small sample" : ""} · last {lastSeen.format(new Date(row.lastAlertAt))}
       </p>
       {/* Live and simulation side by side, so a strategy's real results can be checked against what it does unbet. */}
       {(live.settled > 0 || sim.settled > 0) && (
         <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-md bg-surface-2 px-2.5 py-1.5">
-            <dt className="text-ink-muted">Live</dt>
-            <dd className="tabular-nums text-ink">{live.settled === 0 ? "No bets yet" : `${live.hits}–${live.misses} · ${live.hitRate}%`}</dd>
-          </div>
-          <div className="rounded-md bg-surface-2 px-2.5 py-1.5">
-            <dt className="text-ink-muted">Sim</dt>
-            <dd className="tabular-nums text-ink">{sim.settled === 0 ? "None" : `${sim.hits}–${sim.misses} · ${sim.hitRate}%`}</dd>
-          </div>
+          {(["live", "sim"] as const).map((m) => {
+            const rec = m === "live" ? live : sim;
+            const ret = row.returns?.[m] ?? null;
+            return (
+              <div key={m} className="rounded-md bg-surface-2 px-2.5 py-1.5">
+                <dt className="text-ink-muted">{m === "live" ? "Live" : "Sim"}</dt>
+                <dd className="tabular-nums text-ink">
+                  {rec.settled === 0 ? (
+                    m === "live" ? "No bets yet" : "None"
+                  ) : (
+                    <>
+                      <span className={roiTone(ret?.roi ?? null)}>{roiText(ret?.roi ?? null)}</span>
+                      <span className="text-ink-muted">
+                        {" "}
+                        · {rec.hits}–{rec.misses} · {rec.hitRate}%
+                      </span>
+                    </>
+                  )}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       )}
-
+      {hint && <p className={`mt-2 text-xs ${hint.tone === "good" ? "text-hit" : "text-warn"}`}>{hint.text}</p>}
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{row.mergedInto}”</span>}
         {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.join(", ")}</span>}
@@ -198,7 +255,7 @@ export default function StrategiesPage() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
-  const strategies = data?.strategies ?? [];
+  const strategies = useMemo(() => data?.strategies ?? [], [data]);
   const ignored = data?.ignored ?? [];
 
   const includesOf = useMemo(() => {
@@ -290,7 +347,8 @@ export default function StrategiesPage() {
         title="Strategies"
         subtitle={
           <>
-          Every strategy the app has seen, with its hit rate from settled alerts (counted from your fresh start, if you have set one in Settings). <span className="text-ink">Merge</span> counts one strategy’s alerts under another on the Dashboard and stats
+          Every strategy the app has seen. The big figure is the return on each £1 staked, which is what decides whether a strategy is worth
+          betting: a high hit rate at short odds can still lose money. Counted from your fresh start, if you have set one in Settings. <span className="text-ink">Merge</span> counts one strategy’s alerts under another on the Dashboard and stats
           (nothing is deleted and it can be undone). <span className="text-ink">Delete</span> removes a strategy’s saved alerts for good.
           </>
         }
@@ -337,7 +395,7 @@ export default function StrategiesPage() {
             <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-2 p-2.5">
               <p className="text-xs text-ink">
                 {picked.size} selected
-                {strategies.some((s) => s.sendingOn) && <span className="text-ink-muted"> · ones with sending on can't be picked</span>}
+                {strategies.some((s) => s.sendingOn) && <span className="text-ink-muted"> · Live ones can’t be picked</span>}
               </p>
               <button
                 type="button"
@@ -367,7 +425,11 @@ export default function StrategiesPage() {
         <>
           {failed && <p className="rounded-md border border-line bg-surface p-2 text-xs text-destructive">{failed.message}</p>}
           {(["live", "sim"] as const).map((m) => {
-            const group = strategies.filter((r) => modeOf(r) === m);
+            // Best return first (in the section's own mode), so what to act on is at the top and bottom.
+            const roiOf = (r: AdminStrategy) => r.returns?.[m].roi ?? null;
+            const group = strategies
+              .filter((r) => modeOf(r) === m)
+              .sort((a, b) => (roiOf(b) ?? -Infinity) - (roiOf(a) ?? -Infinity) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
             return (
               <section key={m} className="space-y-3">

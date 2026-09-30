@@ -36,3 +36,5 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npx tsc --noEmit -p tsconfig.json
+      # The deploy's build lints too and stops on an error, so catch it here first.
+      - run: npx next lint

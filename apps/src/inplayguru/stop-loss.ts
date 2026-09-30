@@ -22,6 +22,7 @@
  * Only settled picks count: a bet still in play has no result yet.
  */
 import type { EngineDb } from "../storage/engine-db";
+import { alertOddsOf } from "../server/pricing";
 
 export interface StopLossRule {
   /** Net loss today, in pounds, that stops the strategy. Null = no limit. */
@@ -143,7 +144,7 @@ function winLossInputs(db: EngineDb): { commission: number; assumedOdds: Record<
  * Where every strategy with a limit stands right now. Strategies without a limit aren't included,
  * so an empty map means nothing can be stopped.
  */
-export function computeStopLoss(db: EngineDb, now = new Date()): Map<string, StopLossStatus> {
+export function computeStopLoss(db: EngineDb, now = new Date(), mode: "live" | "sim" = "live"): Map<string, StopLossStatus> {
   const rules = getStopLossRules(db);
   const out = new Map<string, StopLossStatus>();
   const keys = Object.keys(rules);
@@ -153,7 +154,11 @@ export function computeStopLoss(db: EngineDb, now = new Date()): Map<string, Sto
   const { commission, assumedOdds } = winLossInputs(db);
   // A day of margin either side; the exact UK day is checked below.
   const since = new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString();
-  const picks = db.listResultsForWinLoss(since).filter((r) => r.sentStake !== null && ukDay.format(new Date(r.firstSeenAt)) === today);
+  // Live counts the picks that were sent, at the stake they were sent with. Sim counts the simulated bets
+  // that would have been placed, at their recorded stake: the same limits, run as if the strategy were live.
+  const stakeOf = (r: ReturnType<EngineDb["listResultsForWinLoss"]>[number]): number | null =>
+    mode === "live" ? r.sentStake : !r.sent && r.sim && r.sim.skipped === null ? r.sim.stake : null;
+  const picks = db.listResultsForWinLoss(since).filter((r) => stakeOf(r) !== null && ukDay.format(new Date(r.firstSeenAt)) === today);
 
   for (const key of keys) {
     const rule = rules[key]!;
@@ -164,16 +169,10 @@ export function computeStopLoss(db: EngineDb, now = new Date()): Map<string, Sto
     for (const r of picks) {
       if (labelOf(r.strategy).toLowerCase() !== key) continue;
       if (resumedMs !== null && Date.parse(r.firstSeenAt) < resumedMs) continue;
-      const stake = r.sentStake!;
+      const stake = stakeOf(r)!;
       let profit: number;
       if (r.result === "hit") {
-        const alertOdds =
-          r.market === "NEXT_GOAL" && r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1
-            ? r.overOdds
-            : r.market === "FAVOURITE_TO_WIN"
-              ? r.favouriteOdds
-              : null;
-        const odds = alertOdds ?? assumedOdds[key] ?? null;
+        const odds = alertOddsOf(r) ?? assumedOdds[key] ?? null;
         profit = odds === null ? 0 : stake * (odds - 1) * (1 - commission);
         run = 0;
       } else {

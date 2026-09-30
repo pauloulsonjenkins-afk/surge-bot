@@ -14,6 +14,7 @@ import { createTelegramClient } from "../telegram/client";
 import { startTelegramListener, stopTelegramListener } from "../telegram/listener";
 import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
+import { recordSimBets } from "../inplayguru/bet-feed";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -60,6 +61,17 @@ async function main(): Promise<void> {
         "Add the signing secret once InPlayGuru provides it.",
     );
   }
+
+  // Simulated bets are recorded as alerts arrive; this sweep also catches a Live strategy's pick that aged out
+  // without being sent, so it is counted as not placed.
+  const simSweep = setInterval(() => {
+    try {
+      recordSimBets(db);
+    } catch (err) {
+      log.error(`Could not record simulated bets: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, 60_000);
+  simSweep.unref();
 
   const server = createEngineHttpServer(env, db, backups);
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));
