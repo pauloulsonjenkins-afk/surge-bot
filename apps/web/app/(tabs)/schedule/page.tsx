@@ -98,6 +98,8 @@ export default function SchedulePage() {
   const { data, isLoading, error } = useSchedule(when);
   const [search, setSearch] = useState("");
   const [hideStarted, setHideStarted] = useState(false);
+  // "time" lists every game in kick-off order, next game first. "country" is the grouped list.
+  const [view, setView] = useState<"time" | "country">("time");
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
 
@@ -124,14 +126,27 @@ export default function SchedulePage() {
   }, [all, nowSec]);
 
   const query = search.trim().toLowerCase();
-  const groups = useMemo(() => {
-    const shown = all.filter((f) => {
-      if (hideStarted && phaseOf(f, nowSec) !== "upcoming") return false;
-      if (!query) return true;
-      return [f.home, f.away, f.league, f.country].some((s) => s.toLowerCase().includes(query));
-    });
-    return groupByCountry(shown);
-  }, [all, hideStarted, query, nowSec]);
+  const shownFixtures = useMemo(
+    () =>
+      all.filter((f) => {
+        if (hideStarted && phaseOf(f, nowSec) !== "upcoming") return false;
+        if (!query) return true;
+        return [f.home, f.away, f.league, f.country].some((s) => s.toLowerCase().includes(query));
+      }),
+    [all, hideStarted, query, nowSec],
+  );
+  const groups = useMemo(() => groupByCountry(shownFixtures), [shownFixtures]);
+  // Games still to start come first, soonest first. Then time-to-be-confirmed games, then the ones already under way,
+  // finished or off, by kick-off time.
+  const byTime = useMemo(() => {
+    const rank = (f: ScheduleFixture): number => {
+      const p = phaseOf(f, nowSec);
+      return p === "upcoming" ? 0 : p === "tbc" ? 1 : 2;
+    };
+    return [...shownFixtures].sort(
+      (a, b) => rank(a) - rank(b) || a.timestamp - b.timestamp || a.league.localeCompare(b.league) || a.home.localeCompare(b.home),
+    );
+  }, [shownFixtures, nowSec]);
 
   const isOpen = (country: string, index: number) => open[country] ?? (query !== "" || index < OPEN_BY_DEFAULT);
   const allOpen = groups.length > 0 && groups.every((g, i) => isOpen(g.country, i));
@@ -249,15 +264,62 @@ export default function SchedulePage() {
                 />
                 Only games still to start
               </label>
-              {groups.length > 1 && (
+              {view === "country" && groups.length > 1 && (
                 <button type="button" onClick={() => setAll(!allOpen)} className="text-ink-muted underline">
                   {allOpen ? "Collapse all" : "Expand all"}
                 </button>
               )}
             </div>
+            <div role="tablist" aria-label="Order" className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
+              {(["time", "country"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    view === v ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {v === "time" ? "By kick-off time" : "By country"}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {groups.length === 0 ? (
+          {shownFixtures.length === 0 ? (
+            <p className="py-6 text-center text-sm text-ink-muted">No games match.</p>
+          ) : view === "time" ? (
+            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+              {byTime.map((f, i) => {
+                const phase = phaseOf(f, nowSec);
+                const previous = i > 0 ? byTime[i - 1] : undefined;
+                const startsNewBlock = previous !== undefined && phaseOf(previous, nowSec) === "upcoming" && phase !== "upcoming";
+                return (
+                  <li key={f.id}>
+                    {startsNewBlock && (
+                      <p className="bg-surface-2 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                        Already started, finished or off
+                      </p>
+                    )}
+                    <div className={`flex items-center gap-3 px-3 py-2 text-sm ${phase === "upcoming" ? "" : "opacity-60"}`}>
+                      <span className="w-11 shrink-0 tabular-nums text-ink-muted">{phase === "tbc" ? "TBC" : kickoffTime(f)}</span>
+                      <span className="min-w-0 flex-1 text-ink">
+                        <span className="block truncate">
+                          {f.home} <span className="text-ink-muted">v</span> {f.away}
+                        </span>
+                        <span className="block truncate text-[11px] text-ink-muted">
+                          {f.league} · {f.country === "World" ? "International" : f.country}
+                        </span>
+                      </span>
+                      <PhaseChip phase={phase} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : groups.length === 0 ? (
             <p className="py-6 text-center text-sm text-ink-muted">No games match.</p>
           ) : (
             <ul className="space-y-2">

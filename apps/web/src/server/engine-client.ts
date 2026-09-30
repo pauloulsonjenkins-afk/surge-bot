@@ -675,7 +675,10 @@ export async function fetchSchedule(date: string | null): Promise<ScheduleDay> {
 export interface AdminStrategy {
   label: string;
   market: string | null;
+  /** Every stored alert (what deleting the strategy removes). */
   alerts: number;
+  /** Stored alerts since the "fresh start" date; the hit and miss counts below are also since then. */
+  alertsSince: number;
   hits: number;
   misses: number;
   sent: number;
@@ -689,6 +692,40 @@ export interface AdminStrategies {
   strategies: AdminStrategy[];
   /** Strategies whose new alerts are being ignored. */
   ignored: string[];
+}
+
+/** The "fresh start" time (ISO), or null when every figure counts from the beginning. */
+export async function fetchFreshStart(): Promise<{ at: string | null }> {
+  return freshStartRequest("GET");
+}
+
+/** start = true counts everything from now; false undoes it. Nothing is deleted either way. */
+export async function saveFreshStart(start: boolean): Promise<{ at: string | null }> {
+  return freshStartRequest("POST", { start });
+}
+
+async function freshStartRequest(method: "GET" | "POST", body?: { start: boolean }): Promise<{ at: string | null }> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/fresh-start`, {
+      method,
+      headers: { Authorization: `Bearer ${internalKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} for the fresh start setting.`);
+    const data = (await res.json()) as { at?: string | null };
+    return { at: data.at ?? null };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function fetchAdminStrategies(): Promise<AdminStrategies> {

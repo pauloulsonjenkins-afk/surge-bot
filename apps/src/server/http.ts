@@ -8,6 +8,7 @@
  *   GET  /internal/live/days                    UK days that have picks, with counts, for the Results page (admin site only)
  *   GET  /internal/stats?days=N[&strategy=X]    hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
+ *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N           totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
@@ -260,6 +261,28 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           lastError: status.lastError,
         },
       });
+      return;
+    }
+
+    if (path === "/internal/fresh-start" && (req.method === "GET" || req.method === "POST")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        if (typeof body.start !== "boolean") {
+          send(res, 400, { error: "start_must_be_true_or_false" });
+          return;
+        }
+        db.setFreshStart(body.start ? new Date().toISOString() : null);
+        log.info(body.start ? "Fresh start: figures now count from this moment." : "Fresh start undone: all figures count again.");
+      }
+      send(res, 200, { at: db.getFreshStart() });
       return;
     }
 

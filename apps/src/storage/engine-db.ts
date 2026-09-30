@@ -176,8 +176,11 @@ const IGNORED_STRATEGIES_KEY = "ignored_strategies";
 export interface AdminStrategyRow {
   label: string;
   market: string | null;
-  /** Every stored pick of this strategy, including ones marked "didn't actually bet". */
+  /** Every stored pick of this strategy, including ones marked "didn't actually bet". Used for the delete messages. */
   alerts: number;
+  /** Stored picks since the "fresh start" date (all of them when there is none). */
+  alertsSince: number;
+  /** Hits and misses since the "fresh start" date. */
   hits: number;
   misses: number;
   /** Picks already handed to the bet feed. They are kept if the strategy is deleted. */
@@ -676,7 +679,7 @@ export class EngineDb {
    * alert itself carries a Hit/Miss marker, so nothing here is guessed.
    */
   hitRateStats(days: number | null, strategy: string | null = null): HitRateStats {
-    const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
     const allRows = (
       since === null
         ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, country,
@@ -784,7 +787,7 @@ export class EngineDb {
    * before the parser knew about countries are covered too.
    */
   performanceCells(days: number | null): PerformanceCell[] {
-    const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
     const cols = `first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, country`;
     const rows = (
       since === null
@@ -1046,6 +1049,7 @@ export class EngineDb {
   /** Every strategy with stored picks, for the admin Strategies page. Ignores the Leagues page's choices. */
   listStrategiesForAdmin(): AdminStrategyRow[] {
     const merges = this.readStrategyMerges();
+    const floor = this.getFreshStart();
     const rows = this.db
       .prepare(
         `SELECT strategy, market, excluded, sent_at, first_seen_at, COALESCE(result_override, result) AS result
@@ -1058,13 +1062,16 @@ export class EngineDb {
       const key = label.toLowerCase();
       const row =
         out.get(key) ??
-        { label, market: r.market, alerts: 0, hits: 0, misses: 0, sent: 0, lastAlertAt: r.first_seen_at, mergedInto: merges[key] ?? null };
+        { label, market: r.market, alerts: 0, alertsSince: 0, hits: 0, misses: 0, sent: 0, lastAlertAt: r.first_seen_at, mergedInto: merges[key] ?? null };
       row.alerts++;
       row.market = r.market ?? row.market;
       if (r.sent_at !== null) row.sent++;
-      if (r.excluded !== 1) {
-        if (r.result === "hit") row.hits++;
-        else if (r.result === "miss") row.misses++;
+      if (floor === null || r.first_seen_at >= floor) {
+        row.alertsSince++;
+        if (r.excluded !== 1) {
+          if (r.result === "hit") row.hits++;
+          else if (r.result === "miss") row.misses++;
+        }
       }
       row.lastAlertAt = r.first_seen_at;
       out.set(key, row);
@@ -1174,7 +1181,7 @@ export class EngineDb {
          WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
       )
-      .all(sinceIso) as Array<{
+      .all(this.floorSince(sinceIso) ?? sinceIso) as Array<{
       id: number;
       first_seen_at: string;
       strategy: string;
@@ -1290,6 +1297,34 @@ export class EngineDb {
     const info = this.db.prepare(`DELETE FROM app_users WHERE id = ?`).run(id);
     if (info.changes > 0) this.onChange();
     return info.changes > 0;
+  }
+
+  // ---- fresh start ---------------------------------------------------------------------------
+
+  /**
+   * "Fresh start": when set, the Dashboard, hit rates, Win/Loss and profit figures count only alerts that arrived
+   * at or after this time. Nothing is deleted, so clearing it brings the older figures straight back.
+   */
+  getFreshStart(): string | null {
+    const raw = this.getSetting("fresh_start");
+    if (!raw) return null;
+    try {
+      const at = (JSON.parse(raw) as { at?: unknown }).at;
+      return typeof at === "string" && Number.isFinite(Date.parse(at)) ? at : null;
+    } catch {
+      return null;
+    }
+  }
+
+  setFreshStart(at: string | null): void {
+    this.setSetting("fresh_start", JSON.stringify(at === null ? {} : { at }));
+  }
+
+  /** The later of a "since" time and the fresh start time. Null means "no limit". */
+  private floorSince(since: string | null): string | null {
+    const floor = this.getFreshStart();
+    if (floor === null) return since;
+    return since === null || floor > since ? floor : since;
   }
 
   getSetting(key: string): string | null {
