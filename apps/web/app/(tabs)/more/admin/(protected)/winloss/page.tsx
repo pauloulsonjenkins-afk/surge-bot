@@ -101,6 +101,15 @@ function WinLoss({ state }: { state: WinLossState }) {
   const [monthly, setMonthly] = useState(String(state.settings.expenditure.monthly));
   const [startMonth, setStartMonth] = useState(state.settings.expenditure.startMonth ?? "");
   const [message, setMessage] = useState<string | null>(null);
+  // Which strategy rows are opened up to edit.
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set());
+  const toggleRow = (key: string) =>
+    setOpenRows((o) => {
+      const next = new Set(o);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const ex = state.settings.expenditure;
   // `strategies` are the originals (their stake and odds are settings). `lines` are what the figures and graph show,
@@ -276,7 +285,7 @@ function WinLoss({ state }: { state: WinLossState }) {
       {/* ---- inputs ---- */}
       <Card
         title="Strategies"
-        subtitle="Set the stake for each strategy. Where an alert carries no odds (Both Teams to Score, for example), enter the odds to assume."
+        subtitle="Tap a strategy to set the stake and, where an alert carries no odds, the odds to assume. Rows needing attention are marked."
       >
         {strategies.length === 0 ? (
           <p className="text-xs text-ink-muted">Strategies appear here once they have settled picks this year.</p>
@@ -289,11 +298,34 @@ function WinLoss({ state }: { state: WinLossState }) {
               const oddsDirty = oddsDraft[s.key] !== undefined && oddsDraft[s.key]!.trim() !== (s.assumedOdds !== null ? s.assumedOdds.toFixed(2) : "");
               const needsOdds = s.market !== "NEXT_GOAL" || s.noOdds > 0 || s.assumedOdds !== null;
               const overMax = s.stake !== null && s.stake > state.maxStake;
+              const isOpen = openRows.has(s.key);
+              const leftOut = s.noStake + s.noOdds;
+              const summary = [
+                s.stake !== null ? `£${s.stake.toFixed(2)}` : null,
+                s.assumedOdds !== null ? `odds ${s.assumedOdds.toFixed(2)}` : null,
+                `${s.counted} of ${s.settled} counted`,
+              ]
+                .filter(Boolean)
+                .join(" · ");
               return (
-                <li key={s.key} className="py-3">
-                  <p className="text-sm text-ink">{s.label}</p>
-                  <p className="text-xs text-ink-muted">{marketName(s.market) ?? "No market set"}</p>
+                <li key={s.key} className="py-2.5">
+                  <button type="button" onClick={() => toggleRow(s.key)} aria-expanded={isOpen} className="flex w-full items-center gap-2 text-left">
+                    <span className={`shrink-0 text-xs text-ink-muted transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden>
+                      ▸
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-ink">{s.label}</span>
+                      <span className="block truncate text-xs text-ink-muted">
+                        {marketName(s.market) ?? "No market set"} · {summary}
+                      </span>
+                    </span>
+                    {leftOut > 0 && (
+                      <span className="shrink-0 rounded-full bg-danger px-2 py-0.5 text-[10px] font-medium text-white">{leftOut} left out</span>
+                    )}
+                  </button>
 
+                  {isOpen && (
+                  <div className="pl-5">
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
                     <label className="flex items-center gap-2 text-xs text-ink-muted">
                       <span className="whitespace-nowrap">Stake £</span>
@@ -340,6 +372,8 @@ function WinLoss({ state }: { state: WinLossState }) {
                     <p className="mt-1 text-[11px] text-ink-muted">
                       This stake is above your highest stake allowed (£{state.maxStake}). It counts here, but a stake that high is never sent to bet.
                     </p>
+                  )}
+                  </div>
                   )}
                 </li>
               );

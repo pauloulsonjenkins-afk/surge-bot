@@ -31,6 +31,7 @@ function LeagueCard({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
   const shown = effective(row);
   const [country, setCountry] = useState(row.countryOverride ?? "");
   const [tier, setTier] = useState(row.tierOverride === null ? "auto" : String(row.tierOverride));
@@ -42,13 +43,20 @@ function LeagueCard({
 
   return (
     <li className={`rounded-xl border border-line bg-surface p-3 ${row.hidden ? "opacity-70" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-start justify-between gap-3 text-left">
+        <div className="flex min-w-0 items-start gap-2">
+          <span className={`mt-0.5 shrink-0 text-xs text-ink-muted transition-transform ${open ? "rotate-90" : ""}`} aria-hidden>
+            ▸
+          </span>
+          <div className="min-w-0">
           <p className="truncate text-sm font-medium text-ink">{row.league}</p>
           <p className="text-xs text-ink-muted">
             {shown.country === "Other" ? "No country" : shown.country} · {tierText}
             {hasOverride && " · edited"}
+            {row.hidden && " · hidden"}
+            {row.resetAt && " · reset"}
           </p>
+          </div>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-sm font-medium tabular-nums text-ink">{rate}</p>
@@ -56,8 +64,10 @@ function LeagueCard({
             {row.alerts} alerts · {settled} settled
           </p>
         </div>
-      </div>
+      </button>
 
+      {open && (
+      <>
       {(row.hidden || row.resetAt) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
           {row.hidden && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Hidden from dashboard</span>}
@@ -191,6 +201,8 @@ function LeagueCard({
           </div>
         </div>
       )}
+      </>
+      )}
     </li>
   );
 }
@@ -225,8 +237,8 @@ export default function LeaguesPage() {
       <div>
         <h2 className="text-base font-medium tracking-tight text-ink">Leagues</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          Every league the Dashboard has seen. Hiding or resetting a league changes what the Dashboard counts and never
-          deletes any alerts, so both can be undone. Win/loss figures are not affected.
+          Every league the Dashboard has seen. Tap a league to hide it, reset its stats or set its country and tier. Nothing is
+          deleted, so all of it can be undone. Win/loss figures are not affected.
         </p>
       </div>
 
