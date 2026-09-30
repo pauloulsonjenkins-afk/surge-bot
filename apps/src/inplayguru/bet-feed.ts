@@ -14,7 +14,8 @@
  *      late (after a dropped connection or a restart) is never treated as new.
  *   5. A daily limit on how many NEW picks can be handed over.
  *   6. Only markets whose exact code is known are sent. Corners are not. The underdog strategy is
- *      sent as a Double Chance bet on the underdog (win or draw); its exchange wording is set on the Sending page.
+ *      sent as a Double Chance bet on the underdog (win or draw); "Pass Master 1st half" is sent as the favourite in
+ *      Match Odds. Their exchange wording is set on the Sending page.
  *   7. A stake must be set for the strategy, and it must not exceed the
  *      "highest stake allowed" ceiling. A strategy cannot be switched on
  *      without a stake.
@@ -59,6 +60,10 @@ export interface SendingSettings {
   underdogMarketType: string;
   underdogHomeSelection: string;
   underdogAwaySelection: string;
+  /** Favourite to win ("Pass Master 1st half", sent as Match Odds): the market code, and the selection wording when the favourite is the home / away side. {home} and {away} become the team names. */
+  favouriteMarketType: string;
+  favouriteHomeSelection: string;
+  favouriteAwaySelection: string;
   /** One "alert name = exchange name" per line, applied to each team name. */
   aliases: string;
 }
@@ -76,6 +81,9 @@ export const DEFAULT_SENDING: SendingSettings = {
   underdogMarketType: "DOUBLE_CHANCE",
   underdogHomeSelection: "{home} or Draw",
   underdogAwaySelection: "Draw or {away}",
+  favouriteMarketType: "MATCH_ODDS",
+  favouriteHomeSelection: "{home}",
+  favouriteAwaySelection: "{away}",
   aliases: "",
 };
 
@@ -150,6 +158,10 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     underdogMarketType: cleanCode(raw.underdogMarketType, DEFAULT_SENDING.underdogMarketType),
     underdogHomeSelection: cleanTemplate(raw.underdogHomeSelection, DEFAULT_SENDING.underdogHomeSelection),
     underdogAwaySelection: cleanTemplate(raw.underdogAwaySelection, DEFAULT_SENDING.underdogAwaySelection),
+    // "NEXT_GOAL" was an earlier guess for this strategy that isn't a real market, so it is never used.
+    favouriteMarketType: raw.favouriteMarketType === "NEXT_GOAL" ? DEFAULT_SENDING.favouriteMarketType : cleanCode(raw.favouriteMarketType, DEFAULT_SENDING.favouriteMarketType),
+    favouriteHomeSelection: cleanTemplate(raw.favouriteHomeSelection, DEFAULT_SENDING.favouriteHomeSelection),
+    favouriteAwaySelection: cleanTemplate(raw.favouriteAwaySelection, DEFAULT_SENDING.favouriteAwaySelection),
     aliases: typeof raw.aliases === "string" ? raw.aliases.slice(0, 5000) : "",
   };
 }
@@ -194,6 +206,9 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
   if (patch.underdogMarketType !== undefined) next.underdogMarketType = cleanCode(patch.underdogMarketType, current.underdogMarketType);
   if (patch.underdogHomeSelection !== undefined) next.underdogHomeSelection = cleanTemplate(patch.underdogHomeSelection, current.underdogHomeSelection);
   if (patch.underdogAwaySelection !== undefined) next.underdogAwaySelection = cleanTemplate(patch.underdogAwaySelection, current.underdogAwaySelection);
+  if (patch.favouriteMarketType !== undefined) next.favouriteMarketType = cleanCode(patch.favouriteMarketType, current.favouriteMarketType);
+  if (patch.favouriteHomeSelection !== undefined) next.favouriteHomeSelection = cleanTemplate(patch.favouriteHomeSelection, current.favouriteHomeSelection);
+  if (patch.favouriteAwaySelection !== undefined) next.favouriteAwaySelection = cleanTemplate(patch.favouriteAwaySelection, current.favouriteAwaySelection);
   if (typeof patch.aliases === "string") next.aliases = patch.aliases.slice(0, 5000);
 
   // A strategy can't be on without a stake.
@@ -388,6 +403,17 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
       }
     } else if (p.market === "BOTH_TEAMS_TO_SCORE") {
       market = { marketType: settings.bttsMarketType, selectionName: settings.bttsSelection };
+    } else if (p.market === "FAVOURITE_TO_WIN") {
+      const side = p.detail?.favourite ?? null;
+      if (side === null) {
+        skipped.push(skip(p, "Could not tell which side is the favourite."));
+        continue;
+      }
+      const template = side === "home" ? settings.favouriteHomeSelection : settings.favouriteAwaySelection;
+      market = {
+        marketType: settings.favouriteMarketType,
+        selectionName: template.replace(/\{home\}/g, alias(p.home)).replace(/\{away\}/g, alias(p.away)),
+      };
     } else if (p.market === "UNDERDOG_DOUBLE_CHANCE") {
       const side = p.detail?.underdog ?? null;
       if (side === null) {

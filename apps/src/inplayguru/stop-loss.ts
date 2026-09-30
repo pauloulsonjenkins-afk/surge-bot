@@ -168,7 +168,11 @@ export function computeStopLoss(db: EngineDb, now = new Date()): Map<string, Sto
       let profit: number;
       if (r.result === "hit") {
         const alertOdds =
-          r.market === "NEXT_GOAL" && r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1 ? r.overOdds : null;
+          r.market === "NEXT_GOAL" && r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1
+            ? r.overOdds
+            : r.market === "FAVOURITE_TO_WIN"
+              ? r.favouriteOdds
+              : null;
         const odds = alertOdds ?? assumedOdds[key] ?? null;
         profit = odds === null ? 0 : stake * (odds - 1) * (1 - commission);
         run = 0;

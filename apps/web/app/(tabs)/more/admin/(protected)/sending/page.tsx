@@ -26,6 +26,9 @@ interface Form {
   underdogMarketType: string;
   underdogHomeSelection: string;
   underdogAwaySelection: string;
+  favouriteMarketType: string;
+  favouriteHomeSelection: string;
+  favouriteAwaySelection: string;
   aliases: string;
 }
 
@@ -39,6 +42,9 @@ function toForm(s: SendingSettings): Form {
     underdogMarketType: s.underdogMarketType,
     underdogHomeSelection: s.underdogHomeSelection,
     underdogAwaySelection: s.underdogAwaySelection,
+    favouriteMarketType: s.favouriteMarketType,
+    favouriteHomeSelection: s.favouriteHomeSelection,
+    favouriteAwaySelection: s.favouriteAwaySelection,
     aliases: s.aliases,
   };
 }
@@ -154,6 +160,9 @@ export default function SendingPage() {
         underdogMarketType: form!.underdogMarketType,
         underdogHomeSelection: form!.underdogHomeSelection,
         underdogAwaySelection: form!.underdogAwaySelection,
+        favouriteMarketType: form!.favouriteMarketType,
+        favouriteHomeSelection: form!.favouriteHomeSelection,
+        favouriteAwaySelection: form!.favouriteAwaySelection,
         aliases: form!.aliases,
       },
       {
@@ -231,7 +240,7 @@ export default function SendingPage() {
           <ul className="divide-y divide-line">
             {data.strategies.map((s) => {
               const key = s.label.toLowerCase();
-              const supported = s.market === "NEXT_GOAL" || s.market === "BOTH_TEAMS_TO_SCORE" || s.market === "UNDERDOG_DOUBLE_CHANCE";
+              const supported = s.market === "NEXT_GOAL" || s.market === "BOTH_TEAMS_TO_SCORE" || s.market === "UNDERDOG_DOUBLE_CHANCE" || s.market === "FAVOURITE_TO_WIN";
               const note = !s.market ? "No market set" : !supported ? "Can't be sent yet" : marketName(s.market);
               const draft = stakeDraft[key];
               const shown = draft ?? (s.stake !== null ? s.stake.toFixed(2) : "");
@@ -427,6 +436,37 @@ export default function SendingPage() {
               className={`${inputCls} mt-1 font-mono text-xs`}
               value={form.underdogAwaySelection}
               onChange={(e) => setForm({ ...form, underdogAwaySelection: e.target.value })}
+            />
+          </label>
+        </div>
+        <p className="mt-4 text-xs font-medium text-ink">Favourite to win (Pass Master 1st half)</p>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Sent as a Match Odds bet on the favourite, the side with the shorter live price in the alert. The selection is the team name as
+          Betfair writes it. {"{home}"} and {"{away}"} become the team names.
+        </p>
+        <div className="mt-2 grid grid-cols-1 gap-3">
+          <label className="text-xs text-ink-muted">
+            Market code
+            <input
+              className={`${inputCls} mt-1 font-mono text-xs`}
+              value={form.favouriteMarketType}
+              onChange={(e) => setForm({ ...form, favouriteMarketType: e.target.value })}
+            />
+          </label>
+          <label className="text-xs text-ink-muted">
+            Selection when the favourite is the home team
+            <input
+              className={`${inputCls} mt-1 font-mono text-xs`}
+              value={form.favouriteHomeSelection}
+              onChange={(e) => setForm({ ...form, favouriteHomeSelection: e.target.value })}
+            />
+          </label>
+          <label className="text-xs text-ink-muted">
+            Selection when the favourite is the away team
+            <input
+              className={`${inputCls} mt-1 font-mono text-xs`}
+              value={form.favouriteAwaySelection}
+              onChange={(e) => setForm({ ...form, favouriteAwaySelection: e.target.value })}
             />
           </label>
         </div>

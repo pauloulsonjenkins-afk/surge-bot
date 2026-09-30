@@ -240,7 +240,9 @@ export function computeWinLoss(db: EngineDb, now = new Date()): WinLossState {
     const alertOdds =
       r.market === "NEXT_GOAL" && r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1
         ? r.overOdds
-        : null;
+        : r.market === "FAVOURITE_TO_WIN"
+          ? r.favouriteOdds // the favourite's live win price in the alert
+          : null;
     const odds = alertOdds ?? settings.assumedOdds[key] ?? null;
     if (odds === null) {
       t.noOdds++;

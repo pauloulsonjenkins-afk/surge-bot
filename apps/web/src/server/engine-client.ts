@@ -266,6 +266,9 @@ export interface SendingSettings {
   underdogMarketType: string;
   underdogHomeSelection: string;
   underdogAwaySelection: string;
+  favouriteMarketType: string;
+  favouriteHomeSelection: string;
+  favouriteAwaySelection: string;
   aliases: string;
 }
 

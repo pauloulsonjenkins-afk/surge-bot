@@ -1197,6 +1197,8 @@ export class EngineDb {
     targetLine: number | null;
     overLine: number | null;
     overOdds: number | null;
+    /** For favourite-to-win picks: the favourite's live win price printed in the alert. */
+    favouriteOdds: number | null;
     sentStake: number | null;
   }> {
     const rows = this.db
@@ -1220,11 +1222,17 @@ export class EngineDb {
       let targetLine: number | null = null;
       let overLine: number | null = null;
       let overOdds: number | null = null;
+      let favouriteOdds: number | null = null;
       try {
         const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert>;
         targetLine = typeof p.targetLine === "number" ? p.targetLine : null;
         overLine = typeof p.odds?.overUnderLine === "number" ? p.odds.overUnderLine : null;
         overOdds = typeof p.odds?.over === "number" ? p.odds.over : null;
+        const live = p.odds?.live1x2;
+        if (p.favourite && Array.isArray(live)) {
+          const price = p.favourite === "home" ? live[0] : live[2];
+          favouriteOdds = typeof price === "number" && price > 1 ? price : null;
+        }
       } catch {
         // leave as null
       }
@@ -1246,6 +1254,7 @@ export class EngineDb {
         targetLine,
         overLine,
         overOdds,
+        favouriteOdds,
         sentStake,
       };
     });
