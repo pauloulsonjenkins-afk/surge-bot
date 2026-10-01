@@ -74,3 +74,16 @@ test("the first-half corners market is found by name to price the pick before it
   assert.equal(firstHalfCornersRunner(markets, 6.5), null);
   assert.equal(firstHalfCornersRunner([{ name: "First Half Corners 4.5", runners: [{ selectionId: 9, runnerName: "Over 4.5 Corners" }] }], 4.5)?.selectionId, 9);
 });
+
+test("picks stored under an old rule are re-read under the current one, half-time settled ones included", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const text = [alert(9, "2 - 4"), "", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 1-0", "", "✅ Hit"].join("\n");
+  // As stored before the line was fixed at 5.5: corners so far + 0.5.
+  db.upsertLivePick("chat", 1, text, { ...parseAlert(text), selection: "Over 6.5 first-half corners", targetLine: 6.5 });
+  assert.equal(db.listLivePicks(5)[0]!.selection, "Over 6.5 first-half corners");
+  db.recomputeSettledResults(parseAlert);
+  const p = db.listLivePicks(5)[0]!;
+  assert.equal(p.selection, "Over 5.5 first-half corners");
+  assert.equal(p.detail?.targetLine, 5.5);
+  assert.equal(p.result, "hit", "the result is kept");
+});

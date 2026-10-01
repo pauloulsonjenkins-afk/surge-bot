@@ -1571,19 +1571,23 @@ export class EngineDb {
    * amendments are separate and are never touched. Returns how many results changed.
    */
   recomputeSettledResults(parse: (text: string) => ParsedAlert): number {
+    // Every settled pick: those with a full-time score, and those settled at half-time from the alert's own tick
+    // (First Half Goal, First Half Corner Race), which never get one.
     const rows = this.db
-      .prepare(`SELECT id, raw_text, result, market FROM live_picks WHERE ft_score IS NOT NULL`)
-      .all() as Array<{ id: number; raw_text: string; result: string | null; market: string | null }>;
+      .prepare(`SELECT id, raw_text, result, market, selection, ft_score FROM live_picks WHERE ft_score IS NOT NULL OR result IS NOT NULL`)
+      .all() as Array<{ id: number; raw_text: string; result: string | null; market: string | null; selection: string | null; ft_score: string | null }>;
     const upd = this.db.prepare(`UPDATE live_picks SET result = ?, parsed_json = ? WHERE id = ?`);
-    // When a rule change moves a strategy to a different bet type, the stored market and wording follow it.
+    // When a rule change moves a strategy to a different bet or line, the stored market and wording follow it.
     const updMarket = this.db.prepare(`UPDATE live_picks SET market = ?, selection = ? WHERE id = ?`);
     let changed = 0;
     for (const r of rows) {
       try {
         const p = parse(r.raw_text);
-        upd.run(p.result, JSON.stringify(p), r.id);
-        if ((p.market ?? null) !== (r.market ?? null)) updMarket.run(p.market, p.selection, r.id);
-        if ((p.result ?? null) !== (r.result ?? null)) changed++;
+        // With a full-time score the rules decide; without one, a result the text no longer gives is kept.
+        const result = r.ft_score !== null ? p.result : (p.result ?? r.result);
+        upd.run(result, JSON.stringify({ ...p, result }), r.id);
+        if ((p.market ?? null) !== (r.market ?? null) || (p.selection ?? null) !== (r.selection ?? null)) updMarket.run(p.market, p.selection, r.id);
+        if ((result ?? null) !== (r.result ?? null)) changed++;
       } catch {
         // leave this row as it was
       }
