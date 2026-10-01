@@ -122,6 +122,8 @@ export interface LeaguePref {
   resetAt?: string;
   countryOverride?: string;
   tierOverride?: number;
+  /** Its matches aren't on Betfair: new alerts are recorded but never sent to the betting software. */
+  noSend?: boolean;
 }
 interface LeaguePrefs {
   leagues: Record<string, LeaguePref>;
@@ -136,6 +138,8 @@ export interface LeaguePatch {
   country?: string | null;
   /** 1-9, or null to clear the override. */
   tier?: number | null;
+  /** true = never send this league's alerts (its matches aren't on Betfair); false = send them again. */
+  noSend?: boolean;
 }
 
 /** One league as the admin Leagues page shows it. */
@@ -154,6 +158,10 @@ export interface AdminLeagueRow {
   resetAt: string | null;
   countryOverride: string | null;
   tierOverride: number | null;
+  /** Whether its alerts' matches were found on Betfair when they arrived (see betfair/exchange.ts). */
+  exchange: { checked: number; on: number; nameDiffers: number; off: number; lastOffAt: string | null };
+  /** Set on the Leagues page: alerts are recorded but never sent. */
+  noSend: boolean;
 }
 
 function leagueKeyPart(s: string): string {
@@ -165,7 +173,7 @@ function leagueKeyPart(s: string): string {
 }
 
 /** Who a pick's league is: the same league gets the same key however many alerts it has. */
-function leagueIdentity(competition: string | null, country: string | null): { key: string; league: string; country: string | null } {
+export function leagueIdentity(competition: string | null, country: string | null): { key: string; league: string; country: string | null } {
   const cleaned = (competition ?? "").replace(/[\u{E0020}-\u{E007F}]/gu, "").trim();
   const league = stripCountryPrefix(cleaned, country) || "Unknown league";
   return { key: `${leagueKeyPart(country ?? "")}|${leagueKeyPart(league)}`, league, country };
@@ -292,6 +300,15 @@ export interface LivePick {
   /** The exact feed row (as JSON) that was handed over, kept so later polls repeat it unchanged. */
   sentRowJson: string | null;
   flags: string[];
+  /**
+   * Whether the match was on Betfair when the alert arrived: on, nameDiffers (Betfair spells a team differently;
+   * add a Match name), off (not on the exchange), or null when not checked (no Betfair link, or not yet).
+   */
+  exchange: "on" | "nameDiffers" | "off" | null;
+  /** The Betfair event name found, for nameDiffers. */
+  exchangeEvent: string | null;
+  /** The league's key on the Leagues page. */
+  leagueKey: string;
   /** The full parsed alert (all stats, odds, etc.) for the detail view. */
   detail: ParsedAlert | null;
   rawText: string;
@@ -491,6 +508,11 @@ export class EngineDb {
       this.db.transaction(() => {
         for (const r of rows) upd.run(leagueCountryFromText(r.raw_text), r.id);
       })();
+    }
+    if (!liveCols.some((c) => c.name === "exchange")) {
+      // Whether the alert's match was on Betfair when it arrived (betfair/exchange.ts), and the event found.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange TEXT`);
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_event TEXT`);
     }
     const betCols = this.db.prepare(`PRAGMA table_info(betfair_bets)`).all() as Array<{ name: string }>;
     if (!betCols.some((c) => c.name === "acknowledged_at")) {
@@ -765,6 +787,9 @@ export class EngineDb {
         sendable: Number(r.sendable) === 1,
         sentAt: (r.sent_at as string | null) ?? null,
         sentRowJson: (r.sent_row as string | null) ?? null,
+        exchange: r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off" ? r.exchange : null,
+        exchangeEvent: (r.exchange_event as string | null) ?? null,
+        leagueKey: leagueIdentity((r.competition as string | null) ?? null, (r.country as string | null) ?? null).key,
         flags,
         detail,
         rawText: String(r.raw_text),
@@ -984,10 +1009,10 @@ export class EngineDb {
     const prefs = this.readLeaguePrefs().leagues;
     const rows = this.db
       .prepare(
-        `SELECT first_seen_at, competition, COALESCE(result_override, result) AS result, country
+        `SELECT first_seen_at, competition, COALESCE(result_override, result) AS result, country, exchange
          FROM live_picks WHERE excluded = 0`,
       )
-      .all() as Array<{ first_seen_at: string; competition: string | null; result: string | null; country: string | null }>;
+      .all() as Array<{ first_seen_at: string; competition: string | null; result: string | null; country: string | null; exchange: string | null }>;
 
     const out = new Map<string, AdminLeagueRow>();
     for (const r of rows) {
@@ -1008,7 +1033,14 @@ export class EngineDb {
           resetAt: pref?.resetAt ?? null,
           countryOverride: pref?.countryOverride ?? null,
           tierOverride: pref?.tierOverride ?? null,
+          exchange: { checked: 0, on: 0, nameDiffers: 0, off: 0, lastOffAt: null },
+          noSend: pref?.noSend === true,
         };
+      if (r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off") {
+        row.exchange.checked++;
+        row.exchange[r.exchange]++;
+        if (r.exchange === "off" && (row.exchange.lastOffAt === null || r.first_seen_at > row.exchange.lastOffAt)) row.exchange.lastOffAt = r.first_seen_at;
+      }
       if (pref?.resetAt && r.first_seen_at < pref.resetAt) {
         row.earlierAlerts++;
       } else {
@@ -1022,6 +1054,25 @@ export class EngineDb {
     return [...out.values()].sort(
       (a, b) => b.hits + b.misses - (a.hits + a.misses) || b.alerts - a.alerts || a.league.localeCompare(b.league),
     );
+  }
+
+  /** Keys of leagues marked "don't send" on the Leagues page (their matches aren't on Betfair). */
+  noSendLeagues(): Set<string> {
+    return new Set(Object.entries(this.readLeaguePrefs().leagues).filter(([, p]) => p.noSend === true).map(([k]) => k));
+  }
+
+  /** Recent picks whose match hasn't been looked up on Betfair yet, newest first. */
+  picksToCheckOnExchange(sinceIso: string, limit: number): Array<{ id: number; home: string | null; away: string | null; firstSeenAt: string }> {
+    const rows = this.db
+      .prepare(`SELECT id, home, away, first_seen_at FROM live_picks WHERE exchange IS NULL AND first_seen_at >= ? ORDER BY id DESC LIMIT ?`)
+      .all(sinceIso, limit) as Array<{ id: number; home: string | null; away: string | null; first_seen_at: string }>;
+    return rows.map((r) => ({ id: r.id, home: r.home, away: r.away, firstSeenAt: r.first_seen_at }));
+  }
+
+  /** Records what Betfair said about a pick's match. "unknown" = couldn't be looked up (no team names); not shown. */
+  setPickExchange(id: number, result: "on" | "nameDiffers" | "off" | "unknown", event: string | null): void {
+    this.db.prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ? WHERE id = ?`).run(result, event, id);
+    this.onChange();
   }
 
   /** Saves a change made on the admin Leagues page. Never deletes any picks. */
@@ -1042,6 +1093,10 @@ export class EngineDb {
     if (patch.tier !== undefined) {
       if (patch.tier !== null && Number.isInteger(patch.tier) && patch.tier >= 1 && patch.tier <= 9) cur.tierOverride = patch.tier;
       else delete cur.tierOverride;
+    }
+    if (patch.noSend !== undefined) {
+      if (patch.noSend) cur.noSend = true;
+      else delete cur.noSend;
     }
     if (Object.keys(cur).length === 0) delete prefs.leagues[key];
     else prefs.leagues[key] = cur;
@@ -1344,7 +1399,7 @@ export class EngineDb {
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row
+        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange
          FROM live_picks
          WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
@@ -1359,6 +1414,7 @@ export class EngineDb {
       sent_row: string | null;
       sent_at: string | null;
       sim_row: string | null;
+      exchange: string | null;
     }>;
 
     return rows.map((r) => {
@@ -1400,7 +1456,8 @@ export class EngineDb {
         favouriteOdds,
         sentStake,
         sent: r.sent_at !== null,
-        sim: r.sent_at === null ? parseSimRow(r.sim_row) : null,
+        // A simulated bet on a match that wasn't on Betfair could never have been placed.
+        sim: r.sent_at === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
       };
     });
   }

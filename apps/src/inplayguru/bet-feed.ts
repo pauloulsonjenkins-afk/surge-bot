@@ -280,6 +280,12 @@ function providerName(raw: string): string {
   return strategyLabel(raw).replace(/[",\r\n]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/** A team name as the exchange writes it, using the Sending page's "alert name = exchange name" lines. */
+export function exchangeNamer(db: EngineDb): (name: string) => string {
+  const aliases = parseAliases(getSendingSettings(db).aliases);
+  return (name) => aliases.get(name.trim().toLowerCase()) ?? name.trim();
+}
+
 function parseAliases(text: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const line of text.split("\n")) {
@@ -360,6 +366,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
 
   const today = ukDay.format(now);
   const stops = computeStopLoss(db, now);
+  const noSend = db.noSendLeagues();
   let sentToday = db.recentSentTimes().filter((t) => ukDay.format(new Date(t)) === today).length;
 
   const rows: FeedRow[] = [];
@@ -387,6 +394,11 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
 
     if (!settings.strategies[label.toLowerCase()]) {
       skipped.push(skip(p, "This strategy's switch is off."));
+      continue;
+    }
+    // A league whose matches aren't on Betfair (marked on the Leagues page) is recorded but never sent.
+    if (noSend.has(p.leagueKey)) {
+      skipped.push(skip(p, "This league is marked as not on Betfair (Leagues page)."));
       continue;
     }
     if (!p.sendable) {
@@ -537,6 +549,7 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
   const cutoff = now.getTime() - settings.maxAgeMinutes * 60 * 1000;
   const today = ukDay.format(now);
   const stops = computeStopLoss(db, now, "sim");
+  const noSend = db.noSendLeagues();
   let betsToday = [...db.recentSentTimes(), ...db.recentSimBetTimes()].filter((t) => ukDay.format(new Date(t)) === today).length;
 
   const items: Array<{ id: number; rowJson: string }> = [];
@@ -550,7 +563,8 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     const minPrice = settings.minOdds[key] ?? null;
     const odds = alertOddsOfPick(p);
     let skipped: string | null = null;
-    if (liveNow) skipped = "Not sent by the bet feed in time.";
+    if (noSend.has(p.leagueKey)) skipped = "This league is marked as not on Betfair.";
+    else if (liveNow) skipped = "Not sent by the bet feed in time.";
     else if (!fresh) skipped = "The alert arrived too late to bet.";
     else if (stake === null) skipped = "No stake set for this strategy.";
     else if (stake > settings.maxStake) skipped = `Stake £${stake.toFixed(2)} is above the highest allowed (£${settings.maxStake}).`;

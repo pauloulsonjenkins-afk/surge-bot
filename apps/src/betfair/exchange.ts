@@ -2,8 +2,11 @@
  * Reads your bets straight from Betfair, so the site knows within a minute whether a pick sent to the betting software
  * was actually placed and matched (the bet history import only covers settled bets, after the match).
  *
- * READ ONLY. This module calls only listCurrentOrders, listClearedOrders and listMarketCatalogue. It has no code that
- * places, changes or cancels a bet, and must never be given any.
+ * READ ONLY. This module calls only listCurrentOrders, listClearedOrders, listMarketCatalogue and listEvents. It has no
+ * code that places, changes or cancels a bet, and must never be given any.
+ *
+ * It also looks each new alert's match up on Betfair (listEvents), so the Leagues page can list leagues whose matches
+ * aren't on the exchange, and Live can say "Not on exchange" as soon as such an alert arrives.
  *
  * Settings (engine environment variables, the same names the old surge_live.py used):
  *   BF_APP_KEY                   your Betfair application key (the delayed key is fine)
@@ -18,7 +21,8 @@
  */
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
-import { matchBets } from "./reconcile";
+import { eventScore, matchBets } from "./reconcile";
+import { exchangeNamer } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
@@ -192,7 +196,7 @@ export class BetfairReader {
     return parsed.sessionToken;
   }
 
-  private async call<T>(operation: "listCurrentOrders" | "listClearedOrders" | "listMarketCatalogue", params: unknown, retried = false): Promise<T> {
+  private async call<T>(operation: "listCurrentOrders" | "listClearedOrders" | "listMarketCatalogue" | "listEvents", params: unknown, retried = false): Promise<T> {
     const token = this.session && Date.now() - this.session.at < SESSION_MS ? this.session.token : await this.login();
     const res = await post(`${API_URL}${operation}/`, JSON.stringify(params), {
       "X-Application": this.creds.appKey,
@@ -224,6 +228,20 @@ export class BetfairReader {
     }
   }
 
+  /** Football events on Betfair whose names contain this text, starting from 8 hours ago to 36 hours ahead of `at`. */
+  async searchEvents(text: string, at: Date): Promise<string[]> {
+    const query = text.replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+    if (!query) return [];
+    const r = await this.call<Array<{ event: { name: string } }>>("listEvents", {
+      filter: {
+        eventTypeIds: ["1"],
+        textQuery: query,
+        marketStartTime: { from: new Date(at.getTime() - 8 * 3_600_000).toISOString(), to: new Date(at.getTime() + 36 * 3_600_000).toISOString() },
+      },
+    });
+    return r.map((e) => e.event.name);
+  }
+
   /** Every bet placed or settled in the last day, in the stored shape. */
   async recentBets(now = new Date()): Promise<BetfairBet[]> {
     const from = new Date(now.getTime() - LOOKBACK_MS).toISOString();
@@ -246,6 +264,70 @@ export class BetfairReader {
     await this.names(current.currentOrders.map((o) => o.marketId));
 
     return toStoredBets(current.currentOrders, cleared, this.catalogue);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Is the match on Betfair?
+
+/**
+ * What Betfair's event list says about a match: on (both teams match an event), nameDiffers (only one team does, so
+ * Betfair spells the other differently: a Match names entry fixes it), or off (no event for either team).
+ */
+export function judgeExchange(home: string, away: string, eventNames: string[]): { result: "on" | "nameDiffers" | "off"; event: string | null } {
+  let best: { score: number; name: string } | null = null;
+  for (const name of eventNames) {
+    const score = eventScore(name, `${home} v ${away}`);
+    if (!best || score > best.score) best = { score, name };
+  }
+  if (best?.score === 2) return { result: "on", event: best.name };
+  if (best?.score === 1) return { result: "nameDiffers", event: best.name };
+  return { result: "off", event: null };
+}
+
+/** Words that say nothing about which club it is. */
+const COMMON = new Set(["fc", "afc", "cf", "sc", "ac", "fk", "sk", "cd", "club", "united", "city", "town", "real", "sporting", "deportivo", "atletico", "athletic", "women", "u17", "u18", "u19", "u20", "u21", "u23", "reserves", "res"]);
+
+/**
+ * The word to search Betfair for: the team's longest distinctive word ("Wigan" for "Wigan Athletic U21"). One word finds
+ * the event however the rest of the name is written; judgeExchange then checks both teams properly.
+ */
+export function searchWord(team: string): string {
+  const words = team.normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^A-Za-z0-9]+/).filter((w) => w.length >= 3);
+  const distinctive = words.filter((w) => !COMMON.has(w.toLowerCase()));
+  const pool = distinctive.length > 0 ? distinctive : words;
+  return pool.sort((a, b) => b.length - a.length)[0] ?? team;
+}
+
+/** Alerts are looked up while their match is still listed: Betfair drops an event soon after it finishes. */
+const CHECK_WITHIN_MS = 90 * 60 * 1000;
+const CHECKS_PER_POLL = 10;
+
+async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: Map<string, { result: "on" | "nameDiffers" | "off"; event: string | null; at: number }>): Promise<void> {
+  const namer = exchangeNamer(db);
+  const now = Date.now();
+  for (const p of db.picksToCheckOnExchange(new Date(now - CHECK_WITHIN_MS).toISOString(), CHECKS_PER_POLL)) {
+    if (!p.home || !p.away) {
+      db.setPickExchange(p.id, "unknown", null);
+      continue;
+    }
+    // Names as the exchange writes them (Match names on the Sending page), the same as the bet feed sends.
+    const home = namer(p.home);
+    const away = namer(p.away);
+    const key = `${home}|${away}`.toLowerCase();
+    let found = cache.get(key);
+    if (!found || now - found.at > 30 * 60 * 1000) {
+      const at = new Date(p.firstSeenAt);
+      let judged = judgeExchange(home, away, await reader.searchEvents(searchWord(home), at));
+      if (judged.result !== "on") {
+        const byAway = judgeExchange(home, away, await reader.searchEvents(searchWord(away), at));
+        if (byAway.result === "on" || (byAway.result === "nameDiffers" && judged.result === "off")) judged = byAway;
+      }
+      found = { ...judged, at: now };
+      cache.set(key, found);
+    }
+    db.setPickExchange(p.id, found.result, found.event);
+    if (found.result === "off") log.info(`Not on Betfair: ${home} v ${away} (pick ${p.id}).`);
   }
 }
 
@@ -280,6 +362,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
     return () => {};
   }
   const reader = new BetfairReader(creds);
+  const exchangeCache = new Map<string, { result: "on" | "nameDiffers" | "off"; event: string | null; at: number }>();
   let running = false;
   const tick = async () => {
     if (running) return;
@@ -293,6 +376,10 @@ export function startBetfairPoller(db: EngineDb): () => void {
       status.lastCount = bets.length;
       if (status.lastError) log.info("Betfair bet check is working again.");
       status.lastError = null;
+      // Then look up any new alerts' matches; a failure here leaves them to try again next time.
+      await checkNewAlerts(db, reader, exchangeCache).catch((err: unknown) => {
+        log.warn(`Betfair event lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Log a new problem once, not every 45 seconds.

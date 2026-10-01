@@ -28,7 +28,7 @@ function LeagueCard({
   row: AdminLeagueRow;
   countries: string[];
   busy: boolean;
-  onChange: (patch: { hidden?: boolean; reset?: boolean; country?: string | null; tier?: number | null }) => void;
+  onChange: (patch: { hidden?: boolean; reset?: boolean; country?: string | null; tier?: number | null; noSend?: boolean }) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -69,9 +69,10 @@ function LeagueCard({
 
       {open && (
       <>
-      {(row.hidden || row.resetAt) && (
+      {(row.hidden || row.resetAt || row.noSend) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           {row.hidden && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Hidden from dashboard</span>}
+          {row.noSend && <span className="rounded-full bg-loss/15 px-2 py-0.5 text-loss">Not sent: not on Betfair</span>}
           {row.resetAt && (
             <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">
               Counting from {shortDate(row.resetAt)} · {row.earlierAlerts} earlier kept
@@ -208,6 +209,65 @@ function LeagueCard({
   );
 }
 
+const offFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+/**
+ * Leagues whose alerts' matches weren't on Betfair when they arrived (looked up by the engine; see betfair/exchange.ts),
+ * worst first. "Don't send" keeps recording their alerts but never hands them to the betting software, and Live tags
+ * new ones "Not on exchange".
+ */
+function NotOnBetfair({ rows, busy, onChange }: { rows: AdminLeagueRow[]; busy: boolean; onChange: (key: string, noSend: boolean) => void }) {
+  const list = rows
+    .filter((r) => (r.exchange?.off ?? 0) > 0 || r.noSend)
+    .sort((a, b) => (b.exchange?.off ?? 0) - (a.exchange?.off ?? 0) || a.league.localeCompare(b.league));
+  const anyChecked = rows.some((r) => (r.exchange?.checked ?? 0) > 0);
+  if (rows.length > 0 && rows[0]!.exchange === undefined) return null; // older engine
+  return (
+    <section className="space-y-2 rounded-xl border border-line bg-surface p-3.5">
+      <div>
+        <h3 className="text-sm font-medium text-ink">Not on Betfair ({list.length})</h3>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          {anyChecked
+            ? "Leagues whose matches weren’t on the exchange when the alert arrived. “Don’t send” keeps recording their alerts but never sends them to your betting software, and Live tags new ones “Not on exchange”."
+            : "Each new alert’s match is looked up on Betfair once the live check is connected (see Reconcile). Leagues whose matches aren’t there will list here."}
+        </p>
+      </div>
+      {list.length > 0 && (
+        <ul className="divide-y divide-line">
+          {list.map((r) => {
+            const ex = r.exchange ?? { checked: 0, on: 0, nameDiffers: 0, off: 0, lastOffAt: null };
+            return (
+              <li key={r.key} className="flex items-start justify-between gap-3 py-2">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-ink">{r.league}</span>
+                  <span className="block text-xs text-ink-muted">
+                    {[r.country, `${ex.off} of ${ex.checked} alert${ex.checked === 1 ? "" : "s"} not on Betfair`, ex.on > 0 && `${ex.on} were`, ex.lastOffAt && `last ${offFmt.format(new Date(ex.lastOffAt))}`]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={r.noSend === true}
+                  aria-label={`Don't send ${r.league}`}
+                  disabled={busy}
+                  onClick={() => onChange(r.key, !r.noSend)}
+                  className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
+                    r.noSend ? "bg-loss/15 text-loss" : "border border-line text-ink hover:bg-surface-2"
+                  }`}
+                >
+                  {r.noSend ? "Not sending · undo" : "Don’t send"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default function LeaguesPage() {
   const { data, isLoading, error } = useAdminLeagues();
   const update = useUpdateLeague();
@@ -250,6 +310,7 @@ export default function LeaguesPage() {
         <QueryError error={error} next="/more/admin/leagues" />
       ) : (
         <>
+          {data && <NotOnBetfair rows={data} busy={update.isPending} onChange={(key, noSend) => update.mutate({ key, patch: { noSend } })} />}
           <div className="space-y-2">
             <input
               value={search}

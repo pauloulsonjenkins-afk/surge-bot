@@ -8,7 +8,8 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { matchBets } from "../src/betfair/reconcile";
-import { missingSettings, pickPlacements, readCredentials, toStoredBets, type BetfairLinkStatus } from "../src/betfair/exchange";
+import { judgeExchange, missingSettings, pickPlacements, readCredentials, searchWord, toStoredBets, type BetfairLinkStatus } from "../src/betfair/exchange";
+import { computeStrategyReturns } from "../src/server/winloss";
 
 const S = "Blistering Momentum";
 
@@ -107,4 +108,55 @@ test("each sent pick gets a placement state: checking, then not placed, or match
   // But if Betfair hasn't been reachable since, it is never called "not placed".
   p = pickPlacements(db, link(now.toISOString()), later);
   assert.equal(p[sent[2]!.id]!.state, "checking");
+});
+
+test("is the match on Betfair: on, a team spelled differently, or not there", () => {
+  assert.deepEqual(judgeExchange("Wigan Athletic U21", "Huddersfield Town U21", ["Wigan U21 v Huddersfield U21", "Wigan v Stoke"]), {
+    result: "on",
+    event: "Wigan U21 v Huddersfield U21",
+  });
+  assert.equal(judgeExchange("Lyon", "Nantes", ["Lyon v FC Nantes Atlantique"]).result, "on");
+  assert.deepEqual(judgeExchange("Spurs", "Arsenal", ["Tottenham v Arsenal"]), { result: "nameDiffers", event: "Tottenham v Arsenal" });
+  assert.deepEqual(judgeExchange("Kodagu FC", "Megt Centre", []), { result: "off", event: null });
+  assert.equal(searchWord("Wigan Athletic U21"), "Wigan");
+  assert.equal(searchWord("FC Kobenhavn"), "Kobenhavn");
+  assert.equal(searchWord("Club Atletico Tembetary"), "Tembetary");
+});
+
+test("a league marked 'don't send' is recorded but never sent, and the Leagues page counts what Betfair said", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [S.toLowerCase()]: 2 }, strategies: { [S.toLowerCase()]: true }, dailyCap: 100 });
+  const now = new Date();
+  const posted = new Date(now.getTime() - 60_000).toISOString();
+  db.upsertLivePick("chat", 1, alert(1, "Lyon vs Nantes"), parseAlert(alert(1, "Lyon vs Nantes")), posted);
+  const pick = db.listLivePicks(10)[0]!;
+  db.setPickExchange(pick.id, "off", null);
+
+  let league = db.listLeaguesForAdmin()[0]!;
+  assert.deepEqual(league.exchange, { checked: 1, on: 0, nameDiffers: 0, off: 1, lastOffAt: pick.firstSeenAt });
+  assert.equal(league.noSend, false);
+  assert.equal(db.listLivePicks(10)[0]!.exchange, "off");
+
+  db.updateLeague(pick.leagueKey, { noSend: true });
+  league = db.listLeaguesForAdmin()[0]!;
+  assert.equal(league.noSend, true);
+  const feed = buildFeed(db, { markSent: false, now });
+  assert.equal(feed.rows.length, 0);
+  assert.match(feed.skipped[0]!.reason, /not on Betfair/);
+
+  db.updateLeague(pick.leagueKey, { noSend: false });
+  assert.equal(buildFeed(db, { markSent: false, now }).rows.length, 1);
+});
+
+test("a simulated bet on a match that wasn't on Betfair is never priced", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { stakes: { [S.toLowerCase()]: 2 } });
+  const posted = new Date(Date.now() - 60_000).toISOString();
+  const settled = alert(1, "Lyon vs Nantes") + "\n\n⸻⸻ Match Summary ⸻⸻\nHalf-Time Score: 0-0\nFull-Time Score: 1-0\n\n✅ Hit";
+  db.upsertLivePick("chat", 1, settled, parseAlert(settled), posted);
+  const id = db.listLivePicks(10)[0]!.id;
+  const key = S.toLowerCase();
+  assert.equal(computeStrategyReturns(db)[key]!.sim.counted, 1);
+  db.setPickExchange(id, "off", null);
+  assert.equal(computeStrategyReturns(db)[key]!.sim.counted, 0);
 });

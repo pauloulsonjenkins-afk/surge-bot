@@ -59,6 +59,8 @@ export async function fetchRecentPicks(limit = 50): Promise<EnginePick[]> {
 /** One Telegram alert, parsed. Mirrors LivePick in the engine's engine-db.ts. */
 export interface LivePick {
   id: number;
+  exchange?: "on" | "nameDiffers" | "off" | null;
+  exchangeEvent?: string | null;
   chatId: string;
   messageId: number;
   firstSeenAt: string;
@@ -125,6 +127,10 @@ export interface PublicPick {
   resultOverridden: boolean;
   status: "captured" | "settled" | "unmapped" | "flagged";
   sentAt: string | null;
+  /** Whether the match was on Betfair when the alert arrived; null when not checked. Missing on an older engine. */
+  exchange?: "on" | "nameDiffers" | "off" | null;
+  /** The Betfair event found when a team is spelled differently there. */
+  exchangeEvent?: string | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -155,6 +161,8 @@ export function toPublicPick(p: LivePick): PublicPick {
     resultOverridden: p.resultOverridden,
     status: p.status,
     sentAt: p.sentAt,
+    exchange: p.exchange ?? null,
+    exchangeEvent: p.exchangeEvent ?? null,
     flags: p.flags,
     detail: p.detail
       ? {
@@ -616,6 +624,10 @@ export interface AdminLeagueRow {
   resetAt: string | null;
   countryOverride: string | null;
   tierOverride: number | null;
+  /** Whether its alerts' matches were on Betfair when they arrived (missing on an older engine). */
+  exchange?: { checked: number; on: number; nameDiffers: number; off: number; lastOffAt: string | null };
+  /** Marked "don't send": alerts are recorded but never sent to the betting software. */
+  noSend?: boolean;
 }
 
 /** What can be changed on one league. Mirrors LeaguePatch in the engine's engine-db.ts. */
@@ -624,6 +636,7 @@ export interface LeaguePatch {
   reset?: boolean;
   country?: string | null;
   tier?: number | null;
+  noSend?: boolean;
 }
 
 export async function fetchAdminLeagues(): Promise<AdminLeagueRow[]> {

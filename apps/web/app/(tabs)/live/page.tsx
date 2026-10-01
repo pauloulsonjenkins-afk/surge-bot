@@ -63,6 +63,25 @@ function placementChip(p: Placement): { label: string; cls: string; title: strin
   }
 }
 
+/** What Betfair said about the match when the alert arrived; shown to the admin beside the status. */
+function ExchangeChip({ pick }: { pick: LivePick }) {
+  if (pick.exchange === "off") {
+    return (
+      <span title="This match wasn’t on Betfair when the alert arrived, so no bet can be placed. Mark the league “Don’t send” on the Leagues page." className="shrink-0 rounded-full bg-loss/15 px-2 py-0.5 text-xs font-medium text-loss">
+        Not on exchange
+      </span>
+    );
+  }
+  if (pick.exchange === "nameDiffers") {
+    return (
+      <span title={`Betfair lists it as “${pick.exchangeEvent ?? "?"}”. Add the team’s Betfair name under Match names on the Sending page.`} className="shrink-0 rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn">
+        Name differs on Betfair
+      </span>
+    );
+  }
+  return null;
+}
+
 function StatusChip({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
   // The admin sees which picks are only simulated; for everyone else it's just "Captured".
   if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return <ModeBadge mode="sim" />;
@@ -129,7 +148,10 @@ function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; p
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-3">
             <span className="truncate text-sm font-medium text-ink">{shortStrategy(pick.strategy)}</span>
-            <StatusChip pick={pick} admin={admin} placement={placement} />
+            <span className="flex shrink-0 items-center gap-1">
+              {admin && <ExchangeChip pick={pick} />}
+              <StatusChip pick={pick} admin={admin} placement={placement} />
+            </span>
           </span>
           <span className="mt-1 block truncate text-xs text-ink-muted">
             {[betText(pick.market, pick.selection) ?? "No market set", `at ${fmtTime(pick.firstSeenAt)}`].join(" · ")}
