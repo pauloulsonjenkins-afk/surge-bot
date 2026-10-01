@@ -7,6 +7,7 @@ import { resolveLeague } from "@/lib/performance/leagues";
 import { LEAGUE_CATALOGUE, TIER_LABEL } from "@/domain/performance";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
+import { BetfairCoverage } from "@/components/admin/BetfairCoverage";
 
 type Filter = "all" | "shown" | "hidden";
 
@@ -311,6 +312,7 @@ export default function LeaguesPage() {
       ) : (
         <>
           {data && <NotOnBetfair rows={data} busy={update.isPending} onChange={(key, noSend) => update.mutate({ key, patch: { noSend } })} />}
+          <BetfairCoverage />
           <div className="space-y-2">
             <input
               value={search}

@@ -7,7 +7,7 @@
  *                                      a pick the bet feed's rules would have held back is not priced at all
  *          sim pick from before
  *          recording existed:          the strategy's stake today
- *   odds   the first of: the price printed in the alert (the "Over" price on the alert's Over/Under line for Next
+ *   odds   for a bet placed by hand (logged on Live), the price taken; otherwise the first of: the price printed in the alert (the "Over" price on the alert's Over/Under line for Next
  *          Goal bets, the favourite's live price for Favourite to win); the price the pick's bet actually matched at
  *          on Betfair; the Betfair price of that bet when the alert arrived (read by betfair/exchange.ts, so Sim
  *          picks of strategies whose alerts carry no price, such as Both Teams to Score, are priced too); and last,
@@ -28,12 +28,14 @@ export interface PriceableResult {
   sim: SimRecord | null;
   /** The price the pick's bet matched at on Betfair, when it has one. */
   betOdds?: number | null;
+  /** The price taken on a bet placed by hand (logged on Live): what was actually bet, so it comes first. */
+  takenOdds?: number | null;
   /** The Betfair price of the bet the feed would send, read when the alert arrived. */
   exchangeOdds?: number | null;
 }
 
 /** Where a pick's price came from. */
-export type OddsSource = "alert" | "bet" | "exchange" | "assumed";
+export type OddsSource = "taken" | "alert" | "bet" | "exchange" | "assumed";
 
 /** The simulated bet stored on a pick that wasn't sent. */
 export interface SimRecord {
@@ -105,9 +107,10 @@ export function hitRateRange(hits: number, settled: number): { low: number; high
 
 /** A pick's price and where it came from, in the order described at the top of this file; null when there is none. */
 export function pickOdds(
-  r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "betOdds" | "exchangeOdds">,
+  r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "betOdds" | "exchangeOdds" | "takenOdds">,
   assumedOdds: number | null,
 ): { odds: number; source: OddsSource } | null {
+  if (r.takenOdds != null && r.takenOdds > 1) return { odds: r.takenOdds, source: "taken" };
   const alert = alertOddsOf(r);
   if (alert !== null) return { odds: alert, source: "alert" };
   if (r.betOdds != null && r.betOdds > 1) return { odds: r.betOdds, source: "bet" };
@@ -118,7 +121,7 @@ export function pickOdds(
 
 /** The odds a pick is judged at, whether or not it could be staked (see pickOdds). */
 export function oddsFor(
-  r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "betOdds" | "exchangeOdds">,
+  r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "betOdds" | "exchangeOdds" | "takenOdds">,
   assumedOdds: number | null,
 ): number | null {
   return pickOdds(r, assumedOdds)?.odds ?? null;

@@ -1,10 +1,31 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AdminLeagueRow, LeaguePatch } from "@/server/engine-client";
+import type { AdminLeagueRow, CoverageReport, CoverageResult, LeaguePatch } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 
-export type { AdminLeagueRow, LeaguePatch };
+export type { AdminLeagueRow, CoverageReport, CoverageResult, LeaguePatch };
+
+/** Which of the leagues your alerts came from are on Betfair. */
+export function useCoverage() {
+  return useQuery({
+    queryKey: ["betfair-coverage"],
+    queryFn: ({ signal }) => getJson<CoverageReport>("/api/admin/betfair/coverage", "the Betfair coverage", signal),
+    staleTime: 60_000,
+  });
+}
+
+/** Checks a pasted list of league names (e.g. InPlayGuru's) against Betfair. */
+export function useCheckCoverage() {
+  return useMutation({
+    mutationFn: async (names: string[]): Promise<CoverageReport> => {
+      const res = await fetch("/api/admin/betfair/coverage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ names }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiFetchError(body?.error ?? `Couldn't check the list (${res.status})`, res.status);
+      return body as CoverageReport;
+    },
+  });
+}
 
 const KEY = ["admin-leagues"];
 

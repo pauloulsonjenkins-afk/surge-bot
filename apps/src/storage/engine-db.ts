@@ -29,6 +29,7 @@ import { leagueCountryFromText, type ParsedAlert } from "../inplayguru/parse-ale
 import type { ScheduleFixture } from "../fixtures/api-football";
 import type { SimRecord } from "../server/pricing";
 import type { HorseBet, HorseDay } from "../server/horses";
+import type { BetfairCompetition } from "../betfair/competitions";
 
 export interface CapturedWebhook {
   receivedAt: string;
@@ -200,9 +201,36 @@ export function parsePickMode(v: unknown): PickMode {
   return v === "live" || v === "sim" ? v : "all";
 }
 
+/**
+ * A pick is live when it was handed to the bet feed, or when the admin logged on Live that they placed it by hand
+ * (manual_bet: the betting software missed it, or it was never sent, and it was bet elsewhere).
+ */
+const LIVE_SQL = "(sent_at IS NOT NULL OR manual_bet IS NOT NULL)";
+
+/** A bet the admin placed by hand on a pick, logged on Live. */
+export interface ManualBet {
+  stake: number;
+  /** Decimal odds taken. */
+  odds: number;
+  /** When it was logged. */
+  at: string;
+}
+
+export function parseManualBet(raw: unknown): ManualBet | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const m = JSON.parse(raw) as Partial<ManualBet>;
+    return typeof m.stake === "number" && m.stake > 0 && typeof m.odds === "number" && m.odds > 1 && typeof m.at === "string"
+      ? { stake: m.stake, odds: m.odds, at: m.at }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** SQL condition for a mode, to add to a WHERE clause on live_picks. */
 function modeSql(mode: PickMode): string {
-  return mode === "live" ? " AND sent_at IS NOT NULL" : mode === "sim" ? " AND sent_at IS NULL" : "";
+  return mode === "live" ? ` AND ${LIVE_SQL}` : mode === "sim" ? ` AND NOT ${LIVE_SQL}` : "";
 }
 
 function parseSimRow(raw: string | null): SimRecord | null {
@@ -310,6 +338,8 @@ export interface LivePick {
   exchange: "on" | "nameDiffers" | "off" | null;
   /** The Betfair event name found, for nameDiffers. */
   exchangeEvent: string | null;
+  /** A bet the admin placed by hand on this pick (logged on Live), or null. */
+  manualBet: ManualBet | null;
   /** Whether Betfair had the exact market and selection the feed sends (null = not checked), and what was found. */
   marketCheck: "ok" | "noMarket" | "noSelection" | null;
   marketCheckDetail: string | null;
@@ -489,6 +519,17 @@ export class EngineDb {
         yankee_stake  REAL
       );
 
+      -- Football competitions Betfair has listed, kept as they're seen (betfair/competitions.ts), for the Leagues
+      -- page's Betfair coverage check. Betfair only lists a competition while it has matches, hence last_seen.
+      CREATE TABLE IF NOT EXISTS betfair_competitions (
+        id            TEXT PRIMARY KEY,
+        name          TEXT NOT NULL,
+        region        TEXT,
+        market_count  INTEGER NOT NULL DEFAULT 0,
+        first_seen    TEXT NOT NULL,
+        last_seen     TEXT NOT NULL
+      );
+
       -- Website users who signed up. Passwords are stored only as salted scrypt hashes.
       -- pages is a JSON list of the page groups the admin has switched on for this person.
       CREATE TABLE IF NOT EXISTS app_users (
@@ -542,6 +583,14 @@ export class EngineDb {
       // Whether the alert's match was on Betfair when it arrived (betfair/exchange.ts), and the event found.
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange TEXT`);
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_event TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "manual_bet")) {
+      // A bet the admin placed by hand on this pick (JSON ManualBet), logged on Live; it makes the pick a live bet.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN manual_bet TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "review_ok_at")) {
+      // When the admin accepted a result the alert's own tick disagreed with (Amend results, Needs review).
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN review_ok_at TEXT`);
     }
     if (!liveCols.some((c) => c.name === "market_check")) {
       // Whether Betfair had the exact market and selection the feed sends for the pick (betfair/exchange.ts checkBet).
@@ -836,6 +885,7 @@ export class EngineDb {
       sentRowJson: (r.sent_row as string | null) ?? null,
       exchange: r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off" ? r.exchange : null,
       exchangeEvent: (r.exchange_event as string | null) ?? null,
+      manualBet: parseManualBet(r.manual_bet),
       marketCheck: r.market_check === "ok" || r.market_check === "noMarket" || r.market_check === "noSelection" ? r.market_check : null,
       marketCheckDetail: (r.market_check_detail as string | null) ?? null,
       leagueKey: leagueIdentity((r.competition as string | null) ?? null, (r.country as string | null) ?? null).key,
@@ -1303,10 +1353,10 @@ export class EngineDb {
     const floor = this.getFreshStart();
     const rows = this.db
       .prepare(
-        `SELECT strategy, market, excluded, sent_at, first_seen_at, COALESCE(result_override, result) AS result
+        `SELECT strategy, market, excluded, sent_at, manual_bet, first_seen_at, COALESCE(result_override, result) AS result
          FROM live_picks ORDER BY id`,
       )
-      .all() as Array<{ strategy: string; market: string | null; excluded: number; sent_at: string | null; first_seen_at: string; result: string | null }>;
+      .all() as Array<{ strategy: string; market: string | null; excluded: number; sent_at: string | null; manual_bet: string | null; first_seen_at: string; result: string | null }>;
     const out = new Map<string, AdminStrategyRow>();
     for (const r of rows) {
       const label = strategyLabel(r.strategy);
@@ -1334,7 +1384,7 @@ export class EngineDb {
       if (floor === null || r.first_seen_at >= floor) {
         row.alertsSince++;
         if (r.excluded !== 1) {
-          const live = r.sent_at !== null;
+          const live = r.sent_at !== null || r.manual_bet !== null;
           if (r.result === "hit") {
             row.hits++;
             if (live) row.liveHits++;
@@ -1449,6 +1499,8 @@ export class EngineDb {
     favouriteOdds: number | null;
     /** The price the pick's bet actually matched at on Betfair (stake-weighted), when it has one. */
     betOdds: number | null;
+    /** The price taken on a bet placed by hand (logged on Live). */
+    takenOdds: number | null;
     /** The Betfair back price of the bet the feed would send, read when the alert arrived. */
     exchangeOdds: number | null;
     sentStake: number | null;
@@ -1459,7 +1511,7 @@ export class EngineDb {
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange,
+        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange, manual_bet,
                 exchange_odds,
                 (SELECT SUM(b.matched * b.odds) / SUM(b.matched) FROM betfair_bets b
                   WHERE b.pick_id = live_picks.id AND b.matched > 0 AND b.odds > 1) AS bet_odds
@@ -1478,6 +1530,7 @@ export class EngineDb {
       sent_at: string | null;
       sim_row: string | null;
       exchange: string | null;
+      manual_bet: string | null;
       exchange_odds: number | null;
       bet_odds: number | null;
     }>;
@@ -1500,7 +1553,8 @@ export class EngineDb {
       } catch {
         // leave as null
       }
-      let sentStake: number | null = null;
+      const manual = parseManualBet(r.manual_bet);
+      let sentStake: number | null = manual?.stake ?? null;
       if (r.sent_row) {
         try {
           const s = JSON.parse(r.sent_row) as { stake?: unknown };
@@ -1520,13 +1574,78 @@ export class EngineDb {
         overOdds,
         favouriteOdds,
         sentStake,
-        sent: r.sent_at !== null,
+        // A bet placed by hand counts as a live bet at its own stake and price.
+        sent: r.sent_at !== null || manual !== null,
         // A simulated bet on a match that wasn't on Betfair could never have been placed.
+        // The price actually matched on Betfair, else the price taken on a bet placed by hand.
         betOdds: typeof r.bet_odds === "number" && r.bet_odds > 1 ? Math.round(r.bet_odds * 100) / 100 : null,
+        takenOdds: manual?.odds ?? null,
         exchangeOdds: typeof r.exchange_odds === "number" && r.exchange_odds > 1 ? r.exchange_odds : null,
-        sim: r.sent_at === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
+        sim: r.sent_at === null && manual === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
       };
     });
+  }
+
+  // ---- Bets placed by hand, and results to review -------------------------------------------------
+
+  /** Logs (or with null, removes) a bet the admin placed by hand on a pick. Returns false for an unknown pick. */
+  setManualBet(id: number, bet: { stake: number; odds: number } | null): boolean {
+    const value = bet ? JSON.stringify({ stake: bet.stake, odds: bet.odds, at: new Date().toISOString() }) : null;
+    const changed = this.db.prepare(`UPDATE live_picks SET manual_bet = ? WHERE id = ?`).run(value, id).changes;
+    if (changed > 0) this.onChange();
+    return changed > 0;
+  }
+
+  /**
+   * Picks whose final score gave a different result from the alert's own Hit/Miss tick, not yet looked at: not
+   * amended by hand, not removed, and not accepted with "Keep the score's result". Newest first.
+   */
+  listResultDiscrepancies(limit = 100): LivePick[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM live_picks
+         WHERE result_override IS NULL AND review_ok_at IS NULL AND excluded = 0
+           AND json_extract(parsed_json, '$.resultSource') = 'score'
+           AND json_extract(parsed_json, '$.alertResult') IS NOT NULL
+           AND json_extract(parsed_json, '$.alertResult') != json_extract(parsed_json, '$.result')
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(limit) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.toLivePick(r));
+  }
+
+  /** Accepts (or with false, un-accepts) a pick's result after reviewing a discrepancy. */
+  setResultReviewed(id: number, ok: boolean): boolean {
+    const changed = this.db.prepare(`UPDATE live_picks SET review_ok_at = ? WHERE id = ?`).run(ok ? new Date().toISOString() : null, id).changes;
+    if (changed > 0) this.onChange();
+    return changed > 0;
+  }
+
+  // ---- Betfair competitions -------------------------------------------------------------------
+
+  /** Records the competitions Betfair lists now: new ones are added, known ones get today's name and last-seen time. */
+  saveBetfairCompetitions(list: Array<{ id: string; name: string; region: string | null; marketCount: number }>, seenAt: string): number {
+    const upsert = this.db.prepare(
+      `INSERT INTO betfair_competitions (id, name, region, market_count, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, region = excluded.region, market_count = excluded.market_count, last_seen = excluded.last_seen`,
+    );
+    this.db.transaction(() => {
+      for (const c of list) upsert.run(c.id, c.name, c.region, c.marketCount, seenAt, seenAt);
+    })();
+    if (list.length > 0) this.onChange();
+    return list.length;
+  }
+
+  listBetfairCompetitions(): BetfairCompetition[] {
+    const rows = this.db.prepare(`SELECT * FROM betfair_competitions ORDER BY name`).all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      region: (r.region as string | null) ?? null,
+      marketCount: Number(r.market_count),
+      firstSeen: String(r.first_seen),
+      lastSeen: String(r.last_seen),
+    }));
   }
 
   // ---- Horses -------------------------------------------------------------------------------
@@ -1692,10 +1811,25 @@ export class EngineDb {
   }
 
   /** Every pick ever handed to the bet feed, with the row it was sent as. */
-  listSentPicks(): Array<{ id: number; strategy: string; sentAt: string; firstSeenAt: string; home: string | null; away: string | null; sentRow: { eventName?: string; selectionName?: string; provider?: string; stake?: number } | null }> {
+  listSentPicks(): Array<{
+    id: number;
+    strategy: string;
+    sentAt: string;
+    firstSeenAt: string;
+    home: string | null;
+    away: string | null;
+    sentRow: { eventName?: string; selectionName?: string; provider?: string; stake?: number } | null;
+    /** Placed by hand (logged on Live), or null. */
+    manualBet?: ManualBet | null;
+    /** False for a pick only placed by hand (never handed to the bet feed). */
+    viaFeed?: boolean;
+  }> {
     const rows = this.db
-      .prepare(`SELECT id, strategy, sent_at, first_seen_at, home, away, sent_row FROM live_picks WHERE sent_at IS NOT NULL ORDER BY sent_at, id`)
-      .all() as Array<{ id: number; strategy: string; sent_at: string; first_seen_at: string; home: string | null; away: string | null; sent_row: string | null }>;
+      .prepare(
+        `SELECT id, strategy, sent_at, manual_bet, first_seen_at, home, away, sent_row FROM live_picks
+         WHERE sent_at IS NOT NULL OR manual_bet IS NOT NULL ORDER BY COALESCE(sent_at, first_seen_at), id`,
+      )
+      .all() as Array<{ id: number; strategy: string; sent_at: string | null; manual_bet: string | null; first_seen_at: string; home: string | null; away: string | null; sent_row: string | null }>;
     return rows.map((r) => {
       let sentRow = null;
       try {
@@ -1703,7 +1837,19 @@ export class EngineDb {
       } catch {
         // leave as null
       }
-      return { id: r.id, strategy: r.strategy, sentAt: r.sent_at, firstSeenAt: r.first_seen_at, home: r.home, away: r.away, sentRow };
+      const manual = parseManualBet(r.manual_bet);
+      // A pick never sent but placed by hand is "sent" from when its alert arrived, so a bet on it can still be linked.
+      return {
+        id: r.id,
+        strategy: r.strategy,
+        sentAt: r.sent_at ?? r.first_seen_at,
+        firstSeenAt: r.first_seen_at,
+        home: r.home,
+        away: r.away,
+        sentRow,
+        manualBet: manual,
+        viaFeed: r.sent_at !== null,
+      };
     });
   }
 

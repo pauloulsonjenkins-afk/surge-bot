@@ -51,8 +51,23 @@ function previewOdds(v: string): number | null {
 type Row = { horse: string; stake: string; odds: string; betType: "win" | "ew"; ewFraction: number; ewPlaces: string };
 const EMPTY: Row = { horse: "", stake: "", odds: "", betType: "win", ewFraction: 4, ewPlaces: "" };
 
-function rowsFor(bets: HorseBet[], day: string): Record<number, Row> {
-  const out: Record<number, Row> = { 1: { ...EMPTY }, 2: { ...EMPTY }, 3: { ...EMPTY }, 4: { ...EMPTY } };
+/**
+ * The day's saved choices, or for a day with nothing saved yet, the last earlier day's amounts carried over (stake,
+ * win or each-way, terms), with the horse and odds left blank. carriedFrom says which day they came from.
+ */
+function rowsFor(bets: HorseBet[], day: string): Record<number, Row> & { carriedFrom?: string } {
+  const out: Record<number, Row> & { carriedFrom?: string } = { 1: { ...EMPTY }, 2: { ...EMPTY }, 3: { ...EMPTY }, 4: { ...EMPTY } };
+  if (!bets.some((b) => b.day === day)) {
+    const before = bets.filter((b) => b.day < day).map((b) => b.day).sort().pop();
+    if (before) {
+      for (const b of bets) {
+        if (b.day !== before) continue;
+        out[b.rank] = { ...EMPTY, stake: String(b.stake), betType: b.betType, ewFraction: b.ewFraction ?? 4, ewPlaces: b.ewPlaces === null ? "" : String(b.ewPlaces) };
+      }
+      out.carriedFrom = before;
+    }
+    return out;
+  }
   for (const b of bets) {
     if (b.day !== day) continue;
     out[b.rank] = {
@@ -67,17 +82,21 @@ function rowsFor(bets: HorseBet[], day: string): Record<number, Row> {
   return out;
 }
 
+/** A day's EW Yankee unit stake, or "" for none. A day with nothing saved yet carries the last earlier day's over. */
+function yankeeStakeFor(days: HorseDay[], bets: HorseBet[], d: string): string {
+  const own = days.find((x) => x.day === d);
+  const from = own ?? (bets.some((b) => b.day === d) ? undefined : [...days].filter((x) => x.day < d).sort((a, b) => a.day.localeCompare(b.day)).pop());
+  const s = from?.yankeeStake;
+  return s === null || s === undefined ? "" : String(s);
+}
+
 // ---------------------------------------------------------------------------
 // Entry
 
 function EntryCard({ bets, days, day, setDay }: { bets: HorseBet[]; days: HorseDay[]; day: string; setDay: (d: string) => void }) {
   const save = useSaveHorseDay();
-  const [rows, setRows] = useState<Record<number, Row>>(() => rowsFor(bets, day));
-  // The EW Yankee on the four selections: its unit stake, or "" for none.
-  const yankeeFor = (d: string) => {
-    const s = days.find((x) => x.day === d)?.yankeeStake;
-    return s === null || s === undefined ? "" : String(s);
-  };
+  const [rows, setRows] = useState<Record<number, Row> & { carriedFrom?: string }>(() => rowsFor(bets, day));
+  const yankeeFor = (d: string) => yankeeStakeFor(days, bets, d);
   const [yankee, setYankee] = useState(() => yankeeFor(day));
   const [yankeeOn, setYankeeOn] = useState(() => yankeeFor(day) !== "");
   const [saved, setSaved] = useState(false);
@@ -87,21 +106,23 @@ function EntryCard({ bets, days, day, setDay }: { bets: HorseBet[]; days: HorseD
     if (loadedFor.current === day) return;
     loadedFor.current = day;
     setRows(rowsFor(bets, day));
-    const y = days.find((x) => x.day === day)?.yankeeStake;
-    setYankee(y === null || y === undefined ? "" : String(y));
-    setYankeeOn(y !== null && y !== undefined);
+    const y = yankeeStakeFor(days, bets, day);
+    setYankee(y);
+    setYankeeOn(y !== "");
   }, [bets, days, day]);
 
   const set = (rank: number, patch: Partial<Row>) => {
     setSaved(false);
     setRows((r) => ({ ...r, [rank]: { ...r[rank]!, ...patch } }));
   };
+  // Carried-over amounts with no odds aren't a bet: a row is only sent when its odds are filled in.
+  const filled = (r: Row) => r.odds.trim() !== "" || !rows.carriedFrom;
   const unit = Number(yankee.replace(/^£/, ""));
   const yankeeCost = yankeeOn && Number.isFinite(unit) && unit > 0 ? unit * YANKEE_BET_COUNT : 0;
   const outlay =
     RANKS.reduce((n, r) => {
       const s = Number(rows[r]!.stake.replace(/^£/, ""));
-      return n + (Number.isFinite(s) && s > 0 ? s * (rows[r]!.betType === "ew" ? 2 : 1) : 0);
+      return n + (filled(rows[r]!) && Number.isFinite(s) && s > 0 ? s * (rows[r]!.betType === "ew" ? 2 : 1) : 0);
     }, 0) + yankeeCost;
 
   function submit() {
@@ -109,7 +130,9 @@ function EntryCard({ bets, days, day, setDay }: { bets: HorseBet[]; days: HorseD
       const r = rows[rank]!;
       // Place terms go with an each-way single, and with every selection when there's a Yankee (its place part uses them).
       const terms = r.betType === "ew" || yankeeOn;
-      return { rank, horse: r.horse, stake: r.stake, odds: r.odds, betType: r.betType, ewFraction: terms ? r.ewFraction : null, ewPlaces: r.ewPlaces };
+      // A carried-over amount on a row left without odds means "no bet on this one today".
+      const stake = filled(r) ? r.stake : "";
+      return { rank, horse: r.horse, stake, odds: r.odds, betType: r.betType, ewFraction: terms ? r.ewFraction : null, ewPlaces: r.ewPlaces };
     });
     save.mutate({ day, entries, yankeeStake: yankeeOn ? yankee : null }, { onSuccess: () => setSaved(true) });
   }
@@ -135,6 +158,12 @@ function EntryCard({ bets, days, day, setDay }: { bets: HorseBet[]; days: HorseD
             className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm text-ink"
           />
         </label>
+
+        {rows.carriedFrom && (
+          <p className="rounded-md bg-surface-2 px-2.5 py-1.5 text-xs text-ink-muted">
+            Bet amounts carried over from {dayLabel(rows.carriedFrom)}. Add today&rsquo;s horses and odds, and change any amount before saving.
+          </p>
+        )}
 
         {RANKS.map((rank) => {
           const r = rows[rank]!;

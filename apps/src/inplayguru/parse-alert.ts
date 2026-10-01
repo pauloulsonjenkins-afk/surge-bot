@@ -119,7 +119,7 @@ const REGIONAL_Z = 0x1f1ff;
 const UK_NATIONS: Record<string, string> = { gbeng: "England", gbsct: "Scotland", gbwls: "Wales" };
 
 let regionNames: Intl.DisplayNames | null = null;
-function regionName(code: string): string | null {
+export function regionName(code: string): string | null {
   try {
     regionNames ??= new Intl.DisplayNames(["en"], { type: "region" });
     const n = regionNames.of(code);

@@ -36,6 +36,11 @@ Read this first in a new chat. Everything below is pushed to `main` (latest comm
 
 19. **Match names from Reconcile:** an unlinked bet whose team Betfair spells differently gets an "Add to Match names" button (`explainUnlinked` suggests "alert name = Betfair name"; `addMatchName` in bet-feed.ts saves it, replacing an older line for that team). Matching also tries each pick's teams under today's Match names, so adding a name links bets on picks sent under the old spelling straight away.
 
+20. **Betfair coverage** (Leagues page; `apps/src/betfair/competitions.ts`, table `betfair_competitions`, saved every 6 h from `listCompetitions`): matches league names (yours, or a pasted InPlayGuru list) to Betfair's competitions: on / possible / not found, with a copy button.
+21. **Placed by hand** (Live, admin): log stake and odds on a pick the betting software missed (or a Sim pick); `manual_bet` on live_picks makes it a live bet everywhere, priced at the odds taken (`takenOdds` comes first in `pickOdds`). Reconcile leaves hand-placed picks out of "unmatched".
+22. **Needs review** (Amend results): results the alert's tick disagrees with stay pinned at the top, any date, until amended, removed or kept (`review_ok_at`).
+23. **Horses:** horseshoe icon (`HorseshoeIcon.tsx`); a new day carries the last day's bet amounts, bet type, terms and Yankee stake over (rows without odds aren't saved).
+
 ## Still open
 - **Reconcile needs a real export.** The column names in `COLUMNS` (reconcile.ts) are a best guess at BF Bot Manager's export. Import one real file and check "Columns read" on the Reconcile page; add any missed header name to `COLUMNS`. Set `BETFAIR_IMPORT_TOKEN` on the engine before using the script.
 - **First Half Corner Race needs its Betfair market code.** Confirmed bet: one more corner before half-time = first-half corners Over (corners so far + 0.5); the parser now sets that line. Picks are priced by finding Betfair's "1st Half Corners" market by name. To send it, copy the market code and selection wording from "Corner markets on Betfair" (Reconcile) into Sending → Bet wording ({line} = 5.5, {line10} = 55).

@@ -590,6 +590,8 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
     for (const p of sentPicks) {
       const sent = Date.parse(p.sentAt);
       if (sent < from || sent > to) continue;
+      // A pick only placed by hand (logged on Live) and with nothing on Betfair wasn't meant to come through the feed.
+      if (p.viaFeed === false && !betsByPick.has(p.id)) continue;
       const label = strategyLabel(p.strategy);
       const s =
         by.get(label.toLowerCase()) ??

@@ -7,7 +7,7 @@ import { RawAlerts } from "@/components/admin/RawAlerts";
 import { QueryError } from "@/components/ui/QueryError";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { betText } from "@/lib/markets";
-import { usePickDays, useAdminPicksWindow, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
+import { usePickDays, useAdminPicksWindow, useDiscrepancies, useReviewResult, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -32,6 +32,153 @@ function ResultChip({ pick }: { pick: LivePick }) {
   if (pick.result === "hit") return <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-hit">Hit</span>;
   if (pick.result === "miss") return <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-loss">Miss</span>;
   return <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-ink-muted">No result yet</span>;
+}
+
+/** One pick with the tools to amend it. With onKeep, it's in Needs review and can be accepted as it is. */
+function PickCard({
+  p,
+  onChange,
+  onToggleExcluded,
+  busyResult,
+  busyExcluded,
+  onKeep,
+  busyKeep = false,
+}: {
+  p: LivePick;
+  onChange: (p: LivePick, result: "hit" | "miss" | null) => void;
+  onToggleExcluded: (p: LivePick) => void;
+  busyResult: boolean;
+  busyExcluded: boolean;
+  onKeep?: (p: LivePick) => void;
+  busyKeep?: boolean;
+}) {
+  return (
+  <article className={`rounded-xl border border-line bg-surface p-3.5 ${p.excluded ? "opacity-50" : ""}`}>
+    <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label(p.strategy)}</p>
+    <p className="mt-1 text-sm font-medium text-ink">
+      {p.home ?? "Unknown"} v {p.away ?? "Unknown"}
+    </p>
+    <p className="text-xs text-ink-muted">
+      {[
+        p.competition,
+        whenFmt.format(new Date(p.firstSeenAt)),
+        p.goalsHome !== null && p.goalsAway !== null ? `Alert at ${p.goalsHome}–${p.goalsAway}` : null,
+        p.ftScore ? `Full-time ${p.ftScore}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+    </p>
+    <p className="mt-1 text-xs text-ink-muted">
+      {betText(p.market, p.selection) ?? "No market set"}
+    </p>
+
+    {p.excluded && (
+      <p className="mt-2 rounded-md bg-surface-2 px-2.5 py-1.5 text-xs text-ink-muted">
+        Removed from results — not counted anywhere.
+      </p>
+    )}
+
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <ResultChip pick={p} />
+      {p.resultOverridden && (
+        <span className="text-xs text-ink-muted">
+          Amended{p.originalResult ? ` (before: ${p.originalResult === "hit" ? "Hit" : "Miss"})` : ""}
+        </span>
+      )}
+    </div>
+    {p.detail?.resultSource === "score" && p.detail.alertResult && p.detail.alertResult !== p.detail.result && (
+      <p className="mt-2 text-xs text-ink-muted">
+        The alert&rsquo;s own tick said {p.detail.alertResult === "hit" ? "Hit" : "Miss"}, but the final score
+        makes it a {p.detail.result === "hit" ? "Hit" : "Miss"}, so that is what is used.
+      </p>
+    )}
+
+    {!p.excluded && (
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busyResult || p.result === "hit"}
+          onClick={() => onChange(p, "hit")}
+          className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-hit disabled:opacity-40"
+        >
+          Set Hit
+        </button>
+        <button
+          type="button"
+          disabled={busyResult || p.result === "miss"}
+          onClick={() => onChange(p, "miss")}
+          className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-loss disabled:opacity-40"
+        >
+          Set Miss
+        </button>
+        {p.resultOverridden && (
+          <button
+            type="button"
+            disabled={busyResult}
+            onClick={() => onChange(p, null)}
+            className="rounded-md px-3 py-1.5 text-xs text-ink-muted underline disabled:opacity-40"
+          >
+            Put back original
+          </button>
+        )}
+      </div>
+    )}
+
+    {onKeep && !p.excluded && (
+      <div className="mt-3 rounded-md bg-warn/10 px-2.5 py-2 text-xs text-ink">
+        Check this one: set Hit or Miss above if the score is wrong, or keep the score&rsquo;s result.{" "}
+        <button type="button" disabled={busyKeep} onClick={() => onKeep(p)} className="font-medium underline disabled:opacity-40">
+          Keep the score&rsquo;s result ({p.result === "hit" ? "Hit" : "Miss"})
+        </button>
+      </div>
+    )}
+
+    <div className="mt-2">
+      <button
+        type="button"
+        disabled={busyExcluded}
+        onClick={() => onToggleExcluded(p)}
+        className={`text-xs underline disabled:opacity-40 ${p.excluded ? "text-ink-muted" : "text-destructive"}`}
+      >
+        {p.excluded ? "Put back" : "Remove from results"}
+      </button>
+    </div>
+  </article>
+  );
+}
+
+/**
+ * Picks whose final score gave a different result from the alert's own Hit/Miss tick, from any date. They stay pinned
+ * here until they're dealt with: amended, removed, or accepted with "Keep the score's result".
+ */
+function NeedsReview({ onChange, onToggleExcluded, busyResult, busyExcluded }: { onChange: (p: LivePick, r: "hit" | "miss" | null) => void; onToggleExcluded: (p: LivePick) => void; busyResult: boolean; busyExcluded: boolean }) {
+  const { data } = useDiscrepancies();
+  const review = useReviewResult();
+  if (!data || data.length === 0) return null;
+  return (
+    <section className="space-y-2 rounded-xl border border-warn/40 bg-warn/5 p-3" aria-label="Needs review">
+      <div>
+        <h3 className="text-sm font-semibold text-ink">Needs review ({data.length})</h3>
+        <p className="text-xs text-ink-muted">
+          The alert&rsquo;s own tick and the final score disagree on these. They stay here, whatever date they&rsquo;re from, until you amend,
+          remove or keep each one.
+        </p>
+      </div>
+      {review.error && <p className="text-xs text-destructive">{review.error.message}</p>}
+      {data.map((p) => (
+        <PickCard
+          key={p.id}
+          p={p}
+          onChange={onChange}
+          onToggleExcluded={onToggleExcluded}
+          busyResult={busyResult}
+          busyExcluded={busyExcluded}
+          onKeep={(x) => review.mutate({ id: x.id, ok: true })}
+          busyKeep={review.isPending}
+        />
+      ))}
+    </section>
+  );
 }
 
 function SettledPicks() {
@@ -162,6 +309,8 @@ function SettledPicks() {
         </p>
       )}
 
+      <NeedsReview onChange={change} onToggleExcluded={toggleExcluded} busyResult={setResult.isPending} busyExcluded={setExcluded.isPending} />
+
       {setResult.error && <p className="text-sm text-destructive">{setResult.error.message}</p>}
       {setExcluded.error && <p className="text-sm text-destructive">{setExcluded.error.message}</p>}
 
@@ -176,88 +325,7 @@ function SettledPicks() {
         </p>
       ) : (
         data.map((p) => (
-          <article key={p.id} className={`rounded-xl border border-line bg-surface p-3.5 ${p.excluded ? "opacity-50" : ""}`}>
-            <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label(p.strategy)}</p>
-            <p className="mt-1 text-sm font-medium text-ink">
-              {p.home ?? "Unknown"} v {p.away ?? "Unknown"}
-            </p>
-            <p className="text-xs text-ink-muted">
-              {[
-                p.competition,
-                whenFmt.format(new Date(p.firstSeenAt)),
-                p.goalsHome !== null && p.goalsAway !== null ? `Alert at ${p.goalsHome}–${p.goalsAway}` : null,
-                p.ftScore ? `Full-time ${p.ftScore}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-            <p className="mt-1 text-xs text-ink-muted">
-              {betText(p.market, p.selection) ?? "No market set"}
-            </p>
-
-            {p.excluded && (
-              <p className="mt-2 rounded-md bg-surface-2 px-2.5 py-1.5 text-xs text-ink-muted">
-                Removed from results — not counted anywhere.
-              </p>
-            )}
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <ResultChip pick={p} />
-              {p.resultOverridden && (
-                <span className="text-xs text-ink-muted">
-                  Amended{p.originalResult ? ` (before: ${p.originalResult === "hit" ? "Hit" : "Miss"})` : ""}
-                </span>
-              )}
-            </div>
-            {p.detail?.resultSource === "score" && p.detail.alertResult && p.detail.alertResult !== p.detail.result && (
-              <p className="mt-2 text-xs text-ink-muted">
-                The alert&rsquo;s own tick said {p.detail.alertResult === "hit" ? "Hit" : "Miss"}, but the final score
-                makes it a {p.detail.result === "hit" ? "Hit" : "Miss"}, so that is what is used.
-              </p>
-            )}
-
-            {!p.excluded && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={setResult.isPending || p.result === "hit"}
-                  onClick={() => change(p, "hit")}
-                  className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-hit disabled:opacity-40"
-                >
-                  Set Hit
-                </button>
-                <button
-                  type="button"
-                  disabled={setResult.isPending || p.result === "miss"}
-                  onClick={() => change(p, "miss")}
-                  className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-loss disabled:opacity-40"
-                >
-                  Set Miss
-                </button>
-                {p.resultOverridden && (
-                  <button
-                    type="button"
-                    disabled={setResult.isPending}
-                    onClick={() => change(p, null)}
-                    className="rounded-md px-3 py-1.5 text-xs text-ink-muted underline disabled:opacity-40"
-                  >
-                    Put back original
-                  </button>
-                )}
-              </div>
-            )}
-
-            <div className="mt-2">
-              <button
-                type="button"
-                disabled={setExcluded.isPending}
-                onClick={() => toggleExcluded(p)}
-                className={`text-xs underline disabled:opacity-40 ${p.excluded ? "text-ink-muted" : "text-destructive"}`}
-              >
-                {p.excluded ? "Put back" : "Remove from results"}
-              </button>
-            </div>
-          </article>
+          <PickCard key={p.id} p={p} onChange={change} onToggleExcluded={toggleExcluded} busyResult={setResult.isPending} busyExcluded={setExcluded.isPending} />
         ))
       )}
     </div>

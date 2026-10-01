@@ -29,6 +29,7 @@ export function useSetPickExcluded() {
       qc.invalidateQueries({ queryKey: ["live-picks"] });
       qc.invalidateQueries({ queryKey: ["hit-rate-stats"] });
       qc.invalidateQueries({ queryKey: ["winloss"] });
+      qc.invalidateQueries({ queryKey: ["pick-discrepancies"] });
     },
   });
 }
@@ -51,6 +52,7 @@ export function useSetPickResult() {
       qc.invalidateQueries({ queryKey: ["live-picks"] });
       qc.invalidateQueries({ queryKey: ["admin-live-picks"] });
       qc.invalidateQueries({ queryKey: ["hit-rate-stats"] });
+      qc.invalidateQueries({ queryKey: ["pick-discrepancies"] });
     },
   });
 }
@@ -113,5 +115,46 @@ export function usePickDays() {
     queryKey: ["admin-pick-days"],
     queryFn: async ({ signal }): Promise<PickDay[]> => (await getJson<{ days: PickDay[] }>("/api/admin/live/days", "the days", signal)).days,
     staleTime: 60_000,
+  });
+}
+
+/** Results the alert's own tick disagrees with, still to review (all dates). */
+export function useDiscrepancies() {
+  return useQuery({
+    queryKey: ["pick-discrepancies"],
+    queryFn: async ({ signal }) => (await getJson<{ picks: LivePick[] }>("/api/admin/picks/review", "the results to review", signal)).picks,
+    staleTime: 0,
+  });
+}
+
+/** Keeps the result the final score gave, so the pick leaves the Needs review list. */
+export function useReviewResult() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { id: number; ok: boolean }) => {
+      const res = await fetch("/api/admin/picks/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiFetchError(body?.error ?? `Could not save (${res.status})`, res.status);
+      }
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["pick-discrepancies"] }),
+  });
+}
+
+/** Logs (or removes) a bet placed by hand on a pick; it then counts as a live bet everywhere. */
+export function useSetManualBet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { id: number; stake?: string; odds?: string; clear?: boolean }) => {
+      const res = await fetch("/api/admin/picks/manual-bet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiFetchError(body?.error ?? `Could not save (${res.status})`, res.status);
+      }
+    },
+    onSuccess: () => {
+      for (const key of [["placements"], ["admin-strategies"], ["winloss"], ["hit-rate-stats"], ["performance"], ["reconcile"]]) void qc.invalidateQueries({ queryKey: key });
+    },
   });
 }

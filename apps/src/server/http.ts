@@ -32,6 +32,10 @@
  *   POST /internal/betfair/import               the same, uploaded on the admin Reconcile page (admin site only)
  *   GET  /internal/betfair/reconcile            real bets against the app's estimates, per strategy (admin site only)
  *   GET  /internal/betfair/placements           whether each recently sent pick was placed and matched on Betfair (admin site only)
+ *   POST /internal/picks/manual-bet             log (or clear) a bet the admin placed by hand on a pick (admin site only)
+ *   GET  /internal/picks/discrepancies          results the alert's own tick disagrees with, still to review (admin site only)
+ *   POST /internal/picks/review                 accept a reviewed result (admin site only)
+ *   GET/POST /internal/betfair/coverage         which leagues are on Betfair: those your alerts came from, or a pasted list (admin site only)
  *   POST /internal/betfair/match-name           add an "alert name = Betfair name" Match names line and re-link bets (admin site only)
  *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
@@ -62,9 +66,10 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
-import { listHorseBets, listHorseDays, saveHorseDay, setHorseResult } from "./horses";
+import { listHorseBets, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements } from "../betfair/exchange";
+import { checkLeague, coverageOfAlertLeagues } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -426,6 +431,91 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
+    if ((path === "/internal/picks/manual-bet" || path === "/internal/picks/review") && req.method === "POST") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const id = Number(body.id);
+      if (!Number.isInteger(id) || id <= 0) {
+        send(res, 400, { error: "invalid", message: "No such pick." });
+        return;
+      }
+      if (path === "/internal/picks/review") {
+        if (!db.setResultReviewed(id, body.ok !== false)) send(res, 404, { error: "no_such_pick" });
+        else send(res, 200, { ok: true });
+        return;
+      }
+      // Logging a bet placed by hand: { id, stake, odds } (odds as 5/2, evens or 3.5), or { id, clear: true }.
+      if (body.clear === true) {
+        db.setManualBet(id, null);
+        send(res, 200, { ok: true });
+        return;
+      }
+      const stake = Number(String(body.stake ?? "").replace(/^£/, ""));
+      const odds = parseOdds(body.odds);
+      if (!Number.isFinite(stake) || stake <= 0 || stake > 100000) {
+        send(res, 400, { error: "invalid", message: "Enter the amount you staked, for example 5 or 2.50." });
+        return;
+      }
+      if (odds === null) {
+        send(res, 400, { error: "invalid", message: "Enter the odds you got: a fraction (5/2), evens, or a decimal (3.5)." });
+        return;
+      }
+      if (!db.setManualBet(id, { stake: Math.round(stake * 100) / 100, odds })) {
+        send(res, 404, { error: "no_such_pick" });
+        return;
+      }
+      log.info(`Pick ${id} logged as placed by hand: £${stake.toFixed(2)} at ${odds}.`);
+      // A bet placed by hand on Betfair can link to the pick now.
+      matchBets(db);
+      send(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/picks/discrepancies") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      send(res, 200, { picks: db.listResultDiscrepancies() });
+      return;
+    }
+
+    if (path === "/internal/betfair/coverage" && (req.method === "GET" || req.method === "POST")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const competitions = db.listBetfairCompetitions();
+      const latest = competitions.reduce<string | null>((m, c) => (m === null || c.lastSeen > m ? c.lastSeen : m), null);
+      const base = { competitionCount: competitions.length, competitionsUpdatedAt: latest };
+      if (req.method === "GET") {
+        send(res, 200, { ...base, leagues: coverageOfAlertLeagues(db) });
+        return;
+      }
+      // POST { names: [...] }: a pasted list, e.g. InPlayGuru's leagues.
+      const body = await readJsonBody(req, MAX_IMPORT_BYTES);
+      const names = Array.isArray(body.names)
+        ? [...new Set(body.names.filter((n): n is string => typeof n === "string").map((n) => n.replace(/\s+/g, " ").trim()).filter((n) => n.length > 1 && n.length <= 120))].slice(0, 5000)
+        : [];
+      send(res, 200, { ...base, leagues: names.map((n) => checkLeague(n, competitions)) });
+      return;
+    }
+
     if (path === "/internal/betfair/match-name" && req.method === "POST") {
       if (!process.env.ADMIN_INTERNAL_KEY) {
         send(res, 500, { error: "not_configured" });
@@ -515,7 +605,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const link = getBetfairLinkStatus();
-      send(res, 200, { link, picks: link.configured ? pickPlacements(db, link) : {} });
+      // Without the Betfair check, only bets logged as placed by hand are known (they don't need Betfair).
+      const all = pickPlacements(db, link);
+      const picks = link.configured ? all : Object.fromEntries(Object.entries(all).filter(([, v]) => v.manual));
+      send(res, 200, { link, picks });
       return;
     }
 

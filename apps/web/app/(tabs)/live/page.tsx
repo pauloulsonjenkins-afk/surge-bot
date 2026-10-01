@@ -13,6 +13,7 @@ import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { usePlacements, type Placement } from "@/queries/use-reconcile";
+import { useSetManualBet } from "@/queries/use-live";
 
 // An alert that has had no result edited in after this long is treated as
 // finished rather than still in play. Finished picks live on the Trade Log.
@@ -58,6 +59,12 @@ function placementChip(p: Placement): { label: string; cls: string; title: strin
         cls: "bg-loss/15 text-loss",
         title: "No bet on Betfair 5 minutes after the pick was sent. BF Bot Manager may be off, or still waiting for the minimum odds.",
       };
+    case "manual":
+      return {
+        label: `Placed by hand £${p.manual?.stake.toFixed(2) ?? "–"} @ ${p.manual?.odds.toFixed(2) ?? "–"}`,
+        cls: "bg-hit/15 text-hit",
+        title: "You logged this as placed yourself, so it counts as a live bet.",
+      };
     case "beforeKickoff":
       return {
         label: "Sent · until kick-off",
@@ -101,8 +108,7 @@ function ExchangeChip({ pick }: { pick: LivePick }) {
 
 function StatusChip({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
   // The admin sees which picks are only simulated; for everyone else it's just "Captured".
-  if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return <ModeBadge mode="sim" />;
-  if (admin && pick.sentAt && placement) {
+  if (admin && placement && (pick.sentAt || placement.manual)) {
     const c = placementChip(placement);
     return (
       <span title={c.title} className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${c.cls}`}>
@@ -110,6 +116,7 @@ function StatusChip({ pick, admin, placement }: { pick: LivePick; admin: boolean
       </span>
     );
   }
+  if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return <ModeBadge mode="sim" />;
   let label = "Captured";
   let cls = "bg-surface-2 text-ink-muted";
   if (pick.sentAt) {
@@ -129,6 +136,54 @@ function StatusChip({ pick, admin, placement }: { pick: LivePick; admin: boolean
  * One alert as a compact row under its match: the minute, the strategy and its status on the first line, the bet
  * and the time it arrived on the second. Tapping it opens the match stats underneath.
  */
+/**
+ * For the admin, under an alert that didn't get a bet (not placed, not matched, or never sent): log that you placed it
+ * yourself, with the stake and price, so it counts as a live bet and its result isn't missed. Once logged, undo it here.
+ */
+function ManualBet({ pick, placement }: { pick: LivePick; placement?: Placement }) {
+  const save = useSetManualBet();
+  const [stake, setStake] = useState(placement?.stake ? String(placement.stake) : "");
+  const [odds, setOdds] = useState("");
+  const inputCls = "w-20 rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink tabular-nums";
+  if (placement?.manual) {
+    return (
+      <p className="text-xs text-ink-muted">
+        Logged as placed by hand: £{placement.manual.stake.toFixed(2)} at {placement.manual.odds.toFixed(2)}.{" "}
+        <button type="button" disabled={save.isPending} onClick={() => save.mutate({ id: pick.id, clear: true })} className="underline disabled:opacity-40">
+          Undo
+        </button>
+      </p>
+    );
+  }
+  // A bet that went on through the betting software needs nothing here.
+  if (placement && (placement.state === "matched" || placement.state === "won" || placement.state === "lost")) return null;
+  return (
+    <div className="space-y-1.5 rounded-md bg-surface-2 p-2.5">
+      <p className="text-xs font-medium text-ink">Placed it yourself?</p>
+      <div className="flex flex-wrap items-end gap-2 text-xs text-ink-muted">
+        <label>
+          Stake (£)
+          <input inputMode="decimal" value={stake} onChange={(e) => setStake(e.target.value)} className={`${inputCls} mt-0.5 block`} />
+        </label>
+        <label>
+          Odds taken
+          <input value={odds} placeholder="2.10" onChange={(e) => setOdds(e.target.value)} className={`${inputCls} mt-0.5 block`} />
+        </label>
+        <button
+          type="button"
+          disabled={save.isPending || !stake.trim() || !odds.trim()}
+          onClick={() => save.mutate({ id: pick.id, stake, odds })}
+          className="rounded-md bg-accent px-2.5 py-1 font-medium text-accent-ink disabled:opacity-50"
+        >
+          Log as placed
+        </button>
+      </div>
+      <p className="text-xs text-ink-muted">It then counts as a live bet at your stake and price, and settles with the alert&rsquo;s result.</p>
+      {save.error && <p className="text-xs text-destructive">{save.error.message}</p>}
+    </div>
+  );
+}
+
 function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
   const [open, setOpen] = useState(false);
   const stats = pick.detail?.stats ?? {};
@@ -206,6 +261,8 @@ function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; p
               ))}
             </ul>
           )}
+
+          {admin && <ManualBet pick={pick} placement={placement} />}
 
           {pick.detail?.matched != null && pick.detail.strikeRate != null && (
             <p className="text-xs text-ink-muted">

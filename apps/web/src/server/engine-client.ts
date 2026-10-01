@@ -1032,7 +1032,9 @@ export interface BetfairLinkStatus {
 
 /** Where a sent pick stands on Betfair. Mirrors Placement in the engine's betfair/exchange.ts. */
 export interface Placement {
-  state: "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced";
+  state: "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced" | "manual";
+  /** Logged on Live as placed by hand. */
+  manual?: { stake: number; odds: number } | null;
   stake: number | null;
   matched: number;
   odds: number | null;
@@ -1125,4 +1127,49 @@ export function saveHorseDay(day: string, entries: HorseEntryInput[], yankeeStak
 
 export function setHorseResult(id: number, result: HorseBet["result"]): Promise<{ ok: true }> {
   return engineCall("/internal/horses/result", "saving the result", { method: "POST", body: { id, result } });
+}
+
+// ---- Betfair coverage (mirrors betfair/competitions.ts in the engine) ----
+
+export interface CoverageResult {
+  name: string;
+  country: string | null;
+  /** on = a Betfair competition fits; maybe = same country, different name (check it); not = none fits. */
+  status: "on" | "maybe" | "not";
+  betfair: { name: string; region: string | null; lastSeen: string } | null;
+  alertsOn?: number;
+  alertsOff?: number;
+}
+
+export interface CoverageReport {
+  competitionCount: number;
+  competitionsUpdatedAt: string | null;
+  leagues: CoverageResult[];
+}
+
+/** The leagues your alerts came from, checked against Betfair's competitions. */
+export function fetchCoverage(): Promise<CoverageReport> {
+  return engineCall("/internal/betfair/coverage", "the Betfair coverage");
+}
+
+/** A pasted list of league names (e.g. InPlayGuru's), checked against Betfair's competitions. */
+export function checkCoverage(names: string[]): Promise<CoverageReport> {
+  return engineCall("/internal/betfair/coverage", "the Betfair coverage", { method: "POST", body: { names }, timeoutMs: 30_000 });
+}
+
+// ---- Bets placed by hand, and results to review ----
+
+/** Logs a bet placed by hand on a pick (odds as 5/2, evens or 3.5), or with clear, removes it. */
+export function setManualBet(id: number, bet: { stake: string; odds: string } | null): Promise<{ ok: true }> {
+  return engineCall("/internal/picks/manual-bet", "logging the bet", { method: "POST", body: bet ? { id, ...bet } : { id, clear: true } });
+}
+
+/** Results the alert's own tick disagrees with, still to review (Amend results). */
+export async function fetchDiscrepancies(): Promise<LivePick[]> {
+  return (await engineCall<{ picks: LivePick[] }>("/internal/picks/discrepancies", "the results to review")).picks.map(toAdminPick);
+}
+
+/** Accepts a reviewed result so it leaves the Needs review list. */
+export function reviewResult(id: number, ok: boolean): Promise<{ ok: true }> {
+  return engineCall("/internal/picks/review", "saving the review", { method: "POST", body: { id, ok } });
 }

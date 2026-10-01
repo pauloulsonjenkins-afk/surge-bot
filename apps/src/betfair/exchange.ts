@@ -2,8 +2,8 @@
  * Reads your bets straight from Betfair, so the site knows within a minute whether a pick sent to the betting software
  * was actually placed and matched (the bet history import only covers settled bets, after the match).
  *
- * READ ONLY. This module calls only listCurrentOrders, listClearedOrders, listMarketCatalogue, listEvents and
- * listMarketBook. It has no code that places, changes or cancels a bet, and must never be given any.
+ * READ ONLY. This module calls only listCurrentOrders, listClearedOrders, listMarketCatalogue, listEvents,
+ * listMarketBook and listCompetitions. It has no code that places, changes or cancels a bet, and must never be given any.
  *
  * It also looks each new alert's match up on Betfair (listEvents), so the Leagues page can list leagues whose matches
  * aren't on the exchange, and Live can say "Not on exchange" as soon as such an alert arrives. When the match is there,
@@ -30,6 +30,8 @@ import { log } from "../server/log";
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
 const API_URL = "https://api.betfair.com/exchange/betting/rest/v1.0/";
 const POLL_MS = 45_000;
+/** How often the list of competitions Betfair offers is saved. */
+const COMPETITIONS_EVERY_MS = 6 * 60 * 60 * 1000;
 /** A Betfair session lasts hours; log in again well before it would run out. */
 const SESSION_MS = 3 * 60 * 60 * 1000;
 const LOOKBACK_MS = 24 * 60 * 60 * 1000;
@@ -199,7 +201,7 @@ export class BetfairReader {
   }
 
   private async call<T>(
-    operation: "listCurrentOrders" | "listClearedOrders" | "listMarketCatalogue" | "listEvents" | "listMarketBook",
+    operation: "listCurrentOrders" | "listClearedOrders" | "listMarketCatalogue" | "listEvents" | "listMarketBook" | "listCompetitions",
     params: unknown,
     retried = false,
   ): Promise<T> {
@@ -232,6 +234,14 @@ export class BetfairReader {
       });
       for (const m of list) this.catalogue.set(m.marketId, m);
     }
+  }
+
+  /** Every football competition Betfair lists right now (those with upcoming or live matches). */
+  async footballCompetitions(): Promise<Array<{ id: string; name: string; region: string | null; marketCount: number }>> {
+    const r = await this.call<Array<{ competition: { id: string; name: string }; marketCount?: number; competitionRegion?: string }>>("listCompetitions", {
+      filter: { eventTypeIds: ["1"] },
+    });
+    return r.map((c) => ({ id: c.competition.id, name: c.competition.name, region: c.competitionRegion ?? null, marketCount: c.marketCount ?? 0 }));
   }
 
   /** Football events on Betfair whose names contain this text, starting from 8 hours ago to 36 hours ahead of `at`. */
@@ -511,6 +521,8 @@ export interface BetfairLinkStatus {
   lastError: string | null;
   /** Bets seen on the last good poll. */
   lastCount: number;
+  /** When Betfair's list of competitions was last saved. */
+  competitionsAt?: string | null;
 }
 
 const status: BetfairLinkStatus = { configured: false, missing: [], lastOkAt: null, lastErrorAt: null, lastError: null, lastCount: 0 };
@@ -531,6 +543,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
   const reader = new BetfairReader(creds);
   const exchangeCache: MatchCache = new Map();
   let running = false;
+  let competitionsAt = 0;
   const tick = async () => {
     if (running) return;
     running = true;
@@ -543,6 +556,17 @@ export function startBetfairPoller(db: EngineDb): () => void {
       status.lastCount = bets.length;
       if (status.lastError) log.info("Betfair bet check is working again.");
       status.lastError = null;
+      // Every few hours, save the competitions Betfair lists (for the Leagues page's Betfair coverage check).
+      if (Date.now() - competitionsAt > COMPETITIONS_EVERY_MS) {
+        competitionsAt = Date.now();
+        await reader
+          .footballCompetitions()
+          .then((list) => {
+            db.saveBetfairCompetitions(list, new Date().toISOString());
+            status.competitionsAt = new Date().toISOString();
+          })
+          .catch((err: unknown) => log.warn(`Betfair competitions list failed: ${err instanceof Error ? err.message : String(err)}`));
+      }
       // Then look up any new alerts' matches; a failure here leaves them to try again next time.
       await checkNewAlerts(db, reader, exchangeCache).catch((err: unknown) => {
         log.warn(`Betfair event lookup failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -570,7 +594,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
 /** How long after a pick is sent the betting software normally places it; past this with no bet, it's "not placed". */
 const NOT_PLACED_AFTER_MS = 5 * 60 * 1000;
 
-export type PlacementState = "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced";
+export type PlacementState = "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced" | "manual";
 
 export interface Placement {
   state: PlacementState;
@@ -580,6 +604,8 @@ export interface Placement {
   odds: number | null;
   profit: number | null;
   bets: number;
+  /** Logged on Live as placed by hand. */
+  manual?: { stake: number; odds: number } | null;
 }
 
 /**
@@ -600,6 +626,21 @@ export function pickPlacements(db: EngineDb, link: BetfairLinkStatus, now = new 
     const matched = bets.reduce((n, b) => n + (b.matched ?? 0), 0);
     const odds = matched > 0 ? bets.reduce((n, b) => n + (b.matched ?? 0) * (b.odds ?? 0), 0) / matched : null;
     const settled = bets.filter((b) => b.status === "won" || b.status === "lost");
+    // A bet placed by hand (and nothing on Betfair for it): settled from the pick's own result.
+    if (p.manualBet && bets.length === 0) {
+      const result = db.getLivePick(p.id)?.result ?? null;
+      const m = p.manualBet;
+      out[p.id] = {
+        state: result === "hit" ? "won" : result === "miss" ? "lost" : "manual",
+        stake: m.stake,
+        matched: m.stake,
+        odds: m.odds,
+        profit: result === "hit" ? Math.round(m.stake * (m.odds - 1) * 100) / 100 : result === "miss" ? -m.stake : null,
+        bets: 0,
+        manual: { stake: m.stake, odds: m.odds },
+      };
+      continue;
+    }
     let state: PlacementState;
     if (settled.length > 0) state = settled.some((b) => b.status === "won") ? "won" : "lost";
     else if (matched > 0) state = "matched";
