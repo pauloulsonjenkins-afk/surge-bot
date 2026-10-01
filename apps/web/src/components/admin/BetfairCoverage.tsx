@@ -92,8 +92,12 @@ export function BetfairCoverage() {
   const { data, isLoading, error } = useCoverage();
   const check = useCheckCoverage();
   const [text, setText] = useState("");
+  const [remember, setRemember] = useState(true);
   const names = useMemo(() => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean), [text]);
-  const report: CoverageReport | undefined = tab === "alerts" ? data : check.data;
+  // The list tab shows a fresh check if one was just run, else the saved list re-checked against today's Betfair list.
+  const saved = data?.saved ?? null;
+  const report: CoverageReport | undefined =
+    tab === "alerts" ? data : (check.data ?? (saved && data ? { ...data, leagues: saved.leagues } : undefined));
 
   return (
     <Card
@@ -140,11 +144,21 @@ export function BetfairCoverage() {
             <button
               type="button"
               disabled={names.length === 0 || check.isPending}
-              onClick={() => check.mutate(names)}
+              onClick={() => check.mutate({ names, save: remember })}
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink disabled:opacity-50"
             >
               {check.isPending ? "Checking…" : `Check ${names.length || ""} league${names.length === 1 ? "" : "s"}`.replace("  ", " ")}
             </button>
+            <label className="flex items-center gap-2 text-xs text-ink">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ accentColor: "var(--accent)" }} className="h-4 w-4" />
+              Remember this list and re-check it as Betfair’s competitions build up
+            </label>
+            {!check.data && saved && (
+              <p className="text-xs text-ink-muted">
+                Showing your saved list of {saved.leagues.length} leagues (saved {whenFmt.format(new Date(saved.savedAt))}), checked against today’s
+                Betfair list.
+              </p>
+            )}
             {check.error && <p className="text-xs text-destructive">{check.error.message}</p>}
           </div>
         )}
@@ -153,7 +167,7 @@ export function BetfairCoverage() {
           <p className="text-xs text-destructive">{error.message}</p>
         ) : tab === "alerts" && (isLoading || !data) ? (
           <Skeleton className="h-32 w-full" />
-        ) : report ? (
+        ) : report && (tab === "alerts" || check.data || saved) ? (
           <Results key={tab} leagues={report.leagues} source={tab} />
         ) : null}
       </div>

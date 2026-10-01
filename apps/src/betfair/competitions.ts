@@ -166,18 +166,24 @@ function countryHit(country: string, betfairName: string): boolean {
   const words = betfairName.split(" ");
   const keys = [country, ...(DEMONYMS[country] ?? [])];
   for (const k of keys) if (` ${betfairName} `.includes(` ${k} `)) return true;
-  // "Bolivia" / "Bolivian", "Brazil" / "Brazilian": the first four letters of the (first word of the) country.
-  const stem = country.split(" ")[0]!.slice(0, 4);
-  return stem.length === 4 && words.some((w) => w.startsWith(stem));
+  // "Bolivia" / "Bolivian", "Brazil" / "Brazilian", "Italy" / "Italian": the country's name less a final vowel (or y)
+  // starts the Betfair word. The whole name is used, not just its start, so "Austria" never matches "Australian".
+  const stem = country.split(" ")[0]!.replace(/[aeiouy]$/, "");
+  return stem.length >= 4 && words.some((w) => w.startsWith(stem));
 }
 
-/** Share of the league's own words (country and generic words aside) that the Betfair name contains. */
-function wordScore(rest: string, betfairName: string): number {
+/**
+ * Share of the league's own words (country and generic words aside) that the Betfair name contains, and whether a
+ * distinctive word (5+ letters, e.g. "Paulista") is missing: then it's a different competition, however many of the
+ * other words match ("Brazil Paulista Serie B" isn't "Brazilian Serie B").
+ */
+function wordScore(rest: string, betfairName: string): { score: number; missingDistinctive: boolean } {
   const own = rest.split(" ").filter((w) => w && !GENERIC.has(w));
-  if (own.length === 0) return 0.5;
+  if (own.length === 0) return { score: 0.5, missingDistinctive: false };
   const theirs = betfairName.split(" ");
-  const found = own.filter((w) => theirs.some((t) => t === w || (w.length >= 4 && (t.startsWith(w) || w.startsWith(t)) && t.length >= 4)));
-  return found.length / own.length;
+  const has = (w: string) => theirs.some((t) => t === w || (w.length >= 4 && (t.startsWith(w) || w.startsWith(t)) && t.length >= 4));
+  const found = own.filter(has);
+  return { score: found.length / own.length, missingDistinctive: own.some((w) => w.length >= 5 && !has(w)) };
 }
 
 /** Where one league (InPlayGuru's name; country optional when it's not in the name) stands on Betfair. */
@@ -186,14 +192,16 @@ export function checkLeague(name: string, competitions: BetfairCompetition[], kn
   const country = split.country ?? (knownCountry ? norm(knownCountry) : null);
   const rest = split.rest;
   const kinds = kindsOf(norm(name));
-  let best: { c: BetfairCompetition; score: number; hit: boolean } | null = null;
+  let best: { c: BetfairCompetition; score: number; hit: boolean; exact: boolean } | null = null;
   for (const c of competitions) {
     const cn = norm(c.name);
     if (kindsOf(cn) !== kinds) continue;
     const hit = country !== null && !CONTINENTS.has(country) && countryHit(country, cn);
-    const score = wordScore(rest, cn);
+    const words = wordScore(rest, cn);
+    // A distinctive word missing counts against it, so the competition it actually names wins when there is one.
+    const score = words.missingDistinctive ? words.score * 0.5 : words.score;
     const rank = (hit ? 1 : 0) * 10 + score;
-    if (!best || rank > (best.hit ? 10 : 0) + best.score) best = { c, score, hit };
+    if (!best || rank > (best.hit ? 10 : 0) + best.score) best = { c, score, hit, exact: !words.missingDistinctive };
   }
   const titled = (c: string) => c.replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
   const shownCountry = split.country ? titled(split.country) : knownCountry;
@@ -205,9 +213,29 @@ export function checkLeague(name: string, competitions: BetfairCompetition[], kn
   });
   if (!best) return result("not");
   const international = country === null || CONTINENTS.has(country);
-  if (international) return result(best.score >= 0.75 ? "on" : best.score >= 0.4 ? "maybe" : "not");
+  if (international) return result(best.exact && best.score >= 0.75 ? "on" : best.score >= 0.4 ? "maybe" : "not");
   if (!best.hit) return result("not");
-  return result(best.score >= 0.6 ? "on" : "maybe");
+  return result(best.exact && best.score >= 0.6 ? "on" : "maybe");
+}
+
+const SAVED_LIST_KEY = "inplayguru_leagues";
+
+/** Saves a pasted league list (e.g. InPlayGuru's) so it's re-checked as Betfair's competitions build up. */
+export function saveLeagueList(db: EngineDb, names: string[]): void {
+  db.setSetting(SAVED_LIST_KEY, JSON.stringify({ savedAt: new Date().toISOString(), names }));
+}
+
+/** The saved list, checked against the competitions Betfair has listed so far, or null if none is saved. */
+export function savedListCoverage(db: EngineDb): { savedAt: string; leagues: CoverageResult[] } | null {
+  try {
+    const raw = db.getSetting(SAVED_LIST_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as { savedAt: string; names: string[] };
+    const competitions = db.listBetfairCompetitions();
+    return { savedAt: saved.savedAt, leagues: saved.names.map((n) => checkLeague(n, competitions)) };
+  } catch {
+    return null;
+  }
 }
 
 /** The leagues your alerts came from, checked, with what Betfair said about their alerts' matches. */

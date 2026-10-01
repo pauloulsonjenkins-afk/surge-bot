@@ -59,3 +59,19 @@ test("it is handed to the betting software as Over 5.5 goals under its own name"
   assert.equal(feed.rows[0]?.selectionName, "Over 5.5 Goals");
   assert.equal(feed.rows[0]?.stake, 2);
 });
+
+test("Home pressure and Late goal hunter are next-goal bets; Over 1.5 Goals / Early Goal is a fixed Over 1.5", async () => {
+  const { parseAlert: parse } = await import("../src/inplayguru/parse-alert");
+  const make = (name: string, goals: string, extra: string[] = []) =>
+    [`🔔 ${name}`, "", "🇫🇷 France Ligue 1", "Lyon vs Nantes", "", "Timer: 20'", `Goals: ${goals}`, "Over/Under 1.50 Odds:", "1.60 2.20", ...extra].join("\n");
+  assert.equal(parse(make("Home pressure", "1 - 0")).market, "NEXT_GOAL");
+  assert.equal(parse(make("Late goal hunter", "1 - 0")).targetLine, 1.5);
+  const o = parse(make("Over 1.5 Goals / Early Goal", "0 - 0"));
+  assert.equal(o.market, "OVER_1_5");
+  assert.equal(o.targetLine, 1.5);
+  assert.equal(o.sendable, true);
+  const done = (ft: string) => parse(make("Over 1.5 Goals / Early Goal", "0 - 0", ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", `Full-Time Score: ${ft}`, "", "✅ Hit"]));
+  assert.equal(done("1-1").result, "hit");
+  assert.equal(done("1-0").result, "miss");
+  assert.ok(parse(make("Over 1.5 Goals / Early Goal", "2 - 0")).flags.some((f) => /already decided/.test(f)));
+});

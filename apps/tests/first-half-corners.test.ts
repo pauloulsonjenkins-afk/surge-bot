@@ -1,5 +1,5 @@
 /**
- * First Half Corner Race: one more corner before half-time, i.e. first-half corners Over (corners so far + 0.5).
+ * First Half Corner Race: Over 5.5 first-half corners (a fixed line).
  * Checks the line, the bet the feed sends once its Betfair market code is set, and finding the market by name to price it.
  */
 import { test } from "node:test";
@@ -28,16 +28,17 @@ function alert(n: number, corners: string, timer = "28'"): string {
   ].join("\n");
 }
 
-test("the line is the corners so far + 0.5, so one more corner before half-time wins", () => {
+test("the bet is a fixed Over 5.5 first-half corners (InPlayGuru's definition)", () => {
   const p = parseAlert(alert(1, "1 - 4"));
   assert.equal(p.market, "FIRST_HALF_CORNERS");
   assert.equal(p.targetLine, 5.5);
   assert.equal(p.selection, "Over 5.5 first-half corners");
-  assert.equal(parseAlert(alert(1, "0 - 2")).targetLine, 2.5);
-  // No corner count, no line.
-  const none = parseAlert(alert(1, "1 - 4").replace(/Corners: .*\n/, ""));
-  assert.equal(none.targetLine, null);
-  assert.ok(none.flags.some((f) => /Corners line/.test(f)));
+  // Fewer corners so far: still Over 5.5.
+  assert.equal(parseAlert(alert(1, "0 - 2")).targetLine, 5.5);
+  // Already over: decided, so held back.
+  const over = parseAlert(alert(1, "3 - 4"));
+  assert.ok(over.flags.some((f) => /already decided/.test(f)));
+  assert.equal(over.sendable, false);
 });
 
 test("not sent until the Betfair market code is set; then the code and selection carry the line", () => {

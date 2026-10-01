@@ -24,6 +24,7 @@ export type MarketCode =
   | "UNDERDOG_DOUBLE_CHANCE"
   | "FAVOURITE_TO_WIN"
   | "FAVOURITE_TO_SCORE"
+  | "OVER_1_5"
   | "FIRST_HALF_GOALS";
 
 export type PickResult = "hit" | "miss";
@@ -42,7 +43,7 @@ export interface ParsedAlert {
   favourite: "home" | "away" | null;
   /** Human wording of the bet, e.g. "Over 1.5" or "Yes". Null when unmapped. */
   selection: string | null;
-  /** The line a bet targets: goals + 0.5 for Next Goal, corners so far + 0.5 for 1st half corners, 0.5 for 1st half goals. */
+  /** The line a bet targets: goals + 0.5 for Next Goal, 5.5 for 1st half corners, 0.5 for 1st half goals. */
   targetLine: number | null;
   /** The "Kickoff: In 1 hour" line of a pre-match alert, as written. Null when the alert has none. */
   kickoffRaw: string | null;
@@ -108,6 +109,11 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "Pass Master 1st half": the favourite (shortest live price) to score again before full time, i.e. the
   // favourite's own goals Over (their goals at the alert + 0.5). It was Match Odds on the favourite until 1 Oct 2026.
   { test: /pass master 1st half/, market: "FAVOURITE_TO_SCORE" },
+  // InPlayGuru strategies defined as "Over 0.5 Goals Since Picked (Next goal)" (checked on its Strategies page, 1 Oct 2026).
+  { test: /home pressure/, market: "NEXT_GOAL" },
+  { test: /late goal hunter/, market: "NEXT_GOAL" },
+  // "Over 1.5 Goals / Early Goal": Over 1.5 goals in the match, a fixed line.
+  { test: /over 1\.5 goals/, market: "OVER_1_5" },
   { test: /momentum/, market: "NEXT_GOAL" },
   { test: /action/, market: "NEXT_GOAL" },
 ];
@@ -414,6 +420,13 @@ export function parseAlert(text: string): ParsedAlert {
         flags.push("No Over/Under line in the alert to cross-check the target line against.");
       }
     }
+  } else if (market === "OVER_1_5") {
+    // A fixed line: Over 1.5 goals in the match.
+    targetLine = 1.5;
+    selection = "Over 1.5";
+    if (!settled && goalsHome !== null && goalsAway !== null && goalsHome + goalsAway > 1.5) {
+      flags.push(`There are already ${goalsHome + goalsAway} goals, so Over 1.5 is already decided.`);
+    }
   } else if (market === "BOTH_TEAMS_TO_SCORE") {
     selection = "Yes";
     // If both teams have already scored the bet is meaningless.
@@ -432,16 +445,16 @@ export function parseAlert(text: string): ParsedAlert {
       }
     }
   } else if (market === "FIRST_HALF_CORNERS") {
-    // "First Half Corner Race": one more corner before half-time, i.e. first-half corners Over (corners so far + 0.5).
-    // The edited full-time alert keeps the original stats lines, so the line stays the one bet.
+    // "First Half Corner Race": Over 5.5 first-half corners, a fixed line (InPlayGuru's own definition, checked on its
+    // Strategies page on 1 Oct 2026). The alert usually fires on 5 corners, so it needs one more before half-time.
+    targetLine = 5.5;
+    selection = "Over 5.5 first-half corners";
     const corners = stats["Corners"] ?? null;
-    if (corners) {
-      targetLine = corners[0] + corners[1] + 0.5;
-      selection = `Over ${targetLine} first-half corners`;
-    }
     if (!settled) {
       if (!corners) {
-        flags.push("No Corners line in the alert, so the corner line can't be worked out.");
+        flags.push("No Corners line in the alert, so the corner count could not be checked.");
+      } else if (corners[0] + corners[1] > targetLine) {
+        flags.push(`There are already ${corners[0] + corners[1]} corners, so Over 5.5 is already decided.`);
       }
       if (baseMinute !== null && baseMinute > 45) {
         flags.push("The alert is past 45 minutes, so the first half is over.");
@@ -461,7 +474,7 @@ export function parseAlert(text: string): ParsedAlert {
     const b = Number(ft[2]);
     let computed: PickResult | null = null;
     // Over (goals at the alert + 0.5): wins if the final total is above that line.
-    if (market === "NEXT_GOAL" && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
+    if ((market === "NEXT_GOAL" || market === "OVER_1_5") && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
     else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";
     // Favourite to win (Match Odds): hits only if the favourite wins. A draw loses.
     else if (market === "FAVOURITE_TO_WIN" && favourite !== null) {

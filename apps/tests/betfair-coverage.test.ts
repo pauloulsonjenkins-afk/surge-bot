@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
-import { checkLeague, splitCountry, type BetfairCompetition } from "../src/betfair/competitions";
+import { checkLeague, saveLeagueList, savedListCoverage, splitCountry, type BetfairCompetition } from "../src/betfair/competitions";
 
 const BETFAIR = [
   "English Premier League",
@@ -21,6 +21,8 @@ const BETFAIR = [
   "US Major League Soccer",
   "UEFA Champions League",
   "Japanese J League",
+  "Australia Cup",
+  "Brazilian Serie B",
 ].map((name, i): BetfairCompetition => ({ id: String(i + 1), name, region: null, marketCount: 10, firstSeen: "2026-10-01", lastSeen: "2026-10-01" }));
 
 const status = (name: string) => checkLeague(name, BETFAIR).status;
@@ -41,6 +43,21 @@ test("clear matches are on Betfair, whatever the country is called", () => {
   assert.equal(matched("Brazil Serie A"), "Brazilian Serie A");
   assert.equal(matched("Germany Bundesliga 2"), "German Bundesliga 2");
   assert.equal(matched("Europe UEFA Champions League"), "UEFA Champions League");
+});
+
+test("Austria isn't Australia, and a distinctive word has to match", () => {
+  assert.notEqual(matched("Austria Cup"), "Australia Cup");
+  assert.equal(status("Austria Cup"), "not");
+  assert.equal(status("Brazil Serie B"), "on");
+  assert.equal(status("Brazil Paulista Serie B"), "maybe", "Paulista isn't in Betfair's name");
+});
+
+test("a pasted list is saved and re-checked later", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveLeagueList(db, ["Spain La Liga", "Kenya Premier League"]);
+  db.saveBetfairCompetitions([{ id: "1", name: "Spanish La Liga", region: null, marketCount: 5 }], "2026-10-01T00:00:00Z");
+  const r = savedListCoverage(db)!;
+  assert.deepEqual(r.leagues.map((l) => l.status), ["on", "not"]);
 });
 
 test("a league Betfair names differently is a possible match, shown for checking", () => {

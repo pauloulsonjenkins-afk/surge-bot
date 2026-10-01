@@ -18,8 +18,8 @@ export function useCoverage() {
 /** Checks a pasted list of league names (e.g. InPlayGuru's) against Betfair. */
 export function useCheckCoverage() {
   return useMutation({
-    mutationFn: async (names: string[]): Promise<CoverageReport> => {
-      const res = await fetch("/api/admin/betfair/coverage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ names }) });
+    mutationFn: async ({ names, save }: { names: string[]; save: boolean }): Promise<CoverageReport> => {
+      const res = await fetch("/api/admin/betfair/coverage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ names, save }) });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new ApiFetchError(body?.error ?? `Couldn't check the list (${res.status})`, res.status);
       return body as CoverageReport;

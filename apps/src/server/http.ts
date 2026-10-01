@@ -69,7 +69,7 @@ import { log } from "./log";
 import { listHorseBets, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, teamMarketsSeen } from "../betfair/exchange";
-import { checkLeague, coverageOfAlertLeagues } from "../betfair/competitions";
+import { checkLeague, coverageOfAlertLeagues, saveLeagueList, savedListCoverage } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -504,7 +504,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const latest = competitions.reduce<string | null>((m, c) => (m === null || c.lastSeen > m ? c.lastSeen : m), null);
       const base = { competitionCount: competitions.length, competitionsUpdatedAt: latest };
       if (req.method === "GET") {
-        send(res, 200, { ...base, leagues: coverageOfAlertLeagues(db) });
+        send(res, 200, { ...base, leagues: coverageOfAlertLeagues(db), saved: savedListCoverage(db) });
         return;
       }
       // POST { names: [...] }: a pasted list, e.g. InPlayGuru's leagues.
@@ -512,6 +512,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const names = Array.isArray(body.names)
         ? [...new Set(body.names.filter((n): n is string => typeof n === "string").map((n) => n.replace(/\s+/g, " ").trim()).filter((n) => n.length > 1 && n.length <= 120))].slice(0, 5000)
         : [];
+      // { save: true } keeps the list, so it's re-checked as Betfair's competitions build up.
+      if (body.save === true && names.length > 0) saveLeagueList(db, names);
       send(res, 200, { ...base, leagues: names.map((n) => checkLeague(n, competitions)) });
       return;
     }

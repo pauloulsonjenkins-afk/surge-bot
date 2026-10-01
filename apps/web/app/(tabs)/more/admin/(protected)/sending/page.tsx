@@ -75,7 +75,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "feed", label: "Feed" },
 ];
 
-const SENDABLE = new Set(["NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS"]);
+const SENDABLE = new Set(["OVER_1_5", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS"]);
 
 export default function SendingPage() {
   const { data, isLoading, error } = useSending();

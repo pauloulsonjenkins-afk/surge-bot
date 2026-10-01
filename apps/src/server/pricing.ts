@@ -54,7 +54,7 @@ export type PriceOutcome =
 
 /** The price printed in the alert, but only when it is for the very line that was bet. */
 export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds">): number | null {
-  if (r.market === "NEXT_GOAL") {
+  if (r.market === "NEXT_GOAL" || r.market === "OVER_1_5") {
     return r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1 ? r.overOdds : null;
   }
   if (r.market === "FAVOURITE_TO_WIN") return r.favouriteOdds !== null && r.favouriteOdds > 1 ? r.favouriteOdds : null;

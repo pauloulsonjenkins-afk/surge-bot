@@ -1151,6 +1151,8 @@ export interface CoverageReport {
   competitionCount: number;
   competitionsUpdatedAt: string | null;
   leagues: CoverageResult[];
+  /** A saved list (e.g. InPlayGuru's), re-checked each time (GET only; missing on an older engine). */
+  saved?: { savedAt: string; leagues: CoverageResult[] } | null;
 }
 
 /** The leagues your alerts came from, checked against Betfair's competitions. */
@@ -1159,8 +1161,8 @@ export function fetchCoverage(): Promise<CoverageReport> {
 }
 
 /** A pasted list of league names (e.g. InPlayGuru's), checked against Betfair's competitions. */
-export function checkCoverage(names: string[]): Promise<CoverageReport> {
-  return engineCall("/internal/betfair/coverage", "the Betfair coverage", { method: "POST", body: { names }, timeoutMs: 30_000 });
+export function checkCoverage(names: string[], save = false): Promise<CoverageReport> {
+  return engineCall("/internal/betfair/coverage", "the Betfair coverage", { method: "POST", body: { names, save }, timeoutMs: 30_000 });
 }
 
 // ---- Bets placed by hand, and results to review ----
