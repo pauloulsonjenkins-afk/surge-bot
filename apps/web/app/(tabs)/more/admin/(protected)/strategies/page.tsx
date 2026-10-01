@@ -48,6 +48,23 @@ function returnsFor(row: AdminStrategy, mode: "all" | "live" | "sim") {
   return { settled: r.live.settled + r.sim.settled, counted: r.live.counted + r.sim.counted, staked, profit, roi: staked > 0 ? profit / staked : null };
 }
 
+type SortBy = "roi" | "profit" | "hitRate";
+
+const SORTS: { value: SortBy; label: string }[] = [
+  { value: "roi", label: "Return %" },
+  { value: "profit", label: "Profit £" },
+  { value: "hitRate", label: "Hit rate %" },
+];
+
+/** The figure a strategy is ranked by within its Live or Sim section; null sorts last. */
+function sortValue(row: AdminStrategy, m: "live" | "sim", by: SortBy): number | null {
+  if (by === "hitRate") return m === "live" ? record(row.liveHits ?? 0, row.liveMisses ?? 0).hitRate : record(row.simHits ?? 0, row.simMisses ?? 0).hitRate;
+  const r = row.returns?.[m];
+  if (!r) return null;
+  if (by === "profit") return r.staked > 0 ? r.profit : null;
+  return r.roi;
+}
+
 /** A nudge once there are enough picks to go on: a Sim strategy that makes money, or a Live one that loses it. */
 function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | null {
   const r = row.returns;
@@ -63,6 +80,7 @@ function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | 
 function StrategyCard({
   row,
   all,
+  sortBy,
   includes,
   busy,
   selecting,
@@ -73,6 +91,7 @@ function StrategyCard({
 }: {
   row: AdminStrategy;
   all: AdminStrategy[];
+  sortBy: SortBy;
   /** Strategies that are reported under this one. */
   includes: string[];
   busy: boolean;
@@ -117,11 +136,20 @@ function StrategyCard({
           </p>
           <p className={`text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>{marketName(row.market) ?? "No market set"}</p>
         </div>
-        {/* The headline is the return on each £1 staked: what decides whether a strategy is worth betting. */}
-        <div className="shrink-0 text-right">
-          <p className={`text-xl font-semibold tabular-nums ${roiTone(money?.roi ?? null)}`}>{roiText(money?.roi ?? null)}</p>
-          <p className="text-xs text-ink-muted">{money && money.staked > 0 ? `${gbp(money.profit)} on ${gbp(money.staked, false)}` : "return per £1"}</p>
-        </div>
+        {/* The headline is the return on each £1 staked (what decides whether a strategy is worth betting), or the £ total when sorting by it. */}
+        {sortBy === "profit" ? (
+          <div className="shrink-0 text-right">
+            <p className={`text-xl font-semibold tabular-nums ${roiTone(money && money.staked > 0 ? money.profit : null)}`}>
+              {money && money.staked > 0 ? gbp(money.profit) : "–"}
+            </p>
+            <p className="text-xs text-ink-muted">{money && money.staked > 0 ? `${roiText(money.roi)} on ${gbp(money.staked, false)}` : "profit"}</p>
+          </div>
+        ) : (
+          <div className="shrink-0 text-right">
+            <p className={`text-xl font-semibold tabular-nums ${roiTone(money?.roi ?? null)}`}>{roiText(money?.roi ?? null)}</p>
+            <p className="text-xs text-ink-muted">{money && money.staked > 0 ? `${gbp(money.profit)} on ${gbp(money.staked, false)}` : "return per £1"}</p>
+          </div>
+        )}
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={hitRate === null ? "No settled alerts yet" : `Hit rate ${hitRate}%`}>
         <div className="h-full rounded-full bg-chart" style={{ width: `${hitRate ?? 0}%` }} />
@@ -255,6 +283,7 @@ export default function StrategiesPage() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortBy>("roi");
   const strategies = useMemo(() => data?.strategies ?? [], [data]);
   const ignored = data?.ignored ?? [];
 
@@ -354,7 +383,25 @@ export default function StrategiesPage() {
         }
       />
 
-      <ModeToggle />
+      <div className="flex flex-wrap items-center gap-3">
+        <ModeToggle />
+        <div className="flex items-center gap-2 text-xs text-ink-muted">
+          Sort by
+          <div className="inline-flex rounded-md border border-line p-0.5" role="group" aria-label="Sort strategies by">
+            {SORTS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                aria-pressed={sortBy === o.value}
+                onClick={() => setSortBy(o.value)}
+                className={`rounded px-2.5 py-1 font-medium ${sortBy === o.value ? "bg-accent text-accent-ink" : "text-ink hover:bg-surface-2"}`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {data && strategies.length > 0 && (
         <div className="space-y-2">
@@ -425,11 +472,11 @@ export default function StrategiesPage() {
         <>
           {failed && <p className="rounded-md border border-line bg-surface p-2 text-xs text-destructive">{failed.message}</p>}
           {(["live", "sim"] as const).map((m) => {
-            // Best return first (in the section's own mode), so what to act on is at the top and bottom.
-            const roiOf = (r: AdminStrategy) => r.returns?.[m].roi ?? null;
+            // Best first by the chosen figure (in the section's own mode), so what to act on is at the top and bottom.
+            const valueOf = (r: AdminStrategy) => sortValue(r, m, sortBy) ?? -Infinity;
             const group = strategies
               .filter((r) => modeOf(r) === m)
-              .sort((a, b) => (roiOf(b) ?? -Infinity) - (roiOf(a) ?? -Infinity) || a.label.localeCompare(b.label));
+              .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
             return (
               <section key={m} className="space-y-3">
@@ -450,6 +497,7 @@ export default function StrategiesPage() {
                       key={r.label}
                       row={r}
                       all={strategies}
+                      sortBy={sortBy}
                       includes={includesOf.get(r.label.toLowerCase()) ?? []}
                       busy={busy}
                       selecting={selecting}
