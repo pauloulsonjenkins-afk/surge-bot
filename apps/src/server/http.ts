@@ -33,6 +33,9 @@
  *   GET  /internal/betfair/reconcile            real bets against the app's estimates, per strategy (admin site only)
  *   GET  /internal/betfair/placements           whether each recently sent pick was placed and matched on Betfair (admin site only)
  *   POST /internal/picks/manual-bet             log (or clear) a bet the admin placed by hand on a pick (admin site only)
+ *   GET  /internal/betfair/unplaced             sent picks with no Betfair bet 3 minutes on, last 24 hours (admin site only)
+ *   GET  /internal/push                         the push key and how many devices get notifications (admin site only)
+ *   POST /internal/push/subscribe|unsubscribe|test  add or remove a device, or send it a test (admin site only)
  *   GET  /internal/picks/discrepancies          results the alert's own tick disagrees with, still to review (admin site only)
  *   POST /internal/picks/review                 accept a reviewed result (admin site only)
  *   GET/POST /internal/betfair/coverage         which leagues are on Betfair: those your alerts came from, or a pasted list (admin site only)
@@ -53,6 +56,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { TelegramClient } from "telegram";
 import { parsePickMode, type EngineDb } from "../storage/engine-db";
+import { listUnplaced, UNPLACED_AFTER_MS } from "../betfair/unplaced";
+import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./push";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
 import { verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
@@ -428,6 +433,52 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       } catch (err) {
         send(res, 422, { error: "unreadable", message: err instanceof Error ? err.message : String(err) });
       }
+      return;
+    }
+
+    if (path === "/internal/betfair/unplaced" || path === "/internal/push" || path.startsWith("/internal/push/")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (path === "/internal/betfair/unplaced" && req.method === "GET") {
+        const link = getBetfairLinkStatus();
+        send(res, 200, { afterMinutes: UNPLACED_AFTER_MS / 60_000, configured: link.configured, picks: listUnplaced(db, link.lastOkAt) });
+        return;
+      }
+      if (path === "/internal/push" && req.method === "GET") {
+        send(res, 200, { publicKey: pushPublicKey(db), devices: db.listPushSubscriptions().map((s) => ({ label: s.label, createdAt: s.createdAt })) });
+        return;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        if (path === "/internal/push/subscribe") {
+          const sub = parseSubscription(body.subscription);
+          if (!sub) {
+            send(res, 400, { error: "invalid", message: "That browser didn't give a usable subscription." });
+            return;
+          }
+          const label = typeof body.label === "string" ? body.label.slice(0, 80) : null;
+          subscribePush(db, sub, label, typeof body.origin === "string" ? body.origin : null);
+          log.info(`Push: a device was added${label ? ` (${label})` : ""}.`);
+          send(res, 200, { ok: true });
+          return;
+        }
+        if (path === "/internal/push/unsubscribe") {
+          send(res, 200, { ok: typeof body.endpoint === "string" && db.deletePushSubscription(body.endpoint) });
+          return;
+        }
+        if (path === "/internal/push/test") {
+          const reached = await sendPush(db, { title: "Notifications are on", body: "You'll get one when a sent pick isn't placed within 3 minutes.", url: "/more/admin/sending", tag: "test" });
+          send(res, 200, { reached });
+          return;
+        }
+      }
+      send(res, 404, { error: "not_found" });
       return;
     }
 

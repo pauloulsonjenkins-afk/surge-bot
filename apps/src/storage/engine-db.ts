@@ -552,6 +552,14 @@ export class EngineDb {
         yankee_stake  REAL
       );
 
+      -- Devices (browsers, or the installed app) that get the admin's push notifications (server/push.ts).
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint      TEXT PRIMARY KEY,
+        keys_json     TEXT NOT NULL,
+        label         TEXT,
+        created_at    TEXT NOT NULL
+      );
+
       -- Football competitions Betfair has listed, kept as they're seen (betfair/competitions.ts), for the Leagues
       -- page's Betfair coverage check. Betfair only lists a competition while it has matches, hence last_seen.
       CREATE TABLE IF NOT EXISTS betfair_competitions (
@@ -620,6 +628,10 @@ export class EngineDb {
     if (!liveCols.some((c) => c.name === "manual_bet")) {
       // A bet the admin placed by hand on this pick (JSON ManualBet), logged on Live; it makes the pick a live bet.
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN manual_bet TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "unplaced_alert_at")) {
+      // When the admin was notified that this sent pick had no bet on Betfair 3 minutes on (betfair/unplaced.ts).
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN unplaced_alert_at TEXT`);
     }
     if (!liveCols.some((c) => c.name === "review_ok_at")) {
       // When the admin accepted a result the alert's own tick disagreed with (Amend results, Needs review).
@@ -870,6 +882,55 @@ export class EngineDb {
   }
 
   /** One pick by id, or null. */
+  // ---- Push notifications and unplaced-bet alerts -----------------------------------------------------
+
+  /** Adds or refreshes a device that gets push notifications. */
+  savePushSubscription(sub: { endpoint: string; keys: { p256dh: string; auth: string } }, label: string | null): void {
+    this.db
+      .prepare(
+        `INSERT INTO push_subscriptions (endpoint, keys_json, label, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(endpoint) DO UPDATE SET keys_json = excluded.keys_json, label = excluded.label`,
+      )
+      .run(sub.endpoint, JSON.stringify(sub.keys), label, new Date().toISOString());
+    this.onChange();
+  }
+
+  deletePushSubscription(endpoint: string): boolean {
+    const n = this.db.prepare(`DELETE FROM push_subscriptions WHERE endpoint = ?`).run(endpoint).changes;
+    if (n > 0) this.onChange();
+    return n > 0;
+  }
+
+  listPushSubscriptions(): Array<{ endpoint: string; keys: { p256dh: string; auth: string }; label: string | null; createdAt: string }> {
+    const rows = this.db.prepare(`SELECT endpoint, keys_json, label, created_at FROM push_subscriptions ORDER BY created_at`).all() as Array<{
+      endpoint: string;
+      keys_json: string;
+      label: string | null;
+      created_at: string;
+    }>;
+    return rows.map((r) => ({ endpoint: r.endpoint, keys: JSON.parse(r.keys_json) as { p256dh: string; auth: string }, label: r.label, createdAt: r.created_at }));
+  }
+
+  /** Sent picks with any Betfair bet linked, by id (a bet placed at all, matched or not). */
+  pickIdsWithBets(): Set<number> {
+    const rows = this.db.prepare(`SELECT DISTINCT pick_id FROM betfair_bets WHERE pick_id IS NOT NULL`).all() as Array<{ pick_id: number }>;
+    return new Set(rows.map((r) => r.pick_id));
+  }
+
+  /** When each pick's "not placed" notification went, for the picks given. */
+  unplacedAlertTimes(): Map<number, string> {
+    const rows = this.db.prepare(`SELECT id, unplaced_alert_at FROM live_picks WHERE unplaced_alert_at IS NOT NULL`).all() as Array<{ id: number; unplaced_alert_at: string }>;
+    return new Map(rows.map((r) => [r.id, r.unplaced_alert_at]));
+  }
+
+  markUnplacedAlerted(ids: number[], at: string): void {
+    const stmt = this.db.prepare(`UPDATE live_picks SET unplaced_alert_at = ? WHERE id = ?`);
+    this.db.transaction(() => {
+      for (const id of ids) stmt.run(at, id);
+    })();
+    if (ids.length > 0) this.onChange();
+  }
+
   getLivePick(id: number): LivePick | null {
     const r = this.db.prepare(`SELECT * FROM live_picks WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
     return r ? this.toLivePick(r) : null;

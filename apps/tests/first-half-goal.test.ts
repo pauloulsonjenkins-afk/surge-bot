@@ -175,16 +175,17 @@ test("once stored it appears in the strategy lists, and a recovered alert is dat
   assert.equal(db.listLivePicks(10)[0]?.firstSeenAt, posted);
 });
 
-test("on Live, a sent pre-match pick isn't called 'not placed' until kick-off has passed", () => {
+test("on Live, a sent pre-match pick with no bet 3 minutes on is 'not placed' (the betting software bets straight away)", () => {
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { enabled: true, stakes: { "first half goal": 2 }, strategies: { "first half goal": true } });
   const now = Date.now();
   db.upsertLivePick("chat", 1, ALERT, parseAlert(ALERT), new Date(now - 60_000).toISOString());
   buildFeed(db, { markSent: true, now: new Date(now) });
   const id = db.listSentPicks()[0]!.id;
+  const sent = Date.parse(db.listSentPicks()[0]!.sentAt);
   const link = (at: number) => ({ configured: true, missing: [], lastOkAt: new Date(at).toISOString(), lastErrorAt: null, lastError: null, lastCount: 0 });
-  // 20 minutes after sending, Betfair checked, no bet yet: still before kick-off.
-  assert.equal(pickPlacements(db, link(now + 20 * 60_000), new Date(now + 20 * 60_000))[id]!.state, "beforeKickoff");
-  // Kick-off (about an hour after the alert) and five minutes more, still nothing: not placed.
-  assert.equal(pickPlacements(db, link(now + 70 * 60_000), new Date(now + 70 * 60_000))[id]!.state, "notPlaced");
+  // Two minutes on: still checking.
+  assert.equal(pickPlacements(db, link(sent + 2 * 60_000), new Date(sent + 2 * 60_000))[id]!.state, "checking");
+  // Four minutes on, Betfair checked, no bet: not placed, well before kick-off.
+  assert.equal(pickPlacements(db, link(sent + 4 * 60_000), new Date(sent + 4 * 60_000))[id]!.state, "notPlaced");
 });

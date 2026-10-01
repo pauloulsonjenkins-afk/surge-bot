@@ -26,6 +26,7 @@ import type { BetfairBet, EngineDb } from "../storage/engine-db";
 import { eventScore, matchBets } from "./reconcile";
 import { exchangeNamer, feedMarket, getSendingSettings, kickoffAt } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
+import { notifyUnplaced, UNPLACED_AFTER_MS } from "./unplaced";
 
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
 const API_URL = "https://api.betfair.com/exchange/betting/rest/v1.0/";
@@ -631,6 +632,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
       if (corrected > 0) log.info(`Betfair: ${corrected} pick(s) marked on Betfair from their placed bets.`);
       status.lastOkAt = new Date().toISOString();
       status.lastCount = bets.length;
+      // Picks still with no bet 3 minutes after sending: one push notification each (betfair/unplaced.ts).
+      await notifyUnplaced(db, status.lastOkAt).catch((err: unknown) => log.warn(`Not-placed check failed: ${err instanceof Error ? err.message : String(err)}`));
       if (status.lastError) log.info("Betfair bet check is working again.");
       status.lastError = null;
       // Every few hours, save the competitions Betfair lists (for the Leagues page's Betfair coverage check).
@@ -669,7 +672,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
 // Placement status per pick, for the Live page
 
 /** How long after a pick is sent the betting software normally places it; past this with no bet, it's "not placed". */
-const NOT_PLACED_AFTER_MS = 5 * 60 * 1000;
+/** The same 3 minutes as the "not placed" notification (betfair/unplaced.ts). */
+const NOT_PLACED_AFTER_MS = UNPLACED_AFTER_MS;
 
 export type PlacementState = "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced" | "manual";
 
@@ -724,11 +728,10 @@ export function pickPlacements(db: EngineDb, link: BetfairLinkStatus, now = new 
     else if (bets.some((b) => b.status === "pending")) state = "waiting";
     else if (bets.length > 0) state = "lapsed";
     else {
-      // A pre-match pick may be placed any time up to kick-off, so it is only "not placed" once that has passed.
-      const lp = db.getLivePick(p.id);
-      const ko = lp ? kickoffAt(lp) : null;
-      const deadline = Math.max(sent + NOT_PLACED_AFTER_MS, ko !== null ? ko + NOT_PLACED_AFTER_MS : 0);
-      state = lastOk !== null && lastOk >= deadline ? "notPlaced" : ko !== null && now.getTime() < ko ? "beforeKickoff" : "checking";
+      // The betting software bets as soon as it reads a pick, pre-match ones included (its betting window opens before
+      // the alert arrives), so no bet 3 minutes on means it turned the pick down. A pre-match pick stays in the feed
+      // until kick-off, so it can still be placed later, and then shows as placed.
+      state = lastOk !== null && lastOk >= sent + NOT_PLACED_AFTER_MS ? "notPlaced" : "checking";
     }
     out[p.id] = {
       state,

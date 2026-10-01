@@ -1192,3 +1192,44 @@ export async function fetchDiscrepancies(): Promise<LivePick[]> {
 export function reviewResult(id: number, ok: boolean): Promise<{ ok: true }> {
   return engineCall("/internal/picks/review", "saving the review", { method: "POST", body: { id, ok } });
 }
+
+/** A sent pick with no bet on Betfair 3 minutes after it was sent. Mirrors UnplacedPick in the engine's betfair/unplaced.ts. */
+export interface UnplacedPick {
+  id: number;
+  strategy: string;
+  match: string;
+  competition: string | null;
+  sentAt: string;
+  /** The likely reason, from what the engine found on Betfair. */
+  reason: string;
+  /** When the admin was notified, or null. */
+  alertedAt: string | null;
+}
+
+export interface UnplacedReport {
+  afterMinutes: number;
+  /** False when the Betfair bet check isn't set up, so nothing can be listed. */
+  configured: boolean;
+  picks: UnplacedPick[];
+}
+
+export function fetchUnplaced(): Promise<UnplacedReport> {
+  return engineCall("/internal/betfair/unplaced", "picks not placed");
+}
+
+export interface PushState {
+  /** The key a browser subscribes with. */
+  publicKey: string;
+  devices: Array<{ label: string | null; createdAt: string }>;
+}
+
+export function fetchPushState(): Promise<PushState> {
+  return engineCall("/internal/push", "notification settings");
+}
+
+export function pushAction(
+  action: "subscribe" | "unsubscribe" | "test",
+  body: Record<string, unknown> = {},
+): Promise<{ ok?: boolean; reached?: number }> {
+  return engineCall(`/internal/push/${action}`, action === "test" ? "the test notification" : "notification settings", { method: "POST", body, timeoutMs: 20_000 });
+}

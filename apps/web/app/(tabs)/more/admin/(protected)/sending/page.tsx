@@ -9,6 +9,8 @@ import { StopLossControls } from "@/components/admin/StopLossControls";
 import { useSaveSending, useSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 import { useDialog } from "@/components/ui/ConfirmDialog";
+import { NotPlacedCard } from "@/components/admin/NotPlacedCard";
+import { NotificationsCard } from "@/components/admin/NotificationsCard";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -305,6 +307,9 @@ export default function SendingPage() {
         </div>
       </section>
 
+      {/* Sent picks with no bet on Betfair 3 minutes on: only shown when there are some. */}
+      <NotPlacedCard />
+
       {/* 2. Strategies: one compact row each; open a row to change its stake, minimum odds or stop loss. */}
       <Card title="Strategies" subtitle="Every strategy starts in Sim: its picks are recorded, settled and priced as if bet, but never sent. Switch one to Live to send its new picks. Tap a strategy to set its stake, minimum odds and stop loss.">
         {stakeError && <p className="mb-2 text-xs text-destructive">{stakeError}</p>}
@@ -537,6 +542,9 @@ export default function SendingPage() {
           </details>
         )}
       </Card>
+
+      {/* Push notifications for picks not placed, per device. */}
+      <NotificationsCard />
 
       {/* 4. Settings you rarely change, in tabs at the bottom. */}
       <section className="rounded-xl border border-line bg-surface p-3.5">
