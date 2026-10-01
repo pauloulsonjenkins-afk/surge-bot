@@ -6,8 +6,9 @@ import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
 import { marketName } from "@/lib/markets";
 import { StopLossControls } from "@/components/admin/StopLossControls";
-import { useSaveSending, useSending, type SendingSettings } from "@/queries/use-sending";
+import { useSaveSending, useSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
+import { useDialog } from "@/components/ui/ConfirmDialog";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -70,6 +71,7 @@ export default function SendingPage() {
   const { data, isLoading, error } = useSending();
   const save = useSaveSending();
   const remove = useDeleteStrategyFlow();
+  const dialog = useDialog();
   const [form, setForm] = useState<Form | null>(null);
   const [saved, setSaved] = useState(false);
   // What has been typed into each strategy's stake box but not saved yet, keyed by lower-case name.
@@ -99,15 +101,63 @@ export default function SendingPage() {
 
   const { settings } = data;
 
-  function toggleMaster() {
+  async function toggleMaster() {
     const turningOn = !settings.enabled;
     if (turningOn) {
-      const ok = window.confirm(
-        "Turn sending ON?\n\nNew picks from strategies that are switched on will be added to the feed your betting software reads, with the stake you set for each strategy.",
-      );
+      const live = data!.strategies.filter((x) => x.enabled);
+      const perDay = live.reduce((most, x) => Math.max(most, x.stake ?? 0), 0) * settings.dailyCap;
+      const ok = await dialog.confirm({
+        title: "Turn sending on?",
+        tone: "money",
+        confirmLabel: live.length === 0 ? "Turn sending on" : `Start sending ${live.length} Live strateg${live.length === 1 ? "y" : "ies"}`,
+        details: [
+          { label: "Live strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${x.label} £${x.stake?.toFixed(2) ?? "–"}`).join(", ") },
+          { label: "Daily limit", value: `${settings.dailyCap} new bets` },
+          { label: "Most staked in a day", value: perDay > 0 ? `up to £${perDay.toFixed(2)}` : "–" },
+          { label: "Highest stake allowed", value: `£${settings.maxStake.toFixed(2)}` },
+        ],
+        body: <p>New picks from Live strategies are added to the feed your betting software reads, at each strategy’s own stake.</p>,
+      });
       if (!ok) return;
     }
     save.mutate({ enabled: turningOn });
+  }
+
+  /** The money summary shown before a strategy goes Live: what each bet costs and what stops it. */
+  function confirmLive(s: SendingState["strategies"][number]): Promise<boolean> {
+    const stake = s.stake ?? 0;
+    const stop = s.stopLoss;
+    const hasStop = stop !== null && (stop.dailyLoss !== null || stop.lossRun !== null);
+    return dialog.confirm({
+      title: `Put ${s.label} Live?`,
+      tone: "money",
+      confirmLabel: `Put Live at £${stake.toFixed(2)}`,
+      details: [
+        { label: "Stake per bet", value: `£${stake.toFixed(2)}` },
+        { label: "Minimum odds", value: s.minOdds !== null ? s.minOdds.toFixed(2) : "None" },
+        { label: "Daily limit (all strategies)", value: `${settings.dailyCap} bets, up to £${(stake * settings.dailyCap).toFixed(2)}` },
+        {
+          label: "Stop loss",
+          value: hasStop ? (
+            [stop.dailyLoss !== null ? `down £${stop.dailyLoss.toFixed(2)}` : null, stop.lossRun !== null ? `${stop.lossRun} losses in a row` : null]
+              .filter(Boolean)
+              .join(" or ")
+          ) : (
+            <span className="text-warn">None set</span>
+          ),
+        },
+      ],
+      body: (
+        <>
+          <p>Its new picks will be sent to your betting software{settings.enabled ? "" : " once the master switch above is on"}.</p>
+          {!hasStop && (
+            <p>
+              <strong>No stop loss is set.</strong> Open this strategy and set one first if it should stop after a bad day.
+            </p>
+          )}
+        </>
+      ),
+    });
   }
 
   function saveStake(key: string) {
@@ -229,7 +279,7 @@ export default function SendingPage() {
           </div>
           <button
             type="button"
-            onClick={toggleMaster}
+            onClick={() => void toggleMaster()}
             disabled={save.isPending}
             className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium ${
               settings.enabled ? "border border-line text-ink" : "bg-accent text-accent-ink"
@@ -321,8 +371,8 @@ export default function SendingPage() {
                             role="radio"
                             aria-checked={selected}
                             disabled={selected || (live && !canSwitch) || save.isPending}
-                            onClick={() => {
-                              if (live && !window.confirm(`Put ${s.label} Live?\n\nIts new picks will be sent to your betting software at £${s.stake?.toFixed(2)} each${settings.enabled ? "" : " once the master switch above is on"}.`)) return;
+                            onClick={async () => {
+                              if (live && !(await confirmLive(s))) return;
                               save.mutate({ strategies: { [key]: live } });
                             }}
                             className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-default ${
@@ -416,7 +466,7 @@ export default function SendingPage() {
                       {!s.enabled ? (
                         <button
                           type="button"
-                          onClick={() => remove.run(s.label, { alerts: s.alerts, sent: s.sent })}
+                          onClick={() => void remove.run(s.label, { alerts: s.alerts, sent: s.sent })}
                           disabled={remove.isPending}
                           className="text-xs text-destructive underline disabled:opacity-50"
                         >

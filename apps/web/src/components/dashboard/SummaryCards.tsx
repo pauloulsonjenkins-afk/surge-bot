@@ -9,6 +9,7 @@ import { gbp } from "@/components/admin/WinLossLines";
 import type { Timeframe } from "./TimeframeToggle";
 import type { PickMode } from "@/server/engine-client";
 import { profitFor, useDashboardWinLoss } from "./WinLossSummary";
+import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
 
 /**
  * The Dashboard's top row: the figures that matter (hit rate, record and, for the admin, profit) as big numbers
@@ -58,7 +59,11 @@ export function HeroRow({
         <HeroStat
           label="Hit rate"
           value={totals.hitRate === null ? "–" : `${totals.hitRate}%`}
-          sub={settled === 0 ? "No settled picks yet" : `from ${formatNumber(settled)} settled`}
+          sub={
+            settled === 0
+              ? "No settled picks yet"
+              : `from ${formatNumber(settled)} settled${stats.context?.range ? ` · likely ${rangeText(stats.context.range)}` : ""}`
+          }
         />
         <HeroStat
           label="Hits – Misses"
@@ -86,7 +91,40 @@ export function HeroRow({
           />
         )}
       </div>
+      <HitRateContextRow stats={stats} />
       <p className="text-xs text-ink-muted">{secondary.join(" · ")}</p>
     </section>
+  );
+}
+
+/**
+ * What the hit rate needs beside it to be judged: the average odds it was won at, the hit rate those odds need to break
+ * even after commission, and (for the admin) the return on each £1 staked.
+ */
+function HitRateContextRow({ stats }: { stats: HitRateStats }) {
+  const c = stats.context;
+  if (!c || c.settled === 0) return null;
+  const verdict = againstBreakeven(stats.totals.hitRate, c.breakeven, c.range);
+  const cells: Array<{ label: string; value: string; tone?: "hit" | "loss" | "muted" }> = [
+    { label: "Average odds", value: c.avgOdds === null ? "Unknown" : c.avgOdds.toFixed(2) },
+    { label: "Break-even hit rate", value: c.breakeven === null ? "–" : `${c.breakeven}%` },
+  ];
+  if (c.roi !== null) cells.push({ label: "Return per £1", value: roiText(c.roi), tone: moneyTone(c.roi) });
+  const colour = { hit: "text-hit", loss: "text-loss", muted: "text-ink" };
+  return (
+    <div className="rounded-lg border border-line bg-surface px-3 py-2">
+      <dl className="flex flex-wrap gap-x-6 gap-y-1">
+        {cells.map((x) => (
+          <div key={x.label} className="flex items-baseline gap-1.5">
+            <dt className="text-xs text-ink-muted">{x.label}</dt>
+            <dd className={`text-sm font-semibold tabular-nums ${colour[x.tone ?? "muted"]}`}>{x.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-1 text-xs text-ink-muted">
+        {verdict ? <span className={colour[verdict.tone]}>{verdict.text}.</span> : "No odds are known for these picks, so break-even can’t be worked out yet."}
+        {c.oddsKnown < c.settled && c.oddsKnown > 0 && ` Odds known for ${formatNumber(c.oddsKnown)} of ${formatNumber(c.settled)} picks.`}
+      </p>
+    </div>
   );
 }

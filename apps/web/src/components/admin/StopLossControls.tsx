@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { StopLossPatch, StopLossStatus } from "@/queries/use-sending";
+import { useDialog } from "@/components/ui/ConfirmDialog";
 
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink";
 
@@ -27,6 +28,7 @@ export function StopLossControls({
   const [loss, setLoss] = useState<string | undefined>();
   const [run, setRun] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog();
 
   const shownLoss = loss ?? savedLoss;
   const shownRun = run ?? savedRun;
@@ -52,10 +54,25 @@ export function StopLossControls({
     setRun(undefined);
   }
 
-  function resume() {
-    const ok = window.confirm(
-      "Resume this strategy today?\n\nThe stop loss count starts again from now, so new picks can be sent again until the limit is reached a second time. Your betting software's own loss limits still apply.",
-    );
+  async function resume() {
+    if (!status) return;
+    const ok = await dialog.confirm({
+      title: "Resume this strategy today?",
+      tone: "money",
+      confirmLabel: "Resume sending today",
+      details: [
+        { label: "Today so far", value: money(status.todayNet) },
+        { label: "Stopped because", value: status.reason ?? "–" },
+        { label: "Daily loss limit", value: status.dailyLoss !== null ? `£${status.dailyLoss.toFixed(2)}` : "None" },
+        { label: "Losing run limit", value: status.lossRun !== null ? `${status.lossRun} in a row` : "None" },
+      ],
+      body: (
+        <p>
+          The stop loss count starts again from now, so new picks can be sent until the limit is reached a second time. Your betting
+          software’s own loss limits still apply.
+        </p>
+      ),
+    });
     if (ok) onSave({ resume: true });
   }
 
@@ -107,7 +124,7 @@ export function StopLossControls({
         {status?.stopped && (
           <button
             type="button"
-            onClick={resume}
+            onClick={() => void resume()}
             disabled={busy}
             className="rounded-md border border-line px-3 py-1 text-xs font-medium text-ink hover:bg-surface disabled:opacity-50"
           >

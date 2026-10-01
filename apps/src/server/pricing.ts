@@ -68,3 +68,32 @@ export function priceResult(
   const profit = r.result === "hit" ? stake * (odds - 1) * (1 - ctx.commission) : -stake;
   return { kind: "priced", stake, odds, profit, usedAlertOdds: alertOdds !== null };
 }
+
+/**
+ * The hit rate a strategy needs at these odds just to break even after commission:
+ * 1 / (1 + (odds - 1) x (1 - commission)). At 1.50 odds and no commission that is 66.7%, so a 63.8% hit rate loses.
+ * Returned as a percent (0-100), or null without odds.
+ */
+export function breakevenHitRate(odds: number | null, commission: number): number | null {
+  if (odds === null || !(odds > 1)) return null;
+  return Math.round((1000 / (1 + (odds - 1) * (1 - commission)))) / 10;
+}
+
+/**
+ * The range the true hit rate is likely to be in (95% Wilson interval), as percents. With few picks it is wide:
+ * 37 hits from 58 is 63.8%, but anything from about 51% to 75% fits.
+ */
+export function hitRateRange(hits: number, settled: number): { low: number; high: number } | null {
+  if (settled <= 0) return null;
+  const z = 1.96;
+  const p = hits / settled;
+  const denom = 1 + (z * z) / settled;
+  const centre = (p + (z * z) / (2 * settled)) / denom;
+  const half = (z * Math.sqrt((p * (1 - p)) / settled + (z * z) / (4 * settled * settled))) / denom;
+  return { low: Math.round(Math.max(0, centre - half) * 1000) / 10, high: Math.round(Math.min(1, centre + half) * 1000) / 10 };
+}
+
+/** The odds a pick is judged at, whether or not it could be staked: the alert's own price, else the strategy's assumed odds. */
+export function oddsFor(r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds">, assumedOdds: number | null): number | null {
+  return alertOddsOf(r) ?? assumedOdds;
+}

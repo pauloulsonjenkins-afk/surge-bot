@@ -18,12 +18,16 @@
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
  *   /internal/users/*                           website user sign-up, sign-in and page access (admin site only; see users-routes.ts)
  *   GET  /internal/strategies                   every strategy with its counts, switch, stake and merge (admin site only)
+ *   GET  /internal/strategies/equity?label=X    one strategy's running profit pick by pick, with drawdown and losing runs (admin site only)
  *   POST /internal/strategies/ignore            stop or start ignoring a strategy's new alerts (admin site only)
  *   POST /internal/strategies/merge             report one strategy under another's name, or undo that (admin site only)
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
  *   POST /internal/picks/exclude                 mark (or unmark) a pick as "didn't actually bet" (admin site only)
  *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
+ *   POST /imports/betfair/<import token>        the betting software's bet history export (CSV body), posted by tools/bf-import.ps1
+ *   POST /internal/betfair/import               the same, uploaded on the admin Reconcile page (admin site only)
+ *   GET  /internal/betfair/reconcile            real bets against the app's estimates, per strategy (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
  *   POST /internal/telegram/login/password      submit the 2FA password, if any
@@ -50,14 +54,18 @@ import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru
 import { buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
-import { computePickProfits, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
+import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
+import { computeReconcile, importBetHistory } from "../betfair/reconcile";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
 const FEED_PREFIX = "/feeds/bets/";
+const BETFAIR_IMPORT_PREFIX = "/imports/betfair/";
+/** A bet history export can run to thousands of rows. */
+const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 
 class BodyTooLarge extends Error {}
 
@@ -71,13 +79,13 @@ function send(res: ServerResponse, status: number, body: Record<string, unknown>
   res.end(json);
 }
 
-function readBody(req: IncomingMessage): Promise<Buffer> {
+function readBody(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         // Stop buffering and discard the rest, so the 413 reply can still be sent.
         req.removeAllListeners("data");
         req.resume();
@@ -91,8 +99,8 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const raw = await readBody(req);
+async function readJsonBody(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
+  const raw = await readBody(req, maxBytes);
   if (raw.length === 0) return {};
   try {
     return JSON.parse(raw.toString("utf8")) as Record<string, unknown>;
@@ -217,7 +225,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
       const strategy = url.searchParams.get("strategy")?.trim().slice(0, 120) || null;
-      send(res, 200, { ...db.hitRateStats(days, strategy, parsePickMode(url.searchParams.get("mode"))) });
+      const mode = parsePickMode(url.searchParams.get("mode"));
+      const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      send(res, 200, {
+        ...db.hitRateStats(days, strategy, mode),
+        // The odds, break-even hit rate, range and return that the headline hit rate needs beside it.
+        context: computeHitRateContext(db, db.statsSettledIds(days, strategy, mode), since),
+      });
       return;
     }
 
@@ -326,6 +340,82 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       db.updateLeague(key, patch);
       log.info(`League "${key}" updated from the admin Leagues page (${Object.keys(patch).join(", ") || "no changes"}).`);
       send(res, 200, { ok: true });
+      return;
+    }
+
+    // The automatic import: a script beside the betting software posts its bet history export here (see tools/bf-import.ps1).
+    if (req.method === "POST" && path.startsWith(BETFAIR_IMPORT_PREFIX)) {
+      const importToken = process.env.BETFAIR_IMPORT_TOKEN;
+      const provided = path.slice(BETFAIR_IMPORT_PREFIX.length);
+      if (!importToken || !verifyPathToken(provided, importToken)) {
+        send(res, 404, { error: "not_found" });
+        return;
+      }
+      let csv: string;
+      try {
+        csv = (await readBody(req, MAX_IMPORT_BYTES)).toString("utf8");
+      } catch (err) {
+        if (err instanceof BodyTooLarge) {
+          send(res, 413, { error: "too_large", message: "The file is over 8 MB. Export a shorter date range." }, true);
+          return;
+        }
+        throw err;
+      }
+      try {
+        const name = new URL(rawUrl, "http://internal").searchParams.get("name")?.slice(0, 120) || "automatic import";
+        const summary = importBetHistory(db, csv, name);
+        log.info(`Betfair import (${name}): ${summary.added} new, ${summary.updated} updated, ${summary.linked} linked to picks.`);
+        send(res, 200, { ...summary });
+      } catch (err) {
+        send(res, 422, { error: "unreadable", message: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    if (path === "/internal/betfair/import" && req.method === "POST") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      let body: Record<string, unknown>;
+      try {
+        body = await readJsonBody(req, MAX_IMPORT_BYTES);
+      } catch (err) {
+        if (err instanceof BodyTooLarge) {
+          send(res, 413, { error: "too_large", message: "The file is over 8 MB. Export a shorter date range." }, true);
+          return;
+        }
+        throw err;
+      }
+      if (typeof body.csv !== "string" || body.csv.trim() === "") {
+        send(res, 400, { error: "csv_required", message: "The file is empty." });
+        return;
+      }
+      try {
+        const name = typeof body.source === "string" && body.source.trim() ? body.source.trim().slice(0, 120) : "upload";
+        const summary = importBetHistory(db, body.csv, name);
+        log.info(`Betfair import (${name}) from the admin page: ${summary.added} new, ${summary.updated} updated, ${summary.linked} linked to picks.`);
+        send(res, 200, { ...summary });
+      } catch (err) {
+        send(res, 422, { error: "unreadable", message: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    if (path === "/internal/betfair/reconcile" && req.method === "GET") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      send(res, 200, { ...computeReconcile(db), importTokenConfigured: Boolean(process.env.BETFAIR_IMPORT_TOKEN) });
       return;
     }
 
@@ -487,6 +577,25 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           stake: settings.stakes[x.label.toLowerCase()] ?? null,
         })),
       });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/internal/strategies/equity") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const url = new URL(rawUrl, "http://internal");
+      const label = url.searchParams.get("label")?.trim().slice(0, 120) ?? "";
+      if (!label) {
+        send(res, 400, { error: "label_required" });
+        return;
+      }
+      send(res, 200, { label, ...computeStrategyEquity(db, label, parsePickMode(url.searchParams.get("mode"))) });
       return;
     }
 

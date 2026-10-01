@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/Card";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
+import { useDialog } from "@/components/ui/ConfirmDialog";
 import { usePublicView } from "@/queries/use-access";
 import { useAdminUsers, useDeleteUser, useSetSignupsOpen, useUpdateUser, type AdminUser } from "@/queries/use-users";
 import { USER_PAGES, USER_PAGE_LABEL, type UserPage } from "@/lib/user-pages";
@@ -19,6 +20,7 @@ function statusOf(u: AdminUser): { text: string; className: string } {
 function UserCard({ user }: { user: AdminUser }) {
   const update = useUpdateUser();
   const remove = useDeleteUser();
+  const dialog = useDialog();
   const busy = update.isPending || remove.isPending;
   const status = statusOf(user);
   const error = update.error ?? remove.error;
@@ -32,24 +34,44 @@ function UserCard({ user }: { user: AdminUser }) {
     const next = window.prompt(`New password for ${user.email} (at least 10 characters).\n\nThey will be signed out everywhere. Tell them the new password yourself.`);
     if (next === null) return;
     if (next.length < 10) {
-      window.alert("That's too short. Use at least 10 characters.");
+      void dialog.notify({ title: "Password too short", body: <p>Use at least 10 characters.</p> });
       return;
     }
     update.mutate({ id: user.id, password: next });
   }
 
-  function toggleActive() {
-    if (user.active && !window.confirm(`Disable ${user.email}? They will be signed out and unable to sign in.`)) return;
+  async function toggleActive() {
+    if (
+      user.active &&
+      !(await dialog.confirm({
+        title: `Disable ${user.email}?`,
+        tone: "danger",
+        confirmLabel: "Disable account",
+        body: <p>They will be signed out and unable to sign in until you enable them again.</p>,
+      }))
+    )
+      return;
     update.mutate({ id: user.id, active: !user.active });
   }
 
-  function signOutEverywhere() {
-    if (!window.confirm(`Sign ${user.email} out on every device? They can sign straight back in.`)) return;
+  async function signOutEverywhere() {
+    const ok = await dialog.confirm({
+      title: `Sign ${user.email} out everywhere?`,
+      confirmLabel: "Sign out on every device",
+      body: <p>They can sign straight back in.</p>,
+    });
+    if (!ok) return;
     update.mutate({ id: user.id, signOutEverywhere: true });
   }
 
-  function deleteUser() {
-    if (!window.confirm(`Delete ${user.email} for good?\n\nThe account is removed and they will need to sign up again.`)) return;
+  async function deleteUser() {
+    const ok = await dialog.confirm({
+      title: `Delete ${user.email} for good?`,
+      tone: "danger",
+      confirmLabel: "Delete account",
+      body: <p>The account is removed and they will need to sign up again.</p>,
+    });
+    if (!ok) return;
     remove.mutate(user.id);
   }
 

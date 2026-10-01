@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AdminStrategies, AdminStrategy, RemoveStrategyResult } from "@/server/engine-client";
+import type { AdminStrategies, AdminStrategy, PickMode, RemoveStrategyResult, StrategyEquity, StrategyReturn } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 
-export type { AdminStrategies, AdminStrategy, RemoveStrategyResult };
+export type { AdminStrategies, AdminStrategy, RemoveStrategyResult, StrategyEquity, StrategyReturn };
 
 const KEY = ["admin-strategies"];
 
@@ -13,6 +13,20 @@ export function useAdminStrategies() {
     queryKey: KEY,
     queryFn: ({ signal }) => getJson<AdminStrategies>("/api/admin/strategies", "the strategies", signal),
     staleTime: 0,
+  });
+}
+
+/** One strategy's equity curve, loaded only when its chart is opened. */
+export function useStrategyEquity(label: string, mode: PickMode, enabled: boolean) {
+  return useQuery({
+    queryKey: ["strategy-equity", label, mode],
+    queryFn: ({ signal }) => {
+      const q = new URLSearchParams({ label });
+      if (mode !== "all") q.set("mode", mode);
+      return getJson<StrategyEquity>(`/api/admin/strategies/equity?${q}`, "the equity curve", signal);
+    },
+    enabled,
+    staleTime: 60_000,
   });
 }
 

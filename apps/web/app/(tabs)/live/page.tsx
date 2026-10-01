@@ -55,8 +55,8 @@ function StatusChip({ pick, admin }: { pick: LivePick; admin: boolean }) {
 }
 
 /**
- * One alert as a compact row (about 72px): the minute, the teams and the score on the first line, the strategy
- * and bet on the second. Tapping it opens the match stats underneath.
+ * One alert as a compact row under its match: the minute, the strategy and its status on the first line, the bet
+ * and the time it arrived on the second. Tapping it opens the match stats underneath.
  */
 function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
   const [open, setOpen] = useState(false);
@@ -92,17 +92,12 @@ function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="flex items-baseline justify-between gap-3">
-            <span className="truncate text-sm font-medium text-ink">
-              {pick.home ?? "Unknown"} <span className="text-ink-muted">v</span> {pick.away ?? "Unknown"}
-            </span>
-            <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{latestScore(pick)}</span>
-          </span>
-          <span className="mt-1 flex items-center justify-between gap-3">
-            <span className="truncate text-xs text-ink-muted">
-              {[shortStrategy(pick.strategy), betText(pick.market, pick.selection) ?? "No market set"].join(" · ")}
-            </span>
+          <span className="flex items-center justify-between gap-3">
+            <span className="truncate text-sm font-medium text-ink">{shortStrategy(pick.strategy)}</span>
             <StatusChip pick={pick} admin={admin} />
+          </span>
+          <span className="mt-1 block truncate text-xs text-ink-muted">
+            {[betText(pick.market, pick.selection) ?? "No market set", `at ${fmtTime(pick.firstSeenAt)}`].join(" · ")}
           </span>
         </span>
 
@@ -149,13 +144,52 @@ function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
   );
 }
 
+/** Alerts for the same match share a key, whichever strategy sent them. */
+function matchKey(p: LivePick): string {
+  const name = (s: string | null) => (s ?? "?").toLowerCase().replace(/\s+/g, " ").trim();
+  return `${name(p.home)}|${name(p.away)}`;
+}
+
+/**
+ * One match with every alert it has had: the teams, latest score and league once at the top, then one row per alert.
+ * Several strategies often fire on the same match, and without this the same teams were listed again and again.
+ */
+function MatchGroup({ picks, admin }: { picks: LivePick[]; admin: boolean }) {
+  // picks arrive newest first, so the first holds the latest score and minute.
+  const latest = picks[0]!;
+  const minute = latest.minute !== null ? `${latest.minute}'` : latest.market === "FIRST_HALF_GOALS" ? "Pre-match" : null;
+  const sent = picks.filter((p) => p.sentAt).length;
+  return (
+    <li className="overflow-hidden rounded-xl border border-line bg-surface">
+      <div className="flex items-start justify-between gap-3 border-b border-line bg-surface-2/40 px-3 py-2.5">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold text-ink">
+            {latest.home ?? "Unknown"} <span className="font-normal text-ink-muted">v</span> {latest.away ?? "Unknown"}
+          </h2>
+          <p className="truncate text-xs text-ink-muted">
+            {[latest.competition, minute && `latest alert ${minute}`, `${picks.length} alert${picks.length === 1 ? "" : "s"}`, sent > 0 && `${sent} sent`]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+        <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{latestScore(latest)}</span>
+      </div>
+      <ul className="divide-y divide-line">
+        {picks.map((p) => (
+          <PickRow key={p.id} pick={p} admin={admin} />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 export default function LivePage() {
   const { data, isLoading, error } = useLivePicks(50);
   const admin = useMe().data?.admin === true;
 
   if (isLoading) return <ListSkeleton />;
 
-  const header = <PageHeader title="Live" subtitle="Alerts for matches in play, newest first" />;
+  const header = <PageHeader title="Live" subtitle="Matches in play with their alerts, most recent first" />;
 
   if (error) {
     return (
@@ -170,6 +204,9 @@ export default function LivePage() {
   const inPlay = (data ?? []).filter(
     (p) => p.status !== "settled" && now - new Date(p.firstSeenAt).getTime() < STILL_LIVE_MS,
   );
+  // Grouped by match, in order of each match's newest alert (Map keeps insertion order, and the list is newest first).
+  const matches = new Map<string, LivePick[]>();
+  for (const p of inPlay) (matches.get(matchKey(p)) ?? matches.set(matchKey(p), []).get(matchKey(p))!).push(p);
 
   return (
     <div className="space-y-6 px-4 py-4">
@@ -178,9 +215,9 @@ export default function LivePage() {
       {inPlay.length === 0 ? (
         <EmptyState title="Nothing in play" detail="New alerts appear here as they arrive." />
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-          {inPlay.map((p) => (
-            <PickRow key={p.id} pick={p} admin={admin} />
+        <ul className="space-y-3">
+          {[...matches.entries()].map(([key, picks]) => (
+            <MatchGroup key={key} picks={picks} admin={admin} />
           ))}
         </ul>
       )}

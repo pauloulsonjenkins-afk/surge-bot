@@ -19,13 +19,14 @@ export async function GET(request: Request) {
 
   const strategy = searchParams.get("strategy")?.trim().slice(0, 120) || null;
   // Live / simulation shows which picks were actually bet, so only the admin can split by it; everyone else sees every alert.
+  const admin = await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
   const asked = parsePickMode(searchParams.get("mode"));
-  const mode = asked !== "all" && (await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value)) ? asked : "all";
+  const mode = asked !== "all" && admin ? asked : "all";
 
   try {
-    return NextResponse.json(
-      await cached(`stats:${days}:${strategy ?? ""}:${mode}`, 5000, () => fetchHitRateStats(days, strategy, mode)),
-    );
+    const stats = await cached(`stats:${days}:${strategy ?? ""}:${mode}`, 5000, () => fetchHitRateStats(days, strategy, mode));
+    // The return on stakes is a money figure, so only the admin sees it; the odds, break-even and range are for everyone.
+    return NextResponse.json(admin || !stats.context ? stats : { ...stats, context: { ...stats.context, roi: null } });
   } catch (err) {
     return engineUnavailable("api/stats", err);
   }

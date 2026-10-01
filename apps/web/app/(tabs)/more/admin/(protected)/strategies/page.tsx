@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
-import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, type AdminStrategy } from "@/queries/use-strategies";
+import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
 import { useFreshStart } from "@/queries/use-fresh-start";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 import { marketName } from "@/lib/markets";
@@ -10,6 +10,9 @@ import { gbp } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { ModeBadge, ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
+import { useDialog } from "@/components/ui/ConfirmDialog";
+import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
+import { EquityCurve } from "@/components/admin/EquityCurve";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -27,13 +30,6 @@ function modeOf(row: AdminStrategy): "live" | "sim" {
 /** Below this many priced picks a return is too noisy to act on. */
 const SAMPLE = 50;
 
-/** 0.124 -> "+12.4%": the return on each £1 staked. */
-function roiText(roi: number | null): string {
-  if (roi === null) return "–";
-  const pct = Math.round(roi * 1000) / 10;
-  return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct)}%`;
-}
-
 function roiTone(roi: number | null): string {
   return roi === null || roi === 0 ? "text-ink" : roi > 0 ? "text-hit" : "text-loss";
 }
@@ -43,6 +39,8 @@ function returnsFor(row: AdminStrategy, mode: "all" | "live" | "sim") {
   const r = row.returns;
   if (!r) return null;
   if (mode !== "all") return r[mode];
+  if (r.all) return r.all;
+  // An older engine sends no "all" figures; add the two together.
   const staked = r.live.staked + r.sim.staked;
   const profit = r.live.profit + r.sim.profit;
   return { settled: r.live.settled + r.sim.settled, counted: r.live.counted + r.sim.counted, staked, profit, roi: staked > 0 ? profit / staked : null };
@@ -77,6 +75,24 @@ function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | 
   }
   return null;
 }
+/**
+ * What the hit rate needs beside it: the odds it was won at, the hit rate those odds need to break even after
+ * commission, and the range the true hit rate is probably in, given how few picks there are.
+ */
+function OddsContext({ hitRate, money }: { hitRate: number | null; money: NonNullable<ReturnType<typeof returnsFor>> }) {
+  const m = money as StrategyReturn;
+  if (m.avgOdds === undefined) return null; // older engine
+  const verdict = againstBreakeven(hitRate, m.breakeven, m.range);
+  const range = rangeText(m.range);
+  return (
+    <p className="mt-1 text-xs text-ink-muted">
+      {m.avgOdds === null ? "Odds unknown: set assumed odds on Win/Loss" : `Avg odds ${m.avgOdds.toFixed(2)} · break-even ${m.breakeven}%`}
+      {range && ` · likely ${range}`}
+      {verdict && <span className={verdict.tone === "hit" ? "text-hit" : verdict.tone === "loss" ? "text-loss" : ""}> · {verdict.text}</span>}
+    </p>
+  );
+}
+
 function StrategyCard({
   row,
   all,
@@ -103,6 +119,7 @@ function StrategyCard({
   onDelete: () => void;
 }) {
   const [merging, setMerging] = useState(false);
+  const [showCurve, setShowCurve] = useState(false);
   const [target, setTarget] = useState("");
   const pickMode = usePickMode();
   const live = record(row.liveHits ?? 0, row.liveMisses ?? 0);
@@ -159,6 +176,7 @@ function StrategyCard({
         {pickMode === "all" && ` · ${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"}`}
         {settled > 0 && settled < SAMPLE ? " · small sample" : ""} · last {lastSeen.format(new Date(row.lastAlertAt))}
       </p>
+      {money && money.settled > 0 && <OddsContext hitRate={hitRate} money={money} />}
       {/* Live and simulation side by side, so a strategy's real results can be checked against what it does unbet. */}
       {(live.settled > 0 || sim.settled > 0) && (
         <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
@@ -187,6 +205,23 @@ function StrategyCard({
         </dl>
       )}
       {hint && <p className={`mt-2 text-xs ${hint.tone === "good" ? "text-hit" : "text-warn"}`}>{hint.text}</p>}
+      {money && money.counted > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            aria-expanded={showCurve}
+            onClick={() => setShowCurve((v) => !v)}
+            className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
+          >
+            {showCurve ? "Hide equity curve" : "Equity curve and drawdown"}
+          </button>
+          {showCurve && (
+            <div className="mt-2">
+              <EquityCurve label={row.label} mode={pickMode} />
+            </div>
+          )}
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{row.mergedInto}”</span>}
         {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.join(", ")}</span>}
@@ -279,6 +314,7 @@ export default function StrategiesPage() {
   const remove = useDeleteStrategyFlow();
   const ignore = useIgnoreStrategy();
   const removeMany = useDeleteStrategy();
+  const dialog = useDialog();
   const { data: freshAt } = useFreshStart();
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -296,7 +332,7 @@ export default function StrategiesPage() {
   }, [strategies]);
 
   function deleteStrategy(row: AdminStrategy) {
-    remove.run(row.label, { alerts: row.alerts, sent: row.sent });
+    void remove.run(row.label, { alerts: row.alerts, sent: row.sent });
   }
 
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -321,19 +357,38 @@ export default function StrategiesPage() {
     if (chosen.length === 0) return;
     const alerts = chosen.reduce((n, s) => n + s.alerts, 0);
     const sent = chosen.reduce((n, s) => n + s.sent, 0);
-    const ok = window.confirm(
-      `Delete ${chosen.length} strateg${chosen.length === 1 ? "y" : "ies"}?\n\n` +
-        chosen.map((s) => `• ${s.label}`).join("\n") +
-        `\n\nTheir ${alerts} saved alert${alerts === 1 ? "" : "s"} are deleted for good, so they disappear from the Dashboard, Live, Strategies, Trade Log and Win/Loss.` +
-        (sent > 0 ? `\n\n${sent} were already sent to bet. Those are kept as records but taken out of every result and figure (unless sent in the last 2 hours).` : "") +
-        `\n\nNothing changes in your betting software. If one of these names ever arrives again, it will reappear.`,
-    );
+    const many = `${chosen.length} strateg${chosen.length === 1 ? "y" : "ies"}`;
+    const ok = await dialog.confirm({
+      title: `Delete ${many}?`,
+      tone: "danger",
+      confirmLabel: `Delete ${many}`,
+      details: chosen.map((s) => ({ label: s.label, value: `${s.alerts} alert${s.alerts === 1 ? "" : "s"}` })),
+      body: (
+        <>
+          <p>
+            Their {alerts} saved alert{alerts === 1 ? "" : "s"} are deleted for good, so they disappear from the Dashboard, Live, Strategies, Trade
+            Log and Win/Loss.
+          </p>
+          {sent > 0 && (
+            <p>
+              <strong>{sent} were already sent to bet.</strong> Those are kept as records but taken out of every result and figure (unless sent in
+              the last 2 hours).
+            </p>
+          )}
+          <p>Nothing changes in your betting software. If one of these names ever arrives again, it will reappear.</p>
+        </>
+      ),
+    });
     if (!ok) return;
     const includeSent =
       sent > 0 &&
-      window.confirm(
-        `Also delete the ${sent} sent record${sent === 1 ? "" : "s"} for good?\n\nOK = delete them too, so these strategies disappear completely from every list. Records of picks sent today are kept until tomorrow.\nCancel = keep them as records; the strategies will still show in the lists.`,
-      );
+      (await dialog.confirm({
+        title: `Also delete the ${sent} sent record${sent === 1 ? "" : "s"}?`,
+        tone: "danger",
+        confirmLabel: `Delete ${sent} sent record${sent === 1 ? "" : "s"}`,
+        cancelLabel: "Keep as records",
+        body: <p>Deleting them makes these strategies disappear completely from every list. Records of picks sent today are kept until tomorrow.</p>,
+      }));
     setBulkBusy(true);
     setBulkMessage(null);
     let done = 0;
@@ -355,9 +410,20 @@ export default function StrategiesPage() {
 
   async function clearIgnored() {
     if (ignored.length === 0) return;
-    const ok = window.confirm(
-      `Clear the ignored list?\n\n${ignored.map((n) => `• ${n}`).join("\n")}\n\nNew alerts with these names would be stored again. Only do this if they will never be used.`,
-    );
+    const ok = await dialog.confirm({
+      title: "Clear the ignored list?",
+      confirmLabel: `Stop ignoring ${ignored.length}`,
+      body: (
+        <>
+          <ul className="list-disc pl-5 text-ink">
+            {ignored.map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+          <p>New alerts with these names would be stored again. Only do this if they will never be used.</p>
+        </>
+      ),
+    });
     if (!ok) return;
     setBulkBusy(true);
     try {

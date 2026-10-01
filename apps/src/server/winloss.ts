@@ -28,7 +28,7 @@
  */
 import type { EngineDb, PickMode } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
-import { priceResult } from "./pricing";
+import { breakevenHitRate, hitRateRange, oddsFor, priceResult } from "./pricing";
 
 export interface WinLossSettings {
   /** Betfair commission on winnings, in percent. */
@@ -368,44 +368,191 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
 export interface StrategyReturn {
   /** Settled picks in this mode. */
   settled: number;
+  hits: number;
   /** Of those, the ones that could be priced (stake and odds known, and for Sim, placed under the feed's rules). */
   counted: number;
   staked: number;
   profit: number;
   /** Profit per pound staked (0.12 = 12p back for every £1), or null when nothing was staked. */
   roi: number | null;
+  /** Mean odds of the settled picks whose price is known (alert price, else the strategy's assumed odds). */
+  avgOdds: number | null;
+  /** Hit rate needed to break even at avgOdds after commission, percent. */
+  breakeven: number | null;
+  /** Where the true hit rate probably is (95% range), percents. */
+  range: { low: number; high: number } | null;
+  /** Biggest fall in £ from a high point of the running profit to a later low. Positive number, 0 when it never fell. */
+  maxDrawdown: number;
+  /** Most losing picks in a row, ever. */
+  longestLosingRun: number;
+  /** Worst UK day in £, or null with nothing priced. */
+  worstDay: { day: string; profit: number } | null;
+  /** Most losing picks in a row inside one UK day (what the daily "losses in a row" stop counts). */
+  worstDayRun: number;
 }
 
-/**
- * Live and Sim returns for every strategy (keyed by lower-case name), for the Strategies page. Worked out pick by
- * pick exactly as Win/Loss does, so the two always agree. Merged strategies are not combined here.
- */
-export function computeStrategyReturns(db: EngineDb): Record<string, { live: StrategyReturn; sim: StrategyReturn }> {
+/** One pick on a strategy's equity curve. */
+export interface EquityPoint {
+  at: string;
+  result: "hit" | "miss";
+  profit: number;
+  /** Running profit after this pick. */
+  total: number;
+}
+
+type ResultRow = ReturnType<EngineDb["listResultsForWinLoss"]>[number];
+
+/** Builds a StrategyReturn pick by pick, in time order. */
+class ReturnTally {
+  private settled = 0;
+  private hits = 0;
+  private counted = 0;
+  private staked = 0;
+  private profit = 0;
+  private oddsSum = 0;
+  private oddsN = 0;
+  private peak = 0;
+  private maxDrawdown = 0;
+  private run = 0;
+  private longestRun = 0;
+  private dayRun = 0;
+  private worstDayRun = 0;
+  private lastDay: string | null = null;
+  private days = new Map<string, number>();
+  readonly points: EquityPoint[] = [];
+
+  constructor(private readonly commission: number) {}
+
+  get oddsCount(): number {
+    return this.oddsN;
+  }
+
+  add(r: ResultRow, priced: ReturnType<typeof priceResult>, odds: number | null): void {
+    const day = ukDay.format(new Date(r.firstSeenAt));
+    this.settled++;
+    if (r.result === "hit") this.hits++;
+    if (odds !== null) {
+      this.oddsSum += odds;
+      this.oddsN++;
+    }
+    // Losing runs count every settled pick, priced or not: a miss is a miss.
+    if (day !== this.lastDay) this.dayRun = 0;
+    this.lastDay = day;
+    if (r.result === "miss") {
+      this.run++;
+      this.dayRun++;
+      this.longestRun = Math.max(this.longestRun, this.run);
+      this.worstDayRun = Math.max(this.worstDayRun, this.dayRun);
+    } else {
+      this.run = 0;
+      this.dayRun = 0;
+    }
+    if (priced.kind !== "priced") return;
+    this.counted++;
+    this.staked += priced.stake;
+    this.profit += priced.profit;
+    this.peak = Math.max(this.peak, this.profit);
+    this.maxDrawdown = Math.max(this.maxDrawdown, this.peak - this.profit);
+    this.days.set(day, (this.days.get(day) ?? 0) + priced.profit);
+    this.points.push({ at: r.firstSeenAt, result: r.result, profit: r2(priced.profit), total: r2(this.profit) });
+  }
+
+  result(): StrategyReturn {
+    const staked = r2(this.staked);
+    const profit = r2(this.profit);
+    const avgOdds = this.oddsN > 0 ? Math.round((this.oddsSum / this.oddsN) * 100) / 100 : null;
+    let worstDay: StrategyReturn["worstDay"] = null;
+    for (const [day, p] of this.days) if (worstDay === null || p < worstDay.profit) worstDay = { day, profit: r2(p) };
+    return {
+      settled: this.settled,
+      hits: this.hits,
+      counted: this.counted,
+      staked,
+      profit,
+      roi: staked > 0 ? Math.round((profit / staked) * 1000) / 1000 : null,
+      avgOdds,
+      breakeven: breakevenHitRate(avgOdds, this.commission),
+      range: hitRateRange(this.hits, this.settled),
+      maxDrawdown: r2(this.maxDrawdown),
+      longestLosingRun: this.longestRun,
+      worstDay,
+      worstDayRun: this.worstDayRun,
+    };
+  }
+}
+
+/** Prices any settled pick exactly as Win/Loss does: its £ outcome and the odds it is judged at. */
+export function pricingInputs(db: EngineDb) {
   const settings = getWinLossSettings(db);
   const sending = getSendingSettings(db);
   const commission = settings.commission / 100;
-  const out: Record<string, { live: StrategyReturn; sim: StrategyReturn }> = {};
-  const empty = (): StrategyReturn => ({ settled: 0, counted: 0, staked: 0, profit: 0, roi: null });
+  return {
+    commission,
+    price: (r: ResultRow) => {
+      const key = strategyLabel(r.strategy).toLowerCase();
+      const assumed = settings.assumedOdds[key] ?? null;
+      return { key, priced: priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: assumed, commission }), odds: oddsFor(r, assumed) };
+    },
+  };
+}
 
+/**
+ * Live, Sim and All returns for every strategy (keyed by lower-case name), for the Strategies page. Worked out pick by
+ * pick exactly as Win/Loss does, so the two always agree. Merged strategies are not combined here.
+ */
+export function computeStrategyReturns(db: EngineDb): Record<string, { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }> {
+  const { commission, price } = pricingInputs(db);
+  const tallies = new Map<string, { live: ReturnTally; sim: ReturnTally; all: ReturnTally }>();
   for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z")) {
-    const key = strategyLabel(r.strategy).toLowerCase();
-    const entry = (out[key] ??= { live: empty(), sim: empty() });
-    const bucket = r.sent ? entry.live : entry.sim;
-    bucket.settled++;
-    const priced = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: settings.assumedOdds[key] ?? null, commission });
-    if (priced.kind !== "priced") continue;
-    bucket.counted++;
-    bucket.staked += priced.stake;
-    bucket.profit += priced.profit;
+    const { key, priced, odds } = price(r);
+    let t = tallies.get(key);
+    if (!t) tallies.set(key, (t = { live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) }));
+    (r.sent ? t.live : t.sim).add(r, priced, odds);
+    t.all.add(r, priced, odds);
   }
-  for (const entry of Object.values(out)) {
-    for (const b of [entry.live, entry.sim]) {
-      b.staked = r2(b.staked);
-      b.profit = r2(b.profit);
-      b.roi = b.staked > 0 ? Math.round((b.profit / b.staked) * 1000) / 1000 : null;
-    }
-  }
+  const out: Record<string, { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }> = {};
+  for (const [key, t] of tallies) out[key] = { live: t.live.result(), sim: t.sim.result(), all: t.all.result() };
   return out;
+}
+
+/** One strategy's running profit, pick by pick, with the same figures as computeStrategyReturns. */
+export function computeStrategyEquity(db: EngineDb, label: string, mode: PickMode): { points: EquityPoint[]; summary: StrategyReturn } {
+  const { commission, price } = pricingInputs(db);
+  const wanted = strategyLabel(label).toLowerCase();
+  const t = new ReturnTally(commission);
+  for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z")) {
+    if ((mode === "live" && !r.sent) || (mode === "sim" && r.sent)) continue;
+    const { key, priced, odds } = price(r);
+    if (key === wanted) t.add(r, priced, odds);
+  }
+  return { points: t.points, summary: t.result() };
+}
+
+/** What a headline hit rate needs beside it to be judged: the odds it was won at, the hit rate those odds need, and its range. */
+export interface HitRateContext {
+  settled: number;
+  hits: number;
+  range: { low: number; high: number } | null;
+  /** Settled picks whose price is known, and their mean odds. */
+  oddsKnown: number;
+  avgOdds: number | null;
+  breakeven: number | null;
+  /** Picks that could be priced in £, and the return on each £1 staked on them. */
+  counted: number;
+  roi: number | null;
+}
+
+/** The Dashboard's hit-rate context, over exactly the settled picks its hit rate counts (ids from EngineDb.statsSettledIds). */
+export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: string | null): HitRateContext {
+  const { commission, price } = pricingInputs(db);
+  const t = new ReturnTally(commission);
+  for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
+    if (!ids.has(r.id)) continue;
+    const { priced, odds } = price(r);
+    t.add(r, priced, odds);
+  }
+  const s = t.result();
+  return { settled: s.settled, hits: s.hits, range: s.range, oddsKnown: t.oddsCount, avgOdds: s.avgOdds, breakeven: s.breakeven, counted: s.counted, roi: s.roi };
 }
 
 /**

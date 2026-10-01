@@ -13,6 +13,13 @@ const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-san
 export const metadata: Metadata = {
   title: "Goal Brewing Alerts",
   description: "Live in-play football alerts.",
+  applicationName: "Goal Brewing Alerts",
+  // Opened from the home screen, iOS shows it full screen under a black status bar (not see-through, so nothing hides behind the notch).
+  appleWebApp: { capable: true, title: "Goal Brewing", statusBarStyle: "black" },
+  icons: {
+    icon: [{ url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" }, { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {

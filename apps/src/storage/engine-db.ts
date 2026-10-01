@@ -12,6 +12,9 @@
  *                        alert after full time, the same row is updated with the
  *                        result instead of a duplicate being added. The Dashboard,
  *                        Trade Log and Strategies pages are all computed from it.
+ *   betfair_bets         settled bets imported from the betting software's bet history, each linked to the
+ *                        pick it was placed for (see betfair/reconcile.ts). Keyed by the bet id, so importing
+ *                        the same history twice changes nothing.
  *
  * The file lives on the container's disk, which DigitalOcean wipes on every
  * redeploy or restart. BackupScheduler copies it to your Space after each
@@ -294,6 +297,30 @@ export interface LivePick {
   rawText: string;
 }
 
+/** One bet from the betting software's bet history, as imported. */
+export interface BetfairBet {
+  betId: string;
+  placedAt: string | null;
+  settledAt: string | null;
+  event: string;
+  market: string | null;
+  selection: string | null;
+  /** "back" or "lay" when the export says. */
+  side: string | null;
+  /** The tipster / provider column, when the export has one (the bet feed's Provider is the strategy). */
+  provider: string | null;
+  /** settled = won or lost; unmatched = nothing matched (lapsed, cancelled, unmatched); void = voided or refunded. */
+  status: "won" | "lost" | "unmatched" | "void";
+  /** Stake asked for. */
+  stake: number | null;
+  /** Stake actually matched. */
+  matched: number | null;
+  /** Average price matched. */
+  odds: number | null;
+  /** Profit or loss on the bet in £, as the export gives it. */
+  profit: number | null;
+}
+
 /** One website user as stored. pages is the raw JSON text; server/users.ts parses and checks it. */
 export interface AppUserRow {
   id: number;
@@ -391,6 +418,25 @@ export class EngineDb {
         venue        TEXT,
         pulled_at    TEXT NOT NULL,
         PRIMARY KEY (uk_date, fixture_id)
+      );
+
+      -- Real bets from the betting software's bet history export (see betfair/reconcile.ts).
+      CREATE TABLE IF NOT EXISTS betfair_bets (
+        bet_id        TEXT PRIMARY KEY,
+        placed_at     TEXT,
+        settled_at    TEXT,
+        event         TEXT NOT NULL,
+        market        TEXT,
+        selection     TEXT,
+        side          TEXT,
+        provider      TEXT,
+        status        TEXT NOT NULL,
+        stake         REAL,
+        matched       REAL,
+        odds          REAL,
+        profit        REAL,
+        pick_id       INTEGER,
+        imported_at   TEXT NOT NULL
       );
 
       -- Website users who signed up. Passwords are stored only as salted scrypt hashes.
@@ -718,27 +764,27 @@ export class EngineDb {
   }
 
   /**
-   * Hit-rate figures over the last `days` days (null = all time), by strategy,
-   * league and UK calendar day. A pick counts as a hit or miss only when the
-   * alert itself carries a Hit/Miss marker, so nothing here is guessed.
+   * The picks the Dashboard's figures count over the last `days` days: not excluded, in the mode, with hidden or reset
+   * leagues left out and, optionally, only one strategy (as reported, after merges).
    */
-  hitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all"): HitRateStats {
+  private statsRows(days: number | null, strategy: string | null, mode: PickMode) {
     const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
     const allRows = (
       since === null
-        ? this.db.prepare(`SELECT first_seen_at, strategy, market, competition, minute, country,
+        ? this.db.prepare(`SELECT id, first_seen_at, strategy, market, competition, minute, country,
                   COALESCE(result_override, result) AS result,
                   CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
            FROM live_picks WHERE excluded = 0${modeSql(mode)} ORDER BY id`).all()
         : this.db
             .prepare(
-              `SELECT first_seen_at, strategy, market, competition, minute, country,
+              `SELECT id, first_seen_at, strategy, market, competition, minute, country,
                       COALESCE(result_override, result) AS result,
                       CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
                FROM live_picks WHERE first_seen_at >= ? AND excluded = 0${modeSql(mode)} ORDER BY id`,
             )
             .all(since)
     ) as Array<{
+      id: number;
       first_seen_at: string;
       strategy: string;
       market: string | null;
@@ -754,6 +800,22 @@ export class EngineDb {
     const merges = this.readStrategyMerges();
     const wanted = strategy?.trim().toLowerCase() || null;
     const rows = wanted ? visibleRows.filter((r) => reportLabel(merges, r.strategy).toLowerCase() === wanted) : visibleRows;
+    return rows;
+  }
+
+  /** Ids of the settled picks hitRateStats counts as hits and misses, so other figures can use exactly the same picks. */
+  statsSettledIds(days: number | null, strategy: string | null = null, mode: PickMode = "all"): Set<number> {
+    return new Set(this.statsRows(days, strategy, mode).filter((r) => r.result === "hit" || r.result === "miss").map((r) => r.id));
+  }
+
+  /**
+   * Hit-rate figures over the last `days` days (null = all time), by strategy,
+   * league and UK calendar day. A pick counts as a hit or miss only when the
+   * alert itself carries a Hit/Miss marker, so nothing here is guessed.
+   */
+  hitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all"): HitRateStats {
+    const rows = this.statsRows(days, strategy, mode);
+    const merges = this.readStrategyMerges();
 
     let hits = 0;
     let misses = 0;
@@ -1331,6 +1393,79 @@ export class EngineDb {
         sent: r.sent_at !== null,
         sim: r.sent_at === null ? parseSimRow(r.sim_row) : null,
       };
+    });
+  }
+
+  // ---- Betfair reconciliation ---------------------------------------------------------------
+
+  /** Adds imported bets, or updates ones already stored (a bet can move from unmatched to settled). Keeps any pick link. */
+  saveBetfairBets(bets: BetfairBet[], importedAt: string): { added: number; updated: number } {
+    const exists = this.db.prepare(`SELECT 1 FROM betfair_bets WHERE bet_id = ?`);
+    const upsert = this.db.prepare(
+      `INSERT INTO betfair_bets (bet_id, placed_at, settled_at, event, market, selection, side, provider, status, stake, matched, odds, profit, imported_at)
+       VALUES (@betId, @placedAt, @settledAt, @event, @market, @selection, @side, @provider, @status, @stake, @matched, @odds, @profit, @importedAt)
+       ON CONFLICT(bet_id) DO UPDATE SET placed_at = excluded.placed_at, settled_at = excluded.settled_at, event = excluded.event,
+         market = excluded.market, selection = excluded.selection, side = excluded.side, provider = excluded.provider,
+         status = excluded.status, stake = excluded.stake, matched = excluded.matched, odds = excluded.odds, profit = excluded.profit,
+         imported_at = excluded.imported_at`,
+    );
+    let added = 0;
+    let updated = 0;
+    this.db.transaction(() => {
+      for (const b of bets) {
+        if (exists.get(b.betId)) updated++;
+        else added++;
+        upsert.run({ ...b, importedAt });
+      }
+    })();
+    if (bets.length > 0) this.onChange();
+    return { added, updated };
+  }
+
+  listBetfairBets(): Array<BetfairBet & { pickId: number | null; importedAt: string }> {
+    const rows = this.db.prepare(`SELECT * FROM betfair_bets ORDER BY COALESCE(placed_at, settled_at), bet_id`).all() as Array<Record<string, unknown>>;
+    const num = (v: unknown) => (typeof v === "number" ? v : null);
+    const str = (v: unknown) => (typeof v === "string" ? v : null);
+    return rows.map((r) => ({
+      betId: String(r.bet_id),
+      placedAt: str(r.placed_at),
+      settledAt: str(r.settled_at),
+      event: String(r.event),
+      market: str(r.market),
+      selection: str(r.selection),
+      side: str(r.side),
+      provider: str(r.provider),
+      status: String(r.status) as BetfairBet["status"],
+      stake: num(r.stake),
+      matched: num(r.matched),
+      odds: num(r.odds),
+      profit: num(r.profit),
+      pickId: num(r.pick_id),
+      importedAt: String(r.imported_at),
+    }));
+  }
+
+  linkBetfairBets(links: Array<{ betId: string; pickId: number | null }>): void {
+    const upd = this.db.prepare(`UPDATE betfair_bets SET pick_id = ? WHERE bet_id = ?`);
+    this.db.transaction(() => {
+      for (const l of links) upd.run(l.pickId, l.betId);
+    })();
+    if (links.length > 0) this.onChange();
+  }
+
+  /** Every pick ever handed to the bet feed, with the row it was sent as. */
+  listSentPicks(): Array<{ id: number; strategy: string; sentAt: string; firstSeenAt: string; home: string | null; away: string | null; sentRow: { eventName?: string; selectionName?: string; provider?: string; stake?: number } | null }> {
+    const rows = this.db
+      .prepare(`SELECT id, strategy, sent_at, first_seen_at, home, away, sent_row FROM live_picks WHERE sent_at IS NOT NULL ORDER BY sent_at, id`)
+      .all() as Array<{ id: number; strategy: string; sent_at: string; first_seen_at: string; home: string | null; away: string | null; sent_row: string | null }>;
+    return rows.map((r) => {
+      let sentRow = null;
+      try {
+        sentRow = r.sent_row ? (JSON.parse(r.sent_row) as { eventName?: string; selectionName?: string; provider?: string; stake?: number }) : null;
+      } catch {
+        // leave as null
+      }
+      return { id: r.id, strategy: r.strategy, sentAt: r.sent_at, firstSeenAt: r.first_seen_at, home: r.home, away: r.away, sentRow };
     });
   }
 

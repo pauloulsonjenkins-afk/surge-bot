@@ -6,25 +6,43 @@ import { QueryError } from "@/components/ui/QueryError";
 import TelegramConnection from "@/components/admin/TelegramConnection";
 import { usePublicView, useSetPublicView } from "@/queries/use-access";
 import { useFreshStart, useSetFreshStart } from "@/queries/use-fresh-start";
+import { useDialog } from "@/components/ui/ConfirmDialog";
 
 const freshFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 function FreshStartCard() {
   const { data: at, isLoading, error } = useFreshStart();
   const save = useSetFreshStart();
+  const dialog = useDialog();
 
   if (error) return <QueryError error={error} next="/more/admin/settings" />;
   if (isLoading || at === undefined) return <Skeleton className="h-32 w-full" />;
 
-  function start() {
-    const ok = window.confirm(
-      "Start fresh from now?\n\nThe Dashboard, strategy hit rates, Win/Loss and profit figures will count only alerts from this moment on, so they all start at zero.\n\nNothing is deleted: the Results page, Trade Log and your settings (stakes, minimum odds, switches) are untouched, and you can undo this at any time to bring the old figures back.\n\nStop loss counts also restart from now.",
-    );
+  async function start() {
+    const ok = await dialog.confirm({
+      title: "Start fresh from now?",
+      confirmLabel: "Start fresh from now",
+      body: (
+        <>
+          <p>The Dashboard, strategy hit rates, Win/Loss and profit figures will count only alerts from this moment on, so they all start at zero.</p>
+          <p>
+            <strong>Nothing is deleted.</strong> The Results page, Trade Log and your settings (stakes, minimum odds, switches) are untouched, and you
+            can undo this at any time to bring the old figures back.
+          </p>
+          <p>Stop loss counts also restart from now.</p>
+        </>
+      ),
+    });
     if (ok) save.mutate(true);
   }
 
-  function undo() {
-    if (window.confirm("Bring the old figures back?\n\nEverything counts from the very beginning again.")) save.mutate(false);
+  async function undo() {
+    const ok = await dialog.confirm({
+      title: "Bring the old figures back?",
+      confirmLabel: "Count from the beginning",
+      body: <p>Everything counts from the very beginning again.</p>,
+    });
+    if (ok) save.mutate(false);
   }
 
   return (
@@ -73,16 +91,24 @@ function FreshStartCard() {
 function PublicViewCard() {
   const { data: publicView, isLoading, error } = usePublicView();
   const save = useSetPublicView();
+  const dialog = useDialog();
 
   if (error) return <QueryError error={error} next="/more/admin/settings" />;
   if (isLoading || publicView === undefined) return <Skeleton className="h-40 w-full" />;
 
-  function toggle() {
+  async function toggle() {
     const turningOn = !publicView;
     if (turningOn) {
-      const ok = window.confirm(
-        "Turn the public view ON?\n\nAnyone with your site's address will be able to see your picks, results and hit rates without signing in. Your stakes and the alert text stay private.",
-      );
+      const ok = await dialog.confirm({
+        title: "Turn the public view on?",
+        confirmLabel: "Make pages public",
+        body: (
+          <p>
+            Anyone with your site’s address will be able to see your picks, results and hit rates without signing in. Your stakes and the alert text
+            stay private.
+          </p>
+        ),
+      });
       if (!ok) return;
     }
     save.mutate(turningOn);

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RawAlerts } from "@/components/admin/RawAlerts";
 import { QueryError } from "@/components/ui/QueryError";
+import { useDialog } from "@/components/ui/ConfirmDialog";
 import { betText } from "@/lib/markets";
 import { usePickDays, useAdminPicksWindow, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
 
@@ -44,23 +45,40 @@ function SettledPicks() {
   const { data, isLoading, error } = useAdminPicksWindow(range);
   const setResult = useSetPickResult();
   const setExcluded = useSetPickExcluded();
+  const dialog = useDialog();
 
-  function change(pick: LivePick, result: "hit" | "miss" | null) {
-    const wording =
-      result === null
-        ? "Put back the result the alert itself gave?"
-        : `Set this result to ${result === "hit" ? "Hit" : "Miss"}?`;
-    const ok = window.confirm(
-      `${wording}\n\n${pick.home ?? "?"} v ${pick.away ?? "?"}\n\nThe Dashboard, Strategies and Trade Log will use it. Nothing changes in your betting software.`,
-    );
+  async function change(pick: LivePick, result: "hit" | "miss" | null) {
+    const ok = await dialog.confirm({
+      title: result === null ? "Put back the alert’s own result?" : `Set this result to ${result === "hit" ? "Hit" : "Miss"}?`,
+      confirmLabel: result === null ? "Put back the alert’s result" : `Mark as ${result === "hit" ? "Hit" : "Miss"}`,
+      details: [{ label: "Match", value: `${pick.home ?? "?"} v ${pick.away ?? "?"}` }],
+      body: <p>The Dashboard, Strategies and Trade Log will use it. Nothing changes in your betting software.</p>,
+    });
     if (ok) setResult.mutate({ id: pick.id, result });
   }
 
-  function toggleExcluded(pick: LivePick) {
-    const wording = pick.excluded
-      ? "Put this pick back into your results and stats?"
-      : "Remove this pick from your results?\n\nUse this when the bet was wrong or never actually went on. It comes out of the Dashboard, Trade Log and Win/Loss straight away. The original alert stays on the Raw alerts tab, and you can put it back at any time.";
-    const ok = window.confirm(`${wording}\n\n${pick.home ?? "?"} v ${pick.away ?? "?"}`);
+  async function toggleExcluded(pick: LivePick) {
+    const ok = await dialog.confirm(
+      pick.excluded
+        ? {
+            title: "Put this pick back into your results?",
+            confirmLabel: "Put back",
+            details: [{ label: "Match", value: `${pick.home ?? "?"} v ${pick.away ?? "?"}` }],
+            body: <p>It counts again on the Dashboard, Trade Log and Win/Loss.</p>,
+          }
+        : {
+            title: "Remove this pick from your results?",
+            tone: "danger",
+            confirmLabel: "Remove from results",
+            details: [{ label: "Match", value: `${pick.home ?? "?"} v ${pick.away ?? "?"}` }],
+            body: (
+              <>
+                <p>Use this when the bet was wrong or never actually went on. It comes out of the Dashboard, Trade Log and Win/Loss straight away.</p>
+                <p>The original alert stays on the Raw alerts tab, and you can put it back at any time.</p>
+              </>
+            ),
+          },
+    );
     if (ok) setExcluded.mutate({ id: pick.id, excluded: !pick.excluded });
   }
 

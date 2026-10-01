@@ -224,6 +224,23 @@ export interface HitRateStats {
   byLeague: HitRateRow[];
   byMinute: HitRateRow[];
   daily: Array<{ date: string; hits: number; misses: number; hitRate: number | null }>;
+  /** What the hit rate needs beside it to be judged (missing on an older engine). roi is only sent to the admin. */
+  context?: HitRateContext;
+}
+
+/** Mirrors HitRateContext in the engine's winloss.ts. */
+export interface HitRateContext {
+  settled: number;
+  hits: number;
+  /** 95% range of the true hit rate, percents. */
+  range: { low: number; high: number } | null;
+  oddsKnown: number;
+  avgOdds: number | null;
+  /** Hit rate needed to break even at avgOdds after commission, percent. */
+  breakeven: number | null;
+  counted: number;
+  /** Return per £1 staked; null for anyone but the admin. */
+  roi: number | null;
 }
 
 /**
@@ -722,17 +739,75 @@ export interface AdminStrategy {
   mode: "live" | "sim";
   stake: number | null;
   /** Money figures, all time, split into live and sim (missing on an older engine). */
-  returns?: { live: StrategyReturn; sim: StrategyReturn } | null;
+  returns?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn } | null;
 }
 
-/** Mirrors StrategyReturn in the engine's winloss.ts. */
+/** Mirrors StrategyReturn in the engine's winloss.ts. The fields after roi are missing on an older engine. */
 export interface StrategyReturn {
   settled: number;
+  hits?: number;
   counted: number;
   staked: number;
   profit: number;
   /** Profit per pound staked (0.12 = 12p back for every £1), or null when nothing was staked. */
   roi: number | null;
+  avgOdds?: number | null;
+  /** Hit rate needed to break even at avgOdds after commission, percent. */
+  breakeven?: number | null;
+  range?: { low: number; high: number } | null;
+  /** Biggest fall in £ from a high point of running profit. */
+  maxDrawdown?: number;
+  longestLosingRun?: number;
+  worstDay?: { day: string; profit: number } | null;
+  /** Most losses in a row within one UK day. */
+  worstDayRun?: number;
+}
+
+/** One pick on a strategy's equity curve. Mirrors EquityPoint in the engine's winloss.ts. */
+export interface EquityPoint {
+  at: string;
+  result: "hit" | "miss";
+  profit: number;
+  total: number;
+}
+
+export interface StrategyEquity {
+  label: string;
+  points: EquityPoint[];
+  summary: StrategyReturn;
+}
+
+/** GET or POST to an /internal route on the engine, as the admin site. */
+async function engineCall<T>(path: string, what: string, init: { method?: "GET" | "POST"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), init.timeoutMs ?? 8000);
+  try {
+    const res = await fetch(`${baseUrl}${path}`, {
+      method: init.method ?? "GET",
+      headers: { Authorization: `Bearer ${internalKey}`, ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      throw new Error(body.message ?? body.error ?? `Engine responded ${res.status} for ${what}.`);
+    }
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function fetchStrategyEquity(label: string, mode: PickMode): Promise<StrategyEquity> {
+  const q = new URLSearchParams({ label });
+  if (mode !== "all") q.set("mode", mode);
+  return engineCall<StrategyEquity>(`/internal/strategies/equity?${q}`, "the equity curve");
 }
 
 export interface AdminStrategies {
@@ -873,4 +948,50 @@ export async function setStrategyIgnored(label: string, ignored: boolean): Promi
   } finally {
     clearTimeout(timeout);
   }
+}
+// ---- Betfair reconciliation (mirrors betfair/reconcile.ts in the engine) ----
+
+export interface BetImportSummary {
+  at: string;
+  source: string;
+  rows: number;
+  added: number;
+  updated: number;
+  skipped: number;
+  linked: number;
+  /** Which column of the file was read for each field. */
+  columns: Record<string, string>;
+  /** Columns in the file that weren't used. */
+  unused: string[];
+}
+
+export interface ReconcileStrategy {
+  label: string;
+  sent: number;
+  matched: number;
+  unmatchedRate: number | null;
+  compared: number;
+  estimatedProfit: number;
+  actualProfit: number;
+  slippage: number | null;
+  slippageBets: number;
+  resultMismatches: number;
+}
+
+export interface ReconcileReport {
+  lastImport: BetImportSummary | null;
+  coverage: { from: string; to: string } | null;
+  strategies: ReconcileStrategy[];
+  totals: { sent: number; matched: number; compared: number; estimatedProfit: number; actualProfit: number };
+  unlinked: Array<{ betId: string; placedAt: string | null; event: string; selection: string | null; status: string; profit: number | null }>;
+  importTokenConfigured: boolean;
+}
+
+export function fetchReconcile(): Promise<ReconcileReport> {
+  return engineCall<ReconcileReport>("/internal/betfair/reconcile", "the reconciliation");
+}
+
+/** Sends an exported bet history to the engine. Throws the engine's reason when the file can't be read. */
+export function importBetHistory(csv: string, source: string): Promise<BetImportSummary> {
+  return engineCall<BetImportSummary>("/internal/betfair/import", "the import", { method: "POST", body: { csv, source }, timeoutMs: 30_000 });
 }
