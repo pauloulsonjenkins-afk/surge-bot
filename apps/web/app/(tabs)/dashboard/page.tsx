@@ -16,6 +16,7 @@ import { PerformanceSection } from "@/components/dashboard/PerformanceSection";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
+import { useMe } from "@/queries/use-me";
 
 /**
  * The breakdowns from the plain hit-rate stats, used until the per-league performance figures have loaded
@@ -67,6 +68,7 @@ export default function DashboardPage() {
   const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
   const [strategy, setStrategy] = useState<string | null>(null);
   const mode = usePickMode();
+  const { data: me } = useMe();
   const { data, isLoading, error } = useHitRateStats(days, strategy, mode);
   const performance = usePerformanceCells(days, mode);
   const performanceCells = performance.data ?? [];
@@ -81,13 +83,16 @@ export default function DashboardPage() {
               <span className="lg:hidden">
                 <ThemeToggle />
               </span>
-              <Link
-                href="/more/admin/sending"
-                className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink lg:hidden"
-              >
-                <Lock size={13} />
-                Admin
-              </Link>
+              {/* Signed out: the way into the admin area. Once signed in as admin, phones get it here too; wide screens list the admin pages in the sidebar. */}
+              {me && (
+                <Link
+                  href={me.admin ? "/more/admin/sending" : "/more/admin/login"}
+                  className={`flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink ${me.admin ? "lg:hidden" : ""}`}
+                >
+                  <Lock size={13} />
+                  {me.admin ? "Admin" : "Admin sign in"}
+                </Link>
+              )}
             </>
           }
         />

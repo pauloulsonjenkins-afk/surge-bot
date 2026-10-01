@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, LogIn } from "lucide-react";
 import { useVisibleTabs } from "./BottomNav";
 import { useMe } from "@/queries/use-me";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
@@ -45,6 +45,14 @@ export default function SideNav() {
             );
           })}
         </ul>
+
+        {/* Signed out (or signed in as a website user): the way into the admin area, which otherwise has no link on wide screens. */}
+        {me && !me.admin && (
+          <Link href="/more/admin/login" className={`${itemCls(pathname.startsWith("/more/admin"))} mt-6`}>
+            <LogIn size={18} strokeWidth={1.8} />
+            Admin sign in
+          </Link>
+        )}
 
         {me?.admin && (
           <>
