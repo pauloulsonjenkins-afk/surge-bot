@@ -31,9 +31,16 @@ export default function TelegramConnection() {
   const [chats, setChats] = useState<Chat[] | null>(null);
   const [watching, setWatching] = useState<{ chatId: string; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whether the engine is reading alerts now (from its saved session), so a working connection isn't shown as a login form.
+  const [listener, setListener] = useState<{ watching: string | null; lastAlertAt: string | null } | null>(null);
+  const [relogin, setRelogin] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    void fetch("/api/admin/telegram/login/status")
+      .then((r) => r.json())
+      .then((d: { listener?: { watching: string | null; lastAlertAt: string | null } }) => setListener(d.listener ?? null))
+      .catch(() => {});
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -123,6 +130,22 @@ export default function TelegramConnection() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (listener?.watching && status === "idle" && !relogin) {
+    const last = listener.lastAlertAt
+      ? new Date(listener.lastAlertAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })
+      : null;
+    return (
+      <div>
+        <h3 className="text-sm font-medium text-ink">Telegram connection</h3>
+        <p className="mt-1 text-xs text-hit">Connected: reading your alerts{last ? `, last one stored ${last}` : ""}.</p>
+        <button type="button" onClick={() => setRelogin(true)} className="mt-3 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink">
+          Log in again
+        </button>
+        <p className="mt-1 text-xs text-ink-muted">Only needed if Telegram signed the engine out, or to watch a different chat.</p>
+      </div>
+    );
   }
 
   return (

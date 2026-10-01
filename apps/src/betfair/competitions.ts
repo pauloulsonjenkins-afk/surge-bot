@@ -156,7 +156,8 @@ const kindsOf = (s: string) => KINDS.filter(([, re]) => re.test(s)).map(([k]) =>
 
 /** The country a league name starts with (InPlayGuru style), and the rest of the name. */
 export function splitCountry(name: string): { country: string | null; rest: string } {
-  const n = norm(name);
+  // InPlayGuru lists the home nations under the UK: "United Kingdom England Isthmian Premier Division".
+  const n = norm(name).replace(/^united kingdom (?=england |scotland |wales |northern ireland )/, "");
   for (const c of COUNTRIES) if (n === c || n.startsWith(`${c} `)) return { country: c, rest: n.slice(c.length).trim() };
   return { country: null, rest: n };
 }

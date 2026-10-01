@@ -143,7 +143,7 @@ function PublicViewCard() {
           : "Off. Those pages ask visitors to sign in. Signed-in users only see the pages you have given them on the Users page, and you can see everything."}
       </p>
       <p className="mt-2 text-xs text-ink-muted">
-        Admin pages (Picks, Results, Sending, Win/Loss and Settings) always need a sign-in, whatever this is set to.
+        Admin pages (everything under Admin on the More page) always need the admin sign-in, whatever this is set to.
       </p>
     </section>
   );

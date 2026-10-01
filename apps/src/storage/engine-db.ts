@@ -629,6 +629,8 @@ export class EngineDb {
       // A bet the admin placed by hand on this pick (JSON ManualBet), logged on Live; it makes the pick a live bet.
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN manual_bet TEXT`);
     }
+    // The EU / UN flags were once read as a country ("European Union"); they mark international competitions.
+    this.db.exec(`UPDATE live_picks SET country = NULL WHERE country IN ('European Union', 'United Nations', 'Eurozone')`);
     if (!liveCols.some((c) => c.name === "unplaced_alert_at")) {
       // When the admin was notified that this sent pick had no bet on Betfair 3 minutes on (betfair/unplaced.ts).
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN unplaced_alert_at TEXT`);

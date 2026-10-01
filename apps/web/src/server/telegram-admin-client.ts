@@ -13,7 +13,10 @@ export interface TelegramChat {
 export interface TelegramLoginStatus {
   status: "idle" | "connecting" | "awaiting_code" | "awaiting_password" | "logged_in" | "error";
   error: string | null;
+  /** Only until the chat to watch is chosen: the engine doesn't keep it after that. */
   sessionString: string | null;
+  /** Whether the engine is reading alerts now, and when it last stored one (missing on an older engine). */
+  listener?: { watching: string | null; lastAlertAt: string | null };
 }
 
 function engineConfig(): { baseUrl: string; internalKey: string } {

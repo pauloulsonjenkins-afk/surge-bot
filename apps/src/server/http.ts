@@ -1186,6 +1186,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         status: loginFlow.status,
         error: loginFlow.error,
         sessionString: loginFlow.sessionString,
+        // Whether alerts are being read now (from a saved session or a login here), and the last one stored.
+        listener: getListenerStatus(),
       });
       return;
     }
@@ -1233,6 +1235,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           sessionString: loginFlow.sessionString,
           note: "Save TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION and TELEGRAM_SOURCE_CHAT_ID (this chat id) as env vars so this survives a redeploy.",
         });
+        // The session string gives full access to the Telegram account: handed over this once, then not kept here.
+        loginFlow.sessionString = null;
       } catch (err) {
         send(res, 500, { error: err instanceof Error ? err.message : String(err) });
       }

@@ -138,12 +138,18 @@ export function regionName(code: string): string | null {
 }
 
 /** Reads a leading flag emoji: two regional-indicator letters (Argentina), or the England / Scotland / Wales flags. */
+/** Flag codes that aren't a country: the European Union, the United Nations and the eurozone. */
+const NOT_COUNTRIES = new Set(["EU", "UN", "EZ"]);
+
 export function countryFromFlag(line: string): string | null {
   const cps = Array.from(line.trim()).map((c) => c.codePointAt(0) ?? 0);
   const a = cps[0] ?? 0;
   const b = cps[1] ?? 0;
   if (a >= REGIONAL_A && a <= REGIONAL_Z && b >= REGIONAL_A && b <= REGIONAL_Z) {
-    return regionName(String.fromCharCode(65 + a - REGIONAL_A, 65 + b - REGIONAL_A));
+    const code = String.fromCharCode(65 + a - REGIONAL_A, 65 + b - REGIONAL_A);
+    // The EU and UN flags mark international competitions (European U21 qualifiers), not a country.
+    if (NOT_COUNTRIES.has(code)) return null;
+    return regionName(code);
   }
   if (a === 0x1f3f4) {
     let tag = "";

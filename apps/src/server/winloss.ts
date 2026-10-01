@@ -317,7 +317,8 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     for (const x of priced) if (x.day >= start[p]) (byDay.get(x.day) ?? byDay.set(x.day, []).get(x.day)!).push(x);
     const cum: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
     let spent = 0;
-    const out: WinLossPoint[] = [];
+    // Starts from £0 the day before, so the first day of a period (the 1st of the month) still draws a line.
+    const out: WinLossPoint[] = [{ label: addDays(start[p], -1), total: 0, totalAfter: 0, s: Object.fromEntries(keys.map((k) => [k, 0])) }];
     for (let d = start[p]; d <= today; d = addDays(d, 1)) {
       for (const x of byDay.get(d) ?? []) cum[x.gkey] = (cum[x.gkey] ?? 0) + x.profit;
       // The monthly cost is charged on the 1st, for month and year views only.

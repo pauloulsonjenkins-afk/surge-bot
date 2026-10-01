@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { checkLeague, saveLeagueList, savedListCoverage, splitCountry, type BetfairCompetition } from "../src/betfair/competitions";
+import { countryFromFlag } from "../src/inplayguru/parse-alert";
 
 const BETFAIR = [
   "English Premier League",
@@ -27,6 +28,12 @@ const BETFAIR = [
 
 const status = (name: string) => checkLeague(name, BETFAIR).status;
 const matched = (name: string) => checkLeague(name, BETFAIR).betfair?.name ?? null;
+
+test("InPlayGuru's 'United Kingdom England ...' leagues are English", () => {
+  assert.deepEqual(splitCountry("United Kingdom England Isthmian Premier Division"), { country: "england", rest: "isthmian premier division" });
+  assert.equal(splitCountry("United Kingdom Scotland Championship").country, "scotland");
+  assert.equal(matched("United Kingdom England Premier League"), "English Premier League");
+});
 
 test("the country is read off the front of InPlayGuru's name", () => {
   assert.deepEqual(splitCountry("Bolivia Copa Division Profesional"), { country: "bolivia", rest: "copa division profesional" });
@@ -82,4 +89,9 @@ test("competitions are kept as they're seen, so a league between seasons isn't f
     ["English Premier League", "2026-09-01T00:00:00Z"],
     ["Spanish La Liga", "2026-10-01T00:00:00Z"],
   ]);
+});
+
+test("the EU flag marks an international competition, not a country", () => {
+  assert.equal(countryFromFlag("\u{1F1EA}\u{1F1FA} European U21 Championship Qual"), null);
+  assert.equal(countryFromFlag("\u{1F1EB}\u{1F1F7} France Ligue 1"), "France");
 });
