@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bot, ChevronRight, PencilLine, Scale, Send, Settings, TrendingUp, Trophy, Users } from "lucide-react";
+import { Bot, ChevronRight, Flag, PencilLine, Scale, Send, Settings, TrendingUp, Trophy, Users } from "lucide-react";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
 
@@ -11,6 +11,7 @@ const ICONS: Record<string, typeof Bot> = {
   "/more/admin/winloss": TrendingUp,
   "/more/admin/results": PencilLine,
   "/more/admin/reconcile": Scale,
+  "/more/admin/horses": Flag,
   "/more/admin/users": Users,
   "/more/admin/settings": Settings,
 };

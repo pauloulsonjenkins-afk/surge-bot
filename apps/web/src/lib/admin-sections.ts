@@ -18,6 +18,7 @@ export const ADMIN_GROUPS = [
       { href: "/more/admin/winloss", label: "Win/Loss", description: "Estimated profit and loss by day and strategy." },
       { href: "/more/admin/results", label: "Amend results", description: "Correct a hit or miss, or remove a pick." },
       { href: "/more/admin/reconcile", label: "Reconcile", description: "Real Betfair results against the app's estimates." },
+      { href: "/more/admin/horses", label: "Horses", description: "Your daily NAP and choices: results, returns and patterns." },
     ],
   },
   {

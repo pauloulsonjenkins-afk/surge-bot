@@ -12,6 +12,8 @@
  *                        alert after full time, the same row is updated with the
  *                        result instead of a duplicate being added. The Dashboard,
  *                        Trade Log and Strategies pages are all computed from it.
+ *   horse_bets           the admin's daily horse racing bets (NAP, Next best, 3rd, 4th), entered by hand on the
+ *                        Horses page; one row per day and choice (see server/horses.ts)
  *   betfair_bets         settled bets imported from the betting software's bet history, each linked to the
  *                        pick it was placed for (see betfair/reconcile.ts). Keyed by the bet id, so importing
  *                        the same history twice changes nothing.
@@ -26,6 +28,7 @@ import { dirname } from "node:path";
 import { leagueCountryFromText, type ParsedAlert } from "../inplayguru/parse-alert";
 import type { ScheduleFixture } from "../fixtures/api-football";
 import type { SimRecord } from "../server/pricing";
+import type { HorseBet, HorseDay } from "../server/horses";
 
 export interface CapturedWebhook {
   receivedAt: string;
@@ -458,6 +461,29 @@ export class EngineDb {
         profit        REAL,
         pick_id       INTEGER,
         imported_at   TEXT NOT NULL
+      );
+
+      -- Daily horse racing bets entered on the admin Horses page (server/horses.ts). One per day and choice.
+      CREATE TABLE IF NOT EXISTS horse_bets (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        day         TEXT NOT NULL,
+        rank        INTEGER NOT NULL,
+        horse       TEXT,
+        stake       REAL NOT NULL,
+        odds        REAL NOT NULL,
+        odds_text   TEXT NOT NULL,
+        bet_type    TEXT NOT NULL DEFAULT 'win',
+        ew_fraction INTEGER,
+        ew_places   INTEGER,
+        result      TEXT NOT NULL DEFAULT 'pending',
+        updated_at  TEXT NOT NULL,
+        UNIQUE (day, rank)
+      );
+
+      -- A day's extra bets on its horse selections: the EW Yankee's unit stake (server/horses.ts).
+      CREATE TABLE IF NOT EXISTS horse_days (
+        day           TEXT PRIMARY KEY,
+        yankee_stake  REAL
       );
 
       -- Website users who signed up. Passwords are stored only as salted scrypt hashes.
@@ -1483,6 +1509,68 @@ export class EngineDb {
         sim: r.sent_at === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
       };
     });
+  }
+
+  // ---- Horses -------------------------------------------------------------------------------
+
+  listHorseBets(): HorseBet[] {
+    const rows = this.db.prepare(`SELECT * FROM horse_bets ORDER BY day, rank`).all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: Number(r.id),
+      day: String(r.day),
+      rank: Number(r.rank) as HorseBet["rank"],
+      horse: (r.horse as string | null) ?? null,
+      stake: Number(r.stake),
+      betType: r.bet_type === "ew" ? "ew" : "win",
+      ewFraction: r.ew_fraction === null || r.ew_fraction === undefined ? null : Number(r.ew_fraction),
+      ewPlaces: r.ew_places === null || r.ew_places === undefined ? null : Number(r.ew_places),
+      odds: Number(r.odds),
+      oddsText: String(r.odds_text),
+      result: String(r.result) as HorseBet["result"],
+    }));
+  }
+
+  listHorseDays(): HorseDay[] {
+    const rows = this.db.prepare(`SELECT day, yankee_stake FROM horse_days ORDER BY day`).all() as Array<{ day: string; yankee_stake: number | null }>;
+    return rows.map((r) => ({ day: r.day, yankeeStake: r.yankee_stake }));
+  }
+
+  /** Writes one day's choices: adds or changes each, or removes it. A changed stake or price resets the result. */
+  saveHorseDay(
+    day: string,
+    rows: Array<
+      | { rank: number; horse: string | null; stake: number; odds: number; oddsText: string; betType: string; ewFraction: number | null; ewPlaces: number | null }
+      | { rank: number; remove: true }
+    >,
+    yankeeStake: number | null = null,
+  ): void {
+    const now = new Date().toISOString();
+    const upsert = this.db.prepare(
+      `INSERT INTO horse_bets (day, rank, horse, stake, odds, odds_text, bet_type, ew_fraction, ew_places, result, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+       ON CONFLICT(day, rank) DO UPDATE SET horse = excluded.horse, stake = excluded.stake, odds = excluded.odds,
+         odds_text = excluded.odds_text, bet_type = excluded.bet_type, ew_fraction = excluded.ew_fraction, ew_places = excluded.ew_places,
+         updated_at = excluded.updated_at,
+         result = CASE WHEN horse_bets.stake = excluded.stake AND horse_bets.odds = excluded.odds AND horse_bets.bet_type = excluded.bet_type
+                        AND COALESCE(horse_bets.ew_fraction, 0) = COALESCE(excluded.ew_fraction, 0)
+                       THEN horse_bets.result ELSE 'pending' END`,
+    );
+    const del = this.db.prepare(`DELETE FROM horse_bets WHERE day = ? AND rank = ?`);
+    this.db.transaction(() => {
+      for (const r of rows) {
+        if ("remove" in r) del.run(day, r.rank);
+        else upsert.run(day, r.rank, r.horse, r.stake, r.odds, r.oddsText, r.betType, r.ewFraction, r.ewPlaces, now);
+      }
+      if (yankeeStake === null) this.db.prepare(`DELETE FROM horse_days WHERE day = ?`).run(day);
+      else this.db.prepare(`INSERT INTO horse_days (day, yankee_stake) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET yankee_stake = excluded.yankee_stake`).run(day, yankeeStake);
+    })();
+    this.onChange();
+  }
+
+  setHorseResult(id: number, result: HorseBet["result"]): boolean {
+    const changed = this.db.prepare(`UPDATE horse_bets SET result = ?, updated_at = ? WHERE id = ?`).run(result, new Date().toISOString(), id).changes;
+    if (changed > 0) this.onChange();
+    return changed > 0;
   }
 
   // ---- Betfair reconciliation ---------------------------------------------------------------

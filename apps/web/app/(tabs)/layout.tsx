@@ -21,7 +21,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
   }, [pathname, setLastMoreRoute]);
 
   // Pages full of charts get more room on wide screens; lists and forms read best at a narrower width.
-  const wide = pathname.startsWith("/dashboard") || pathname.startsWith("/more/admin/winloss");
+  const wide = pathname.startsWith("/dashboard") || pathname.startsWith("/more/admin/winloss") || pathname.startsWith("/more/admin/horses");
 
   return (
     <div className="flex min-h-dvh flex-col bg-app text-ink">

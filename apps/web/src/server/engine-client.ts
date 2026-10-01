@@ -794,7 +794,7 @@ export interface StrategyEquity {
 }
 
 /** GET or POST to an /internal route on the engine, as the admin site. */
-async function engineCall<T>(path: string, what: string, init: { method?: "GET" | "POST"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
+async function engineCall<T>(path: string, what: string, init: { method?: "GET" | "POST" | "PUT"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -1060,4 +1060,55 @@ export function fetchReconcile(): Promise<ReconcileReport> {
 /** timeZone: the zone the file's times are written in, e.g. "Europe/Berlin", or null for UK time. */
 export function importBetHistory(csv: string, source: string, timeZone: string | null = null): Promise<BetImportSummary> {
   return engineCall<BetImportSummary>("/internal/betfair/import", "the import", { method: "POST", body: { csv, source, timeZone }, timeoutMs: 30_000 });
+}
+
+// ---- Horses (mirrors server/horses.ts in the engine) ----
+
+export interface HorseBet {
+  id: number;
+  /** UK date, YYYY-MM-DD. */
+  day: string;
+  /** 1 = NAP, 2 = Next best, 3 = 3rd choice, 4 = 4th choice. */
+  rank: 1 | 2 | 3 | 4;
+  horse: string | null;
+  /** Per part: an each-way bet costs twice this. */
+  stake: number;
+  betType: "win" | "ew";
+  /** Each-way: the place part pays 1/this of the odds (4 = 1/4, 5 = 1/5). */
+  ewFraction: number | null;
+  ewPlaces: number | null;
+  /** Decimal odds. */
+  odds: number;
+  /** As typed, e.g. "5/2". */
+  oddsText: string;
+  result: "pending" | "won" | "placed" | "lost" | "void";
+}
+
+/** A day's EW Yankee unit stake (it costs 22 times this), or null for none. */
+export interface HorseDay {
+  day: string;
+  yankeeStake: number | null;
+}
+
+export interface HorseEntryInput {
+  rank: number;
+  horse: string;
+  stake: string;
+  odds: string;
+  betType: "win" | "ew";
+  ewFraction: number | null;
+  ewPlaces: string;
+}
+
+export function fetchHorseBets(): Promise<{ bets: HorseBet[]; days?: HorseDay[] }> {
+  return engineCall("/internal/horses", "the horse bets");
+}
+
+/** Saves one day's choices; throws the engine's reason (e.g. "NAP: enter the odds...") when something can't be saved. */
+export function saveHorseDay(day: string, entries: HorseEntryInput[], yankeeStake: string | null): Promise<{ bets: HorseBet[] }> {
+  return engineCall("/internal/horses/day", "saving the day", { method: "PUT", body: { day, entries, yankeeStake } });
+}
+
+export function setHorseResult(id: number, result: HorseBet["result"]): Promise<{ ok: true }> {
+  return engineCall("/internal/horses/result", "saving the result", { method: "POST", body: { id, result } });
 }

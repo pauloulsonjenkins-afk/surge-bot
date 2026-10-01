@@ -24,6 +24,9 @@
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
  *   POST /internal/picks/exclude                 mark (or unmark) a pick as "didn't actually bet" (admin site only)
+ *   GET  /internal/horses                       the admin's daily horse racing bets (admin site only)
+ *   PUT  /internal/horses/day                   save one day's NAP / Next best / 3rd / 4th choice and EW Yankee (admin site only)
+ *   POST /internal/horses/result                mark one horse bet won, lost, void or pending (admin site only)
  *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
  *   POST /imports/betfair/<import token>        the betting software's bet history export (CSV body), posted by tools/bf-import.ps1
  *   POST /internal/betfair/import               the same, uploaded on the admin Reconcile page (admin site only)
@@ -58,6 +61,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
+import { listHorseBets, listHorseDays, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements } from "../betfair/exchange";
 import { isUkDate, ukDayBounds } from "./uk-time";
@@ -441,6 +445,40 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (!body.acknowledged) matchBets(db);
       log.info(`Reconcile: ${changed} unlinked bet(s) ${body.acknowledged ? "acknowledged" : "restored"} from the admin page.`);
       send(res, 200, { changed });
+      return;
+    }
+
+    if (path.startsWith("/internal/horses")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      try {
+        if (req.method === "GET" && path === "/internal/horses") {
+          send(res, 200, { bets: listHorseBets(db), days: listHorseDays(db) });
+          return;
+        }
+        if (req.method === "PUT" && path === "/internal/horses/day") {
+          const body = await readJsonBody(req);
+          send(res, 200, { bets: saveHorseDay(db, body.day, body.entries, body.yankeeStake ?? null) });
+          return;
+        }
+        if (req.method === "POST" && path === "/internal/horses/result") {
+          const body = await readJsonBody(req);
+          setHorseResult(db, body.id, body.result);
+          send(res, 200, { ok: true });
+          return;
+        }
+      } catch (err) {
+        // The reasons are written for the admin ("NAP: enter the odds as..."), so they are passed on.
+        send(res, 400, { error: "invalid", message: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+      send(res, 404, { error: "not_found" });
       return;
     }
 
