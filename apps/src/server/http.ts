@@ -28,6 +28,7 @@
  *   POST /imports/betfair/<import token>        the betting software's bet history export (CSV body), posted by tools/bf-import.ps1
  *   POST /internal/betfair/import               the same, uploaded on the admin Reconcile page (admin site only)
  *   GET  /internal/betfair/reconcile            real bets against the app's estimates, per strategy (admin site only)
+ *   GET  /internal/betfair/placements           whether each recently sent pick was placed and matched on Betfair (admin site only)
  *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -58,6 +59,7 @@ import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
+import { getBetfairLinkStatus, pickPlacements } from "../betfair/exchange";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -441,6 +443,20 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
+    if (path === "/internal/betfair/placements" && req.method === "GET") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const link = getBetfairLinkStatus();
+      send(res, 200, { link, picks: link.configured ? pickPlacements(db, link) : {} });
+      return;
+    }
+
     if (path === "/internal/betfair/reconcile" && req.method === "GET") {
       if (!process.env.ADMIN_INTERNAL_KEY) {
         send(res, 500, { error: "not_configured" });
@@ -450,7 +466,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 401, { error: "unauthorized" });
         return;
       }
-      send(res, 200, { ...computeReconcile(db), importTokenConfigured: Boolean(process.env.BETFAIR_IMPORT_TOKEN) });
+      send(res, 200, { ...computeReconcile(db), importTokenConfigured: Boolean(process.env.BETFAIR_IMPORT_TOKEN), betfairLink: getBetfairLinkStatus() });
       return;
     }
 

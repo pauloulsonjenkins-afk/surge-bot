@@ -12,6 +12,7 @@ import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
+import { usePlacements, type Placement } from "@/queries/use-reconcile";
 
 // An alert that has had no result edited in after this long is treated as
 // finished rather than still in play. Finished picks live on the Trade Log.
@@ -36,9 +37,43 @@ function latestScore(pick: LivePick): string {
   return pick.goalsHome !== null && pick.goalsAway !== null ? `${pick.goalsHome} – ${pick.goalsAway}` : "– –";
 }
 
-function StatusChip({ pick, admin }: { pick: LivePick; admin: boolean }) {
+const money = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}£${Math.abs(n).toFixed(2)}`;
+
+/** The admin's view of a sent pick: what Betfair says happened to it (see pickPlacements in the engine). */
+function placementChip(p: Placement): { label: string; cls: string; title: string } {
+  switch (p.state) {
+    case "matched":
+      return { label: `Matched £${p.matched.toFixed(2)} @ ${p.odds?.toFixed(2) ?? "–"}`, cls: "bg-hit/15 text-hit", title: "The bet is on Betfair and matched." };
+    case "won":
+      return { label: `Won ${money(p.profit ?? 0)}`, cls: "bg-hit/15 text-hit", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
+    case "lost":
+      return { label: `Lost ${money(p.profit ?? 0)}`, cls: "bg-loss/15 text-loss", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
+    case "waiting":
+      return { label: "Placed, not matched yet", cls: "bg-warn/15 text-warn", title: "The bet is on Betfair, waiting for someone to match it." };
+    case "lapsed":
+      return { label: "Not matched", cls: "bg-warn/15 text-warn", title: "The bet was placed but lapsed or was cancelled before it matched." };
+    case "notPlaced":
+      return {
+        label: "Not placed",
+        cls: "bg-loss/15 text-loss",
+        title: "No bet on Betfair 5 minutes after the pick was sent. BF Bot Manager may be off, or still waiting for the minimum odds.",
+      };
+    default:
+      return { label: "Sent · checking", cls: "bg-accent/15 text-accent", title: "Sent to your betting software. Checking Betfair for the bet." };
+  }
+}
+
+function StatusChip({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
   // The admin sees which picks are only simulated; for everyone else it's just "Captured".
   if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return <ModeBadge mode="sim" />;
+  if (admin && pick.sentAt && placement) {
+    const c = placementChip(placement);
+    return (
+      <span title={c.title} className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${c.cls}`}>
+        {c.label}
+      </span>
+    );
+  }
   let label = "Captured";
   let cls = "bg-surface-2 text-ink-muted";
   if (pick.sentAt) {
@@ -58,7 +93,7 @@ function StatusChip({ pick, admin }: { pick: LivePick; admin: boolean }) {
  * One alert as a compact row under its match: the minute, the strategy and its status on the first line, the bet
  * and the time it arrived on the second. Tapping it opens the match stats underneath.
  */
-function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
+function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
   const [open, setOpen] = useState(false);
   const stats = pick.detail?.stats ?? {};
   // Corners lead for the corners strategy; for the rest they come last.
@@ -94,7 +129,7 @@ function PickRow({ pick, admin }: { pick: LivePick; admin: boolean }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-3">
             <span className="truncate text-sm font-medium text-ink">{shortStrategy(pick.strategy)}</span>
-            <StatusChip pick={pick} admin={admin} />
+            <StatusChip pick={pick} admin={admin} placement={placement} />
           </span>
           <span className="mt-1 block truncate text-xs text-ink-muted">
             {[betText(pick.market, pick.selection) ?? "No market set", `at ${fmtTime(pick.firstSeenAt)}`].join(" · ")}
@@ -154,7 +189,7 @@ function matchKey(p: LivePick): string {
  * One match with every alert it has had: the teams, latest score and league once at the top, then one row per alert.
  * Several strategies often fire on the same match, and without this the same teams were listed again and again.
  */
-function MatchGroup({ picks, admin }: { picks: LivePick[]; admin: boolean }) {
+function MatchGroup({ picks, admin, placements }: { picks: LivePick[]; admin: boolean; placements: Record<string, Placement> }) {
   // picks arrive newest first, so the first holds the latest score and minute.
   const latest = picks[0]!;
   const minute = latest.minute !== null ? `${latest.minute}'` : latest.market === "FIRST_HALF_GOALS" ? "Pre-match" : null;
@@ -176,7 +211,7 @@ function MatchGroup({ picks, admin }: { picks: LivePick[]; admin: boolean }) {
       </div>
       <ul className="divide-y divide-line">
         {picks.map((p) => (
-          <PickRow key={p.id} pick={p} admin={admin} />
+          <PickRow key={p.id} pick={p} admin={admin} placement={placements[String(p.id)]} />
         ))}
       </ul>
     </li>
@@ -186,6 +221,8 @@ function MatchGroup({ picks, admin }: { picks: LivePick[]; admin: boolean }) {
 export default function LivePage() {
   const { data, isLoading, error } = useLivePicks(50);
   const admin = useMe().data?.admin === true;
+  // Admin only: whether each sent pick was actually placed and matched on Betfair.
+  const placements = usePlacements(admin).data?.picks ?? {};
 
   if (isLoading) return <ListSkeleton />;
 
@@ -217,7 +254,7 @@ export default function LivePage() {
       ) : (
         <ul className="space-y-3">
           {[...matches.entries()].map(([key, picks]) => (
-            <MatchGroup key={key} picks={picks} admin={admin} />
+            <MatchGroup key={key} picks={picks} admin={admin} placements={placements} />
           ))}
         </ul>
       )}

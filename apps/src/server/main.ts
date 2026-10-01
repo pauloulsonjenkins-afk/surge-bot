@@ -2,6 +2,7 @@
  * Entry point for the engine's DigitalOcean web service.
  * package.json "start" runs the compiled copy: node dist/src/server/main.js
  */
+import { startBetfairPoller } from "../betfair/exchange";
 import { parseAlert } from "../inplayguru/parse-alert";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -72,6 +73,9 @@ async function main(): Promise<void> {
     }
   }, 60_000);
   simSweep.unref();
+
+  // Reads your bets from Betfair (read only) so the site knows within a minute whether a sent pick was placed.
+  startBetfairPoller(db);
 
   const server = createEngineHttpServer(env, db, backups);
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));

@@ -991,6 +991,32 @@ export interface ReconcileReport {
   acknowledged?: Array<UnlinkedBet & { acknowledgedAt: string }>;
   acknowledgedCount?: number;
   importTokenConfigured: boolean;
+  /** The live check of your bets on Betfair (missing on an older engine). */
+  betfairLink?: BetfairLinkStatus;
+}
+
+/** Mirrors BetfairLinkStatus in the engine's betfair/exchange.ts. */
+export interface BetfairLinkStatus {
+  configured: boolean;
+  missing: string[];
+  lastOkAt: string | null;
+  lastErrorAt: string | null;
+  lastError: string | null;
+  lastCount: number;
+}
+
+/** Where a sent pick stands on Betfair. Mirrors Placement in the engine's betfair/exchange.ts. */
+export interface Placement {
+  state: "checking" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced";
+  stake: number | null;
+  matched: number;
+  odds: number | null;
+  profit: number | null;
+  bets: number;
+}
+
+export function fetchPlacements(): Promise<{ link: BetfairLinkStatus; picks: Record<string, Placement> }> {
+  return engineCall("/internal/betfair/placements", "bet placements");
 }
 
 export interface UnlinkedBet {

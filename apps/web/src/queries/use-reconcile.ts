@@ -1,10 +1,21 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BetImportSummary, ReconcileReport } from "@/server/engine-client";
+import type { BetfairLinkStatus, BetImportSummary, Placement, ReconcileReport } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 
-export type { BetImportSummary, ReconcileReport };
+export type { BetfairLinkStatus, BetImportSummary, Placement, ReconcileReport };
+
+/** Admin only: whether each recently sent pick was placed and matched on Betfair, refreshed as the engine checks. */
+export function usePlacements(enabled: boolean) {
+  return useQuery({
+    queryKey: ["placements"],
+    queryFn: ({ signal }) => getJson<{ link: BetfairLinkStatus; picks: Record<string, Placement> }>("/api/admin/betfair/placements", "bet placements", signal),
+    enabled,
+    staleTime: 0,
+    refetchInterval: 20_000,
+  });
+}
 
 const KEY = ["reconcile"];
 

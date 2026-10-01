@@ -10,6 +10,7 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const when = (iso: string) => whenFmt.format(new Date(iso));
+const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 function pct(n: number | null, signed = false): string {
   if (n === null) return "–";
@@ -31,6 +32,42 @@ function decodeCsv(bytes: Uint8Array): string {
   } catch {
     return new TextDecoder("windows-1252").decode(bytes);
   }
+}
+
+/** The live check of your bets on Betfair: on and working, off (with the settings it needs), or failing (with why). */
+function BetfairLinkCard({ link }: { link: NonNullable<ReconcileReport["betfairLink"]> }) {
+  const ago = (iso: string) => `at ${timeFmt.format(new Date(iso))}`;
+  const failing = link.configured && link.lastError !== null;
+  return (
+    <Card
+      title="Live check on Betfair"
+      subtitle="Reads your open and settled bets from Betfair every 45 seconds (read only), so Live shows within a minute whether each sent pick was placed and matched."
+    >
+      {!link.configured ? (
+        <p className="text-xs text-ink-muted">
+          <span className="text-warn">Off.</span> Add these settings to the engine component in DigitalOcean:{" "}
+          {link.missing.map((m, i) => (
+            <span key={m}>
+              {i > 0 && ", "}
+              <code className="text-ink">{m}</code>
+            </span>
+          ))}
+          .
+        </p>
+      ) : failing ? (
+        <p className="text-xs text-destructive">
+          Not working: {link.lastError}
+          {link.lastOkAt ? ` Last worked ${ago(link.lastOkAt)}.` : " It hasn’t connected yet."}
+        </p>
+      ) : link.lastOkAt ? (
+        <p className="text-xs text-hit">
+          Connected · last checked {ago(link.lastOkAt)} · {link.lastCount} bet{link.lastCount === 1 ? "" : "s"} in the last day.
+        </p>
+      ) : (
+        <p className="text-xs text-ink-muted">Connecting…</p>
+      )}
+    </Card>
+  );
 }
 
 function ImportCard({ report }: { report: ReconcileReport | undefined }) {
@@ -282,6 +319,8 @@ export default function ReconcilePage() {
         title="Reconcile"
         subtitle="Every other money figure in the app is an estimate from the alert’s price and your stake. This compares it with the bets your betting software actually placed: how many picks never matched, the price you really got, and the real profit."
       />
+
+      {data?.betfairLink && <BetfairLinkCard link={data.betfairLink} />}
 
       <ImportCard report={data} />
 

@@ -309,8 +309,12 @@ export interface BetfairBet {
   side: string | null;
   /** The tipster / provider column, when the export has one (the bet feed's Provider is the strategy). */
   provider: string | null;
-  /** settled = won or lost; unmatched = nothing matched (lapsed, cancelled, unmatched); void = voided or refunded. */
-  status: "won" | "lost" | "unmatched" | "void";
+  /**
+   * won / lost = settled; matched = matched but not settled yet; pending = placed, waiting to be matched;
+   * unmatched = nothing matched (lapsed, cancelled); void = voided or refunded. matched and pending only come from
+   * Betfair's own API (the bet history export lists settled bets).
+   */
+  status: "won" | "lost" | "matched" | "pending" | "unmatched" | "void";
   /** Stake asked for. */
   stake: number | null;
   /** Stake actually matched. */
@@ -1403,9 +1407,15 @@ export class EngineDb {
 
   // ---- Betfair reconciliation ---------------------------------------------------------------
 
-  /** Adds imported bets, or updates ones already stored (a bet can move from unmatched to settled). Keeps any pick link. */
-  saveBetfairBets(bets: BetfairBet[], importedAt: string): { added: number; updated: number } {
-    const exists = this.db.prepare(`SELECT 1 FROM betfair_bets WHERE bet_id = ?`);
+  /**
+   * Adds bets, or merges new details into ones already stored (a bet moves from open to settled; the CSV and Betfair's own
+   * API describe the same bet by the same id). A detail the new copy lacks keeps its stored value, so the API (which has
+   * no tipster) never wipes what the CSV said. Only rows that actually change are written, so a poll that finds nothing
+   * new doesn't mark the database as changed (which would start a backup upload every time).
+   * Returns new bets, bets already known, and how many rows were written.
+   */
+  saveBetfairBets(bets: BetfairBet[], importedAt: string): { added: number; updated: number; changed: number } {
+    const read = this.db.prepare(`SELECT * FROM betfair_bets WHERE bet_id = ?`);
     const upsert = this.db.prepare(
       `INSERT INTO betfair_bets (bet_id, placed_at, settled_at, event, market, selection, side, provider, status, stake, matched, odds, profit, imported_at)
        VALUES (@betId, @placedAt, @settledAt, @event, @market, @selection, @side, @provider, @status, @stake, @matched, @odds, @profit, @importedAt)
@@ -1414,17 +1424,42 @@ export class EngineDb {
          status = excluded.status, stake = excluded.stake, matched = excluded.matched, odds = excluded.odds, profit = excluded.profit,
          imported_at = excluded.imported_at`,
     );
+    const FIELDS = ["placedAt", "settledAt", "event", "market", "selection", "side", "provider", "status", "stake", "matched", "odds", "profit"] as const;
+    const COLUMN: Record<(typeof FIELDS)[number], string> = {
+      placedAt: "placed_at", settledAt: "settled_at", event: "event", market: "market", selection: "selection", side: "side",
+      provider: "provider", status: "status", stake: "stake", matched: "matched", odds: "odds", profit: "profit",
+    };
     let added = 0;
     let updated = 0;
+    let changed = 0;
     this.db.transaction(() => {
       for (const b of bets) {
-        if (exists.get(b.betId)) updated++;
-        else added++;
-        upsert.run({ ...b, importedAt });
+        const row = read.get(b.betId) as Record<string, unknown> | undefined;
+        if (!row) {
+          added++;
+          changed++;
+          upsert.run({ ...b, importedAt });
+          continue;
+        }
+        updated++;
+        const merged: Record<string, unknown> = { betId: b.betId, importedAt };
+        let differs = false;
+        for (const f of FIELDS) {
+          const old = row[COLUMN[f]] ?? null;
+          let next: unknown = b[f] ?? old;
+          // A stand-in name ("Market 1.234") never replaces a real one.
+          if (f === "event" && typeof next === "string" && next.startsWith("Market ") && old) next = old;
+          merged[f] = next;
+          if (next !== old) differs = true;
+        }
+        if (differs) {
+          changed++;
+          upsert.run(merged);
+        }
       }
     })();
-    if (bets.length > 0) this.onChange();
-    return { added, updated };
+    if (changed > 0) this.onChange();
+    return { added, updated, changed };
   }
 
   listBetfairBets(): Array<BetfairBet & { pickId: number | null; importedAt: string; acknowledgedAt: string | null }> {
