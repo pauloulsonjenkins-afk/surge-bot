@@ -32,6 +32,7 @@
  *   POST /internal/betfair/import               the same, uploaded on the admin Reconcile page (admin site only)
  *   GET  /internal/betfair/reconcile            real bets against the app's estimates, per strategy (admin site only)
  *   GET  /internal/betfair/placements           whether each recently sent pick was placed and matched on Betfair (admin site only)
+ *   POST /internal/betfair/match-name           add an "alert name = Betfair name" Match names line and re-link bets (admin site only)
  *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -56,7 +57,7 @@ import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
-import { buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
+import { addMatchName, buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
@@ -421,6 +422,28 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 200, { ...summary });
       } catch (err) {
         send(res, 422, { error: "unreadable", message: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    if (path === "/internal/betfair/match-name" && req.method === "POST") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      try {
+        const line = addMatchName(db, body.from, body.to);
+        // Bets on picks sent under the old spelling can link now.
+        const linked = matchBets(db);
+        log.info(`Match name added from Reconcile: "${line}" (${linked} bet(s) linked).`);
+        send(res, 200, { line, linked });
+      } catch (err) {
+        send(res, 400, { error: "invalid", message: err instanceof Error ? err.message : String(err) });
       }
       return;
     }

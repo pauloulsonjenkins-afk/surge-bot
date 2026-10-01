@@ -59,6 +59,8 @@ export async function fetchRecentPicks(limit = 50): Promise<EnginePick[]> {
 /** One Telegram alert, parsed. Mirrors LivePick in the engine's engine-db.ts. */
 export interface LivePick {
   id: number;
+  marketCheck?: "ok" | "noMarket" | "noSelection" | null;
+  marketCheckDetail?: string | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
   exchangeEvent?: string | null;
   chatId: string;
@@ -131,6 +133,9 @@ export interface PublicPick {
   exchange?: "on" | "nameDiffers" | "off" | null;
   /** The Betfair event found when a team is spelled differently there. */
   exchangeEvent?: string | null;
+  /** Whether Betfair had the exact market and selection the feed sends, and what was found (admin only). */
+  marketCheck?: "ok" | "noMarket" | "noSelection" | null;
+  marketCheckDetail?: string | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -163,6 +168,8 @@ export function toPublicPick(p: LivePick): PublicPick {
     sentAt: p.sentAt,
     exchange: p.exchange ?? null,
     exchangeEvent: p.exchangeEvent ?? null,
+    marketCheck: p.marketCheck ?? null,
+    marketCheckDetail: p.marketCheckDetail ?? null,
     flags: p.flags,
     detail: p.detail
       ? {
@@ -1025,7 +1032,7 @@ export interface BetfairLinkStatus {
 
 /** Where a sent pick stands on Betfair. Mirrors Placement in the engine's betfair/exchange.ts. */
 export interface Placement {
-  state: "checking" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced";
+  state: "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced";
   stake: number | null;
   matched: number;
   odds: number | null;
@@ -1038,6 +1045,8 @@ export function fetchPlacements(): Promise<{ link: BetfairLinkStatus; picks: Rec
 }
 
 export interface UnlinkedBet {
+  /** A Match names line that would link it ("alert name = Betfair name"), when one team is spelled differently. */
+  suggestion?: { from: string; to: string } | null;
   betId: string;
   placedAt: string | null;
   event: string;
@@ -1045,6 +1054,11 @@ export interface UnlinkedBet {
   status: string;
   profit: number | null;
   reason?: string;
+}
+
+/** Adds "alert name = Betfair name" to the Sending page's Match names and re-links bets. */
+export function addMatchName(from: string, to: string): Promise<{ line: string; linked: number }> {
+  return engineCall("/internal/betfair/match-name", "adding the match name", { method: "POST", body: { from, to } });
 }
 
 /** Marks unlinked bets as acknowledged (not from the feed), or puts them back in the list. */

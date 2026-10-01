@@ -567,6 +567,7 @@ export default function SendingPage() {
                   value={form.maxAgeMinutes}
                   onChange={(e) => setForm({ ...form, maxAgeMinutes: e.target.value })}
                 />
+                <span className="mt-1 block">Pre-match picks (First Half Goal) stay in the feed until kick-off instead.</span>
               </label>
               <label className="text-xs text-ink-muted">
                 Most new picks per day

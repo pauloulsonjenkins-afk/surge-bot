@@ -58,6 +58,12 @@ function placementChip(p: Placement): { label: string; cls: string; title: strin
         cls: "bg-loss/15 text-loss",
         title: "No bet on Betfair 5 minutes after the pick was sent. BF Bot Manager may be off, or still waiting for the minimum odds.",
       };
+    case "beforeKickoff":
+      return {
+        label: "Sent · until kick-off",
+        cls: "bg-accent/15 text-accent",
+        title: "A pre-match bet: it stays in the feed until kick-off, so your betting software can place it any time before the start.",
+      };
     default:
       return { label: "Sent · checking", cls: "bg-accent/15 text-accent", title: "Sent to your betting software. Checking Betfair for the bet." };
   }
@@ -65,6 +71,17 @@ function placementChip(p: Placement): { label: string; cls: string; title: strin
 
 /** What Betfair said about the match when the alert arrived; shown to the admin beside the status. */
 function ExchangeChip({ pick }: { pick: LivePick }) {
+  // The match is on Betfair, but not the exact market or selection the feed sends: the betting software can't place it.
+  if (pick.exchange === "on" && (pick.marketCheck === "noMarket" || pick.marketCheck === "noSelection")) {
+    return (
+      <span
+        title={`${pick.marketCheckDetail ?? ""} Fix the market code or selection wording on the Sending page (Bet wording).`}
+        className="shrink-0 rounded-full bg-loss/15 px-2 py-0.5 text-xs font-medium text-loss"
+      >
+        Not on Betfair as sent
+      </span>
+    );
+  }
   if (pick.exchange === "off") {
     return (
       <span title="This match wasn’t on Betfair when the alert arrived, so no bet can be placed. Mark the league “Don’t send” on the Leagues page." className="shrink-0 rounded-full bg-loss/15 px-2 py-0.5 text-xs font-medium text-loss">

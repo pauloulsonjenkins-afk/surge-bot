@@ -18,7 +18,7 @@
  */
 import { createHash } from "node:crypto";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
-import { strategyLabel } from "../inplayguru/bet-feed";
+import { exchangeNamer, strategyLabel } from "../inplayguru/bet-feed";
 import { alertOddsOf } from "../server/pricing";
 import { pricingInputs } from "../server/winloss";
 
@@ -386,27 +386,83 @@ function betGap(b: { placedAt: string | null; settledAt: string | null }, sentAt
   return gap < -2 * 60 * 1000 || gap > (b.placedAt ? PLACE_WINDOW_MS : 12 * 60 * 60 * 1000) ? null : gap;
 }
 
-const pickEventOf = (p: ReturnType<EngineDb["listSentPicks"]>[number]) => p.sentRow?.eventName ?? `${p.home ?? ""} v ${p.away ?? ""}`;
+type SentPick = ReturnType<EngineDb["listSentPicks"]>[number];
+type Namer = (name: string) => string;
+const same: Namer = (n) => n;
 
-/** Why a bet has no pick, in words, so a name that needs a Match names entry can be told from a bet the feed never sent. */
-export function unlinkedReason(b: Pick<BetfairBet, "placedAt" | "settledAt" | "event">, picks: ReturnType<EngineDb["listSentPicks"]>): string {
-  let nearest: { event: string; score: number; gap: number } | null = null;
+const pickEventOf = (p: SentPick) => p.sentRow?.eventName ?? `${p.home ?? ""} v ${p.away ?? ""}`;
+
+/**
+ * How well a bet's match fits a pick's: the event as it was sent, or the alert's teams under today's Match names, so a
+ * name added later (e.g. from Reconcile) links bets on picks that were sent under the old spelling.
+ */
+function pickScore(betEvent: string, p: SentPick, namer: Namer): { score: number; event: string } {
+  const sent = pickEventOf(p);
+  const sentScore = eventScore(betEvent, sent);
+  if (sentScore === 2 || !p.home || !p.away) return { score: sentScore, event: sent };
+  const now = `${namer(p.home)} v ${namer(p.away)}`;
+  const nowScore = eventScore(betEvent, now);
+  return nowScore > sentScore ? { score: nowScore, event: now } : { score: sentScore, event: sent };
+}
+
+/** "Home v Away" split into the two names as written. */
+function splitEvent(event: string): [string, string] | null {
+  const m = /^(.*?)\s+(?:v|vs|v\.)\s+(.*)$/i.exec(event.trim());
+  return m ? [m[1]!.trim(), m[2]!.trim()] : null;
+}
+
+/** A Match names line that would link a bet: the alert's spelling of the team that differs = Betfair's spelling. */
+export interface NameSuggestion {
+  from: string;
+  to: string;
+}
+
+/**
+ * Why a bet has no pick, in words, so a name that needs a Match names entry can be told from a bet the feed never sent.
+ * When one team's name differs, also the Match names line that would fix it (the alert's spelling = Betfair's).
+ */
+export function explainUnlinked(
+  b: Pick<BetfairBet, "placedAt" | "settledAt" | "event">,
+  picks: SentPick[],
+  namer: Namer = same,
+): { reason: string; suggestion: NameSuggestion | null } {
+  let nearest: { event: string; score: number; gap: number; pick: SentPick } | null = null;
   for (const p of picks) {
     const gap = betGap(b, p.sentAt);
     if (gap === null) continue;
-    const event = pickEventOf(p);
-    const score = eventScore(b.event, event);
-    if (!nearest || score > nearest.score || (score === nearest.score && Math.abs(gap) < nearest.gap)) nearest = { event, score, gap: Math.abs(gap) };
+    const { score, event } = pickScore(b.event, p, namer);
+    if (!nearest || score > nearest.score || (score === nearest.score && Math.abs(gap) < nearest.gap)) nearest = { event, score, gap: Math.abs(gap), pick: p };
   }
-  if (!nearest) return "No pick was sent to the bet feed in the 4 hours before this bet, so it wasn't placed from the feed.";
-  if (nearest.score === 1) return `One team name differs from the pick sent then, “${nearest.event}”. Add the other under Match names on the Sending page.`;
-  if (nearest.score >= 2) return `Its pick, “${nearest.event}”, already has a bet linked.`;
-  return `No pick for this match was sent around then (the nearest was “${nearest.event}”). If it was one of yours, both team names differ.`;
+  if (!nearest) return { reason: "No pick was sent to the bet feed in the 4 hours before this bet, so it wasn't placed from the feed.", suggestion: null };
+  if (nearest.score >= 2) return { reason: `Its pick, “${nearest.event}”, already has a bet linked.`, suggestion: null };
+  if (nearest.score === 0) {
+    return { reason: `No pick for this match was sent around then (the nearest was “${nearest.event}”). If it was one of yours, both team names differ.`, suggestion: null };
+  }
+  // One team matches: the other is spelled differently. Suggest "alert name = Betfair name" for that one.
+  const bet = splitEvent(b.event);
+  const { home, away } = nearest.pick;
+  let suggestion: NameSuggestion | null = null;
+  if (bet && home && away) {
+    const homeMatches = eventScore(`${bet[0]} v -`, `${namer(home)} v -`) === 1;
+    suggestion = homeMatches ? { from: away, to: bet[1] } : { from: home, to: bet[0] };
+  }
+  return {
+    reason: suggestion
+      ? `One team name differs from the pick sent then, “${nearest.event}”: Betfair writes “${suggestion.to}” for the alert’s “${suggestion.from}”.`
+      : `One team name differs from the pick sent then, “${nearest.event}”. Add the other under Match names on the Sending page.`,
+    suggestion,
+  };
+}
+
+/** Why a bet has no pick (see explainUnlinked). */
+export function unlinkedReason(b: Pick<BetfairBet, "placedAt" | "settledAt" | "event">, picks: SentPick[], namer: Namer = same): string {
+  return explainUnlinked(b, picks, namer).reason;
 }
 
 /** Links every unlinked bet to the sent pick it was placed for, where one fits. Returns how many were linked. */
 export function matchBets(db: EngineDb): number {
   const picks = db.listSentPicks();
+  const namer = exchangeNamer(db);
   const bets = db.listBetfairBets();
   const linkedPicks = new Set(bets.filter((b) => b.pickId !== null).map((b) => b.pickId!));
   const links: Array<{ betId: string; pickId: number }> = [];
@@ -416,7 +472,7 @@ export function matchBets(db: EngineDb): number {
     for (const p of picks) {
       const gap = betGap(b, p.sentAt);
       if (gap === null) continue;
-      const ev = eventScore(b.event, pickEventOf(p));
+      const ev = pickScore(b.event, p, namer).score;
       if (ev < 2) continue;
       let score = ev;
       if (b.selection && p.sentRow?.selectionName && tokens(b.selection).join(" ") === tokens(p.sentRow.selectionName).join(" ")) score++;
@@ -493,7 +549,11 @@ export interface ReconcileStrategy {
   resultMismatches: number;
 }
 
-export type UnlinkedBet = Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit"> & { reason: string };
+export type UnlinkedBet = Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit"> & {
+  reason: string;
+  /** A Match names line that would link it, when one team is spelled differently. */
+  suggestion?: NameSuggestion | null;
+};
 
 export interface ReconcileReport {
   lastImport: ImportSummary | null;
@@ -513,6 +573,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 
 export function computeReconcile(db: EngineDb): ReconcileReport {
   const sentPicks = db.listSentPicks();
+  const namer = exchangeNamer(db);
   const allBets = db.listBetfairBets();
   const bets = allBets.filter((b) => b.acknowledgedAt === null);
   const times = bets.map((b) => b.placedAt ?? b.settledAt).filter((t): t is string => t !== null).sort();
@@ -581,7 +642,7 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
       estimatedProfit: r2(sum((s) => s.estimatedProfit)),
       actualProfit: r2(sum((s) => s.actualProfit)),
     },
-    unlinked: unlinked.slice(0, 100).map((b) => ({ ...unlinkedView(b), reason: unlinkedReason(b, sentPicks) })),
+    unlinked: unlinked.slice(0, 100).map((b) => ({ ...unlinkedView(b), ...explainUnlinked(b, sentPicks, namer) })),
     unlinkedCount: unlinked.length,
     acknowledged: acknowledged.slice(0, 100).map((b) => ({ ...unlinkedView(b), reason: "", acknowledgedAt: b.acknowledgedAt! })),
     acknowledgedCount: acknowledged.length,

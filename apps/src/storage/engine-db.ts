@@ -310,6 +310,9 @@ export interface LivePick {
   exchange: "on" | "nameDiffers" | "off" | null;
   /** The Betfair event name found, for nameDiffers. */
   exchangeEvent: string | null;
+  /** Whether Betfair had the exact market and selection the feed sends (null = not checked), and what was found. */
+  marketCheck: "ok" | "noMarket" | "noSelection" | null;
+  marketCheckDetail: string | null;
   /** The league's key on the Leagues page. */
   leagueKey: string;
   /** The full parsed alert (all stats, odds, etc.) for the detail view. */
@@ -539,6 +542,11 @@ export class EngineDb {
       // Whether the alert's match was on Betfair when it arrived (betfair/exchange.ts), and the event found.
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange TEXT`);
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_event TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "market_check")) {
+      // Whether Betfair had the exact market and selection the feed sends for the pick (betfair/exchange.ts checkBet).
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN market_check TEXT`);
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN market_check_detail TEXT`);
     }
     if (!liveCols.some((c) => c.name === "exchange_odds")) {
       // The Betfair back price of the bet the feed would send, read when the alert arrived (betfair/exchange.ts).
@@ -828,6 +836,8 @@ export class EngineDb {
       sentRowJson: (r.sent_row as string | null) ?? null,
       exchange: r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off" ? r.exchange : null,
       exchangeEvent: (r.exchange_event as string | null) ?? null,
+      marketCheck: r.market_check === "ok" || r.market_check === "noMarket" || r.market_check === "noSelection" ? r.market_check : null,
+      marketCheckDetail: (r.market_check_detail as string | null) ?? null,
       leagueKey: leagueIdentity((r.competition as string | null) ?? null, (r.country as string | null) ?? null).key,
       flags,
       detail,
@@ -1108,8 +1118,16 @@ export class EngineDb {
   }
 
   /** Records what Betfair said about a pick's match. "unknown" = couldn't be looked up (no team names); not shown. */
-  setPickExchange(id: number, result: "on" | "nameDiffers" | "off" | "unknown", event: string | null, odds: number | null = null): void {
-    this.db.prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ?, exchange_odds = ? WHERE id = ?`).run(result, event, odds, id);
+  setPickExchange(
+    id: number,
+    result: "on" | "nameDiffers" | "off" | "unknown",
+    event: string | null,
+    odds: number | null = null,
+    check: { status: string; detail: string } | null = null,
+  ): void {
+    this.db
+      .prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ?, exchange_odds = ?, market_check = ?, market_check_detail = ? WHERE id = ?`)
+      .run(result, event, odds, check?.status ?? null, check?.detail ?? null, id);
     this.onChange();
   }
 

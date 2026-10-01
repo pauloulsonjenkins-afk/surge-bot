@@ -12,6 +12,10 @@
  *      be sent late. "Recent" is measured from when Telegram says the alert
  *      was posted, not when this app received it, so an alert that arrives
  *      late (after a dropped connection or a restart) is never treated as new.
+ *      Pre-match picks (First Half Goal) are the exception: they stay in the
+ *      feed until a few minutes after kick-off (the alert's "Kickoff: In 1 hour"),
+ *      because the betting software may place a pre-match bet nearer the start.
+ *      A row that left the feed after 10 minutes was never placed (fixed 1 Oct 2026).
  *   5. A daily limit on how many NEW picks can be handed over.
  *   6. Only markets whose exact code is known are sent. Corners are not. The underdog strategy is
  *      sent as a Double Chance bet on the underdog (win or draw); "Pass Master 1st half" is sent as the favourite in
@@ -36,6 +40,7 @@
  * pick it already has, which could otherwise place a second bet.
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
+import { kickoffMinutes } from "./parse-alert";
 import { computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 
@@ -299,6 +304,29 @@ function providerName(raw: string): string {
   return strategyLabel(raw).replace(/[",\r\n]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Adds (or replaces) one "alert name = exchange name" line in the Sending page's Match names, e.g. from a bet on the
+ * Reconcile page whose team Betfair spells differently. Returns the line saved. Throws if either name can't be a line.
+ */
+export function addMatchName(db: EngineDb, alertName: unknown, exchangeName: unknown): string {
+  const clean = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
+  const from = clean(alertName);
+  const to = clean(exchangeName);
+  if (!from || !to || from.length > 80 || to.length > 80 || /[=\r\n]/.test(from + to)) throw new Error("Both names are needed, without = signs.");
+  if (from.toLowerCase() === to.toLowerCase()) throw new Error("The two names are the same.");
+  const line = `${from} = ${to}`;
+  const kept = getSendingSettings(db)
+    .aliases.split("\n")
+    .filter((l) => {
+      const i = l.indexOf("=");
+      return l.trim() !== "" && !(i > 0 && l.slice(0, i).trim().toLowerCase() === from.toLowerCase());
+    });
+  const next = [...kept, line].join("\n");
+  if (next.length > 5000) throw new Error("Match names is full (5,000 characters). Tidy it on the Sending page first.");
+  saveSendingSettings(db, { aliases: next });
+  return line;
+}
+
 /** A team name as the exchange writes it, using the Sending page's "alert name = exchange name" lines. */
 export function exchangeNamer(db: EngineDb): (name: string) => string {
   const aliases = parseAliases(getSendingSettings(db).aliases);
@@ -400,10 +428,9 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
     blockedReason,
   });
 
-  const cutoff = now.getTime() - settings.maxAgeMinutes * 60 * 1000;
   const recent = db
     .listLivePicks(200)
-    .filter((p) => alertTime(p) >= cutoff)
+    .filter((p) => now.getTime() <= betableUntil(p, settings.maxAgeMinutes))
     .sort((a, b) => a.id - b.id);
 
   if (!settings.enabled) {
@@ -565,7 +592,6 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
   if (candidates.length === 0) return 0;
 
   const settings = getSendingSettings(db);
-  const cutoff = now.getTime() - settings.maxAgeMinutes * 60 * 1000;
   const today = ukDay.format(now);
   const stops = computeStopLoss(db, now, "sim");
   const noSend = db.noSendLeagues();
@@ -574,7 +600,7 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
   const items: Array<{ id: number; rowJson: string }> = [];
   for (const p of candidates) {
     const key = strategyLabel(p.strategy).toLowerCase();
-    const fresh = alertTime(p) >= cutoff;
+    const fresh = now.getTime() <= betableUntil(p, settings.maxAgeMinutes);
     const liveNow = settings.enabled && settings.strategies[key] === true;
     if (liveNow && fresh) continue; // the bet feed decides this one
 
@@ -596,6 +622,24 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
   }
   db.setSimRows(items, now.toISOString());
   return items.length;
+}
+
+/** A pre-match pick's estimated kick-off (alert time + "Kickoff: In 1 hour"; an hour if the wording isn't known), else null. */
+export function kickoffAt(p: LivePick): number | null {
+  if (p.market !== "FIRST_HALF_GOALS") return null;
+  return alertTime(p) + (kickoffMinutes(p.detail?.kickoffRaw) ?? 60) * 60_000;
+}
+
+/** Minutes after the estimated kick-off a pre-match pick stays in the feed ("In 1 hour" is rounded). */
+const AFTER_KICKOFF_MIN = 5;
+
+/**
+ * Until when a pick may be in the feed: the alert time + the maximum age for an in-play pick, or for a pre-match pick
+ * until shortly after kick-off, since the betting software may place it any time before the start.
+ */
+export function betableUntil(p: LivePick, maxAgeMinutes: number): number {
+  const ko = kickoffAt(p);
+  return ko !== null ? ko + AFTER_KICKOFF_MIN * 60_000 : alertTime(p) + maxAgeMinutes * 60_000;
 }
 
 /** When the alert was posted: Telegram's time if known, otherwise when it was received. */

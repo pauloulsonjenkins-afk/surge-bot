@@ -191,6 +191,22 @@ function pair(line: string | undefined): [number, number] | null {
  * timer (in-play alerts) or a Kickoff line (pre-match alerts such as "First Half Goal"). The Telegram listener
  * and its catch-up sync both use this to decide what becomes a pick.
  */
+/**
+ * Minutes until kick-off from a pre-match alert's Kickoff line: "In 1 hour" = 60, "In 45 mins" = 45, "In 1h 30m" = 90,
+ * "In half an hour" = 30, "Now" = 0. Null when the wording isn't one of these.
+ */
+export function kickoffMinutes(raw: string | null | undefined): number | null {
+  const s = (raw ?? "").toLowerCase().trim();
+  if (!s) return null;
+  if (/\b(now|started|live)\b/.test(s)) return 0;
+  if (/half an hour/.test(s)) return 30;
+  if (/\ban hour\b/.test(s)) return 60;
+  const h = /(\d+)\s*h(?:ours?|rs?)?\b/.exec(s);
+  const m = /(\d+)\s*m(?:in(?:ute)?s?)?\b/.exec(s);
+  if (!h && !m) return null;
+  return (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
+}
+
 export function isRealAlert(p: Pick<ParsedAlert, "home" | "away" | "minute" | "kickoffRaw">): boolean {
   return Boolean(p.home && p.away && (p.minute !== null || p.kickoffRaw !== null));
 }

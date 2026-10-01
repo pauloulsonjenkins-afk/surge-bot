@@ -28,6 +28,23 @@ export function useReconcile() {
   });
 }
 
+/** Adds a suggested "alert name = Betfair name" line to Match names; bets it fixes link at once. */
+export function useAddMatchName() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { from: string; to: string }): Promise<{ line: string; linked: number }> => {
+      const res = await fetch("/api/admin/betfair/match-name", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiFetchError(body?.error ?? `Couldn't add it (${res.status})`, res.status);
+      return body as { line: string; linked: number };
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: ["sending"] });
+    },
+  });
+}
+
 /** Acknowledge unlinked bets (they leave the list), or put acknowledged ones back. */
 export function useAcknowledgeBets() {
   const qc = useQueryClient();

@@ -5,8 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
-import { isRealAlert, parseAlert } from "../src/inplayguru/parse-alert";
+import { isRealAlert, kickoffMinutes, parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
+import { pickPlacements } from "../src/betfair/exchange";
 
 const ALERT = [
   "🔔 First Half Goal",
@@ -117,11 +118,41 @@ test("the market code and wording can be changed, and team-name fixes apply", ()
   assert.equal(getSendingSettings(db).firstHalfGoalsSelection, "Over 0.5 Goals");
 });
 
-test("an alert that has gone stale before it is fetched is not sent", () => {
+test("a pre-match pick stays in the feed until kick-off, not just for the 10-minute maximum age", () => {
+  // The cause of First Half Goal bets never being placed: the row left the feed 10 minutes after the alert, about 50
+  // minutes before kick-off, so betting software placing it any later (nearer the start, or in-play) never saw it.
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "first half goal": 2 }, strategies: { "first half goal": true }, maxAgeMinutes: 10 });
+  const now = Date.now();
+  // "Kickoff: In 1 hour", posted 30 minutes ago: kick-off is 30 minutes away, so it is still sent.
+  db.upsertLivePick("chat", 1, ALERT, parseAlert(ALERT), new Date(now - 30 * 60_000).toISOString());
+  const first = buildFeed(db, { markSent: true, now: new Date(now) });
+  assert.equal(first.rows.length, 1);
+  assert.equal(first.newlySent, 1);
+  // Once sent it is repeated, unchanged, right up to kick-off...
+  const atKickoff = buildFeed(db, { markSent: true, now: new Date(now + 29 * 60_000) });
+  assert.equal(atKickoff.rows.length, 1);
+  assert.equal(atKickoff.newlySent, 0);
+  // ...and drops out a few minutes after it.
+  assert.equal(buildFeed(db, { markSent: true, now: new Date(now + 40 * 60_000) }).rows.length, 0);
+});
+
+test("a pre-match alert that arrives after kick-off is not sent", () => {
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { enabled: true, stakes: { "first half goal": 2 }, strategies: { "first half goal": true } });
-  db.upsertLivePick("chat", 1, ALERT, parseAlert(ALERT), new Date(Date.now() - 30 * 60_000).toISOString());
+  db.upsertLivePick("chat", 1, ALERT, parseAlert(ALERT), new Date(Date.now() - 70 * 60_000).toISOString());
   assert.equal(buildFeed(db, { markSent: false }).rows.length, 0);
+});
+
+test("kick-off wording", () => {
+  assert.equal(kickoffMinutes("In 1 hour"), 60);
+  assert.equal(kickoffMinutes("In 2 hours"), 120);
+  assert.equal(kickoffMinutes("In 45 mins"), 45);
+  assert.equal(kickoffMinutes("In 1h 30m"), 90);
+  assert.equal(kickoffMinutes("In half an hour"), 30);
+  assert.equal(kickoffMinutes("In an hour"), 60);
+  assert.equal(kickoffMinutes("Now"), 0);
+  assert.equal(kickoffMinutes("Tomorrow"), null);
 });
 
 test("the Telegram listener treats it as an alert, though it has no match timer", () => {
@@ -142,4 +173,18 @@ test("once stored it appears in the strategy lists, and a recovered alert is dat
   assert.deepEqual(db.listStrategiesSeen().map((s) => s.label), ["First Half Goal"]);
   assert.equal(db.listStrategiesForAdmin()[0]?.hits, 1);
   assert.equal(db.listLivePicks(10)[0]?.firstSeenAt, posted);
+});
+
+test("on Live, a sent pre-match pick isn't called 'not placed' until kick-off has passed", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "first half goal": 2 }, strategies: { "first half goal": true } });
+  const now = Date.now();
+  db.upsertLivePick("chat", 1, ALERT, parseAlert(ALERT), new Date(now - 60_000).toISOString());
+  buildFeed(db, { markSent: true, now: new Date(now) });
+  const id = db.listSentPicks()[0]!.id;
+  const link = (at: number) => ({ configured: true, missing: [], lastOkAt: new Date(at).toISOString(), lastErrorAt: null, lastError: null, lastCount: 0 });
+  // 20 minutes after sending, Betfair checked, no bet yet: still before kick-off.
+  assert.equal(pickPlacements(db, link(now + 20 * 60_000), new Date(now + 20 * 60_000))[id]!.state, "beforeKickoff");
+  // Kick-off (about an hour after the alert) and five minutes more, still nothing: not placed.
+  assert.equal(pickPlacements(db, link(now + 70 * 60_000), new Date(now + 70 * 60_000))[id]!.state, "notPlaced");
 });

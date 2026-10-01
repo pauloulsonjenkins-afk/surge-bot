@@ -5,7 +5,7 @@ import { Card, HeroStat, PageHeader, moneyTone } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { gbp } from "@/lib/format";
-import { useAcknowledgeBets, useImportBetHistory, useReconcile, type ReconcileReport } from "@/queries/use-reconcile";
+import { useAcknowledgeBets, useAddMatchName, useImportBetHistory, useReconcile, type ReconcileReport } from "@/queries/use-reconcile";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -252,7 +252,37 @@ function BetLine({ b, action }: { b: ReconcileReport["unlinked"][number]; action
  */
 function UnlinkedBets({ report }: { report: ReconcileReport }) {
   const ack = useAcknowledgeBets();
+  const addName = useAddMatchName();
   const dialog = useDialog();
+
+  async function addMatchName(s: { from: string; to: string }) {
+    const ok = await dialog.confirm({
+      title: "Add this to Match names?",
+      confirmLabel: "Add to Match names",
+      details: [
+        { label: "In the alert", value: s.from },
+        { label: "On Betfair", value: s.to },
+      ],
+      body: (
+        <p>
+          Picks for this team are then sent to your betting software as “{s.to}”, and bets already placed on it link to their picks. You can
+          change or remove it under Match names on the Sending page.
+        </p>
+      ),
+    });
+    if (!ok) return;
+    addName.mutate(s, {
+      onSuccess: (r) =>
+        void dialog.notify({
+          title: "Match name added",
+          body: (
+            <p>
+              “{r.line}” is saved. {r.linked > 0 ? `${r.linked} bet${r.linked === 1 ? "" : "s"} linked to ${r.linked === 1 ? "its pick" : "their picks"}.` : "No other bets were waiting on it."}
+            </p>
+          ),
+        }),
+    });
+  }
   const open = report.unlinked;
   const openCount = report.unlinkedCount ?? open.length;
   const done = report.acknowledged ?? [];
@@ -293,6 +323,7 @@ function UnlinkedBets({ report }: { report: ReconcileReport }) {
         )}
       </div>
       {ack.error && <p className="text-xs text-destructive">{ack.error.message}</p>}
+      {addName.error && <p className="text-xs text-destructive">{addName.error.message}</p>}
       {open.length > 0 && (
         <ul className="divide-y divide-line">
           {open.map((b) => (
@@ -300,11 +331,24 @@ function UnlinkedBets({ report }: { report: ReconcileReport }) {
               key={b.betId}
               b={b}
               action={
-                canAck && (
-                  <button type="button" disabled={ack.isPending} onClick={() => ack.mutate({ betIds: [b.betId], acknowledged: true })} className={btn}>
-                    Acknowledge
-                  </button>
-                )
+                <span className="flex flex-col items-end gap-1.5">
+                  {b.suggestion && (
+                    <button
+                      type="button"
+                      disabled={addName.isPending}
+                      onClick={() => void addMatchName(b.suggestion!)}
+                      title={`Adds “${b.suggestion.from} = ${b.suggestion.to}” to Match names on the Sending page`}
+                      className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
+                    >
+                      Add to Match names
+                    </button>
+                  )}
+                  {canAck && (
+                    <button type="button" disabled={ack.isPending} onClick={() => ack.mutate({ betIds: [b.betId], acknowledged: true })} className={btn}>
+                      Acknowledge
+                    </button>
+                  )}
+                </span>
               }
             />
           ))}

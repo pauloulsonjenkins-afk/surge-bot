@@ -24,7 +24,7 @@
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
 import { eventScore, matchBets } from "./reconcile";
-import { exchangeNamer, feedMarket, getSendingSettings } from "../inplayguru/bet-feed";
+import { exchangeNamer, feedMarket, getSendingSettings, kickoffAt } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
@@ -271,15 +271,26 @@ export class BetfairReader {
    * BOTH_TEAMS_TO_SCORE), or null when the market or selection isn't there or has no price.
    */
   async backPrice(eventId: string, marketType: string, selectionName: string): Promise<number | null> {
+    return (await this.checkBet(eventId, marketType, selectionName)).price;
+  }
+
+  /**
+   * Whether Betfair has the exact bet the feed sends for this event (its market code, then its selection wording) and
+   * the price of it now. The betting software finds the bet by these same names, so "noMarket" or "noSelection" means
+   * it can't place it: the market code or wording on the Sending page doesn't match Betfair's.
+   */
+  async checkBet(eventId: string, marketType: string, selectionName: string): Promise<{ status: MarketCheck; price: number | null; runners: string[] }> {
     const markets = await this.call<MarketCatalogue[]>("listMarketCatalogue", {
       filter: { eventIds: [eventId], marketTypeCodes: [marketType] },
       marketProjection: ["RUNNER_DESCRIPTION"],
       maxResults: 5,
     });
     const market = markets[0];
-    const runner = market?.runners ? findRunner(market.runners, selectionName) : undefined;
-    if (!market || !runner) return null;
-    return this.priceOf(market.marketId, runner.selectionId);
+    if (!market) return { status: "noMarket", price: null, runners: [] };
+    const runners = (market.runners ?? []).map((r) => r.runnerName);
+    const runner = market.runners ? findRunner(market.runners, selectionName) : undefined;
+    if (!runner) return { status: "noSelection", price: null, runners };
+    return { status: "ok", price: await this.priceOf(market.marketId, runner.selectionId), runners };
   }
 
   /** The best back price of one selection in one market right now (else its last traded price), or null. */
@@ -366,6 +377,9 @@ export function searchWord(team: string): string {
 const CHECK_WITHIN_MS = 90 * 60 * 1000;
 const CHECKS_PER_POLL = 10;
 
+/** Whether Betfair has the bet the feed would send for an alert's match: see BetfairReader.checkBet. */
+export type MarketCheck = "ok" | "noMarket" | "noSelection";
+
 export interface CornerMarket {
   name: string;
   /** The market code the bet feed would need, e.g. FIRST_HALF_CORNERS. */
@@ -442,14 +456,28 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
     }
     // The price of the bet the feed would send, read now, so the pick can be priced even when the alert has none.
     let odds: number | null = null;
+    let check: { status: MarketCheck; detail: string } | null = null;
     const pick = found.result === "on" && found.eventId ? db.getLivePick(p.id) : null;
     if (pick) {
       const market = feedMarket(pick, settings, namer);
       if (!("error" in market)) {
-        odds = await reader.backPrice(found.eventId!, market.marketType, market.selectionName).catch(() => null);
+        const bet = await reader.checkBet(found.eventId!, market.marketType, market.selectionName).catch(() => null);
+        if (bet) {
+          odds = bet.price;
+          check = {
+            status: bet.status,
+            detail:
+              bet.status === "noMarket"
+                ? `Betfair has no ${market.marketType} market for this match.`
+                : bet.status === "noSelection"
+                  ? `Betfair's ${market.marketType} market has no "${market.selectionName}"; it has ${bet.runners.map((r) => `"${r}"`).join(", ")}.`
+                  : `${market.marketType} · ${market.selectionName}`,
+          };
+          if (bet.status !== "ok") log.warn(`Bet not on Betfair as sent (pick ${p.id}, ${home} v ${away}): ${check.detail}`);
+        }
       }
     }
-    db.setPickExchange(p.id, found.result, found.event, odds);
+    db.setPickExchange(p.id, found.result, found.event, odds, check);
     // First Half Corner Race: note the corner markets on offer (to choose its market code), and if its code isn't set
     // yet, find the first-half corners market by name to price the pick anyway.
     if (pick?.market === "FIRST_HALF_CORNERS" && found.eventId) {
@@ -542,7 +570,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
 /** How long after a pick is sent the betting software normally places it; past this with no bet, it's "not placed". */
 const NOT_PLACED_AFTER_MS = 5 * 60 * 1000;
 
-export type PlacementState = "checking" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced";
+export type PlacementState = "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced";
 
 export interface Placement {
   state: PlacementState;
@@ -577,7 +605,13 @@ export function pickPlacements(db: EngineDb, link: BetfairLinkStatus, now = new 
     else if (matched > 0) state = "matched";
     else if (bets.some((b) => b.status === "pending")) state = "waiting";
     else if (bets.length > 0) state = "lapsed";
-    else state = lastOk !== null && lastOk >= sent + NOT_PLACED_AFTER_MS ? "notPlaced" : "checking";
+    else {
+      // A pre-match pick may be placed any time up to kick-off, so it is only "not placed" once that has passed.
+      const lp = db.getLivePick(p.id);
+      const ko = lp ? kickoffAt(lp) : null;
+      const deadline = Math.max(sent + NOT_PLACED_AFTER_MS, ko !== null ? ko + NOT_PLACED_AFTER_MS : 0);
+      state = lastOk !== null && lastOk >= deadline ? "notPlaced" : ko !== null && now.getTime() < ko ? "beforeKickoff" : "checking";
+    }
     out[p.id] = {
       state,
       stake: bets.reduce<number | null>((n, b) => (b.stake === null ? n : (n ?? 0) + b.stake), null),
