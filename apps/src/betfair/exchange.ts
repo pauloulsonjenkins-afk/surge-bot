@@ -417,7 +417,16 @@ export function cornerMarketsSeen(db: EngineDb): Array<CornerMarket & { seenAt: 
  * code, newest first: to choose the market codes to send it with.
  */
 export function teamMarketsSeen(db: EngineDb): Array<CornerMarket & { seenAt: string; example: string }> {
-  return marketsSeen(db, TEAM_MARKETS_KEY);
+  // Filtered on reading too, so markets noted before the filter existed (whole-match ones) drop out of the list.
+  return marketsSeen(db, TEAM_MARKETS_KEY).filter(isTeamGoalsMarket);
+}
+
+/**
+ * One team's own goals market ("Germany Over/Under 1.5 Goals", code TEAM_A_OVER_UNDER_15). Searching an event by the
+ * team's name also returns its whole-match markets (Over/Under, First Half Goals...), which aren't the team's goals.
+ */
+export function isTeamGoalsMarket(m: { code: string | null }): boolean {
+  return /^TEAM_[AB]_/.test(m.code ?? "");
 }
 
 function marketsSeen(db: EngineDb, key: string): Array<CornerMarket & { seenAt: string; example: string }> {
@@ -544,7 +553,7 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
       noteMarkets(
         db,
         TEAM_MARKETS_KEY,
-        markets.filter((m) => /over|under|goal|score/i.test(m.name)).map(({ name, code, selections }) => ({ name, code, selections })),
+        markets.filter(isTeamGoalsMarket).map(({ name, code, selections }) => ({ name, code, selections })),
         `${found.event ?? `${home} v ${away}`} (favourite ${team})`,
       );
       const line = pick.detail.targetLine ?? null;

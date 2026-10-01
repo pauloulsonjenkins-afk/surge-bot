@@ -8,7 +8,7 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { matchBets } from "../src/betfair/reconcile";
-import { findRunner, judgeExchange, missingSettings, pickPlacements, readCredentials, searchWord, toStoredBets, type BetfairLinkStatus } from "../src/betfair/exchange";
+import { findRunner, isTeamGoalsMarket, judgeExchange, missingSettings, pickPlacements, readCredentials, searchWord, toStoredBets, type BetfairLinkStatus } from "../src/betfair/exchange";
 import { computeStrategyReturns } from "../src/server/winloss";
 import { priceResult } from "../src/server/pricing";
 
@@ -202,4 +202,12 @@ test("a pick with a linked Betfair bet is on Betfair, even if the event search m
   assert.equal(p.exchange, "on");
   assert.equal(p.exchangeEvent, "Olympique Lyon v Nantes");
   assert.equal(db.markBetPicksOnExchange(), 0, "only changed once");
+});
+
+test("only a team's own goals markets are listed for choosing the favourite-to-score codes", () => {
+  assert.equal(isTeamGoalsMarket({ code: "TEAM_A_OVER_UNDER_05" }), true);
+  assert.equal(isTeamGoalsMarket({ code: "TEAM_B_OVER_UNDER_15" }), true);
+  assert.equal(isTeamGoalsMarket({ code: "FIRST_HALF_GOALS_05" }), false);
+  assert.equal(isTeamGoalsMarket({ code: "OVER_UNDER_35" }), false);
+  assert.equal(isTeamGoalsMarket({ code: "MATCH_ODDS_AND_OU_25" }), false);
 });
