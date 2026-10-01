@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
 import { Bot, ChevronRight, PencilLine, Scale, Send, Settings, TrendingUp, Trophy, Users } from "lucide-react";
-import { HorseshoeIcon } from "@/components/ui/HorseshoeIcon";
+import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
 
@@ -12,7 +12,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: n
   "/more/admin/winloss": TrendingUp,
   "/more/admin/results": PencilLine,
   "/more/admin/reconcile": Scale,
-  "/more/admin/horses": HorseshoeIcon,
+  "/more/admin/horses": HorseHeadIcon,
   "/more/admin/users": Users,
   "/more/admin/settings": Settings,
 };
