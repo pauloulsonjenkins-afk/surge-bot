@@ -503,6 +503,12 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
         const byAway = judgeExchange(home, away, await reader.searchEvents(searchWord(away), at));
         if (byAway.result === "on" || (byAway.result === "nameDiffers" && judged.result === "off")) judged = byAway;
       }
+      // One word can miss (Betfair's search is word-based and some names are abbreviated): try each full name too.
+      for (const name of [home, away]) {
+        if (judged.result !== "off") break;
+        const byName = judgeExchange(home, away, await reader.searchEvents(name, at));
+        if (byName.result !== "off") judged = byName;
+      }
       found = { ...judged, at: now };
       cache.set(key, found);
     }
@@ -612,6 +618,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
       db.saveBetfairBets(bets, new Date().toISOString());
       const linked = matchBets(db);
       if (linked > 0) log.info(`Betfair: ${linked} new bet(s) linked to picks.`);
+      const corrected = db.markBetPicksOnExchange();
+      if (corrected > 0) log.info(`Betfair: ${corrected} pick(s) marked on Betfair from their placed bets.`);
       status.lastOkAt = new Date().toISOString();
       status.lastCount = bets.length;
       if (status.lastError) log.info("Betfair bet check is working again.");

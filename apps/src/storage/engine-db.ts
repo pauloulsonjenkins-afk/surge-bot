@@ -1168,6 +1168,22 @@ export class EngineDb {
   }
 
   /** Records what Betfair said about a pick's match. "unknown" = couldn't be looked up (no team names); not shown. */
+  /**
+   * Picks a Betfair bet is linked to are on Betfair, whatever the event search said: Betfair's search misses some
+   * matches (e.g. lower leagues and reserves), and a placed bet is proof. Keeps the market check. Returns how many changed.
+   */
+  markBetPicksOnExchange(): number {
+    const r = this.db
+      .prepare(
+        `UPDATE live_picks SET exchange = 'on',
+           exchange_event = (SELECT b.event FROM betfair_bets b WHERE b.pick_id = live_picks.id ORDER BY b.placed_at LIMIT 1)
+         WHERE (exchange IS NULL OR exchange <> 'on') AND EXISTS (SELECT 1 FROM betfair_bets b WHERE b.pick_id = live_picks.id)`,
+      )
+      .run();
+    if (r.changes > 0) this.onChange();
+    return r.changes;
+  }
+
   setPickExchange(
     id: number,
     result: "on" | "nameDiffers" | "off" | "unknown",

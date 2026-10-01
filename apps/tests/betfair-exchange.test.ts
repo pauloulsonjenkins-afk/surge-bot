@@ -184,3 +184,22 @@ test("a pick is priced from the alert, then its matched bet, then the Betfair pr
   // Next Goal alerts print their price, which still comes first.
   assert.deepEqual(pick(price({ market: "NEXT_GOAL", targetLine: 0.5, overLine: 0.5, overOdds: 2.1, betOdds: 1.9 })), [2.1, "alert"]);
 });
+
+test("a pick with a linked Betfair bet is on Betfair, even if the event search missed it", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [S.toLowerCase()]: 2 }, strategies: { [S.toLowerCase()]: true }, dailyCap: 100 });
+  const now = new Date();
+  db.upsertLivePick("chat", 1, alert(1, "Lyon vs Nantes"), parseAlert(alert(1, "Lyon vs Nantes")), new Date(now.getTime() - 60_000).toISOString());
+  buildFeed(db, { markSent: true, now });
+  const sent = db.listSentPicks()[0]!;
+  db.setPickExchange(sent.id, "off", null);
+  assert.equal(db.markBetPicksOnExchange(), 0, "no bet yet");
+  const placedAt = new Date(Date.parse(sent.sentAt) + 20_000).toISOString();
+  db.saveBetfairBets([{ betId: "M", placedAt, settledAt: null, event: "Olympique Lyon v Nantes", market: null, selection: "Over 0.5 Goals", side: "back", provider: null, status: "matched", stake: 2, matched: 2, odds: 1.95, profit: null }], "t");
+  matchBets(db);
+  assert.equal(db.markBetPicksOnExchange(), 1);
+  const p = db.getLivePick(sent.id)!;
+  assert.equal(p.exchange, "on");
+  assert.equal(p.exchangeEvent, "Olympique Lyon v Nantes");
+  assert.equal(db.markBetPicksOnExchange(), 0, "only changed once");
+});
