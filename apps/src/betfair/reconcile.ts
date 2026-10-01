@@ -126,16 +126,21 @@ const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5,
 
 /** Minutes London is ahead of UTC at a moment (0 in winter, 60 in summer). */
 function londonOffsetMinutes(utcMs: number): number {
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(utcMs));
+  // Worked out on the whole minute: the formatted time has no seconds, so comparing it with a time that has them would
+  // round 59.5 minutes down to 59 and put every time with 31+ seconds a minute early.
+  const minute = Math.floor(utcMs / 60000) * 60000;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(minute));
   const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-  return Math.round((Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute")) - utcMs) / 60000);
+  return Math.round((Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute")) - minute) / 60000);
 }
 
 /**
- * A date and time from the export as an ISO string. Times without a zone are UK local time, which is what the betting
- * software shows. Understands 01/10/2026 14:03(:22), 2026-10-01 14:03:22, 01-Oct-26 14:03, 1 Oct 2026 14:03, and ISO.
+ * A date and time from the export as an ISO string. A time without a zone is taken as UK local time, or, when
+ * utcOffsetMinutes is given, as that many minutes ahead of UTC (the import script sends the betting PC's own offset,
+ * since the betting software writes times in the PC's zone). Understands 01/10/2026 14:03(:22), 2026-10-01 14:03:22,
+ * 01-Oct-26 14:03, 1 Oct 2026 14:03, and ISO.
  */
-export function parseUkDateTime(v: string | undefined): string | null {
+export function parseUkDateTime(v: string | undefined, utcOffsetMinutes: number | null = null): string | null {
   if (!v) return null;
   const s = v.trim();
   if (!s) return null;
@@ -160,6 +165,7 @@ export function parseUkDateTime(v: string | undefined): string | null {
   const [h, mi, se] = t ? [Number(t[1]), Number(t[2]), Number(t[3] ?? 0)] : [0, 0, 0];
   if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
   const asUtc = Date.UTC(y, mo - 1, d, h, mi, se);
+  if (utcOffsetMinutes !== null) return new Date(asUtc - utcOffsetMinutes * 60000).toISOString();
   // Take the offset at the guessed moment, then once more at the corrected one, which settles it either side of a clock change.
   let utc = asUtc - londonOffsetMinutes(asUtc) * 60000;
   utc = asUtc - londonOffsetMinutes(utc) * 60000;
@@ -177,11 +183,15 @@ function statusOf(raw: string | undefined, profit: number | null, matched: numbe
   return null;
 }
 
-/** "Arsenal v Chelsea" out of a longer description such as "Football / Arsenal v Chelsea / Match Odds". */
+/**
+ * "Arsenal v Chelsea" out of a longer description such as "Football / Arsenal v Chelsea / Match Odds", or BF Bot
+ * Manager's "20:00 Arsenal v Chelsea\Over/Under 2.5 Goals\Over 2.5 Goals".
+ */
 function eventFrom(...texts: Array<string | undefined>): string | null {
   for (const t of texts) {
     if (!t) continue;
-    for (const part of t.split(/\s*[/|>]\s*/)) if (/\s(v|vs|v\.)\s/i.test(part)) return part.trim();
+    // Parts are split by / | > or a backslash; the match may start with its kick-off time ("20:00 Home v Away").
+    for (const part of t.split(/\s*[/|>\\]\s*/)) if (/\s(v|vs|v\.)\s/i.test(part)) return part.trim().replace(/^\d{1,2}:\d{2}\s+/, "");
   }
   return texts.find((t) => t && t.trim())?.trim() ?? null;
 }
@@ -195,7 +205,7 @@ export interface ParsedHistory {
 }
 
 /** Reads an exported bet history. Throws an Error whose message says what the file is missing. */
-export function parseBetHistory(csv: string): ParsedHistory {
+export function parseBetHistory(csv: string, utcOffsetMinutes: number | null = null): ParsedHistory {
   const rows = parseCsv(csv);
   // The header is the first row that names an event and something money-like; exports sometimes start with a title line.
   const headerIdx = rows.findIndex((r) => {
@@ -203,6 +213,10 @@ export function parseBetHistory(csv: string): ParsedHistory {
     return (cols.event !== undefined || cols.market !== undefined) && (cols.profit !== undefined || cols.status !== undefined || cols.odds !== undefined);
   });
   if (headerIdx < 0) {
+    // BF Bot Manager's market results file (one row per finished market and its winner) is easy to export by mistake.
+    if (rows[0]?.some((h) => key(h) === "winners") && rows[0].some((h) => key(h) === "winnersprices")) {
+      throw new Error("This is a market results file (each market's winner), not your bet history. Export your settled bets instead: one row per bet, with stake, price and profit.");
+    }
     throw new Error("Couldn't find the column headings. The file needs at least an Event (or Market) column and a Profit/Loss or Status column.");
   }
   const header = rows[headerIdx]!;
@@ -216,8 +230,8 @@ export function parseBetHistory(csv: string): ParsedHistory {
   let skipped = 0;
   for (const r of rows.slice(headerIdx + 1)) {
     const event = eventFrom(get(r, "event"), get(r, "market"));
-    const placedAt = parseUkDateTime(get(r, "placed"));
-    const settledAt = parseUkDateTime(get(r, "settled"));
+    const placedAt = parseUkDateTime(get(r, "placed"), utcOffsetMinutes);
+    const settledAt = parseUkDateTime(get(r, "settled"), utcOffsetMinutes);
     const stake = parseMoney(get(r, "stake"));
     const matchedRaw = parseMoney(get(r, "matched"));
     const odds = parseMoney(get(r, "odds"));
@@ -318,7 +332,7 @@ export function matchBets(db: EngineDb): number {
       if (ev < 2) continue;
       let score = ev;
       if (b.selection && p.sentRow?.selectionName && tokens(b.selection).join(" ") === tokens(p.sentRow.selectionName).join(" ")) score++;
-      if (b.provider && p.sentRow?.provider && b.provider.trim().toLowerCase() === p.sentRow.provider.trim().toLowerCase()) score++;
+      if (b.provider && p.sentRow?.provider && b.provider.toLowerCase().includes(p.sentRow.provider.trim().toLowerCase())) score++;
       // A pick already holding a bet is a weaker fit, so two bets on one match go to two picks where there are two.
       if (linkedPicks.has(p.id)) score -= 0.5;
       if (!best || score > best.score || (score === best.score && Math.abs(gap) < best.gap)) best = { id: p.id, score, gap: Math.abs(gap) };
@@ -349,8 +363,8 @@ export interface ImportSummary {
   unused: string[];
 }
 
-export function importBetHistory(db: EngineDb, csv: string, source: string, now = new Date()): ImportSummary {
-  const parsed = parseBetHistory(csv);
+export function importBetHistory(db: EngineDb, csv: string, source: string, now = new Date(), utcOffsetMinutes: number | null = null): ImportSummary {
+  const parsed = parseBetHistory(csv, utcOffsetMinutes);
   if (parsed.bets.length === 0) throw new Error(`No bets found in the file (${parsed.skipped} row${parsed.skipped === 1 ? "" : "s"} skipped). Check it is a bet history export.`);
   const at = now.toISOString();
   const { added, updated } = db.saveBetfairBets(parsed.bets, at);

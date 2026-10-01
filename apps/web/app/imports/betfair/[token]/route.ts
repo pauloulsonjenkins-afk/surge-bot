@@ -8,11 +8,17 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const baseUrl = process.env.ENGINE_BASE_URL;
   if (!baseUrl) return new NextResponse("Not found", { status: 404 });
-  const name = new URL(request.url).searchParams.get("name") ?? "";
+  // Passed on as sent: the file name, and the betting PC's offset from UTC that its times are written in.
+  const incoming = new URL(request.url).searchParams;
+  const query = new URLSearchParams();
+  for (const k of ["name", "utcOffset"]) {
+    const v = incoming.get(k);
+    if (v !== null) query.set(k, v);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
-    const res = await fetch(`${baseUrl}/imports/betfair/${encodeURIComponent((await params).token)}?name=${encodeURIComponent(name)}`, {
+    const res = await fetch(`${baseUrl}/imports/betfair/${encodeURIComponent((await params).token)}?${query}`, {
       method: "POST",
       headers: { "Content-Type": "text/csv; charset=utf-8" },
       body: await request.text(),

@@ -126,3 +126,37 @@ test("bets link to their picks and the report compares real with estimated", () 
   assert.equal(again.updated, 4);
   assert.equal(computeReconcile(db).strategies[0]!.matched, 2);
 });
+
+test("BF Bot Manager's bet history export: backslash descriptions, £ amounts, the PC's own time zone", () => {
+  const csv = [
+    "Description,Selection,Bet Id,Bet type,Matched amount,Loss rec. amount,Avg. price matched,Status,P/L,Strategy,Short description,Tipster,Placed date,Matched date,Settled date",
+    "20:00 FK Loznica v FK Spartak\\Over/Under 2.5 Goals\\Over 2.5 Goals,Over 2.5 Goals,100000000001,BACK,£1.00,£0.00,1.84,SETTLED,-£1.00,Momentum Next Goal - Live,Score at time of bet: 2 - 0,blistering momentum / action-packed,2026-09-28 21:29:31,2026-09-28 21:29:36,2026-09-28 21:52:53",
+    "21:00 Guadeloupe v Barbados\\Over/Under 3.5 Goals\\Over 3.5 Goals,Over 3.5 Goals,100000000002,BACK,£5.00,£0.00,2.28,SETTLED,£6.40,Momentum Next Goal - Live,,underdog taking charge action,2026-09-28 22:38:59,2026-09-28 22:39:11,2026-09-28 22:48:42",
+  ].join("\n");
+  const uk = parseBetHistory(csv);
+  assert.equal(uk.bets.length, 2);
+  const [a, b] = uk.bets;
+  assert.equal(a!.event, "FK Loznica v FK Spartak");
+  assert.equal(a!.selection, "Over 2.5 Goals");
+  assert.equal(a!.betId, "100000000001");
+  assert.equal(a!.side, "back");
+  assert.equal(a!.status, "lost");
+  assert.equal(a!.matched, 1);
+  assert.equal(a!.odds, 1.84);
+  assert.equal(a!.profit, -1);
+  assert.equal(a!.provider, "blistering momentum / action-packed");
+  assert.equal(b!.status, "won");
+  assert.equal(b!.profit, 6.4);
+  assert.equal(uk.columns.event, "Description");
+  assert.equal(uk.columns.profit, "P/L");
+  // Read as UK summer time by default; with the PC's offset sent (UTC here), the same text is an hour later in UTC.
+  assert.equal(a!.placedAt, "2026-09-28T20:29:31.000Z");
+  assert.equal(parseBetHistory(csv, 0).bets[0]!.placedAt, "2026-09-28T21:29:31.000Z");
+});
+
+test("BF Bot Manager's market results file is refused with a reason that says what it is", () => {
+  assert.throws(
+    () => parseBetHistory("Country code,Start time,Market name,Winners,Winners prices,Total matched\n,2026-09-30 09:00:00,A v B\\Both teams to Score?,Yes,1.68,158.37\n"),
+    /market results file/,
+  );
+});

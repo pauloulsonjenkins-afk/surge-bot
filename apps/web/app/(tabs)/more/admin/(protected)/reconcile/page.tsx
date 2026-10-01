@@ -22,11 +22,13 @@ function ImportCard({ report }: { report: ReconcileReport | undefined }) {
   const upload = useImportBetHistory();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  // The betting software writes times in its PC's time zone, which may be UTC on a server rather than UK time.
+  const [zone, setZone] = useState<"uk" | "utc">("uk");
   const last = upload.data ?? report?.lastImport ?? null;
 
   async function send() {
     if (!file) return;
-    upload.mutate({ csv: await file.text(), source: file.name });
+    upload.mutate({ csv: await file.text(), source: file.name, utcOffset: zone === "utc" ? 0 : null });
   }
 
   return (
@@ -40,6 +42,17 @@ function ImportCard({ report }: { report: ReconcileReport | undefined }) {
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           className="max-w-full text-xs text-ink-muted file:mr-2 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink"
         />
+        <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+          Times in the file are
+          <select
+            value={zone}
+            onChange={(e) => setZone(e.target.value as "uk" | "utc")}
+            className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink"
+          >
+            <option value="uk">UK time</option>
+            <option value="utc">UTC</option>
+          </select>
+        </label>
         <button
           type="button"
           disabled={!file || upload.isPending}

@@ -109,6 +109,13 @@ async function readJsonBody(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Pr
   }
 }
 
+/** Minutes ahead of UTC for an imported file's times (-720 to 840), or null to read them as UK time. */
+function parseUtcOffset(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= -720 && n <= 840 ? n : null;
+}
+
 function isAdminAuthorized(req: IncomingMessage): boolean {
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!internalKey) return false;
@@ -362,8 +369,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         throw err;
       }
       try {
-        const name = new URL(rawUrl, "http://internal").searchParams.get("name")?.slice(0, 120) || "automatic import";
-        const summary = importBetHistory(db, csv, name);
+        const params = new URL(rawUrl, "http://internal").searchParams;
+        const name = params.get("name")?.slice(0, 120) || "automatic import";
+        const summary = importBetHistory(db, csv, name, new Date(), parseUtcOffset(params.get("utcOffset")));
         log.info(`Betfair import (${name}): ${summary.added} new, ${summary.updated} updated, ${summary.linked} linked to picks.`);
         send(res, 200, { ...summary });
       } catch (err) {
@@ -397,7 +405,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       try {
         const name = typeof body.source === "string" && body.source.trim() ? body.source.trim().slice(0, 120) : "upload";
-        const summary = importBetHistory(db, body.csv, name);
+        const summary = importBetHistory(db, body.csv, name, new Date(), parseUtcOffset(body.utcOffset));
         log.info(`Betfair import (${name}) from the admin page: ${summary.added} new, ${summary.updated} updated, ${summary.linked} linked to picks.`);
         send(res, 200, { ...summary });
       } catch (err) {

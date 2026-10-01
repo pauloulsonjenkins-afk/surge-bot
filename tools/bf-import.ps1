@@ -56,13 +56,19 @@ foreach ($f in $files) {
 
   try {
     $bytes = [IO.File]::ReadAllBytes($f.FullName)
-    $target = "$Url`?name=$([Uri]::EscapeDataString($f.Name))"
+    # BF Bot Manager writes times in this PC's time zone, so say which: minutes ahead of UTC (60 in UK summer time).
+    $offset = [int][TimeZoneInfo]::Local.GetUtcOffset($f.LastWriteTime).TotalMinutes
+    $target = "$Url`?name=$([Uri]::EscapeDataString($f.Name))&utcOffset=$offset"
     $result = Invoke-RestMethod -Method Post -Uri $target -Body $bytes -ContentType "text/csv; charset=utf-8" -TimeoutSec 60
     Write-Output ("{0}: {1} bets, {2} new, {3} linked to picks" -f $f.Name, $result.rows, $result.added, $result.linked)
     $state[$f.FullName] = $stamp
   } catch {
     $failed++
     $detail = $_.ErrorDetails.Message
+    # Windows PowerShell 5.1 often leaves ErrorDetails empty; the site's reason is then in the response body.
+    if (-not $detail -and $_.Exception.Response) {
+      try { $detail = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch { }
+    }
     Write-Warning ("{0}: not imported. {1} {2}" -f $f.Name, $_.Exception.Message, $detail)
     # A file the site can't read (wrong export) is remembered too, so it isn't retried every run; change it to retry.
     if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 422) { $state[$f.FullName] = $stamp }
