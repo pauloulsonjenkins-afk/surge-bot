@@ -33,6 +33,8 @@ interface Form {
   favouriteAwaySelection: string;
   firstHalfGoalsMarketType: string;
   firstHalfGoalsSelection: string;
+  firstHalfCornersMarketType: string;
+  firstHalfCornersSelection: string;
   aliases: string;
 }
 
@@ -51,6 +53,8 @@ function toForm(s: SendingSettings): Form {
     favouriteAwaySelection: s.favouriteAwaySelection,
     firstHalfGoalsMarketType: s.firstHalfGoalsMarketType,
     firstHalfGoalsSelection: s.firstHalfGoalsSelection,
+    firstHalfCornersMarketType: s.firstHalfCornersMarketType ?? "",
+    firstHalfCornersSelection: s.firstHalfCornersSelection ?? "Over {line} Corners",
     aliases: s.aliases,
   };
 }
@@ -223,6 +227,8 @@ export default function SendingPage() {
         favouriteAwaySelection: form!.favouriteAwaySelection,
         firstHalfGoalsMarketType: form!.firstHalfGoalsMarketType,
         firstHalfGoalsSelection: form!.firstHalfGoalsSelection,
+        firstHalfCornersMarketType: form!.firstHalfCornersMarketType,
+        firstHalfCornersSelection: form!.firstHalfCornersSelection,
         aliases: form!.aliases,
       },
       {
@@ -300,7 +306,8 @@ export default function SendingPage() {
           <ul className="divide-y divide-line">
             {sortedStrategies.map((s, idx) => {
               const key = s.label.toLowerCase();
-              const supported = s.market !== null && SENDABLE.has(s.market);
+              // First Half Corner Race can be sent once its Betfair market code is set under Bet wording.
+              const supported = s.market !== null && (SENDABLE.has(s.market) || (s.market === "FIRST_HALF_CORNERS" && !!settings.firstHalfCornersMarketType));
               const firstOff = !s.enabled && (idx === 0 || sortedStrategies[idx - 1]!.enabled) && onCount > 0;
               const note = !s.market ? "No market set" : !supported ? "Can't be sent yet" : marketName(s.market);
               const draft = stakeDraft[key];
@@ -655,6 +662,24 @@ export default function SendingPage() {
                   <label className="text-xs text-ink-muted">
                     Selection name
                     <input className={`${inputCls} mt-1 font-mono text-xs`} value={form.firstHalfGoalsSelection} onChange={(e) => setForm({ ...form, firstHalfGoalsSelection: e.target.value })} />
+                  </label>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-ink">1st half corners (First Half Corner Race)</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  One more corner before half-time: first-half corners Over the corners so far + 0.5. <code>{"{line}"}</code> becomes the line
+                  (5.5) and <code>{"{line10}"}</code> ten times it (55). Copy the code and wording from &ldquo;Corner markets on Betfair&rdquo; on the
+                  Reconcile page. Leave the code empty and it stays in Sim.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="text-xs text-ink-muted">
+                    Market code
+                    <input placeholder="Not set" className={`${inputCls} mt-1 font-mono text-xs`} value={form.firstHalfCornersMarketType} onChange={(e) => setForm({ ...form, firstHalfCornersMarketType: e.target.value })} />
+                  </label>
+                  <label className="text-xs text-ink-muted">
+                    Selection name
+                    <input className={`${inputCls} mt-1 font-mono text-xs`} value={form.firstHalfCornersSelection} onChange={(e) => setForm({ ...form, firstHalfCornersSelection: e.target.value })} />
                   </label>
                 </div>
               </div>

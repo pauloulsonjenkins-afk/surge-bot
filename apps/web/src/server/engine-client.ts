@@ -309,6 +309,9 @@ export interface SendingSettings {
   favouriteAwaySelection: string;
   firstHalfGoalsMarketType: string;
   firstHalfGoalsSelection: string;
+  /** Empty = First Half Corner Race isn't sent yet. Missing on an older engine. */
+  firstHalfCornersMarketType?: string;
+  firstHalfCornersSelection?: string;
   aliases: string;
 }
 
@@ -1006,6 +1009,8 @@ export interface ReconcileReport {
   importTokenConfigured: boolean;
   /** The live check of your bets on Betfair (missing on an older engine). */
   betfairLink?: BetfairLinkStatus;
+  /** Corner markets Betfair offered for First Half Corner Race alerts, to choose the one to send (missing on an older engine). */
+  cornerMarkets?: Array<{ name: string; code: string; selections: string[]; seenAt: string; example: string }>;
 }
 
 /** Mirrors BetfairLinkStatus in the engine's betfair/exchange.ts. */

@@ -70,6 +70,29 @@ function BetfairLinkCard({ link }: { link: NonNullable<ReconcileReport["betfairL
   );
 }
 
+/**
+ * The corner markets Betfair offered for First Half Corner Race alerts. The strategy can't be sent until its exact
+ * market is chosen; this shows the codes and selections on offer so the right one can be picked.
+ */
+function CornerMarketsCard({ markets }: { markets: NonNullable<ReconcileReport["cornerMarkets"]> }) {
+  return (
+    <Card title="Corner markets on Betfair" subtitle="Seen for First Half Corner Race alerts. Its bet can be sent once we know which of these it is.">
+      <ul className="divide-y divide-line">
+        {markets.map((m) => (
+          <li key={m.code || m.name} className="py-2 text-xs">
+            <span className="block text-ink">
+              {m.name} <code className="text-ink-muted">{m.code || "no code"}</code>
+            </span>
+            <span className="block text-ink-muted">
+              {m.selections.join(" · ")} · e.g. {m.example}, {when(m.seenAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function ImportCard({ report }: { report: ReconcileReport | undefined }) {
   const upload = useImportBetHistory();
   const input = useRef<HTMLInputElement>(null);
@@ -321,6 +344,7 @@ export default function ReconcilePage() {
       />
 
       {data?.betfairLink && <BetfairLinkCard link={data.betfairLink} />}
+      {data?.cornerMarkets && data.cornerMarkets.length > 0 && <CornerMarketsCard markets={data.cornerMarkets} />}
 
       <ImportCard report={data} />
 

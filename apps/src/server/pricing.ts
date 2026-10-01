@@ -7,8 +7,11 @@
  *                                      a pick the bet feed's rules would have held back is not priced at all
  *          sim pick from before
  *          recording existed:          the strategy's stake today
- *   odds   the price printed in the alert (the "Over" price on the alert's Over/Under line for Next Goal bets,
- *          the favourite's live price for Favourite to win), otherwise the odds set for the strategy
+ *   odds   the first of: the price printed in the alert (the "Over" price on the alert's Over/Under line for Next
+ *          Goal bets, the favourite's live price for Favourite to win); the price the pick's bet actually matched at
+ *          on Betfair; the Betfair price of that bet when the alert arrived (read by betfair/exchange.ts, so Sim
+ *          picks of strategies whose alerts carry no price, such as Both Teams to Score, are priced too); and last,
+ *          the odds set for the strategy on Win/Loss
  *   profit hit: stake x (odds - 1), less commission on the winnings; miss: minus the stake
  */
 
@@ -23,7 +26,14 @@ export interface PriceableResult {
   sentStake: number | null;
   /** What was recorded for a simulation pick when it arrived, or null for one from before recording existed. */
   sim: SimRecord | null;
+  /** The price the pick's bet matched at on Betfair, when it has one. */
+  betOdds?: number | null;
+  /** The Betfair price of the bet the feed would send, read when the alert arrived. */
+  exchangeOdds?: number | null;
 }
+
+/** Where a pick's price came from. */
+export type OddsSource = "alert" | "bet" | "exchange" | "assumed";
 
 /** The simulated bet stored on a pick that wasn't sent. */
 export interface SimRecord {
@@ -34,7 +44,7 @@ export interface SimRecord {
 }
 
 export type PriceOutcome =
-  | { kind: "priced"; stake: number; odds: number; profit: number; usedAlertOdds: boolean }
+  | { kind: "priced"; stake: number; odds: number; profit: number; usedAlertOdds: boolean; oddsSource: OddsSource }
   | { kind: "noStake" }
   | { kind: "noOdds" }
   /** A simulation pick the bet feed would not have placed (below the minimum odds, daily limit, stop loss...). */
@@ -61,12 +71,12 @@ export function priceResult(
   } else stake = ctx.strategyStake;
   if (stake === null) return { kind: "noStake" };
 
-  const alertOdds = alertOddsOf(r);
-  const odds = alertOdds ?? ctx.assumedOdds;
-  if (odds === null) return { kind: "noOdds" };
+  const found = pickOdds(r, ctx.assumedOdds);
+  if (found === null) return { kind: "noOdds" };
+  const { odds, source } = found;
 
   const profit = r.result === "hit" ? stake * (odds - 1) * (1 - ctx.commission) : -stake;
-  return { kind: "priced", stake, odds, profit, usedAlertOdds: alertOdds !== null };
+  return { kind: "priced", stake, odds, profit, usedAlertOdds: source === "alert", oddsSource: source };
 }
 
 /**
@@ -93,7 +103,23 @@ export function hitRateRange(hits: number, settled: number): { low: number; high
   return { low: Math.round(Math.max(0, centre - half) * 1000) / 10, high: Math.round(Math.min(1, centre + half) * 1000) / 10 };
 }
 
-/** The odds a pick is judged at, whether or not it could be staked: the alert's own price, else the strategy's assumed odds. */
-export function oddsFor(r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds">, assumedOdds: number | null): number | null {
-  return alertOddsOf(r) ?? assumedOdds;
+/** A pick's price and where it came from, in the order described at the top of this file; null when there is none. */
+export function pickOdds(
+  r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "betOdds" | "exchangeOdds">,
+  assumedOdds: number | null,
+): { odds: number; source: OddsSource } | null {
+  const alert = alertOddsOf(r);
+  if (alert !== null) return { odds: alert, source: "alert" };
+  if (r.betOdds != null && r.betOdds > 1) return { odds: r.betOdds, source: "bet" };
+  if (r.exchangeOdds != null && r.exchangeOdds > 1) return { odds: r.exchangeOdds, source: "exchange" };
+  if (assumedOdds !== null) return { odds: assumedOdds, source: "assumed" };
+  return null;
+}
+
+/** The odds a pick is judged at, whether or not it could be staked (see pickOdds). */
+export function oddsFor(
+  r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "betOdds" | "exchangeOdds">,
+  assumedOdds: number | null,
+): number | null {
+  return pickOdds(r, assumedOdds)?.odds ?? null;
 }

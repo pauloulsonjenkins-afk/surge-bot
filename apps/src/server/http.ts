@@ -59,7 +59,7 @@ import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
-import { getBetfairLinkStatus, pickPlacements } from "../betfair/exchange";
+import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements } from "../betfair/exchange";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -467,7 +467,12 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 401, { error: "unauthorized" });
         return;
       }
-      send(res, 200, { ...computeReconcile(db), importTokenConfigured: Boolean(process.env.BETFAIR_IMPORT_TOKEN), betfairLink: getBetfairLinkStatus() });
+      send(res, 200, {
+        ...computeReconcile(db),
+        importTokenConfigured: Boolean(process.env.BETFAIR_IMPORT_TOKEN),
+        betfairLink: getBetfairLinkStatus(),
+        cornerMarkets: cornerMarketsSeen(db),
+      });
       return;
     }
 

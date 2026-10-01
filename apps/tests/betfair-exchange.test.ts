@@ -8,8 +8,9 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { matchBets } from "../src/betfair/reconcile";
-import { judgeExchange, missingSettings, pickPlacements, readCredentials, searchWord, toStoredBets, type BetfairLinkStatus } from "../src/betfair/exchange";
+import { findRunner, judgeExchange, missingSettings, pickPlacements, readCredentials, searchWord, toStoredBets, type BetfairLinkStatus } from "../src/betfair/exchange";
 import { computeStrategyReturns } from "../src/server/winloss";
+import { priceResult } from "../src/server/pricing";
 
 const S = "Blistering Momentum";
 
@@ -114,10 +115,11 @@ test("is the match on Betfair: on, a team spelled differently, or not there", ()
   assert.deepEqual(judgeExchange("Wigan Athletic U21", "Huddersfield Town U21", ["Wigan U21 v Huddersfield U21", "Wigan v Stoke"]), {
     result: "on",
     event: "Wigan U21 v Huddersfield U21",
+    eventId: null,
   });
   assert.equal(judgeExchange("Lyon", "Nantes", ["Lyon v FC Nantes Atlantique"]).result, "on");
-  assert.deepEqual(judgeExchange("Spurs", "Arsenal", ["Tottenham v Arsenal"]), { result: "nameDiffers", event: "Tottenham v Arsenal" });
-  assert.deepEqual(judgeExchange("Kodagu FC", "Megt Centre", []), { result: "off", event: null });
+  assert.deepEqual(judgeExchange("Spurs", "Arsenal", ["Tottenham v Arsenal"]), { result: "nameDiffers", event: "Tottenham v Arsenal", eventId: null });
+  assert.deepEqual(judgeExchange("Kodagu FC", "Megt Centre", []), { result: "off", event: null, eventId: null });
   assert.equal(searchWord("Wigan Athletic U21"), "Wigan");
   assert.equal(searchWord("FC Kobenhavn"), "Kobenhavn");
   assert.equal(searchWord("Club Atletico Tembetary"), "Tembetary");
@@ -159,4 +161,26 @@ test("a simulated bet on a match that wasn't on Betfair is never priced", () => 
   assert.equal(computeStrategyReturns(db)[key]!.sim.counted, 1);
   db.setPickExchange(id, "off", null);
   assert.equal(computeStrategyReturns(db)[key]!.sim.counted, 0);
+});
+
+test("the event id comes back with a match, and the feed's selection wording finds Betfair's runner", () => {
+  assert.equal(judgeExchange("Lyon", "Nantes", [{ id: "321", name: "Lyon v Nantes" }]).eventId, "321");
+  const runners = [{ runnerName: "Yes" }, { runnerName: "No" }];
+  assert.equal(findRunner(runners, "yes")?.runnerName, "Yes");
+  assert.equal(findRunner([{ runnerName: "Over 0.5 Goals" }, { runnerName: "Under 0.5 Goals" }], "Over 0.5 Goals")?.runnerName, "Over 0.5 Goals");
+  assert.equal(findRunner([{ runnerName: "Home or Draw" }], "Draw or Home")?.runnerName, "Home or Draw");
+  assert.equal(findRunner(runners, "Maybe"), undefined);
+});
+
+test("a pick is priced from the alert, then its matched bet, then the Betfair price on arrival, then assumed odds", () => {
+  const base = { market: "BOTH_TEAMS_TO_SCORE", result: "hit" as const, targetLine: null, overLine: null, overOdds: null, favouriteOdds: null, sent: false, sentStake: null, sim: null };
+  const ctx = { strategyStake: 2, assumedOdds: 1.7, commission: 0 };
+  const price = (extra: object) => priceResult({ ...base, ...extra }, ctx);
+  const pick = (r: ReturnType<typeof priceResult>) => (r.kind === "priced" ? [r.odds, r.oddsSource] : r.kind);
+  assert.deepEqual(pick(price({})), [1.7, "assumed"]);
+  assert.deepEqual(pick(price({ exchangeOdds: 1.85 })), [1.85, "exchange"]);
+  assert.deepEqual(pick(price({ exchangeOdds: 1.85, betOdds: 1.9 })), [1.9, "bet"]);
+  assert.equal(priceResult({ ...base, exchangeOdds: 1.85 }, { ...ctx, assumedOdds: null }).kind, "priced");
+  // Next Goal alerts print their price, which still comes first.
+  assert.deepEqual(pick(price({ market: "NEXT_GOAL", targetLine: 0.5, overLine: 0.5, overOdds: 2.1, betOdds: 1.9 })), [2.1, "alert"]);
 });

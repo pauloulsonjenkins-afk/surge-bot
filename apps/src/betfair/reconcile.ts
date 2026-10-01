@@ -486,7 +486,7 @@ export interface ReconcileStrategy {
   compared: number;
   estimatedProfit: number;
   actualProfit: number;
-  /** Mean of (matched price / alert price - 1) over bets whose alert had a price, e.g. -0.03 = 3% worse. */
+  /** Mean of (matched price / alert price - 1) over bets with a reference price (the alert's, else Betfair's when it arrived), e.g. -0.03 = 3% worse. */
   slippage: number | null;
   slippageBets: number;
   /** Bets whose win/loss disagrees with the pick's result (worth checking on the Results page). */
@@ -539,7 +539,8 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
       s.matched++;
       const r = results.get(p.id);
       for (const b of real) {
-        const alert = r ? alertOddsOf(r) : null;
+        // Against the alert's printed price, or for alerts with none, the Betfair price when the alert arrived.
+        const alert = r ? (alertOddsOf(r) ?? r.exchangeOdds) : null;
         if (alert && b.odds) {
           s.slipSum += b.odds / alert - 1;
           s.slippageBets++;

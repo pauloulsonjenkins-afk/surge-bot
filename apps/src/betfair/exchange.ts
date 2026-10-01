@@ -2,11 +2,13 @@
  * Reads your bets straight from Betfair, so the site knows within a minute whether a pick sent to the betting software
  * was actually placed and matched (the bet history import only covers settled bets, after the match).
  *
- * READ ONLY. This module calls only listCurrentOrders, listClearedOrders, listMarketCatalogue and listEvents. It has no
- * code that places, changes or cancels a bet, and must never be given any.
+ * READ ONLY. This module calls only listCurrentOrders, listClearedOrders, listMarketCatalogue, listEvents and
+ * listMarketBook. It has no code that places, changes or cancels a bet, and must never be given any.
  *
  * It also looks each new alert's match up on Betfair (listEvents), so the Leagues page can list leagues whose matches
- * aren't on the exchange, and Live can say "Not on exchange" as soon as such an alert arrives.
+ * aren't on the exchange, and Live can say "Not on exchange" as soon as such an alert arrives. When the match is there,
+ * it also reads the current back price of the bet the feed would send (same market and selection, see feedMarket), so
+ * strategies whose alerts carry no price (Both Teams to Score, First Half Goal...) can be priced, Sim picks included.
  *
  * Settings (engine environment variables, the same names the old surge_live.py used):
  *   BF_APP_KEY                   your Betfair application key (the delayed key is fine)
@@ -22,7 +24,7 @@
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
 import { eventScore, matchBets } from "./reconcile";
-import { exchangeNamer } from "../inplayguru/bet-feed";
+import { exchangeNamer, feedMarket, getSendingSettings } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
@@ -196,7 +198,11 @@ export class BetfairReader {
     return parsed.sessionToken;
   }
 
-  private async call<T>(operation: "listCurrentOrders" | "listClearedOrders" | "listMarketCatalogue" | "listEvents", params: unknown, retried = false): Promise<T> {
+  private async call<T>(
+    operation: "listCurrentOrders" | "listClearedOrders" | "listMarketCatalogue" | "listEvents" | "listMarketBook",
+    params: unknown,
+    retried = false,
+  ): Promise<T> {
     const token = this.session && Date.now() - this.session.at < SESSION_MS ? this.session.token : await this.login();
     const res = await post(`${API_URL}${operation}/`, JSON.stringify(params), {
       "X-Application": this.creds.appKey,
@@ -229,17 +235,62 @@ export class BetfairReader {
   }
 
   /** Football events on Betfair whose names contain this text, starting from 8 hours ago to 36 hours ahead of `at`. */
-  async searchEvents(text: string, at: Date): Promise<string[]> {
+  async searchEvents(text: string, at: Date): Promise<Array<{ id: string; name: string }>> {
     const query = text.replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
     if (!query) return [];
-    const r = await this.call<Array<{ event: { name: string } }>>("listEvents", {
+    const r = await this.call<Array<{ event: { id: string; name: string } }>>("listEvents", {
       filter: {
         eventTypeIds: ["1"],
         textQuery: query,
         marketStartTime: { from: new Date(at.getTime() - 8 * 3_600_000).toISOString(), to: new Date(at.getTime() + 36 * 3_600_000).toISOString() },
       },
     });
-    return r.map((e) => e.event.name);
+    return r.map((e) => ({ id: e.event.id, name: e.event.name }));
+  }
+
+  /** The corner markets Betfair offers for an event: name, market code, selections (and ids, for reading a price). */
+  async cornerMarkets(eventId: string): Promise<Array<CornerMarket & { marketId: string; runners: Array<{ selectionId: number; runnerName: string }> }>> {
+    const markets = await this.call<Array<MarketCatalogue & { description?: { marketType?: string } }>>("listMarketCatalogue", {
+      filter: { eventIds: [eventId], textQuery: "Corner" },
+      marketProjection: ["MARKET_DESCRIPTION", "RUNNER_DESCRIPTION"],
+      maxResults: 50,
+    });
+    return markets
+      .filter((m) => /corner/i.test(m.marketName ?? ""))
+      .map((m) => ({
+        name: m.marketName ?? "",
+        code: m.description?.marketType ?? "",
+        selections: (m.runners ?? []).slice(0, 4).map((r) => r.runnerName),
+        marketId: m.marketId,
+        runners: m.runners ?? [],
+      }));
+  }
+
+  /**
+   * The best price available to back a selection right now, in one market of an event (by Betfair's market code, e.g.
+   * BOTH_TEAMS_TO_SCORE), or null when the market or selection isn't there or has no price.
+   */
+  async backPrice(eventId: string, marketType: string, selectionName: string): Promise<number | null> {
+    const markets = await this.call<MarketCatalogue[]>("listMarketCatalogue", {
+      filter: { eventIds: [eventId], marketTypeCodes: [marketType] },
+      marketProjection: ["RUNNER_DESCRIPTION"],
+      maxResults: 5,
+    });
+    const market = markets[0];
+    const runner = market?.runners ? findRunner(market.runners, selectionName) : undefined;
+    if (!market || !runner) return null;
+    return this.priceOf(market.marketId, runner.selectionId);
+  }
+
+  /** The best back price of one selection in one market right now (else its last traded price), or null. */
+  async priceOf(marketId: string, selectionId: number): Promise<number | null> {
+    const books = await this.call<Array<{ runners?: Array<{ selectionId: number; lastPriceTraded?: number; ex?: { availableToBack?: Array<{ price: number }> } }> }>>(
+      "listMarketBook",
+      { marketIds: [marketId], priceProjection: { priceData: ["EX_BEST_OFFERS"] } },
+    );
+    const r = books[0]?.runners?.find((x) => x.selectionId === selectionId);
+    const price = r?.ex?.availableToBack?.[0]?.price ?? r?.lastPriceTraded ?? null;
+    return price !== null && price > 1 ? price : null;
   }
 
   /** Every bet placed or settled in the last day, in the stored shape. */
@@ -274,15 +325,27 @@ export class BetfairReader {
  * What Betfair's event list says about a match: on (both teams match an event), nameDiffers (only one team does, so
  * Betfair spells the other differently: a Match names entry fixes it), or off (no event for either team).
  */
-export function judgeExchange(home: string, away: string, eventNames: string[]): { result: "on" | "nameDiffers" | "off"; event: string | null } {
-  let best: { score: number; name: string } | null = null;
-  for (const name of eventNames) {
+export function judgeExchange(
+  home: string,
+  away: string,
+  events: Array<string | { id: string; name: string }>,
+): { result: "on" | "nameDiffers" | "off"; event: string | null; eventId: string | null } {
+  let best: { score: number; name: string; id: string | null } | null = null;
+  for (const e of events) {
+    const name = typeof e === "string" ? e : e.name;
     const score = eventScore(name, `${home} v ${away}`);
-    if (!best || score > best.score) best = { score, name };
+    if (!best || score > best.score) best = { score, name, id: typeof e === "string" ? null : e.id };
   }
-  if (best?.score === 2) return { result: "on", event: best.name };
-  if (best?.score === 1) return { result: "nameDiffers", event: best.name };
-  return { result: "off", event: null };
+  if (best?.score === 2) return { result: "on", event: best.name, eventId: best.id };
+  if (best?.score === 1) return { result: "nameDiffers", event: best.name, eventId: best.id };
+  return { result: "off", event: null, eventId: null };
+}
+
+/** The runner whose name matches the feed's selection wording, ignoring case, punctuation and word order. */
+export function findRunner<T extends { runnerName: string }>(runners: T[], selectionName: string): T | undefined {
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9.]+/g, " ").trim().split(" ").sort().join(" ");
+  const want = words(selectionName);
+  return runners.find((r) => r.runnerName.trim().toLowerCase() === selectionName.trim().toLowerCase()) ?? runners.find((r) => words(r.runnerName) === want);
 }
 
 /** Words that say nothing about which club it is. */
@@ -303,8 +366,59 @@ export function searchWord(team: string): string {
 const CHECK_WITHIN_MS = 90 * 60 * 1000;
 const CHECKS_PER_POLL = 10;
 
-async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: Map<string, { result: "on" | "nameDiffers" | "off"; event: string | null; at: number }>): Promise<void> {
+export interface CornerMarket {
+  name: string;
+  /** The market code the bet feed would need, e.g. FIRST_HALF_CORNERS. */
+  code: string;
+  selections: string[];
+}
+
+const CORNER_MARKETS_KEY = "betfair_corner_markets";
+
+/**
+ * Corner markets seen on Betfair for First Half Corner Race alerts, by code, newest first. The strategy can't be sent
+ * until its exact market is known; this shows what Betfair actually offers so it can be chosen.
+ */
+export function cornerMarketsSeen(db: EngineDb): Array<CornerMarket & { seenAt: string; example: string }> {
+  try {
+    const raw = db.getSetting(CORNER_MARKETS_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, CornerMarket & { seenAt: string; example: string }>) : {};
+    return Object.values(map).sort((a, b) => (a.seenAt < b.seenAt ? 1 : -1));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The first-half corners market and its "Over <line>" selection, found by name, so a First Half Corner Race pick can be
+ * priced before its market code is set on the Sending page.
+ */
+export function firstHalfCornersRunner<M extends { name: string; runners: Array<{ selectionId: number; runnerName: string }> }>(
+  markets: M[],
+  line: number,
+): { market: M; selectionId: number } | null {
+  const over = new RegExp(`\\bover\\s*${line.toFixed(1).replace(".", "\\.")}\\b`, "i");
+  for (const m of markets) {
+    if (!/\b(1st|first)\s*half\b/i.test(m.name)) continue;
+    const runner = m.runners.find((r) => over.test(r.runnerName));
+    if (runner) return { market: m, selectionId: runner.selectionId };
+  }
+  return null;
+}
+
+function noteCornerMarkets(db: EngineDb, markets: CornerMarket[], example: string): void {
+  if (markets.length === 0) return;
+  const map = Object.fromEntries(cornerMarketsSeen(db).map((m) => [m.code || m.name, m]));
+  const now = new Date().toISOString();
+  for (const m of markets) map[m.code || m.name] = { ...m, seenAt: now, example };
+  db.setSetting(CORNER_MARKETS_KEY, JSON.stringify(map));
+}
+
+type MatchCache = Map<string, { result: "on" | "nameDiffers" | "off"; event: string | null; eventId: string | null; at: number }>;
+
+async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchCache): Promise<void> {
   const namer = exchangeNamer(db);
+  const settings = getSendingSettings(db);
   const now = Date.now();
   for (const p of db.picksToCheckOnExchange(new Date(now - CHECK_WITHIN_MS).toISOString(), CHECKS_PER_POLL)) {
     if (!p.home || !p.away) {
@@ -326,7 +440,32 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: Map<st
       found = { ...judged, at: now };
       cache.set(key, found);
     }
-    db.setPickExchange(p.id, found.result, found.event);
+    // The price of the bet the feed would send, read now, so the pick can be priced even when the alert has none.
+    let odds: number | null = null;
+    const pick = found.result === "on" && found.eventId ? db.getLivePick(p.id) : null;
+    if (pick) {
+      const market = feedMarket(pick, settings, namer);
+      if (!("error" in market)) {
+        odds = await reader.backPrice(found.eventId!, market.marketType, market.selectionName).catch(() => null);
+      }
+    }
+    db.setPickExchange(p.id, found.result, found.event, odds);
+    // First Half Corner Race: note the corner markets on offer (to choose its market code), and if its code isn't set
+    // yet, find the first-half corners market by name to price the pick anyway.
+    if (pick?.market === "FIRST_HALF_CORNERS" && found.eventId) {
+      const markets = await reader.cornerMarkets(found.eventId).catch(() => []);
+      noteCornerMarkets(
+        db,
+        markets.map(({ name, code, selections }) => ({ name, code, selections })),
+        found.event ?? `${home} v ${away}`,
+      );
+      const line = pick.detail?.targetLine ?? null;
+      const hit = odds === null && line !== null ? firstHalfCornersRunner(markets, line) : null;
+      if (hit) {
+        odds = await reader.priceOf(hit.market.marketId, hit.selectionId).catch(() => null);
+        if (odds !== null) db.setPickExchange(p.id, found.result, found.event, odds);
+      }
+    }
     if (found.result === "off") log.info(`Not on Betfair: ${home} v ${away} (pick ${p.id}).`);
   }
 }
@@ -362,7 +501,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
     return () => {};
   }
   const reader = new BetfairReader(creds);
-  const exchangeCache = new Map<string, { result: "on" | "nameDiffers" | "off"; event: string | null; at: number }>();
+  const exchangeCache: MatchCache = new Map();
   let running = false;
   const tick = async () => {
     if (running) return;

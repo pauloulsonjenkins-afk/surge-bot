@@ -68,6 +68,12 @@ export interface SendingSettings {
   /** First-half goals ("First Half Goal", a pre-match alert): the market code and selection name for Over 0.5 first-half goals. */
   firstHalfGoalsMarketType: string;
   firstHalfGoalsSelection: string;
+  /**
+   * First-half corners ("First Half Corner Race": one more corner before half-time). Empty code = not sent yet.
+   * {line} becomes the line ("5.5") and {line10} ten times it ("55"), in either field, as Betfair names its markets.
+   */
+  firstHalfCornersMarketType: string;
+  firstHalfCornersSelection: string;
   /** One "alert name = exchange name" per line, applied to each team name. */
   aliases: string;
 }
@@ -90,6 +96,8 @@ export const DEFAULT_SENDING: SendingSettings = {
   favouriteAwaySelection: "{away}",
   firstHalfGoalsMarketType: "FIRST_HALF_GOALS_05",
   firstHalfGoalsSelection: "Over 0.5 Goals",
+  firstHalfCornersMarketType: "",
+  firstHalfCornersSelection: "Over {line} Corners",
   aliases: "",
 };
 
@@ -117,6 +125,13 @@ function cleanMinOdds(v: unknown): number | null {
 function cleanTemplate(v: unknown, fallback: string): string {
   const s = typeof v === "string" ? v.trim() : "";
   return /^[A-Za-z0-9_ {}]{1,80}$/.test(s) ? s : fallback;
+}
+
+/** A market code or selection that may hold {line} / {line10}, or (for the code) be empty to mean "not set". */
+function cleanLineTemplate(v: unknown, fallback: string, allowEmpty: boolean): string {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (s === "" && allowEmpty) return "";
+  return /^[A-Za-z0-9_ .{}]{1,60}$/.test(s) ? s : fallback;
 }
 
 /** Selection name such as "Over 0.5 Goals": letters, numbers, spaces, underscores and full stops only. */
@@ -176,6 +191,8 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     favouriteAwaySelection: cleanTemplate(raw.favouriteAwaySelection, DEFAULT_SENDING.favouriteAwaySelection),
     firstHalfGoalsMarketType: cleanCode(raw.firstHalfGoalsMarketType, DEFAULT_SENDING.firstHalfGoalsMarketType),
     firstHalfGoalsSelection: cleanSelectionName(raw.firstHalfGoalsSelection, DEFAULT_SENDING.firstHalfGoalsSelection),
+    firstHalfCornersMarketType: cleanLineTemplate(raw.firstHalfCornersMarketType, DEFAULT_SENDING.firstHalfCornersMarketType, true),
+    firstHalfCornersSelection: cleanLineTemplate(raw.firstHalfCornersSelection, DEFAULT_SENDING.firstHalfCornersSelection, false),
     aliases: typeof raw.aliases === "string" ? raw.aliases.slice(0, 5000) : "",
   };
 }
@@ -225,6 +242,8 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
   if (patch.favouriteAwaySelection !== undefined) next.favouriteAwaySelection = cleanTemplate(patch.favouriteAwaySelection, current.favouriteAwaySelection);
   if (patch.firstHalfGoalsMarketType !== undefined) next.firstHalfGoalsMarketType = cleanCode(patch.firstHalfGoalsMarketType, current.firstHalfGoalsMarketType);
   if (patch.firstHalfGoalsSelection !== undefined) next.firstHalfGoalsSelection = cleanSelectionName(patch.firstHalfGoalsSelection, current.firstHalfGoalsSelection);
+  if (patch.firstHalfCornersMarketType !== undefined) next.firstHalfCornersMarketType = cleanLineTemplate(patch.firstHalfCornersMarketType, current.firstHalfCornersMarketType, true);
+  if (patch.firstHalfCornersSelection !== undefined) next.firstHalfCornersSelection = cleanLineTemplate(patch.firstHalfCornersSelection, current.firstHalfCornersSelection, false);
   if (typeof patch.aliases === "string") next.aliases = patch.aliases.slice(0, 5000);
 
   // A strategy can't be on without a stake.
@@ -334,6 +353,38 @@ export function overUnderMarket(line: number | null | undefined): { marketType: 
 }
 
 /**
+ * The exchange market code and selection a pick is sent as, or why it can't be sent. Shared by the bet feed and the
+ * Betfair price lookup (betfair/exchange.ts), so the price read is for exactly the bet that would be placed.
+ */
+export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name: string) => string): { marketType: string; selectionName: string } | { error: string } {
+  if (p.market === "NEXT_GOAL") {
+    return overUnderMarket(p.detail?.targetLine ?? null) ?? { error: "Could not work out the Over/Under line." };
+  }
+  if (p.market === "BOTH_TEAMS_TO_SCORE") return { marketType: settings.bttsMarketType, selectionName: settings.bttsSelection };
+  if (p.market === "FIRST_HALF_GOALS") return { marketType: settings.firstHalfGoalsMarketType, selectionName: settings.firstHalfGoalsSelection };
+  if (p.market === "FIRST_HALF_CORNERS") {
+    if (!settings.firstHalfCornersMarketType) return { error: "Set the first-half corners market code on the Sending page (Bet wording) first." };
+    const line = p.detail?.targetLine ?? null;
+    if (line === null) return { error: "Could not work out the corner line." };
+    const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)));
+    return { marketType: fill(settings.firstHalfCornersMarketType), selectionName: fill(settings.firstHalfCornersSelection) };
+  }
+  if (p.market === "FAVOURITE_TO_WIN" || p.market === "UNDERDOG_DOUBLE_CHANCE") {
+    const favourite = p.market === "FAVOURITE_TO_WIN";
+    const side = favourite ? (p.detail?.favourite ?? null) : (p.detail?.underdog ?? null);
+    if (side === null) return { error: favourite ? "Could not tell which side is the favourite." : "Could not tell which side is the underdog." };
+    const template = favourite
+      ? side === "home" ? settings.favouriteHomeSelection : settings.favouriteAwaySelection
+      : side === "home" ? settings.underdogHomeSelection : settings.underdogAwaySelection;
+    return {
+      marketType: favourite ? settings.favouriteMarketType : settings.underdogMarketType,
+      selectionName: template.replace(/\{home\}/g, alias(p.home ?? "")).replace(/\{away\}/g, alias(p.away ?? "")),
+    };
+  }
+  return { error: "This market can't be sent yet." };
+}
+
+/**
  * Works out which picks go in the feed right now. With markSent = true (the
  * real feed) newly included picks are stamped as sent; with false (the admin
  * preview) nothing is changed.
@@ -422,41 +473,9 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
       }
     }
 
-    let market: { marketType: string; selectionName: string } | null = null;
-    if (p.market === "NEXT_GOAL") {
-      market = overUnderMarket(p.detail?.targetLine ?? null);
-      if (!market) {
-        skipped.push(skip(p, "Could not work out the Over/Under line."));
-        continue;
-      }
-    } else if (p.market === "BOTH_TEAMS_TO_SCORE") {
-      market = { marketType: settings.bttsMarketType, selectionName: settings.bttsSelection };
-    } else if (p.market === "FAVOURITE_TO_WIN") {
-      const side = p.detail?.favourite ?? null;
-      if (side === null) {
-        skipped.push(skip(p, "Could not tell which side is the favourite."));
-        continue;
-      }
-      const template = side === "home" ? settings.favouriteHomeSelection : settings.favouriteAwaySelection;
-      market = {
-        marketType: settings.favouriteMarketType,
-        selectionName: template.replace(/\{home\}/g, alias(p.home)).replace(/\{away\}/g, alias(p.away)),
-      };
-    } else if (p.market === "FIRST_HALF_GOALS") {
-      market = { marketType: settings.firstHalfGoalsMarketType, selectionName: settings.firstHalfGoalsSelection };
-    } else if (p.market === "UNDERDOG_DOUBLE_CHANCE") {
-      const side = p.detail?.underdog ?? null;
-      if (side === null) {
-        skipped.push(skip(p, "Could not tell which side is the underdog."));
-        continue;
-      }
-      const template = side === "home" ? settings.underdogHomeSelection : settings.underdogAwaySelection;
-      market = {
-        marketType: settings.underdogMarketType,
-        selectionName: template.replace(/\{home\}/g, alias(p.home)).replace(/\{away\}/g, alias(p.away)),
-      };
-    } else {
-      skipped.push(skip(p, "This market can't be sent yet."));
+    const market = feedMarket(p, settings, alias);
+    if ("error" in market) {
+      skipped.push(skip(p, market.error));
       continue;
     }
 

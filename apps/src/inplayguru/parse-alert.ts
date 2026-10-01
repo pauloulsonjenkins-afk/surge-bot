@@ -41,7 +41,7 @@ export interface ParsedAlert {
   favourite: "home" | "away" | null;
   /** Human wording of the bet, e.g. "Over 1.5" or "Yes". Null when unmapped. */
   selection: string | null;
-  /** The line a bet targets: goals + 0.5 for Next Goal, 5.5 for 1st half corners, 0.5 for 1st half goals. */
+  /** The line a bet targets: goals + 0.5 for Next Goal, corners so far + 0.5 for 1st half corners, 0.5 for 1st half goals. */
   targetLine: number | null;
   /** The "Kickoff: In 1 hour" line of a pre-match alert, as written. Null when the alert has none. */
   kickoffRaw: string | null;
@@ -404,15 +404,16 @@ export function parseAlert(text: string): ParsedAlert {
       }
     }
   } else if (market === "FIRST_HALF_CORNERS") {
-    // Fixed line: the bet is corners Over 5.5 in the first half.
-    targetLine = 5.5;
-    selection = "Over 5.5";
+    // "First Half Corner Race": one more corner before half-time, i.e. first-half corners Over (corners so far + 0.5).
+    // The edited full-time alert keeps the original stats lines, so the line stays the one bet.
     const corners = stats["Corners"] ?? null;
+    if (corners) {
+      targetLine = corners[0] + corners[1] + 0.5;
+      selection = `Over ${targetLine} first-half corners`;
+    }
     if (!settled) {
       if (!corners) {
-        flags.push("No Corners line in the alert, so the corner count could not be checked.");
-      } else if (corners[0] + corners[1] > targetLine) {
-        flags.push(`There are already ${corners[0] + corners[1]} corners, so Over 5.5 is already decided.`);
+        flags.push("No Corners line in the alert, so the corner line can't be worked out.");
       }
       if (baseMinute !== null && baseMinute > 45) {
         flags.push("The alert is past 45 minutes, so the first half is over.");

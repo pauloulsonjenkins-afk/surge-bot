@@ -514,6 +514,10 @@ export class EngineDb {
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange TEXT`);
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_event TEXT`);
     }
+    if (!liveCols.some((c) => c.name === "exchange_odds")) {
+      // The Betfair back price of the bet the feed would send, read when the alert arrived (betfair/exchange.ts).
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_odds REAL`);
+    }
     const betCols = this.db.prepare(`PRAGMA table_info(betfair_bets)`).all() as Array<{ name: string }>;
     if (!betCols.some((c) => c.name === "acknowledged_at")) {
       // Set when the admin marks an unlinked bet as known (not from the feed), so the list shows only new ones.
@@ -746,55 +750,63 @@ export class EngineDb {
         : this.db.prepare(`SELECT * FROM live_picks ORDER BY id DESC LIMIT ?`).all(capped)
     ) as Array<Record<string, unknown>>;
 
-    return rows.map((r) => {
-      let detail: ParsedAlert | null = null;
-      let flags: string[] = [];
-      try {
-        detail = JSON.parse(String(r.parsed_json)) as ParsedAlert;
-      } catch {
-        detail = null;
-      }
-      try {
-        flags = JSON.parse(String(r.flags_json)) as string[];
-      } catch {
-        flags = [];
-      }
-      return {
-        id: Number(r.id),
-        chatId: String(r.chat_id),
-        messageId: Number(r.message_id),
-        firstSeenAt: String(r.first_seen_at),
-        messageAt: (r.message_at as string | null) ?? null,
-        updatedAt: String(r.updated_at),
-        strategy: String(r.strategy),
-        market: (r.market as string | null) ?? null,
-        selection: (r.selection as string | null) ?? null,
-        competition: (r.competition as string | null) ?? null,
-        home: (r.home as string | null) ?? null,
-        away: (r.away as string | null) ?? null,
-        minute: r.minute === null ? null : Number(r.minute),
-        timerRaw: (r.timer_raw as string | null) ?? null,
-        goalsHome: r.goals_home === null ? null : Number(r.goals_home),
-        goalsAway: r.goals_away === null ? null : Number(r.goals_away),
-        htScore: (r.ht_score as string | null) ?? null,
-        ftScore: (r.ft_score as string | null) ?? null,
-        result: ((r.result_override as "hit" | "miss" | null) ?? (r.result as "hit" | "miss" | null)) ?? null,
-        resultOverridden: r.result_override !== null && r.result_override !== undefined,
-        excluded: Number(r.excluded) === 1,
-        originalResult: (r.result as "hit" | "miss" | null) ?? null,
-        // A hand-set result settles the pick, so it can never be sent afterwards.
-        status: (r.result_override ? "settled" : r.status) as LivePick["status"],
-        sendable: Number(r.sendable) === 1,
-        sentAt: (r.sent_at as string | null) ?? null,
-        sentRowJson: (r.sent_row as string | null) ?? null,
-        exchange: r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off" ? r.exchange : null,
-        exchangeEvent: (r.exchange_event as string | null) ?? null,
-        leagueKey: leagueIdentity((r.competition as string | null) ?? null, (r.country as string | null) ?? null).key,
-        flags,
-        detail,
-        rawText: String(r.raw_text),
-      };
-    });
+    return rows.map((r) => this.toLivePick(r));
+  }
+
+  /** One pick by id, or null. */
+  getLivePick(id: number): LivePick | null {
+    const r = this.db.prepare(`SELECT * FROM live_picks WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
+    return r ? this.toLivePick(r) : null;
+  }
+
+  private toLivePick(r: Record<string, unknown>): LivePick {
+    let detail: ParsedAlert | null = null;
+    let flags: string[] = [];
+    try {
+      detail = JSON.parse(String(r.parsed_json)) as ParsedAlert;
+    } catch {
+      detail = null;
+    }
+    try {
+      flags = JSON.parse(String(r.flags_json)) as string[];
+    } catch {
+      flags = [];
+    }
+    return {
+      id: Number(r.id),
+      chatId: String(r.chat_id),
+      messageId: Number(r.message_id),
+      firstSeenAt: String(r.first_seen_at),
+      messageAt: (r.message_at as string | null) ?? null,
+      updatedAt: String(r.updated_at),
+      strategy: String(r.strategy),
+      market: (r.market as string | null) ?? null,
+      selection: (r.selection as string | null) ?? null,
+      competition: (r.competition as string | null) ?? null,
+      home: (r.home as string | null) ?? null,
+      away: (r.away as string | null) ?? null,
+      minute: r.minute === null ? null : Number(r.minute),
+      timerRaw: (r.timer_raw as string | null) ?? null,
+      goalsHome: r.goals_home === null ? null : Number(r.goals_home),
+      goalsAway: r.goals_away === null ? null : Number(r.goals_away),
+      htScore: (r.ht_score as string | null) ?? null,
+      ftScore: (r.ft_score as string | null) ?? null,
+      result: ((r.result_override as "hit" | "miss" | null) ?? (r.result as "hit" | "miss" | null)) ?? null,
+      resultOverridden: r.result_override !== null && r.result_override !== undefined,
+      excluded: Number(r.excluded) === 1,
+      originalResult: (r.result as "hit" | "miss" | null) ?? null,
+      // A hand-set result settles the pick, so it can never be sent afterwards.
+      status: (r.result_override ? "settled" : r.status) as LivePick["status"],
+      sendable: Number(r.sendable) === 1,
+      sentAt: (r.sent_at as string | null) ?? null,
+      sentRowJson: (r.sent_row as string | null) ?? null,
+      exchange: r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off" ? r.exchange : null,
+      exchangeEvent: (r.exchange_event as string | null) ?? null,
+      leagueKey: leagueIdentity((r.competition as string | null) ?? null, (r.country as string | null) ?? null).key,
+      flags,
+      detail,
+      rawText: String(r.raw_text),
+    };
   }
 
   /**
@@ -1070,8 +1082,8 @@ export class EngineDb {
   }
 
   /** Records what Betfair said about a pick's match. "unknown" = couldn't be looked up (no team names); not shown. */
-  setPickExchange(id: number, result: "on" | "nameDiffers" | "off" | "unknown", event: string | null): void {
-    this.db.prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ? WHERE id = ?`).run(result, event, id);
+  setPickExchange(id: number, result: "on" | "nameDiffers" | "off" | "unknown", event: string | null, odds: number | null = null): void {
+    this.db.prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ?, exchange_odds = ? WHERE id = ?`).run(result, event, odds, id);
     this.onChange();
   }
 
@@ -1391,6 +1403,10 @@ export class EngineDb {
     overOdds: number | null;
     /** For favourite-to-win picks: the favourite's live win price printed in the alert. */
     favouriteOdds: number | null;
+    /** The price the pick's bet actually matched at on Betfair (stake-weighted), when it has one. */
+    betOdds: number | null;
+    /** The Betfair back price of the bet the feed would send, read when the alert arrived. */
+    exchangeOdds: number | null;
     sentStake: number | null;
     /** True when the pick was handed to the bet feed (a live bet), false for a simulation pick. */
     sent: boolean;
@@ -1399,7 +1415,10 @@ export class EngineDb {
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange
+        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange,
+                exchange_odds,
+                (SELECT SUM(b.matched * b.odds) / SUM(b.matched) FROM betfair_bets b
+                  WHERE b.pick_id = live_picks.id AND b.matched > 0 AND b.odds > 1) AS bet_odds
          FROM live_picks
          WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
@@ -1415,6 +1434,8 @@ export class EngineDb {
       sent_at: string | null;
       sim_row: string | null;
       exchange: string | null;
+      exchange_odds: number | null;
+      bet_odds: number | null;
     }>;
 
     return rows.map((r) => {
@@ -1457,6 +1478,8 @@ export class EngineDb {
         sentStake,
         sent: r.sent_at !== null,
         // A simulated bet on a match that wasn't on Betfair could never have been placed.
+        betOdds: typeof r.bet_odds === "number" && r.bet_odds > 1 ? Math.round(r.bet_odds * 100) / 100 : null,
+        exchangeOdds: typeof r.exchange_odds === "number" && r.exchange_odds > 1 ? r.exchange_odds : null,
         sim: r.sent_at === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
       };
     });
