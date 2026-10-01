@@ -56,11 +56,13 @@ foreach ($f in $files) {
 
   try {
     $bytes = [IO.File]::ReadAllBytes($f.FullName)
-    # BF Bot Manager writes times in this PC's time zone, so say which: minutes ahead of UTC (60 in UK summer time).
+    # BF Bot Manager writes times in this PC's time zone, so say which. The zone's name lets the site get clock changes
+    # right for every bet; the current offset from UTC is a fallback for a zone it doesn't recognise.
+    $zone = [Uri]::EscapeDataString([TimeZoneInfo]::Local.Id)
     $offset = [int][TimeZoneInfo]::Local.GetUtcOffset($f.LastWriteTime).TotalMinutes
-    $target = "$Url`?name=$([Uri]::EscapeDataString($f.Name))&utcOffset=$offset"
+    $target = "$Url`?name=$([Uri]::EscapeDataString($f.Name))&tz=$zone&utcOffset=$offset"
     $result = Invoke-RestMethod -Method Post -Uri $target -Body $bytes -ContentType "text/csv; charset=utf-8" -TimeoutSec 60
-    Write-Output ("{0}: {1} bets, {2} new, {3} linked to picks" -f $f.Name, $result.rows, $result.added, $result.linked)
+    Write-Output ("{0}: {1} bets, {2} new, {3} linked to picks, {4} rows skipped" -f $f.Name, $result.rows, $result.added, $result.linked, $result.skipped)
     $state[$f.FullName] = $stamp
   } catch {
     $failed++

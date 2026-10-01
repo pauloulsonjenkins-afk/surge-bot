@@ -56,7 +56,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
-import { computeReconcile, importBetHistory } from "../betfair/reconcile";
+import { computeReconcile, decodeCsv, importBetHistory, zoneFromName } from "../betfair/reconcile";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -360,7 +360,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       let csv: string;
       try {
-        csv = (await readBody(req, MAX_IMPORT_BYTES)).toString("utf8");
+        csv = decodeCsv(await readBody(req, MAX_IMPORT_BYTES));
       } catch (err) {
         if (err instanceof BodyTooLarge) {
           send(res, 413, { error: "too_large", message: "The file is over 8 MB. Export a shorter date range." }, true);
@@ -371,7 +371,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       try {
         const params = new URL(rawUrl, "http://internal").searchParams;
         const name = params.get("name")?.slice(0, 120) || "automatic import";
-        const summary = importBetHistory(db, csv, name, new Date(), parseUtcOffset(params.get("utcOffset")));
+        // The PC's zone name handles clock changes; its current offset is the fallback for a zone not recognised.
+        const basis = zoneFromName(params.get("tz")) ?? parseUtcOffset(params.get("utcOffset"));
+        const summary = importBetHistory(db, csv, name, new Date(), basis);
         log.info(`Betfair import (${name}): ${summary.added} new, ${summary.updated} updated, ${summary.linked} linked to picks.`);
         send(res, 200, { ...summary });
       } catch (err) {
@@ -405,7 +407,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       try {
         const name = typeof body.source === "string" && body.source.trim() ? body.source.trim().slice(0, 120) : "upload";
-        const summary = importBetHistory(db, body.csv, name, new Date(), parseUtcOffset(body.utcOffset));
+        const basis = zoneFromName(typeof body.timeZone === "string" ? body.timeZone : null) ?? parseUtcOffset(body.utcOffset);
+        const summary = importBetHistory(db, body.csv, name, new Date(), basis);
         log.info(`Betfair import (${name}) from the admin page: ${summary.added} new, ${summary.updated} updated, ${summary.linked} linked to picks.`);
         send(res, 200, { ...summary });
       } catch (err) {

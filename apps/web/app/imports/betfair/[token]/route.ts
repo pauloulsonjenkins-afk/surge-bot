@@ -8,10 +8,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const baseUrl = process.env.ENGINE_BASE_URL;
   if (!baseUrl) return new NextResponse("Not found", { status: 404 });
-  // Passed on as sent: the file name, and the betting PC's offset from UTC that its times are written in.
+  // Passed on as sent: the file name, and the betting PC's time zone (name and current offset) its times are written in.
   const incoming = new URL(request.url).searchParams;
   const query = new URLSearchParams();
-  for (const k of ["name", "utcOffset"]) {
+  for (const k of ["name", "tz", "utcOffset"]) {
     const v = incoming.get(k);
     if (v !== null) query.set(k, v);
   }

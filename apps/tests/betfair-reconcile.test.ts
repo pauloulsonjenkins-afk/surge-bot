@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { computeReconcile, eventScore, importBetHistory, parseBetHistory, parseCsv, parseMoney, parseUkDateTime } from "../src/betfair/reconcile";
+import { computeReconcile, decodeCsv, eventScore, importBetHistory, parseBetHistory, parseCsv, parseMoney, parseUkDateTime, zoneFromName } from "../src/betfair/reconcile";
 
 const S = "Blistering Momentum";
 const KEY = S.toLowerCase();
@@ -159,4 +159,32 @@ test("BF Bot Manager's market results file is refused with a reason that says wh
     () => parseBetHistory("Country code,Start time,Market name,Winners,Winners prices,Total matched\n,2026-09-30 09:00:00,A v B\\Both teams to Score?,Yes,1.68,158.37\n"),
     /market results file/,
   );
+});
+
+test("a file saved in the old Windows encoding: the £ signs still read, so no bet is skipped", () => {
+  const text = [
+    "Description,Selection,Bet Id,Bet type,Matched amount,Avg. price matched,Status,P/L,Placed date",
+    "18:00 Finland v Belarus\\Over/Under 1.5 Goals\\Over 1.5 Goals,Over 1.5 Goals,1,BACK,£2.00,1.50,SETTLED,£1.00,2026-09-29 19:24:00",
+    "18:00 Malmö v Göteborg\\Over/Under 2.5 Goals\\Over 2.5 Goals,Over 2.5 Goals,2,BACK,£2.00,1.80,SETTLED,-£2.00,2026-09-29 19:30:00",
+  ].join("\n");
+  // windows-1252 bytes: £ is 0xA3, ö is 0xF6, neither valid UTF-8 on its own.
+  const bytes = Uint8Array.from([...text].map((c) => c.charCodeAt(0)));
+  const decoded = decodeCsv(bytes);
+  assert.ok(decoded.includes("£2.00") && decoded.includes("Malmö"));
+  const h = parseBetHistory(decoded);
+  assert.equal(h.bets.length, 2);
+  assert.equal(h.skipped, 0);
+  assert.deepEqual(h.bets.map((b) => b.profit), [1, -2]);
+  // Even a garbled £ is read past.
+  assert.equal(parseMoney("-\uFFFD2.00"), -2);
+});
+
+test("times from a PC on Central European time, either side of the clocks going back", () => {
+  assert.equal(zoneFromName("W. Europe Standard Time"), "Europe/Berlin");
+  assert.equal(zoneFromName("Not A Zone"), null);
+  // 19:24 in Berlin is 17:24 UTC in summer (UTC+2) and 18:24 UTC after 25 October (UTC+1).
+  assert.equal(parseUkDateTime("2026-09-29 19:24:00", "Europe/Berlin"), "2026-09-29T17:24:00.000Z");
+  assert.equal(parseUkDateTime("2026-10-27 19:24:00", "Europe/Berlin"), "2026-10-27T18:24:00.000Z");
+  // A fixed offset is the fallback.
+  assert.equal(parseUkDateTime("2026-09-29 19:24:00", 120), "2026-09-29T17:24:00.000Z");
 });

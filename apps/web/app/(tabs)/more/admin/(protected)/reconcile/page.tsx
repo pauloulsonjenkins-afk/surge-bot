@@ -18,17 +18,31 @@ function pct(n: number | null, signed = false): string {
 
 const TONE = { hit: "text-hit", loss: "text-loss", muted: "text-ink-muted" };
 
+/**
+ * The file's text. Windows programs often save CSV in the old Windows encoding (a £ that isn't valid UTF-8) or UTF-16,
+ * so UTF-8 is tried first and the others used when the bytes say so. The engine does the same for the import script.
+ */
+function decodeCsv(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes);
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
 function ImportCard({ report }: { report: ReconcileReport | undefined }) {
   const upload = useImportBetHistory();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  // The betting software writes times in its PC's time zone, which may be UTC on a server rather than UK time.
-  const [zone, setZone] = useState<"uk" | "utc">("uk");
+  // The betting software writes times in its PC's time zone, which may not be UK time (a server is often UTC or CET).
+  const [zone, setZone] = useState<string>("Europe/London");
   const last = upload.data ?? report?.lastImport ?? null;
 
   async function send() {
     if (!file) return;
-    upload.mutate({ csv: await file.text(), source: file.name, utcOffset: zone === "utc" ? 0 : null });
+    upload.mutate({ csv: decodeCsv(new Uint8Array(await file.arrayBuffer())), source: file.name, timeZone: zone });
   }
 
   return (
@@ -46,11 +60,12 @@ function ImportCard({ report }: { report: ReconcileReport | undefined }) {
           Times in the file are
           <select
             value={zone}
-            onChange={(e) => setZone(e.target.value as "uk" | "utc")}
+            onChange={(e) => setZone(e.target.value)}
             className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink"
           >
-            <option value="uk">UK time</option>
-            <option value="utc">UTC</option>
+            <option value="Europe/London">UK time</option>
+            <option value="Europe/Berlin">Central Europe (CET)</option>
+            <option value="UTC">UTC</option>
           </select>
         </label>
         <button

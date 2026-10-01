@@ -62,6 +62,20 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
+/**
+ * The text of an uploaded file. Windows programs often save CSV in the old Windows encoding (where £ is a single byte
+ * that isn't valid UTF-8) or in UTF-16, so UTF-8 is tried first and the others used when the bytes say so.
+ */
+export function decodeCsv(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes);
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Columns
 
@@ -108,10 +122,13 @@ export function mapColumns(header: string[]): { cols: Partial<Record<Field, numb
 // ---------------------------------------------------------------------------
 // Values
 
-/** "£1,234.50", "-2.00", "(2.00)" -> number; "" or "-" -> null. */
+/**
+ * "£1,234.50", "-2.00", "(2.00)" -> number; "" or "-" -> null. Anything that isn't part of a number is dropped, so a
+ * currency sign in any spelling (including a £ garbled by the wrong text encoding) never stops an amount being read.
+ */
 export function parseMoney(v: string | undefined): number | null {
   if (v === undefined) return null;
-  let s = v.trim().replace(/[£$€\s,]/g, "");
+  let s = v.replace(/[^0-9.()-]/g, "");
   if (s === "" || s === "-" || s === "--") return null;
   let neg = false;
   if (/^\(.*\)$/.test(s)) {
@@ -124,23 +141,60 @@ export function parseMoney(v: string | undefined): number | null {
 
 const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 
-/** Minutes London is ahead of UTC at a moment (0 in winter, 60 in summer). */
-function londonOffsetMinutes(utcMs: number): number {
+/**
+ * The time zone a file's times are written in: an IANA zone such as "Europe/Berlin" (clock changes handled), a fixed
+ * number of minutes ahead of UTC, or null for UK time.
+ */
+export type TimeBasis = string | number | null;
+
+/** Windows time zone names (what the import script reads off the betting PC) for the zones likely to be in use. */
+const WINDOWS_ZONES: Record<string, string> = {
+  "GMT Standard Time": "Europe/London",
+  "Greenwich Standard Time": "Atlantic/Reykjavik",
+  UTC: "UTC",
+  "Coordinated Universal Time": "UTC",
+  "W. Europe Standard Time": "Europe/Berlin",
+  "Romance Standard Time": "Europe/Paris",
+  "Central Europe Standard Time": "Europe/Budapest",
+  "Central European Standard Time": "Europe/Warsaw",
+  "E. Europe Standard Time": "Europe/Chisinau",
+  "GTB Standard Time": "Europe/Bucharest",
+  "FLE Standard Time": "Europe/Kiev",
+  "Irish Standard Time": "Europe/Dublin",
+  "Eastern Standard Time": "America/New_York",
+  "Central Standard Time": "America/Chicago",
+  "Pacific Standard Time": "America/Los_Angeles",
+};
+
+/** An IANA zone for a Windows zone name or an IANA name, or null when it isn't one this can use. */
+export function zoneFromName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const zone = WINDOWS_ZONES[name.trim()] ?? name.trim();
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
+/** Minutes a zone is ahead of UTC at a moment (London: 0 in winter, 60 in summer). */
+function zoneOffsetMinutes(utcMs: number, zone: string): number {
   // Worked out on the whole minute: the formatted time has no seconds, so comparing it with a time that has them would
   // round 59.5 minutes down to 59 and put every time with 31+ seconds a minute early.
   const minute = Math.floor(utcMs / 60000) * 60000;
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(minute));
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(minute));
   const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
   return Math.round((Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute")) - minute) / 60000);
 }
 
 /**
- * A date and time from the export as an ISO string. A time without a zone is taken as UK local time, or, when
- * utcOffsetMinutes is given, as that many minutes ahead of UTC (the import script sends the betting PC's own offset,
- * since the betting software writes times in the PC's zone). Understands 01/10/2026 14:03(:22), 2026-10-01 14:03:22,
- * 01-Oct-26 14:03, 1 Oct 2026 14:03, and ISO.
+ * A date and time from the export as an ISO string. A time without a zone is read in the given time zone (see
+ * TimeBasis; UK time when none is given), because the betting software writes times in its own PC's zone. The import
+ * script sends that zone. Understands 01/10/2026 14:03(:22), 2026-10-01 14:03:22, 01-Oct-26 14:03, 1 Oct 2026 14:03,
+ * and ISO.
  */
-export function parseUkDateTime(v: string | undefined, utcOffsetMinutes: number | null = null): string | null {
+export function parseUkDateTime(v: string | undefined, basis: TimeBasis = null): string | null {
   if (!v) return null;
   const s = v.trim();
   if (!s) return null;
@@ -165,10 +219,11 @@ export function parseUkDateTime(v: string | undefined, utcOffsetMinutes: number 
   const [h, mi, se] = t ? [Number(t[1]), Number(t[2]), Number(t[3] ?? 0)] : [0, 0, 0];
   if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
   const asUtc = Date.UTC(y, mo - 1, d, h, mi, se);
-  if (utcOffsetMinutes !== null) return new Date(asUtc - utcOffsetMinutes * 60000).toISOString();
+  if (typeof basis === "number") return new Date(asUtc - basis * 60000).toISOString();
+  const zone = basis ?? "Europe/London";
   // Take the offset at the guessed moment, then once more at the corrected one, which settles it either side of a clock change.
-  let utc = asUtc - londonOffsetMinutes(asUtc) * 60000;
-  utc = asUtc - londonOffsetMinutes(utc) * 60000;
+  let utc = asUtc - zoneOffsetMinutes(asUtc, zone) * 60000;
+  utc = asUtc - zoneOffsetMinutes(utc, zone) * 60000;
   return new Date(utc).toISOString();
 }
 
@@ -205,7 +260,7 @@ export interface ParsedHistory {
 }
 
 /** Reads an exported bet history. Throws an Error whose message says what the file is missing. */
-export function parseBetHistory(csv: string, utcOffsetMinutes: number | null = null): ParsedHistory {
+export function parseBetHistory(csv: string, basis: TimeBasis = null): ParsedHistory {
   const rows = parseCsv(csv);
   // The header is the first row that names an event and something money-like; exports sometimes start with a title line.
   const headerIdx = rows.findIndex((r) => {
@@ -230,8 +285,8 @@ export function parseBetHistory(csv: string, utcOffsetMinutes: number | null = n
   let skipped = 0;
   for (const r of rows.slice(headerIdx + 1)) {
     const event = eventFrom(get(r, "event"), get(r, "market"));
-    const placedAt = parseUkDateTime(get(r, "placed"), utcOffsetMinutes);
-    const settledAt = parseUkDateTime(get(r, "settled"), utcOffsetMinutes);
+    const placedAt = parseUkDateTime(get(r, "placed"), basis);
+    const settledAt = parseUkDateTime(get(r, "settled"), basis);
     const stake = parseMoney(get(r, "stake"));
     const matchedRaw = parseMoney(get(r, "matched"));
     const odds = parseMoney(get(r, "odds"));
@@ -363,8 +418,8 @@ export interface ImportSummary {
   unused: string[];
 }
 
-export function importBetHistory(db: EngineDb, csv: string, source: string, now = new Date(), utcOffsetMinutes: number | null = null): ImportSummary {
-  const parsed = parseBetHistory(csv, utcOffsetMinutes);
+export function importBetHistory(db: EngineDb, csv: string, source: string, now = new Date(), basis: TimeBasis = null): ImportSummary {
+  const parsed = parseBetHistory(csv, basis);
   if (parsed.bets.length === 0) throw new Error(`No bets found in the file (${parsed.skipped} row${parsed.skipped === 1 ? "" : "s"} skipped). Check it is a bet history export.`);
   const at = now.toISOString();
   const { added, updated } = db.saveBetfairBets(parsed.bets, at);

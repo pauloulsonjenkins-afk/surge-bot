@@ -20,7 +20,7 @@ export function useReconcile() {
 export function useImportBetHistory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { csv: string; source: string; utcOffset: number | null }): Promise<BetImportSummary> => {
+    mutationFn: async (v: { csv: string; source: string; timeZone: string | null }): Promise<BetImportSummary> => {
       const res = await fetch("/api/admin/betfair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new ApiFetchError(body?.error ?? `Import failed (${res.status})`, res.status);

@@ -992,7 +992,7 @@ export function fetchReconcile(): Promise<ReconcileReport> {
 }
 
 /** Sends an exported bet history to the engine. Throws the engine's reason when the file can't be read. */
-/** utcOffset: minutes ahead of UTC that the file's times are written in, or null for UK time. */
-export function importBetHistory(csv: string, source: string, utcOffset: number | null = null): Promise<BetImportSummary> {
-  return engineCall<BetImportSummary>("/internal/betfair/import", "the import", { method: "POST", body: { csv, source, utcOffset }, timeoutMs: 30_000 });
+/** timeZone: the zone the file's times are written in, e.g. "Europe/Berlin", or null for UK time. */
+export function importBetHistory(csv: string, source: string, timeZone: string | null = null): Promise<BetImportSummary> {
+  return engineCall<BetImportSummary>("/internal/betfair/import", "the import", { method: "POST", body: { csv, source, timeZone }, timeoutMs: 30_000 });
 }
