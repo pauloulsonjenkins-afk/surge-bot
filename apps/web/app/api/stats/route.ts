@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const strategy = searchParams.get("strategy")?.trim().slice(0, 120) || null;
   // Live / simulation shows which picks were actually bet, so only the admin can split by it; everyone else sees every alert.
   const asked = parsePickMode(searchParams.get("mode"));
-  const mode = asked !== "all" && (await verifySessionToken(cookies().get(ADMIN_COOKIE_NAME)?.value)) ? asked : "all";
+  const mode = asked !== "all" && (await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value)) ? asked : "all";
 
   try {
     return NextResponse.json(

@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
   // Live / simulation is admin-only, as on /api/stats.
   const asked = parsePickMode(searchParams.get("mode"));
-  const mode = asked !== "all" && (await verifySessionToken(cookies().get(ADMIN_COOKIE_NAME)?.value)) ? asked : "all";
+  const mode = asked !== "all" && (await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value)) ? asked : "all";
 
   try {
     return NextResponse.json({ cells: await cached(`performance:${days}:${mode}`, 5000, () => fetchPerformanceCells(days, mode)) });

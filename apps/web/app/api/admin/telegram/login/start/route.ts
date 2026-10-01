@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   console.log("[telegram/login/start] request received");
-  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(ADMIN_COOKIE_NAME)?.value;
   if (!(await verifySessionToken(token))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

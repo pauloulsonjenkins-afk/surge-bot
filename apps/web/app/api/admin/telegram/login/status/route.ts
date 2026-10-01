@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(ADMIN_COOKIE_NAME)?.value;
   if (!(await verifySessionToken(token))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

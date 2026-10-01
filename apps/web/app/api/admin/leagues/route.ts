@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function isAdmin(): Promise<boolean> {
-  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(ADMIN_COOKIE_NAME)?.value;
   return verifySessionToken(token);
 }
 

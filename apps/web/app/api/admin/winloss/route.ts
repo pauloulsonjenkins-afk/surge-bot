@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function authorised(): Promise<boolean> {
-  return verifySessionToken(cookies().get(ADMIN_COOKIE_NAME)?.value);
+  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
 }
 
 export async function GET(request: Request) {

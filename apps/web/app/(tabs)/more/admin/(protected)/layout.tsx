@@ -12,7 +12,7 @@ export default async function ProtectedAdminLayout({
   // Authoritative check. Runs server-side on every request to any nested
   // admin route — a client-side flag can't substitute for this because it
   // never touches the actual secret and can be flipped in devtools.
-  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(ADMIN_COOKIE_NAME)?.value;
   const authed = await verifySessionToken(token);
 
   if (!authed) {

@@ -26,12 +26,12 @@ export async function publicViewOn(): Promise<boolean> {
 }
 
 export async function isAdmin(): Promise<boolean> {
-  return verifySessionToken(cookies().get(ADMIN_COOKIE_NAME)?.value);
+  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
 }
 
 /** The signed-in website user, or null (no cookie, a bad cookie, or an account that was disabled or signed out). */
 export async function currentUser(): Promise<EngineUser | null> {
-  const session = readUserToken(cookies().get(USER_COOKIE_NAME)?.value);
+  const session = readUserToken((await cookies()).get(USER_COOKIE_NAME)?.value);
   if (!session) return null;
   return engineSessionUser(session.userId, session.sessionVersion);
 }

@@ -9,14 +9,14 @@ export const dynamic = "force-dynamic";
 
 const NOT_FOUND = () => new NextResponse("Not found", { status: 404 });
 
-export async function GET(_request: Request, { params }: { params: { token: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const baseUrl = process.env.ENGINE_BASE_URL;
   if (!baseUrl) return NOT_FOUND();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(`${baseUrl}/feeds/bets/${encodeURIComponent(params.token)}`, {
+    const res = await fetch(`${baseUrl}/feeds/bets/${encodeURIComponent((await params).token)}`, {
       cache: "no-store",
       signal: controller.signal,
     });
