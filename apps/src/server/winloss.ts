@@ -26,7 +26,7 @@
  * it applies to the Month and Year figures only, charged on the 1st of each
  * month from the start month onwards.
  */
-import type { EngineDb, PickMode } from "../storage/engine-db";
+import { inPickMode, isLivePlacement, type EngineDb, type PickMode, type Placement } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { breakevenHitRate, hitRateRange, oddsFor, priceResult } from "./pricing";
 
@@ -242,7 +242,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
       };
     t.market = r.market ?? t.market;
     tally.set(key, t);
-    if ((mode === "live" && !r.sent) || (mode === "sim" && r.sent)) continue;
+    if (!inPickMode(r.placement, mode)) continue;
     t.settled++;
     inMode.add(key);
 
@@ -488,10 +488,13 @@ export function pricingInputs(db: EngineDb) {
   const commission = settings.commission / 100;
   return {
     commission,
-    price: (r: ResultRow) => {
+    /** With `estimate`, the app's own estimate even for a pick with a real Betfair bet (Reconcile compares the two). */
+    price: (r: ResultRow, opts: { estimate?: boolean } = {}) => {
       const key = strategyLabel(r.strategy).toLowerCase();
       const assumed = settings.assumedOdds[key] ?? null;
-      return { key, priced: priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: assumed, commission }), odds: oddsFor(r, assumed) };
+      const priced = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: assumed, commission, estimate: opts.estimate });
+      // The odds it is judged at: the price it was actually priced at, else the best price known for it.
+      return { key, priced, odds: priced.kind === "priced" ? priced.odds : oddsFor(r, assumed) };
     },
   };
 }
@@ -507,7 +510,8 @@ export function computeStrategyReturns(db: EngineDb): Record<string, { live: Str
     const { key, priced, odds } = price(r);
     let t = tallies.get(key);
     if (!t) tallies.set(key, (t = { live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) }));
-    (r.sent ? t.live : t.sim).add(r, priced, odds);
+    if (isLivePlacement(r.placement)) t.live.add(r, priced, odds);
+    else if (r.placement === "sim") t.sim.add(r, priced, odds);
     t.all.add(r, priced, odds);
   }
   const out: Record<string, { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }> = {};
@@ -521,7 +525,7 @@ export function computeStrategyEquity(db: EngineDb, label: string, mode: PickMod
   const wanted = strategyLabel(label).toLowerCase();
   const t = new ReturnTally(commission);
   for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z")) {
-    if ((mode === "live" && !r.sent) || (mode === "sim" && r.sent)) continue;
+    if (!inPickMode(r.placement, mode)) continue;
     const { key, priced, odds } = price(r);
     if (key === wanted) t.add(r, priced, odds);
   }
@@ -559,15 +563,25 @@ export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: 
  * Profit in pounds for each settled pick since a date (keyed by pick id), for the admin's Trade Log. Picks
  * that can't be priced, or that the feed's rules would have held back, are left out.
  */
-export function computePickProfits(db: EngineDb, sinceIso: string): Record<number, { stake: number; profit: number }> {
-  const settings = getWinLossSettings(db);
-  const sending = getSendingSettings(db);
-  const commission = settings.commission / 100;
-  const out: Record<number, { stake: number; profit: number }> = {};
+export function computePickProfits(db: EngineDb, sinceIso: string): Record<number, PickProfit> {
+  const { price } = pricingInputs(db);
+  const out: Record<number, PickProfit> = {};
   for (const r of db.listResultsForWinLoss(sinceIso)) {
-    const key = strategyLabel(r.strategy).toLowerCase();
-    const priced = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: settings.assumedOdds[key] ?? null, commission });
-    if (priced.kind === "priced") out[r.id] = { stake: r2(priced.stake), profit: r2(priced.profit) };
+    const { priced } = price(r);
+    const placement = r.placement;
+    if (priced.kind === "priced") out[r.id] = { stake: r2(priced.stake), profit: r2(priced.profit), placement, real: placement === "betfair" };
+    else if (placement === "notPlaced") out[r.id] = { stake: 0, profit: 0, placement, real: false };
   }
   return out;
+}
+
+/**
+ * A settled pick's money for the Trade Log: what was staked and won or lost, how it was bet (see Placement), and
+ * whether the figure is real (from the matched Betfair bet) or an estimate. A pick sent but never placed has 0 / 0.
+ */
+export interface PickProfit {
+  stake: number;
+  profit: number;
+  placement: Placement;
+  real: boolean;
 }

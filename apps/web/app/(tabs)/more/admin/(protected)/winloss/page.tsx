@@ -85,8 +85,8 @@ export default function WinLossPage() {
 }
 
 const MODE_NOTE: Record<PickMode, string> = {
-  all: "Every settled pick, bet or not.",
-  live: "Live: only picks that were sent to your betting software, at the stake they were sent with.",
+  all: "Every settled pick, bet or not. Picks sent but never placed count for hit rates but have no money on them.",
+  live: "Live: only bets actually placed (matched on Betfair, or placed by hand), at the real stake and price.",
   sim: "Sim: only picks that were recorded but not sent, priced at each strategy's stake as if they had been.",
 };
 
@@ -200,8 +200,9 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         title="Win / Loss"
         subtitle={
           <>
-          An estimate in pounds, from the odds printed in each alert and the stake set for its strategy. It is not taken
-          from the bets your betting software actually matched, so expect small differences from your real account.
+          Bets matched on Betfair count at their real stake, price and profit. Everything else (Sim picks, bets placed by
+          hand, and picks from before Betfair was checked) is estimated from the alert’s odds and the strategy’s stake.
+          Picks sent but never placed staked nothing.
           </>
         }
       />

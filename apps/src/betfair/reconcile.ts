@@ -610,7 +610,8 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
         }
       }
       if (!r) continue; // not settled yet, or left out of the figures (fresh start, "didn't actually bet")
-      const est = price(r).priced;
+      // The app's estimate, not the real figure it now uses for a matched bet, so the two can be compared.
+      const est = price(r, { estimate: true }).priced;
       if (est.kind !== "priced" || real.some((b) => b.status !== "won" && b.status !== "lost")) continue;
       s.compared++;
       s.estimatedProfit += est.profit;

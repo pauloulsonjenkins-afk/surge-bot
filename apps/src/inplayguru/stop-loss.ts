@@ -154,10 +154,19 @@ export function computeStopLoss(db: EngineDb, now = new Date(), mode: "live" | "
   const { commission, assumedOdds } = winLossInputs(db);
   // A day of margin either side; the exact UK day is checked below.
   const since = new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString();
-  // Live counts the picks that were sent, at the stake they were sent with. Sim counts the simulated bets
-  // that would have been placed, at their recorded stake: the same limits, run as if the strategy were live.
+  // Live counts the bets actually placed: a matched Betfair bet at the amount matched, or one placed by hand (a pick
+  // sent but never placed lost nothing). Sim counts the simulated bets that would have been placed, at their recorded
+  // stake: the same limits, run as if the strategy were live.
   const stakeOf = (r: ReturnType<EngineDb["listResultsForWinLoss"]>[number]): number | null =>
-    mode === "live" ? r.sentStake : !r.sent && r.sim && r.sim.skipped === null ? r.sim.stake : null;
+    mode === "live"
+      ? r.sent
+        ? r.placement === "betfair"
+          ? r.betStake
+          : r.sentStake
+        : null
+      : r.placement === "sim" && r.sim && r.sim.skipped === null
+        ? r.sim.stake
+        : null;
   const picks = db.listResultsForWinLoss(since).filter((r) => stakeOf(r) !== null && ukDay.format(new Date(r.firstSeenAt)) === today);
 
   for (const key of keys) {
@@ -171,8 +180,13 @@ export function computeStopLoss(db: EngineDb, now = new Date(), mode: "live" | "
       if (resumedMs !== null && Date.parse(r.firstSeenAt) < resumedMs) continue;
       const stake = stakeOf(r)!;
       let profit: number;
-      if (r.result === "hit") {
-        const odds = alertOddsOf(r) ?? assumedOdds[key] ?? null;
+      if (mode === "live" && r.placement === "betfair" && r.betProfit !== null) {
+        // The real result of the Betfair bet.
+        profit = r.betProfit > 0 ? r.betProfit * (1 - commission) : r.betProfit;
+        if (r.result === "hit") run = 0;
+        else run++;
+      } else if (r.result === "hit") {
+        const odds = (mode === "live" ? (r.placement === "betfair" ? r.betOdds : r.takenOdds) : null) ?? alertOddsOf(r) ?? assumedOdds[key] ?? null;
         profit = odds === null ? 0 : stake * (odds - 1) * (1 - commission);
         run = 0;
       } else {

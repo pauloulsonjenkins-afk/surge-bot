@@ -202,10 +202,43 @@ export function parsePickMode(v: unknown): PickMode {
 }
 
 /**
- * A pick is live when it was handed to the bet feed, or when the admin logged on Live that they placed it by hand
- * (manual_bet: the betting software missed it, or it was never sent, and it was bet elsewhere).
+ * A pick is live when money was actually staked on it: a Betfair bet linked to it was matched, or the admin logged on
+ * Live that they placed it by hand (manual_bet). Being handed to the bet feed isn't enough, since the betting software
+ * may never place it. Picks sent before any Betfair bets are known (no link, or before the first one) can't be
+ * checked, so they still count as live when sent ("legacy").
+ *
+ * A pick that was sent but never placed is neither live nor sim: it counts under "all" only.
  */
-const LIVE_SQL = "(sent_at IS NOT NULL OR manual_bet IS NOT NULL)";
+/**
+ * From when Betfair bets are known: 4 hours (how long after a pick its bet may be placed, see reconcile.ts) before the
+ * first one, since the first known bet was itself placed after its pick was sent. Picks sent earlier are "legacy".
+ */
+const BETFAIR_FROM_SQL = "COALESCE((SELECT strftime('%Y-%m-%dT%H:%M:%fZ', MIN(COALESCE(placed_at, settled_at)), '-4 hours') FROM betfair_bets), '9999')";
+const LIVE_SQL = `(manual_bet IS NOT NULL
+  OR EXISTS (SELECT 1 FROM betfair_bets b WHERE b.pick_id = live_picks.id AND b.matched > 0)
+  OR (sent_at IS NOT NULL AND sent_at < ${BETFAIR_FROM_SQL}))`;
+/** A simulation pick: never sent and not bet by hand. */
+const SIM_SQL = "(sent_at IS NULL AND manual_bet IS NULL)";
+
+/**
+ * How a settled pick was (or wasn't) bet:
+ *   betfair    a Betfair bet linked to it was matched: its real stake, price and profit count
+ *   manual     the admin placed it by hand and logged it on Live
+ *   legacy     sent before any Betfair bets were known, so it can't be checked: priced as sent
+ *   notPlaced  sent, but the betting software never placed it: no money was staked
+ *   sim        never sent: a simulation pick
+ */
+export type Placement = "betfair" | "manual" | "legacy" | "notPlaced" | "sim";
+
+/** True for the placements that staked real money (the "live" mode). */
+export function isLivePlacement(p: Placement): boolean {
+  return p === "betfair" || p === "manual" || p === "legacy";
+}
+
+/** Whether a pick with this placement belongs in a mode: live = real money, sim = never sent, all = everything. */
+export function inPickMode(p: Placement, mode: PickMode): boolean {
+  return mode === "all" || (mode === "live" ? isLivePlacement(p) : p === "sim");
+}
 
 /** A bet the admin placed by hand on a pick, logged on Live. */
 export interface ManualBet {
@@ -230,7 +263,7 @@ export function parseManualBet(raw: unknown): ManualBet | null {
 
 /** SQL condition for a mode, to add to a WHERE clause on live_picks. */
 function modeSql(mode: PickMode): string {
-  return mode === "live" ? ` AND ${LIVE_SQL}` : mode === "sim" ? ` AND NOT ${LIVE_SQL}` : "";
+  return mode === "live" ? ` AND ${LIVE_SQL}` : mode === "sim" ? ` AND ${SIM_SQL}` : "";
 }
 
 function parseSimRow(raw: string | null): SimRecord | null {
@@ -1369,10 +1402,11 @@ export class EngineDb {
     const floor = this.getFreshStart();
     const rows = this.db
       .prepare(
-        `SELECT strategy, market, excluded, sent_at, manual_bet, first_seen_at, COALESCE(result_override, result) AS result
+        `SELECT strategy, market, excluded, sent_at, first_seen_at, COALESCE(result_override, result) AS result,
+                ${LIVE_SQL} AS is_live, ${SIM_SQL} AS is_sim
          FROM live_picks ORDER BY id`,
       )
-      .all() as Array<{ strategy: string; market: string | null; excluded: number; sent_at: string | null; manual_bet: string | null; first_seen_at: string; result: string | null }>;
+      .all() as Array<{ strategy: string; market: string | null; excluded: number; sent_at: string | null; first_seen_at: string; result: string | null; is_live: number; is_sim: number }>;
     const out = new Map<string, AdminStrategyRow>();
     for (const r of rows) {
       const label = strategyLabel(r.strategy);
@@ -1400,15 +1434,15 @@ export class EngineDb {
       if (floor === null || r.first_seen_at >= floor) {
         row.alertsSince++;
         if (r.excluded !== 1) {
-          const live = r.sent_at !== null || r.manual_bet !== null;
+          // Live = real money staked (see LIVE_SQL); a pick sent but never placed counts in neither.
           if (r.result === "hit") {
             row.hits++;
-            if (live) row.liveHits++;
-            else row.simHits++;
+            if (r.is_live) row.liveHits++;
+            else if (r.is_sim) row.simHits++;
           } else if (r.result === "miss") {
             row.misses++;
-            if (live) row.liveMisses++;
-            else row.simMisses++;
+            if (r.is_live) row.liveMisses++;
+            else if (r.is_sim) row.simMisses++;
           }
         }
       }
@@ -1520,8 +1554,13 @@ export class EngineDb {
     /** The Betfair back price of the bet the feed would send, read when the alert arrived. */
     exchangeOdds: number | null;
     sentStake: number | null;
-    /** True when the pick was handed to the bet feed (a live bet), false for a simulation pick. */
+    /** True when real money was staked on the pick (placement betfair, manual or legacy): a live bet. */
     sent: boolean;
+    /** How the pick was bet: see Placement. */
+    placement: Placement;
+    /** For a Betfair bet: the amount matched (the real stake), and its profit once every bet on it has settled. */
+    betStake: number | null;
+    betProfit: number | null;
     /** The simulated bet recorded when the pick arrived, or null (sent, or from before recording existed). */
     sim: SimRecord | null;
   }> {
@@ -1530,7 +1569,10 @@ export class EngineDb {
         `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange, manual_bet,
                 exchange_odds,
                 (SELECT SUM(b.matched * b.odds) / SUM(b.matched) FROM betfair_bets b
-                  WHERE b.pick_id = live_picks.id AND b.matched > 0 AND b.odds > 1) AS bet_odds
+                  WHERE b.pick_id = live_picks.id AND b.matched > 0 AND b.odds > 1) AS bet_odds,
+                (SELECT SUM(b.matched) FROM betfair_bets b WHERE b.pick_id = live_picks.id AND b.matched > 0) AS bet_stake,
+                (SELECT CASE WHEN COUNT(*) > 0 AND SUM(CASE WHEN b.status IN ('won', 'lost') THEN 0 ELSE 1 END) = 0 THEN SUM(b.profit) END
+                   FROM betfair_bets b WHERE b.pick_id = live_picks.id AND b.matched > 0) AS bet_profit
          FROM live_picks
          WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
@@ -1549,7 +1591,10 @@ export class EngineDb {
       manual_bet: string | null;
       exchange_odds: number | null;
       bet_odds: number | null;
+      bet_stake: number | null;
+      bet_profit: number | null;
     }>;
+    const betfairFrom = (this.db.prepare(`SELECT ${BETFAIR_FROM_SQL} AS t`).get() as { t: string }).t;
 
     return rows.map((r) => {
       let targetLine: number | null = null;
@@ -1570,7 +1615,7 @@ export class EngineDb {
         // leave as null
       }
       const manual = parseManualBet(r.manual_bet);
-      let sentStake: number | null = manual?.stake ?? null;
+      let sentStake: number | null = null;
       if (r.sent_row) {
         try {
           const s = JSON.parse(r.sent_row) as { stake?: unknown };
@@ -1579,6 +1624,18 @@ export class EngineDb {
           // leave as null
         }
       }
+      // A bet placed by hand is what was actually staked, even on a pick the feed also sent.
+      if (manual) sentStake = manual.stake;
+      const betStake = typeof r.bet_stake === "number" && r.bet_stake > 0 ? Math.round(r.bet_stake * 100) / 100 : null;
+      const placement: Placement = manual
+        ? "manual"
+        : betStake !== null
+          ? "betfair"
+          : r.sent_at !== null
+            ? r.sent_at < betfairFrom
+              ? "legacy"
+              : "notPlaced"
+            : "sim";
       return {
         id: r.id,
         firstSeenAt: r.first_seen_at,
@@ -1590,8 +1647,10 @@ export class EngineDb {
         overOdds,
         favouriteOdds,
         sentStake,
-        // A bet placed by hand counts as a live bet at its own stake and price.
-        sent: r.sent_at !== null || manual !== null,
+        sent: isLivePlacement(placement),
+        placement,
+        betStake,
+        betProfit: placement === "betfair" && typeof r.bet_profit === "number" ? Math.round(r.bet_profit * 100) / 100 : null,
         // A simulated bet on a match that wasn't on Betfair could never have been placed.
         // The price actually matched on Betfair, else the price taken on a bet placed by hand.
         betOdds: typeof r.bet_odds === "number" && r.bet_odds > 1 ? Math.round(r.bet_odds * 100) / 100 : null,

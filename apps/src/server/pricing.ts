@@ -2,6 +2,11 @@
  * How one settled pick is priced in pounds. Shared by Win/Loss, the stop loss and the Strategies page, so
  * every figure in the app agrees.
  *
+ *   A pick with a matched Betfair bet is priced from that bet: the amount matched, the price matched and Betfair's
+ *   profit (less commission on a win), so live figures are real money. A pick that was sent but never placed staked
+ *   nothing and isn't priced. Everything below is the estimate, used for simulation picks, bets placed by hand,
+ *   picks from before Betfair bets were known, and (with `estimate`) for Reconcile's estimate-vs-actual comparison.
+ *
  *   stake  live pick (sent):          the stake it was sent with
  *          sim pick, recorded:         the stake recorded when it arrived (see recordSimBets in bet-feed.ts);
  *                                      a pick the bet feed's rules would have held back is not priced at all
@@ -32,6 +37,11 @@ export interface PriceableResult {
   takenOdds?: number | null;
   /** The Betfair price of the bet the feed would send, read when the alert arrived. */
   exchangeOdds?: number | null;
+  /** How the pick was bet (see Placement in engine-db.ts); missing means as `sent` says. */
+  placement?: "betfair" | "manual" | "legacy" | "notPlaced" | "sim";
+  /** For a Betfair bet: the amount matched and, once settled, Betfair's profit before commission. */
+  betStake?: number | null;
+  betProfit?: number | null;
 }
 
 /** Where a pick's price came from. */
@@ -63,8 +73,16 @@ export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "
 
 export function priceResult(
   r: PriceableResult,
-  ctx: { strategyStake: number | null; assumedOdds: number | null; commission: number },
+  ctx: { strategyStake: number | null; assumedOdds: number | null; commission: number; estimate?: boolean },
 ): PriceOutcome {
+  if (r.placement === "notPlaced") return { kind: "notPlaced", reason: "Sent, but your betting software never placed it." };
+  // Real money: what Betfair matched and paid.
+  if (!ctx.estimate && r.placement === "betfair" && r.betStake && r.betOdds && r.betOdds > 1) {
+    const raw = r.betProfit ?? (r.result === "hit" ? r.betStake * (r.betOdds - 1) : -r.betStake);
+    const profit = raw > 0 ? raw * (1 - ctx.commission) : raw;
+    return { kind: "priced", stake: r.betStake, odds: r.betOdds, profit, usedAlertOdds: false, oddsSource: "bet" };
+  }
+
   let stake: number | null;
   if (r.sent) stake = r.sentStake ?? ctx.strategyStake;
   else if (r.sim) {

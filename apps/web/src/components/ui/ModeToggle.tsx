@@ -38,8 +38,13 @@ export function ModeToggle({ className = "" }: { className?: string }) {
   );
 }
 
-/** A small label for a pick or strategy: Live (bet was placed) or Sim (recorded only). */
-export function ModeBadge({ mode }: { mode: "live" | "sim" }) {
+/** A small label for a pick or strategy: Live (money was staked), Sim (recorded only), or Not placed (sent, never bet). */
+export function ModeBadge({ mode }: { mode: "live" | "sim" | "notPlaced" }) {
+  if (mode === "notPlaced") {
+    return (
+      <span className="inline-flex shrink-0 items-center rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn">Not placed</span>
+    );
+  }
   return mode === "live" ? (
     <span className="inline-flex shrink-0 items-center rounded-full bg-hit/15 px-2 py-0.5 text-xs font-medium text-hit">Live</span>
   ) : (

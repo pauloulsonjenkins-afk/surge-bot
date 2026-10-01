@@ -57,6 +57,9 @@ export async function fetchRecentPicks(limit = 50): Promise<EnginePick[]> {
 }
 
 /** One Telegram alert, parsed. Mirrors LivePick in the engine's engine-db.ts. */
+/** How a settled pick was bet: matched on Betfair, placed by hand, sent before Betfair was checked, sent but never placed, or Sim. */
+export type PickPlacement = "betfair" | "manual" | "legacy" | "notPlaced" | "sim";
+
 export interface LivePick {
   id: number;
   marketCheck?: "ok" | "noMarket" | "noSelection" | null;
@@ -90,8 +93,12 @@ export interface LivePick {
   sendable: boolean;
   /** When the pick was first handed to the bet feed, or null. */
   sentAt: string | null;
-  /** Admin list only: stake and profit in pounds once settled and priced, as Win/Loss works it out. */
-  pnl?: { stake: number; profit: number } | null;
+  /**
+   * Admin list only, once settled: stake and profit in pounds as Win/Loss works it out, how it was bet, and whether the
+   * figure is real (from the matched Betfair bet). "notPlaced": sent but never placed, so nothing was staked.
+   * placement and real are missing from an older engine.
+   */
+  pnl?: { stake: number; profit: number; placement?: PickPlacement; real?: boolean } | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;

@@ -19,6 +19,15 @@ type Row = PublicPick & { pnl?: LivePick["pnl"]; excluded?: boolean };
 
 const moneyTone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink-muted");
 
+/** Live = money was staked; Not placed = sent but never bet; Sim = never sent. An older engine only says whether it was sent. */
+function modeOf(pick: Row): "live" | "sim" | "notPlaced" {
+  const placement = pick.pnl?.placement;
+  if (placement === "notPlaced") return "notPlaced";
+  if (placement === "sim") return "sim";
+  if (placement) return "live";
+  return pick.sentAt ? "live" : "sim";
+}
+
 function PickRow({ pick, admin }: { pick: Row; admin: boolean }) {
   const hit = pick.result === "hit";
   return (
@@ -28,7 +37,7 @@ function PickRow({ pick, admin }: { pick: Row; admin: boolean }) {
           <span className="truncate">
             {pick.home ?? "Unknown"} <span className="text-ink-muted">v</span> {pick.away ?? "Unknown"}
           </span>
-          {admin && <ModeBadge mode={pick.sentAt ? "live" : "sim"} />}
+          {admin && <ModeBadge mode={modeOf(pick)} />}
         </p>
         <p className="mt-0.5 truncate text-xs text-ink-muted">
           {[pick.strategy.replace(/\([^)]*\)/g, "").trim(), betText(pick.market, pick.selection)]
@@ -37,13 +46,14 @@ function PickRow({ pick, admin }: { pick: Row; admin: boolean }) {
         </p>
       </div>
       <div className="shrink-0 text-right">
-        {admin && pick.pnl ? (
+        {admin && pick.pnl && pick.pnl.placement !== "notPlaced" ? (
           <p className={`text-sm font-semibold tabular-nums ${moneyTone(pick.pnl.profit)}`}>{gbp(pick.pnl.profit)}</p>
         ) : (
           <p className={`text-sm font-semibold ${hit ? "text-hit" : "text-loss"}`}>{hit ? "Hit" : "Miss"}</p>
         )}
         <p className="text-xs tabular-nums text-ink-muted">
-          {admin && pick.pnl ? `${hit ? "Hit" : "Miss"} · ` : ""}
+          {admin && pick.pnl && pick.pnl.placement !== "notPlaced" ? `${hit ? "Hit" : "Miss"} · ` : ""}
+          {admin && pick.pnl?.real ? "Betfair · " : ""}
           {pick.ftScore ?? "–"}
           {pick.resultOverridden && " · amended"}
         </p>
@@ -75,7 +85,7 @@ export default function TradeLogPage() {
     }
     last.picks.push(p);
     if (p.result === "hit") last.hits += 1;
-    if (p.pnl) {
+    if (p.pnl && p.pnl.placement !== "notPlaced") {
       last.profit += p.pnl.profit;
       last.priced += 1;
     }
@@ -85,7 +95,7 @@ export default function TradeLogPage() {
     <div className="space-y-6 px-4 py-4">
       <PageHeader
         title="Trade Log"
-        subtitle={admin ? "Every settled pick with its estimated profit, most recent first" : "Every settled pick, most recent first"}
+        subtitle={admin ? "Every settled pick with its profit, most recent first" : "Every settled pick, most recent first"}
         actions={
           admin ? (
             <Link
@@ -131,7 +141,9 @@ export default function TradeLogPage() {
 
       {admin && (
         <p className="text-center text-xs text-ink-muted">
-          Profit is estimated from the odds in each alert, as on Win/Loss. Sim picks show what the bet would have made.
+          Live bets matched on Betfair (marked “Betfair”) show the real stake and profit; other figures are estimated from the
+          alert’s odds, as on Win/Loss. Sim picks show what the bet would have made. Not placed: sent to your betting
+          software but never bet, so nothing was staked.
         </p>
       )}
     </div>

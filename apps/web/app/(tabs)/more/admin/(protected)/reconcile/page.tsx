@@ -392,7 +392,7 @@ export default function ReconcilePage() {
       <PageHeader
         as="h2"
         title="Reconcile"
-        subtitle="Every other money figure in the app is an estimate from the alert’s price and your stake. This compares it with the bets your betting software actually placed: how many picks never matched, the price you really got, and the real profit."
+        subtitle="The app counts bets matched on Betfair at their real figures. This compares the app’s estimate (from the alert’s price and your stake) with what your betting software actually placed: how many picks never matched, the price you really got, and the real profit."
       />
 
       {data?.betfairLink && <BetfairLinkCard link={data.betfairLink} />}
