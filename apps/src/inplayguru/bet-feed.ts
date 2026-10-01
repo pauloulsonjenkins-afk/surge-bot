@@ -195,7 +195,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     minOdds,
     maxStake: clampInt(raw.maxStake, 1, 500, DEFAULT_SENDING.maxStake),
     maxAgeMinutes: clampInt(raw.maxAgeMinutes, 1, 60, DEFAULT_SENDING.maxAgeMinutes),
-    dailyCap: clampInt(raw.dailyCap, 0, 500, DEFAULT_SENDING.dailyCap),
+    dailyCap: clampInt(raw.dailyCap, 0, 1000, DEFAULT_SENDING.dailyCap),
     bttsMarketType: cleanCode(raw.bttsMarketType, DEFAULT_SENDING.bttsMarketType),
     bttsSelection: cleanCode(raw.bttsSelection, DEFAULT_SENDING.bttsSelection),
     underdogMarketType: cleanCode(raw.underdogMarketType, DEFAULT_SENDING.underdogMarketType),
@@ -250,7 +250,7 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
     }
   }
   if (patch.maxAgeMinutes !== undefined) next.maxAgeMinutes = clampInt(patch.maxAgeMinutes, 1, 60, current.maxAgeMinutes);
-  if (patch.dailyCap !== undefined) next.dailyCap = clampInt(patch.dailyCap, 0, 500, current.dailyCap);
+  if (patch.dailyCap !== undefined) next.dailyCap = clampInt(patch.dailyCap, 0, 1000, current.dailyCap);
   if (patch.bttsMarketType !== undefined) next.bttsMarketType = cleanCode(patch.bttsMarketType, current.bttsMarketType);
   if (patch.bttsSelection !== undefined) next.bttsSelection = cleanCode(patch.bttsSelection, current.bttsSelection);
   if (patch.underdogMarketType !== undefined) next.underdogMarketType = cleanCode(patch.underdogMarketType, current.underdogMarketType);
