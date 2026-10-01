@@ -329,14 +329,20 @@ export function parseBetHistory(csv: string, basis: TimeBasis = null): ParsedHis
 
 const NOISE = new Set(["fc", "afc", "cf", "sc", "ac", "fk", "sk", "if", "bk", "cd", "ud", "the", "de", "club", "u19", "u21", "u23", "w", "women"]);
 
+/** Short forms the exchange and the alerts write differently ("Newcastle Utd" / "Newcastle United"). */
+const SPELLED_OUT: Record<string, string> = { utd: "united", untd: "united", ath: "athletic", atl: "atletico", dep: "deportivo", int: "internacional" };
+
 function tokens(s: string): string[] {
   return s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    // "O'Higgins" and "OHiggins" are one word.
+    .replace(/['\u2019`]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
-    .filter((t) => t && !NOISE.has(t));
+    .filter((t) => t && !NOISE.has(t))
+    .map((t) => SPELLED_OUT[t] ?? t);
 }
 
 function teamsOf(event: string): [string[], string[]] | null {
@@ -352,7 +358,10 @@ function teamsOf(event: string): [string[], string[]] | null {
 function sameTeam(a: string[], b: string[]): boolean {
   if (a.length === 0 || b.length === 0) return false;
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-  return short.every((t) => long.some((u) => u === t || (t.length >= 3 && u.startsWith(t)) || (u.length >= 3 && t.startsWith(u))));
+  if (short.every((t) => long.some((u) => u === t || (t.length >= 3 && u.startsWith(t)) || (u.length >= 3 && t.startsWith(u))))) return true;
+  // Written with or without spaces ("Hapoel Beer Sheva" / "Hapoel Beersheva").
+  const [x, y] = [a.join(""), b.join("")];
+  return Math.min(x.length, y.length) >= 6 && (x.includes(y) || y.includes(x));
 }
 
 /** How well a bet's event matches a pick's: 2 = both teams, 1 = one team, 0 = neither. */
@@ -366,6 +375,35 @@ export function eventScore(betEvent: string, pickEvent: string): number {
 /** How long after a pick was sent its bet may be placed: the software can wait for a minimum price. */
 const PLACE_WINDOW_MS = 4 * 60 * 60 * 1000;
 
+/**
+ * How long after a pick was sent the bet may be, or null when it can't be its bet. Placed from two minutes before the
+ * feed served it (clocks differ) up to PLACE_WINDOW_MS after; a bet with only a settled time may be up to 12 hours on.
+ */
+function betGap(b: { placedAt: string | null; settledAt: string | null }, sentAt: string): number | null {
+  const when = Date.parse(b.placedAt ?? b.settledAt ?? "");
+  if (!Number.isFinite(when)) return null;
+  const gap = when - Date.parse(sentAt);
+  return gap < -2 * 60 * 1000 || gap > (b.placedAt ? PLACE_WINDOW_MS : 12 * 60 * 60 * 1000) ? null : gap;
+}
+
+const pickEventOf = (p: ReturnType<EngineDb["listSentPicks"]>[number]) => p.sentRow?.eventName ?? `${p.home ?? ""} v ${p.away ?? ""}`;
+
+/** Why a bet has no pick, in words, so a name that needs a Match names entry can be told from a bet the feed never sent. */
+export function unlinkedReason(b: Pick<BetfairBet, "placedAt" | "settledAt" | "event">, picks: ReturnType<EngineDb["listSentPicks"]>): string {
+  let nearest: { event: string; score: number; gap: number } | null = null;
+  for (const p of picks) {
+    const gap = betGap(b, p.sentAt);
+    if (gap === null) continue;
+    const event = pickEventOf(p);
+    const score = eventScore(b.event, event);
+    if (!nearest || score > nearest.score || (score === nearest.score && Math.abs(gap) < nearest.gap)) nearest = { event, score, gap: Math.abs(gap) };
+  }
+  if (!nearest) return "No pick was sent to the bet feed in the 4 hours before this bet, so it wasn't placed from the feed.";
+  if (nearest.score === 1) return `One team name differs from the pick sent then, “${nearest.event}”. Add the other under Match names on the Sending page.`;
+  if (nearest.score >= 2) return `Its pick, “${nearest.event}”, already has a bet linked.`;
+  return `No pick for this match was sent around then (the nearest was “${nearest.event}”). If it was one of yours, both team names differ.`;
+}
+
 /** Links every unlinked bet to the sent pick it was placed for, where one fits. Returns how many were linked. */
 export function matchBets(db: EngineDb): number {
   const picks = db.listSentPicks();
@@ -374,16 +412,11 @@ export function matchBets(db: EngineDb): number {
   const links: Array<{ betId: string; pickId: number }> = [];
   for (const b of bets) {
     if (b.pickId !== null) continue;
-    const when = Date.parse(b.placedAt ?? b.settledAt ?? "");
-    if (!Number.isFinite(when)) continue;
     let best: { id: number; score: number; gap: number } | null = null;
     for (const p of picks) {
-      const sent = Date.parse(p.sentAt);
-      // Placed from a minute before the feed served it (clock differences) up to the window after; a settled time can be hours later.
-      const gap = when - sent;
-      if (gap < -2 * 60 * 1000 || gap > (b.placedAt ? PLACE_WINDOW_MS : 12 * 60 * 60 * 1000)) continue;
-      const pickEvent = p.sentRow?.eventName ?? `${p.home ?? ""} v ${p.away ?? ""}`;
-      const ev = eventScore(b.event, pickEvent);
+      const gap = betGap(b, p.sentAt);
+      if (gap === null) continue;
+      const ev = eventScore(b.event, pickEventOf(p));
       if (ev < 2) continue;
       let score = ev;
       if (b.selection && p.sentRow?.selectionName && tokens(b.selection).join(" ") === tokens(p.sentRow.selectionName).join(" ")) score++;
@@ -467,12 +500,13 @@ export interface ReconcileReport {
   strategies: ReconcileStrategy[];
   totals: { sent: number; matched: number; compared: number; estimatedProfit: number; actualProfit: number };
   /** Bets that couldn't be tied to a pick, newest first (at most 50). */
-  unlinked: Array<Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit">>;
+  unlinked: Array<Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit"> & { reason: string }>;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 export function computeReconcile(db: EngineDb): ReconcileReport {
+  const sentPicks = db.listSentPicks();
   const bets = db.listBetfairBets();
   const times = bets.map((b) => b.placedAt ?? b.settledAt).filter((t): t is string => t !== null).sort();
   const coverage = times.length > 0 ? { from: times[0]!, to: times[times.length - 1]! } : null;
@@ -485,7 +519,7 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
   if (coverage) {
     const from = Date.parse(coverage.from) - 5 * 60 * 1000;
     const to = Date.parse(coverage.to);
-    for (const p of db.listSentPicks()) {
+    for (const p of sentPicks) {
       const sent = Date.parse(p.sentAt);
       if (sent < from || sent > to) continue;
       const label = strategyLabel(p.strategy);
@@ -540,6 +574,6 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
       .filter((b) => b.pickId === null)
       .reverse()
       .slice(0, 50)
-      .map((b) => ({ betId: b.betId, placedAt: b.placedAt, event: b.event, selection: b.selection, status: b.status, profit: b.profit })),
+      .map((b) => ({ betId: b.betId, placedAt: b.placedAt, event: b.event, selection: b.selection, status: b.status, profit: b.profit, reason: unlinkedReason(b, sentPicks) })),
   };
 }

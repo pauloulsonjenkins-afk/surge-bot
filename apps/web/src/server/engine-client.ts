@@ -983,7 +983,8 @@ export interface ReconcileReport {
   coverage: { from: string; to: string } | null;
   strategies: ReconcileStrategy[];
   totals: { sent: number; matched: number; compared: number; estimatedProfit: number; actualProfit: number };
-  unlinked: Array<{ betId: string; placedAt: string | null; event: string; selection: string | null; status: string; profit: number | null }>;
+  /** reason: why no pick fits (missing on an older engine). */
+  unlinked: Array<{ betId: string; placedAt: string | null; event: string; selection: string | null; status: string; profit: number | null; reason?: string }>;
   importTokenConfigured: boolean;
 }
 

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { computeReconcile, decodeCsv, eventScore, importBetHistory, parseBetHistory, parseCsv, parseMoney, parseUkDateTime, zoneFromName } from "../src/betfair/reconcile";
+import { computeReconcile, decodeCsv, eventScore, unlinkedReason, importBetHistory, parseBetHistory, parseCsv, parseMoney, parseUkDateTime, zoneFromName } from "../src/betfair/reconcile";
 
 const S = "Blistering Momentum";
 const KEY = S.toLowerCase();
@@ -187,4 +187,21 @@ test("times from a PC on Central European time, either side of the clocks going 
   assert.equal(parseUkDateTime("2026-10-27 19:24:00", "Europe/Berlin"), "2026-10-27T18:24:00.000Z");
   // A fixed offset is the fallback.
   assert.equal(parseUkDateTime("2026-09-29 19:24:00", 120), "2026-09-29T17:24:00.000Z");
+});
+
+test("team names written differently on the exchange still match", () => {
+  assert.equal(eventScore("Aston Villa (W) v Newcastle Utd (W)", "Aston Villa Women v Newcastle United Women"), 2);
+  assert.equal(eventScore("Deportes Concepcion v OHiggins", "Deportes Concepción v O'Higgins"), 2);
+  assert.equal(eventScore("Hapoel Beer Sheva v Maccabi Haifa", "Hapoel Beersheva v Maccabi Haifa"), 2);
+  // ...but different clubs still don't.
+  assert.equal(eventScore("Newcastle Utd v Arsenal", "Newcastle Jets v Arsenal"), 1);
+});
+
+test("an unlinked bet says why: nothing sent then, or a name that differs", () => {
+  const sentAt = "2026-09-30T19:00:00.000Z";
+  const picks = [{ id: 1, strategy: "S", sentAt, firstSeenAt: sentAt, home: null, away: null, sentRow: { eventName: "Paris FC v Arsenal" } }];
+  const at = (mins: number) => new Date(Date.parse(sentAt) + mins * 60_000).toISOString();
+  assert.match(unlinkedReason({ placedAt: at(-60), settledAt: null, event: "Paris FC v Arsenal" }, picks), /No pick was sent/);
+  assert.match(unlinkedReason({ placedAt: at(5), settledAt: null, event: "Lyon v Arsenal" }, picks), /One team name differs/);
+  assert.match(unlinkedReason({ placedAt: at(5), settledAt: null, event: "Lyon v Nantes" }, picks), /No pick for this match/);
 });

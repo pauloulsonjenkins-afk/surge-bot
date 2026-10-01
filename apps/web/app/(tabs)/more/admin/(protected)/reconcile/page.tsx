@@ -237,6 +237,7 @@ export default function ReconcilePage() {
                       <span className="text-ink-muted">
                         {b.placedAt ? when(b.placedAt) : "–"} · {b.selection ?? "–"} · {b.status}
                       </span>
+                      {b.reason && <span className="mt-0.5 block text-ink-muted">{b.reason}</span>}
                     </span>
                     <span className={`shrink-0 tabular-nums ${TONE[moneyTone(b.profit ?? 0)]}`}>{b.profit === null ? "–" : gbp(b.profit)}</span>
                   </li>
