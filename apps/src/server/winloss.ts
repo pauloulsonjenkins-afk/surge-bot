@@ -389,6 +389,8 @@ export interface StrategyReturn {
   worstDay: { day: string; profit: number } | null;
   /** Most losing picks in a row inside one UK day (what the daily "losses in a row" stop counts). */
   worstDayRun: number;
+  /** Of the priced picks, how many were priced at the strategy's assumed odds (a guess, not a real price). */
+  assumed: number;
 }
 
 /** One pick on a strategy's equity curve. */
@@ -407,6 +409,7 @@ class ReturnTally {
   private settled = 0;
   private hits = 0;
   private counted = 0;
+  private assumed = 0;
   private staked = 0;
   private profit = 0;
   private oddsSum = 0;
@@ -449,6 +452,7 @@ class ReturnTally {
     }
     if (priced.kind !== "priced") return;
     this.counted++;
+    if (priced.oddsSource === "assumed") this.assumed++;
     this.staked += priced.stake;
     this.profit += priced.profit;
     this.peak = Math.max(this.peak, this.profit);
@@ -477,6 +481,7 @@ class ReturnTally {
       longestLosingRun: this.longestRun,
       worstDay,
       worstDayRun: this.worstDayRun,
+      assumed: this.assumed,
     };
   }
 }
@@ -544,6 +549,8 @@ export interface HitRateContext {
   /** Picks that could be priced in £, and the return on each £1 staked on them. */
   counted: number;
   roi: number | null;
+  /** Of the priced picks, how many were priced at an assumed price (a guess). */
+  assumed: number;
 }
 
 /** The Dashboard's hit-rate context, over exactly the settled picks its hit rate counts (ids from EngineDb.statsSettledIds). */
@@ -556,7 +563,7 @@ export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: 
     t.add(r, priced, odds);
   }
   const s = t.result();
-  return { settled: s.settled, hits: s.hits, range: s.range, oddsKnown: t.oddsCount, avgOdds: s.avgOdds, breakeven: s.breakeven, counted: s.counted, roi: s.roi };
+  return { settled: s.settled, hits: s.hits, range: s.range, oddsKnown: t.oddsCount, avgOdds: s.avgOdds, breakeven: s.breakeven, counted: s.counted, roi: s.roi, assumed: s.assumed };
 }
 
 /**
@@ -569,8 +576,9 @@ export function computePickProfits(db: EngineDb, sinceIso: string): Record<numbe
   for (const r of db.listResultsForWinLoss(sinceIso)) {
     const { priced } = price(r);
     const placement = r.placement;
-    if (priced.kind === "priced") out[r.id] = { stake: r2(priced.stake), profit: r2(priced.profit), placement, real: placement === "betfair" };
-    else if (placement === "notPlaced") out[r.id] = { stake: 0, profit: 0, placement, real: false };
+    if (priced.kind === "priced") {
+      out[r.id] = { stake: r2(priced.stake), profit: r2(priced.profit), placement, real: placement === "betfair", assumed: priced.oddsSource === "assumed" };
+    } else if (placement === "notPlaced") out[r.id] = { stake: 0, profit: 0, placement, real: false, assumed: false };
   }
   return out;
 }
@@ -584,4 +592,6 @@ export interface PickProfit {
   profit: number;
   placement: Placement;
   real: boolean;
+  /** Priced at the strategy's assumed odds (a guess), not a real price. */
+  assumed: boolean;
 }

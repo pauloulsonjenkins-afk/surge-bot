@@ -124,6 +124,12 @@ function HitRateContextRow({ stats }: { stats: HitRateStats }) {
       <p className="mt-1 text-xs text-ink-muted">
         {verdict ? <span className={colour[verdict.tone]}>{verdict.text}.</span> : "No odds are known for these picks, so break-even can’t be worked out yet."}
         {c.oddsKnown < c.settled && c.oddsKnown > 0 && ` Odds known for ${formatNumber(c.oddsKnown)} of ${formatNumber(c.settled)} picks.`}
+        {c.assumed ? (
+          <span className="text-warn">
+            {" "}
+            {formatNumber(c.assumed)} of them priced at an assumed price set on Win/Loss, not a real one, so the return is partly a guess.
+          </span>
+        ) : null}
       </p>
     </div>
   );

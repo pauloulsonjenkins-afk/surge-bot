@@ -54,6 +54,7 @@ function PickRow({ pick, admin }: { pick: Row; admin: boolean }) {
         <p className="text-xs tabular-nums text-ink-muted">
           {admin && pick.pnl && pick.pnl.placement !== "notPlaced" ? `${hit ? "Hit" : "Miss"} · ` : ""}
           {admin && pick.pnl?.real ? "Betfair · " : ""}
+          {admin && pick.pnl?.assumed ? <span className="text-warn">assumed odds · </span> : ""}
           {pick.ftScore ?? "–"}
           {pick.resultOverridden && " · amended"}
         </p>

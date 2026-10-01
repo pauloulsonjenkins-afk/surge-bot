@@ -89,6 +89,13 @@ function OddsContext({ hitRate, money }: { hitRate: number | null; money: NonNul
       {m.avgOdds === null ? "Odds unknown: set assumed odds on Win/Loss" : `Avg odds ${m.avgOdds.toFixed(2)} · break-even ${m.breakeven}%`}
       {range && ` · likely ${range}`}
       {verdict && <span className={verdict.tone === "hit" ? "text-hit" : verdict.tone === "loss" ? "text-loss" : ""}> · {verdict.text}</span>}
+      {m.assumed ? (
+        <span className="text-warn">
+          {" "}
+          · {m.assumed === m.counted ? "All" : `${m.assumed} of ${m.counted}`} priced at the assumed odds set on Win/Loss, not a real
+          price, so treat this return as a guess
+        </span>
+      ) : null}
     </p>
   );
 }

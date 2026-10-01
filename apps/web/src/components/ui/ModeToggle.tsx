@@ -30,9 +30,9 @@ export function ModeToggle({ className = "" }: { className?: string }) {
       onChange={setMode}
       className={className}
       options={[
-        { value: "all", label: "All" },
         { value: "live", label: "Live" },
         { value: "sim", label: "Sim" },
+        { value: "all", label: "All" },
       ]}
     />
   );

@@ -67,8 +67,8 @@ test("with Betfair bets known, only the matched one is live, at its real stake, 
 
   // The Trade Log: real figure for the matched one, "not placed" with nothing at stake for the others.
   const profits = computePickProfits(db, "1970-01-01T00:00:00.000Z");
-  assert.deepEqual(profits[sent[0]!.id], { stake: 1.5, profit: 1.8, placement: "betfair", real: true });
-  assert.deepEqual(profits[sent[1]!.id], { stake: 0, profit: 0, placement: "notPlaced", real: false });
+  assert.deepEqual(profits[sent[0]!.id], { stake: 1.5, profit: 1.8, placement: "betfair", real: true, assumed: false });
+  assert.deepEqual(profits[sent[1]!.id], { stake: 0, profit: 0, placement: "notPlaced", real: false, assumed: false });
 
   // Reconcile still compares the app's estimate (£2 at 2.00 = £2) with the real £1.80.
   const rec = computeReconcile(db).strategies.find((s) => s.label === S)!;
@@ -92,5 +92,5 @@ test("a bet placed by hand on a sent pick counts at the stake placed, not the st
   const { db, sent } = setup();
   db.setManualBet(sent[0]!.id, { stake: 1, odds: 1.73 });
   const profits = computePickProfits(db, "1970-01-01T00:00:00.000Z");
-  assert.deepEqual(profits[sent[0]!.id], { stake: 1, profit: 0.73, placement: "manual", real: false });
+  assert.deepEqual(profits[sent[0]!.id], { stake: 1, profit: 0.73, placement: "manual", real: false, assumed: false });
 });

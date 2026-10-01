@@ -24,12 +24,19 @@ export const useUiStore = create<UiState>()(
       lastMoreRoute: "/more",
       setLastMoreRoute: (lastMoreRoute) => set({ lastMoreRoute }),
 
-      pickMode: "all",
+      // Live by default: real money is what decides whether a strategy is worth betting.
+      pickMode: "live",
       setPickMode: (pickMode) => set({ pickMode }),
     }),
     {
       name: "surge-ui", // localStorage key
       partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode }),
+      // Version 1 made Live the default: a choice saved before then (usually the old default, All) starts on Live once.
+      version: 1,
+      migrate: (persisted, version) => {
+        const s = (persisted ?? {}) as Partial<UiState>;
+        return (version < 1 ? { ...s, pickMode: "live" } : s) as UiState;
+      },
     }
   )
 );

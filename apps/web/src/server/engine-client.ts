@@ -98,7 +98,7 @@ export interface LivePick {
    * figure is real (from the matched Betfair bet). "notPlaced": sent but never placed, so nothing was staked.
    * placement and real are missing from an older engine.
    */
-  pnl?: { stake: number; profit: number; placement?: PickPlacement; real?: boolean } | null;
+  pnl?: { stake: number; profit: number; placement?: PickPlacement; real?: boolean; assumed?: boolean } | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -263,6 +263,8 @@ export interface HitRateContext {
   counted: number;
   /** Return per £1 staked; null for anyone but the admin. */
   roi: number | null;
+  /** Of the priced picks, how many were priced at an assumed price (missing on an older engine). */
+  assumed?: number;
 }
 
 /**
@@ -795,6 +797,8 @@ export interface StrategyReturn {
   worstDay?: { day: string; profit: number } | null;
   /** Most losses in a row within one UK day. */
   worstDayRun?: number;
+  /** Of the priced picks, how many were priced at the strategy's assumed odds. */
+  assumed?: number;
 }
 
 /** One pick on a strategy's equity curve. Mirrors EquityPoint in the engine's winloss.ts. */
