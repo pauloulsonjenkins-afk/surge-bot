@@ -106,6 +106,8 @@ export interface LivePick {
     lastGoal: string | null;
     matched: number | null;
     strikeRate: number | null;
+    /** A pre-match alert's kick-off wording ("In 1 hour"). */
+    kickoffRaw?: string | null;
     /** The result worked out by the app, what the alert's own tick said, and which one was used. */
     result: "hit" | "miss" | null;
     alertResult: "hit" | "miss" | null;
@@ -150,6 +152,8 @@ export interface PublicPick {
     lastGoal: string | null;
     matched: number | null;
     strikeRate: number | null;
+    /** A pre-match alert's kick-off wording ("In 1 hour"). */
+    kickoffRaw?: string | null;
   } | null;
 }
 
@@ -185,6 +189,7 @@ export function toPublicPick(p: LivePick): PublicPick {
           lastGoal: p.detail.lastGoal,
           matched: p.detail.matched,
           strikeRate: p.detail.strikeRate,
+          kickoffRaw: p.detail.kickoffRaw ?? null,
         }
       : null,
   };

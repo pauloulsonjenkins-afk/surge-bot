@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { PageHeader } from "@/components/ui/Card";
@@ -38,6 +38,48 @@ function latestScore(pick: LivePick): string {
   return pick.goalsHome !== null && pick.goalsAway !== null ? `${pick.goalsHome} – ${pick.goalsAway}` : "– –";
 }
 
+/** Re-renders every half minute, so the estimated match clock moves on. */
+function useNow(everyMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(t);
+  }, [everyMs]);
+  return now;
+}
+
+/** A pre-match alert's estimated kick-off: "In 1 hour" or "In 45 minutes" from when it arrived (an hour if unsaid). */
+function kickoffOf(pick: LivePick): number {
+  const m = /in\s+(\d+)\s*(hour|hr|min)/i.exec(pick.detail?.kickoffRaw ?? "");
+  const minutes = m ? Number(m[1]) * (m[2]!.toLowerCase().startsWith("h") ? 60 : 1) : 60;
+  return Date.parse(pick.firstSeenAt) + minutes * 60_000;
+}
+
+/**
+ * Roughly where the match is now: the alert's minute plus the time since, with about 15 minutes of half-time and a few
+ * of stoppage. Only an estimate (alerts carry no live clock): "HT" in the break, "FT?" once it should be over.
+ */
+function matchClock(pick: LivePick, now: number): string | null {
+  let startMinute: number;
+  let from: number;
+  if (pick.minute !== null) {
+    startMinute = pick.minute;
+    from = Date.parse(pick.firstSeenAt);
+  } else if (pick.market === "FIRST_HALF_GOALS") {
+    const ko = kickoffOf(pick);
+    if (now < ko) return `KO ${fmtTime(new Date(ko).toISOString())}`;
+    startMinute = 0;
+    from = ko;
+  } else return null;
+  let m = startMinute + (now - from) / 60_000;
+  if (startMinute <= 45) {
+    if (m > 48 && m <= 63) return "HT";
+    if (m > 63) m -= 18;
+  }
+  if (m > 97) return "FT?";
+  return `~${Math.min(90, Math.floor(m))}'`;
+}
+
 const money = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}£${Math.abs(n).toFixed(2)}`;
 
 /** The admin's view of a sent pick: what Betfair says happened to it (see pickPlacements in the engine). */
@@ -57,7 +99,7 @@ function placementChip(p: Placement): { label: string; cls: string; title: strin
       return {
         label: "Not placed",
         cls: "bg-loss/15 text-loss",
-        title: "No bet on Betfair 5 minutes after the pick was sent. BF Bot Manager may be off, or still waiting for the minimum odds.",
+        title: "No bet on Betfair 3 minutes after the pick was sent. BF Bot Manager may be off, or turned it down (market types, Time to bet, minimum odds).",
       };
     case "manual":
       return {
@@ -288,7 +330,9 @@ function matchKey(p: LivePick): string {
 function MatchGroup({ picks, admin, placements }: { picks: LivePick[]; admin: boolean; placements: Record<string, Placement> }) {
   // picks arrive newest first, so the first holds the latest score and minute.
   const latest = picks[0]!;
+  const now = useNow();
   const minute = latest.minute !== null ? `${latest.minute}'` : latest.market === "FIRST_HALF_GOALS" ? "Pre-match" : null;
+  const clock = matchClock(latest, now);
   const sent = picks.filter((p) => p.sentAt).length;
   return (
     <li className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -298,12 +342,22 @@ function MatchGroup({ picks, admin, placements }: { picks: LivePick[]; admin: bo
             {latest.home ?? "Unknown"} <span className="font-normal text-ink-muted">v</span> {latest.away ?? "Unknown"}
           </h2>
           <p className="truncate text-xs text-ink-muted">
-            {[latest.competition, minute && `latest alert ${minute}`, `${picks.length} alert${picks.length === 1 ? "" : "s"}`, sent > 0 && `${sent} sent`]
+            {[
+              latest.competition,
+              clock && (clock === "FT?" ? "should be over, result due" : clock.startsWith("KO") ? `kick-off about ${clock.slice(3)}` : `about ${clock.replace("~", "")} now`),
+              minute && `latest alert ${minute}`,
+              `${picks.length} alert${picks.length === 1 ? "" : "s"}`,
+              sent > 0 && `${sent} sent`,
+            ]
               .filter(Boolean)
               .join(" · ")}
           </p>
         </div>
-        <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{latestScore(latest)}</span>
+        <span className="shrink-0 text-right">
+          <span className="block text-base font-semibold tabular-nums text-ink">{latestScore(latest)}</span>
+          {/* The score is only ever what an alert said: say which. */}
+          <span className="block text-[11px] text-ink-muted">{latest.htScore ? "half-time" : "at alert"}</span>
+        </span>
       </div>
       <ul className="divide-y divide-line">
         {picks.map((p) => (
