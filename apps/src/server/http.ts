@@ -28,6 +28,7 @@
  *   POST /imports/betfair/<import token>        the betting software's bet history export (CSV body), posted by tools/bf-import.ps1
  *   POST /internal/betfair/import               the same, uploaded on the admin Reconcile page (admin site only)
  *   GET  /internal/betfair/reconcile            real bets against the app's estimates, per strategy (admin site only)
+ *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
  *   POST /internal/telegram/login/password      submit the 2FA password, if any
@@ -56,7 +57,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
-import { computeReconcile, decodeCsv, importBetHistory, zoneFromName } from "../betfair/reconcile";
+import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -414,6 +415,29 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       } catch (err) {
         send(res, 422, { error: "unreadable", message: err instanceof Error ? err.message : String(err) });
       }
+      return;
+    }
+
+    if (path === "/internal/betfair/acknowledge" && req.method === "POST") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const ids = Array.isArray(body.betIds) ? body.betIds.filter((x): x is string => typeof x === "string").slice(0, 5000) : [];
+      if (ids.length === 0 || typeof body.acknowledged !== "boolean") {
+        send(res, 400, { error: "betIds and acknowledged are required" });
+        return;
+      }
+      const changed = db.acknowledgeBetfairBets(ids, body.acknowledged ? new Date().toISOString() : null);
+      // A restored bet gets another chance to link.
+      if (!body.acknowledged) matchBets(db);
+      log.info(`Reconcile: ${changed} unlinked bet(s) ${body.acknowledged ? "acknowledged" : "restored"} from the admin page.`);
+      send(res, 200, { changed });
       return;
     }
 

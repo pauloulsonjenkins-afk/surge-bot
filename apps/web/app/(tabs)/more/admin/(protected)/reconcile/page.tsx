@@ -5,7 +5,8 @@ import { Card, HeroStat, PageHeader, moneyTone } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { gbp } from "@/lib/format";
-import { useImportBetHistory, useReconcile, type ReconcileReport } from "@/queries/use-reconcile";
+import { useAcknowledgeBets, useImportBetHistory, useReconcile, type ReconcileReport } from "@/queries/use-reconcile";
+import { useDialog } from "@/components/ui/ConfirmDialog";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const when = (iso: string) => whenFmt.format(new Date(iso));
@@ -169,6 +170,108 @@ function StrategyRow({ s }: { s: ReconcileReport["strategies"][number] }) {
   );
 }
 
+function BetLine({ b, action }: { b: ReconcileReport["unlinked"][number]; action: React.ReactNode }) {
+  return (
+    <li className="flex items-start justify-between gap-3 py-2 text-xs">
+      <span className="min-w-0">
+        <span className="block truncate text-ink">{b.event}</span>
+        <span className="text-ink-muted">
+          {b.placedAt ? when(b.placedAt) : "–"} · {b.selection ?? "–"} · {b.status} ·{" "}
+          <span className={TONE[moneyTone(b.profit ?? 0)]}>{b.profit === null ? "–" : gbp(b.profit)}</span>
+        </span>
+        {b.reason && <span className="mt-0.5 block text-ink-muted">{b.reason}</span>}
+      </span>
+      <span className="shrink-0">{action}</span>
+    </li>
+  );
+}
+
+/**
+ * Bets with no pick. Once looked at, they can be acknowledged (e.g. placed before the feed was used), which moves them
+ * to a closed list underneath, so the open list only ever shows new ones worth checking. Nothing is deleted.
+ */
+function UnlinkedBets({ report }: { report: ReconcileReport }) {
+  const ack = useAcknowledgeBets();
+  const dialog = useDialog();
+  const open = report.unlinked;
+  const openCount = report.unlinkedCount ?? open.length;
+  const done = report.acknowledged ?? [];
+  const doneCount = report.acknowledgedCount ?? done.length;
+  // An older engine doesn't know about acknowledging yet.
+  const canAck = report.acknowledged !== undefined;
+  const btn = "rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50";
+
+  async function acknowledgeAll() {
+    const ok = await dialog.confirm({
+      title: `Acknowledge ${openCount} unlinked bet${openCount === 1 ? "" : "s"}?`,
+      confirmLabel: `Acknowledge ${openCount}`,
+      body: (
+        <>
+          <p>They move to the Acknowledged list below, so this list only shows bets that come in from now on.</p>
+          <p>Nothing is deleted, they no longer count towards the period the figures cover, and each one can be put back.</p>
+        </>
+      ),
+    });
+    if (ok) ack.mutate({ betIds: open.map((b) => b.betId), acknowledged: true });
+  }
+
+  return (
+    <section className="space-y-2 rounded-xl border border-line bg-surface p-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-medium text-ink">Bets not linked to a pick ({openCount})</h3>
+          <p className="mt-0.5 text-xs text-ink-muted">
+            {openCount === 0
+              ? "None. Any new bet that can’t be tied to a pick will show here."
+              : "Placed by hand, by another bot, or under a team name the alert spells differently. Once checked, acknowledge them so only new ones show here."}
+          </p>
+        </div>
+        {canAck && openCount > 1 && (
+          <button type="button" disabled={ack.isPending} onClick={() => void acknowledgeAll()} className={btn}>
+            Acknowledge all {openCount}
+          </button>
+        )}
+      </div>
+      {ack.error && <p className="text-xs text-destructive">{ack.error.message}</p>}
+      {open.length > 0 && (
+        <ul className="divide-y divide-line">
+          {open.map((b) => (
+            <BetLine
+              key={b.betId}
+              b={b}
+              action={
+                canAck && (
+                  <button type="button" disabled={ack.isPending} onClick={() => ack.mutate({ betIds: [b.betId], acknowledged: true })} className={btn}>
+                    Acknowledge
+                  </button>
+                )
+              }
+            />
+          ))}
+        </ul>
+      )}
+      {doneCount > 0 && (
+        <details className="border-t border-line pt-2">
+          <summary className="cursor-pointer text-xs font-medium text-ink-muted">Acknowledged ({doneCount})</summary>
+          <ul className="mt-1 divide-y divide-line">
+            {done.map((b) => (
+              <BetLine
+                key={b.betId}
+                b={{ ...b, reason: `Acknowledged ${when(b.acknowledgedAt)}` }}
+                action={
+                  <button type="button" disabled={ack.isPending} onClick={() => ack.mutate({ betIds: [b.betId], acknowledged: false })} className={btn}>
+                    Put back
+                  </button>
+                }
+              />
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
 export default function ReconcilePage() {
   const { data, isLoading, error } = useReconcile();
 
@@ -202,7 +305,11 @@ export default function ReconcilePage() {
                 value={data.totals.sent === 0 ? "–" : pct(1 - data.totals.matched / data.totals.sent)}
                 sub={`${data.totals.sent - data.totals.matched} of ${data.totals.sent} picks sent`}
               />
-              <HeroStat label="Bets not linked" value={String(data.unlinked.length)} sub="no matching pick" />
+              <HeroStat
+                label="Bets not linked"
+                value={String(data.unlinkedCount ?? data.unlinked.length)}
+                sub={data.acknowledgedCount ? `${data.acknowledgedCount} more acknowledged` : "no matching pick"}
+              />
             </div>
           </section>
 
@@ -223,28 +330,7 @@ export default function ReconcilePage() {
             )}
           </section>
 
-          {data.unlinked.length > 0 && (
-            <details className="rounded-xl border border-line bg-surface p-3.5">
-              <summary className="cursor-pointer text-sm font-medium text-ink">Bets not linked to a pick ({data.unlinked.length})</summary>
-              <p className="mt-1 text-xs text-ink-muted">
-                Placed by hand, by another bot, or under a team name the alert spells differently (add it under Match names on the Sending page).
-              </p>
-              <ul className="mt-2 divide-y divide-line">
-                {data.unlinked.map((b) => (
-                  <li key={b.betId} className="flex items-baseline justify-between gap-3 py-2 text-xs">
-                    <span className="min-w-0">
-                      <span className="block truncate text-ink">{b.event}</span>
-                      <span className="text-ink-muted">
-                        {b.placedAt ? when(b.placedAt) : "–"} · {b.selection ?? "–"} · {b.status}
-                      </span>
-                      {b.reason && <span className="mt-0.5 block text-ink-muted">{b.reason}</span>}
-                    </span>
-                    <span className={`shrink-0 tabular-nums ${TONE[moneyTone(b.profit ?? 0)]}`}>{b.profit === null ? "–" : gbp(b.profit)}</span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+          <UnlinkedBets report={data} />
         </>
       )}
 

@@ -488,6 +488,11 @@ export class EngineDb {
         for (const r of rows) upd.run(leagueCountryFromText(r.raw_text), r.id);
       })();
     }
+    const betCols = this.db.prepare(`PRAGMA table_info(betfair_bets)`).all() as Array<{ name: string }>;
+    if (!betCols.some((c) => c.name === "acknowledged_at")) {
+      // Set when the admin marks an unlinked bet as known (not from the feed), so the list shows only new ones.
+      this.db.exec(`ALTER TABLE betfair_bets ADD COLUMN acknowledged_at TEXT`);
+    }
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_live_picks_first_seen ON live_picks (first_seen_at);
       CREATE INDEX IF NOT EXISTS idx_live_picks_sent_at ON live_picks (sent_at);
@@ -1422,7 +1427,7 @@ export class EngineDb {
     return { added, updated };
   }
 
-  listBetfairBets(): Array<BetfairBet & { pickId: number | null; importedAt: string }> {
+  listBetfairBets(): Array<BetfairBet & { pickId: number | null; importedAt: string; acknowledgedAt: string | null }> {
     const rows = this.db.prepare(`SELECT * FROM betfair_bets ORDER BY COALESCE(placed_at, settled_at), bet_id`).all() as Array<Record<string, unknown>>;
     const num = (v: unknown) => (typeof v === "number" ? v : null);
     const str = (v: unknown) => (typeof v === "string" ? v : null);
@@ -1442,7 +1447,19 @@ export class EngineDb {
       profit: num(r.profit),
       pickId: num(r.pick_id),
       importedAt: String(r.imported_at),
+      acknowledgedAt: str(r.acknowledged_at),
     }));
+  }
+
+  /** Marks unlinked bets as acknowledged (at = now) or puts them back (at = null). Re-importing never changes this. */
+  acknowledgeBetfairBets(betIds: string[], at: string | null): number {
+    const upd = this.db.prepare(`UPDATE betfair_bets SET acknowledged_at = ? WHERE bet_id = ? AND pick_id IS NULL`);
+    let changed = 0;
+    this.db.transaction(() => {
+      for (const id of betIds) changed += upd.run(at, id).changes;
+    })();
+    if (changed > 0) this.onChange();
+    return changed;
   }
 
   linkBetfairBets(links: Array<{ betId: string; pickId: number | null }>): void {

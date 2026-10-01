@@ -983,9 +983,29 @@ export interface ReconcileReport {
   coverage: { from: string; to: string } | null;
   strategies: ReconcileStrategy[];
   totals: { sent: number; matched: number; compared: number; estimatedProfit: number; actualProfit: number };
-  /** reason: why no pick fits (missing on an older engine). */
-  unlinked: Array<{ betId: string; placedAt: string | null; event: string; selection: string | null; status: string; profit: number | null; reason?: string }>;
+  /** Bets with no pick that haven't been acknowledged. reason: why no pick fits (missing on an older engine). */
+  unlinked: UnlinkedBet[];
+  /** How many there are in all (the list stops at 100). Missing on an older engine. */
+  unlinkedCount?: number;
+  /** Unlinked bets acknowledged as not from the feed, kept out of the list above (missing on an older engine). */
+  acknowledged?: Array<UnlinkedBet & { acknowledgedAt: string }>;
+  acknowledgedCount?: number;
   importTokenConfigured: boolean;
+}
+
+export interface UnlinkedBet {
+  betId: string;
+  placedAt: string | null;
+  event: string;
+  selection: string | null;
+  status: string;
+  profit: number | null;
+  reason?: string;
+}
+
+/** Marks unlinked bets as acknowledged (not from the feed), or puts them back in the list. */
+export function acknowledgeBets(betIds: string[], acknowledged: boolean): Promise<{ changed: number }> {
+  return engineCall<{ changed: number }>("/internal/betfair/acknowledge", "acknowledging bets", { method: "POST", body: { betIds, acknowledged } });
 }
 
 export function fetchReconcile(): Promise<ReconcileReport> {

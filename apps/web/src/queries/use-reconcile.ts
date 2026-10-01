@@ -17,6 +17,20 @@ export function useReconcile() {
   });
 }
 
+/** Acknowledge unlinked bets (they leave the list), or put acknowledged ones back. */
+export function useAcknowledgeBets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { betIds: string[]; acknowledged: boolean }): Promise<{ changed: number }> => {
+      const res = await fetch("/api/admin/betfair/acknowledge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiFetchError(body?.error ?? `Couldn't save (${res.status})`, res.status);
+      return body as { changed: number };
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
 export function useImportBetHistory() {
   const qc = useQueryClient();
   return useMutation({

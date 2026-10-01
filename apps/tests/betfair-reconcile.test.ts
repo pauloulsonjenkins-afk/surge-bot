@@ -205,3 +205,32 @@ test("an unlinked bet says why: nothing sent then, or a name that differs", () =
   assert.match(unlinkedReason({ placedAt: at(5), settledAt: null, event: "Lyon v Arsenal" }, picks), /One team name differs/);
   assert.match(unlinkedReason({ placedAt: at(5), settledAt: null, event: "Lyon v Nantes" }, picks), /No pick for this match/);
 });
+
+test("acknowledged bets leave the unlinked list, stay out after a re-import, and can be put back", () => {
+  const { db, sent } = setup();
+  const csv = [
+    "Bet ID,Placed,Event,Selection,Status,Avg Price Matched,Matched,Profit/Loss",
+    `OLD1,01/01/2026 12:00,Old v Bet,Over 0.5 Goals,Lost,2.00,2.00,-2.00`, // long before the feed, not ours
+    `A1,${uk(sent[0]!.sentAt, 30_000)},${sent[0]!.sentRow!.eventName},Over 0.5 Goals,Won,2.00,2.00,2.00`,
+  ].join("\n");
+  importBetHistory(db, csv, "a.csv");
+  let r = computeReconcile(db);
+  assert.equal(r.unlinkedCount, 1);
+  assert.equal(r.coverage!.from.slice(0, 10), "2026-01-01");
+
+  assert.equal(db.acknowledgeBetfairBets(["OLD1", "A1"], new Date().toISOString()), 1); // a linked bet can't be acknowledged
+  r = computeReconcile(db);
+  assert.equal(r.unlinkedCount, 0);
+  assert.equal(r.acknowledgedCount, 1);
+  assert.equal(r.acknowledged[0]!.betId, "OLD1");
+  // The old bet no longer stretches the period back to January.
+  assert.notEqual(r.coverage!.from.slice(0, 10), "2026-01-01");
+
+  importBetHistory(db, csv, "a.csv");
+  assert.equal(computeReconcile(db).acknowledgedCount, 1);
+
+  db.acknowledgeBetfairBets(["OLD1"], null);
+  r = computeReconcile(db);
+  assert.equal(r.unlinkedCount, 1);
+  assert.equal(r.acknowledgedCount, 0);
+});

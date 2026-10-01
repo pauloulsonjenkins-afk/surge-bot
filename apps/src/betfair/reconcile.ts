@@ -411,7 +411,7 @@ export function matchBets(db: EngineDb): number {
   const linkedPicks = new Set(bets.filter((b) => b.pickId !== null).map((b) => b.pickId!));
   const links: Array<{ betId: string; pickId: number }> = [];
   for (const b of bets) {
-    if (b.pickId !== null) continue;
+    if (b.pickId !== null || b.acknowledgedAt !== null) continue;
     let best: { id: number; score: number; gap: number } | null = null;
     for (const p of picks) {
       const gap = betGap(b, p.sentAt);
@@ -493,21 +493,28 @@ export interface ReconcileStrategy {
   resultMismatches: number;
 }
 
+export type UnlinkedBet = Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit"> & { reason: string };
+
 export interface ReconcileReport {
   lastImport: ImportSummary | null;
   /** The span of time the imported bets cover. */
   coverage: { from: string; to: string } | null;
   strategies: ReconcileStrategy[];
   totals: { sent: number; matched: number; compared: number; estimatedProfit: number; actualProfit: number };
-  /** Bets that couldn't be tied to a pick, newest first (at most 50). */
-  unlinked: Array<Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit"> & { reason: string }>;
+  /** Bets that couldn't be tied to a pick and haven't been acknowledged, newest first (at most 100), and how many in all. */
+  unlinked: UnlinkedBet[];
+  unlinkedCount: number;
+  /** Unlinked bets the admin has acknowledged as not from the feed, newest first (at most 100), and how many in all. */
+  acknowledged: Array<UnlinkedBet & { acknowledgedAt: string }>;
+  acknowledgedCount: number;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 export function computeReconcile(db: EngineDb): ReconcileReport {
   const sentPicks = db.listSentPicks();
-  const bets = db.listBetfairBets();
+  const allBets = db.listBetfairBets();
+  const bets = allBets.filter((b) => b.acknowledgedAt === null);
   const times = bets.map((b) => b.placedAt ?? b.settledAt).filter((t): t is string => t !== null).sort();
   const coverage = times.length > 0 ? { from: times[0]!, to: times[times.length - 1]! } : null;
   const { price } = pricingInputs(db);
@@ -559,6 +566,9 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
     }))
     .sort((a, b) => b.sent - a.sent);
   const sum = (f: (s: ReconcileStrategy) => number) => strategies.reduce((n, s) => n + f(s), 0);
+  const unlinked = bets.filter((b) => b.pickId === null).reverse();
+  const acknowledged = allBets.filter((b) => b.acknowledgedAt !== null).reverse();
+  const unlinkedView = (b: (typeof allBets)[number]) => ({ betId: b.betId, placedAt: b.placedAt, event: b.event, selection: b.selection, status: b.status, profit: b.profit });
   return {
     lastImport: lastImport(db),
     coverage,
@@ -570,10 +580,9 @@ export function computeReconcile(db: EngineDb): ReconcileReport {
       estimatedProfit: r2(sum((s) => s.estimatedProfit)),
       actualProfit: r2(sum((s) => s.actualProfit)),
     },
-    unlinked: bets
-      .filter((b) => b.pickId === null)
-      .reverse()
-      .slice(0, 50)
-      .map((b) => ({ betId: b.betId, placedAt: b.placedAt, event: b.event, selection: b.selection, status: b.status, profit: b.profit, reason: unlinkedReason(b, sentPicks) })),
+    unlinked: unlinked.slice(0, 100).map((b) => ({ ...unlinkedView(b), reason: unlinkedReason(b, sentPicks) })),
+    unlinkedCount: unlinked.length,
+    acknowledged: acknowledged.slice(0, 100).map((b) => ({ ...unlinkedView(b), reason: "", acknowledgedAt: b.acknowledgedAt! })),
+    acknowledgedCount: acknowledged.length,
   };
 }
