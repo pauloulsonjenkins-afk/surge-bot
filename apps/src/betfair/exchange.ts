@@ -260,13 +260,17 @@ export class BetfairReader {
 
   /** The corner markets Betfair offers for an event: name, market code, selections (and ids, for reading a price). */
   async cornerMarkets(eventId: string): Promise<Array<CornerMarket & { marketId: string; runners: Array<{ selectionId: number; runnerName: string }> }>> {
+    return (await this.marketsNamed(eventId, "Corner")).filter((m) => /corner/i.test(m.name));
+  }
+
+  /** An event's markets whose names contain this text (e.g. "Corner", or a team's name), with codes and selections. */
+  async marketsNamed(eventId: string, text: string): Promise<Array<CornerMarket & { marketId: string; runners: Array<{ selectionId: number; runnerName: string }> }>> {
     const markets = await this.call<Array<MarketCatalogue & { description?: { marketType?: string } }>>("listMarketCatalogue", {
-      filter: { eventIds: [eventId], textQuery: "Corner" },
+      filter: { eventIds: [eventId], textQuery: text },
       marketProjection: ["MARKET_DESCRIPTION", "RUNNER_DESCRIPTION"],
       maxResults: 50,
     });
     return markets
-      .filter((m) => /corner/i.test(m.marketName ?? ""))
       .map((m) => ({
         name: m.marketName ?? "",
         code: m.description?.marketType ?? "",
@@ -398,19 +402,53 @@ export interface CornerMarket {
 }
 
 const CORNER_MARKETS_KEY = "betfair_corner_markets";
+const TEAM_MARKETS_KEY = "betfair_team_markets";
 
 /**
  * Corner markets seen on Betfair for First Half Corner Race alerts, by code, newest first. The strategy can't be sent
  * until its exact market is known; this shows what Betfair actually offers so it can be chosen.
  */
 export function cornerMarketsSeen(db: EngineDb): Array<CornerMarket & { seenAt: string; example: string }> {
+  return marketsSeen(db, CORNER_MARKETS_KEY);
+}
+
+/**
+ * Team goal markets seen on Betfair for the favourite in "Pass Master 1st half" alerts (favourite to score again), by
+ * code, newest first: to choose the market codes to send it with.
+ */
+export function teamMarketsSeen(db: EngineDb): Array<CornerMarket & { seenAt: string; example: string }> {
+  return marketsSeen(db, TEAM_MARKETS_KEY);
+}
+
+function marketsSeen(db: EngineDb, key: string): Array<CornerMarket & { seenAt: string; example: string }> {
   try {
-    const raw = db.getSetting(CORNER_MARKETS_KEY);
+    const raw = db.getSetting(key);
     const map = raw ? (JSON.parse(raw) as Record<string, CornerMarket & { seenAt: string; example: string }>) : {};
     return Object.values(map).sort((a, b) => (a.seenAt < b.seenAt ? 1 : -1));
   } catch {
     return [];
   }
+}
+
+/**
+ * A team's own goals market and its "Over <line>" selection, found by name (e.g. "Lens Over/Under 1.5 Goals" with
+ * "Over 1.5 Goals"), so a favourite-to-score pick can be priced before its market codes are set.
+ */
+export function teamGoalsRunner<M extends { name: string; runners: Array<{ selectionId: number; runnerName: string }> }>(
+  markets: M[],
+  team: string,
+  line: number,
+): { market: M; selectionId: number } | null {
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const t = words(team);
+  const over = new RegExp(`\\bover\\s*${line.toFixed(1).replace(".", "\\.")}\\b`, "i");
+  for (const m of markets) {
+    const name = words(m.name);
+    if (!name.includes(t) || !/over|under|goals/.test(name)) continue;
+    const runner = m.runners.find((r) => over.test(r.runnerName));
+    if (runner) return { market: m, selectionId: runner.selectionId };
+  }
+  return null;
 }
 
 /**
@@ -431,11 +469,15 @@ export function firstHalfCornersRunner<M extends { name: string; runners: Array<
 }
 
 function noteCornerMarkets(db: EngineDb, markets: CornerMarket[], example: string): void {
+  noteMarkets(db, CORNER_MARKETS_KEY, markets, example);
+}
+
+function noteMarkets(db: EngineDb, key: string, markets: CornerMarket[], example: string): void {
   if (markets.length === 0) return;
-  const map = Object.fromEntries(cornerMarketsSeen(db).map((m) => [m.code || m.name, m]));
+  const map = Object.fromEntries(marketsSeen(db, key).map((m) => [m.code || m.name, m]));
   const now = new Date().toISOString();
   for (const m of markets) map[m.code || m.name] = { ...m, seenAt: now, example };
-  db.setSetting(CORNER_MARKETS_KEY, JSON.stringify(map));
+  db.setSetting(key, JSON.stringify(map));
 }
 
 type MatchCache = Map<string, { result: "on" | "nameDiffers" | "off"; event: string | null; eventId: string | null; at: number }>;
@@ -488,6 +530,24 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
       }
     }
     db.setPickExchange(p.id, found.result, found.event, odds, check);
+    // Favourite to score again ("Pass Master 1st half"): note the favourite's goal markets on offer (to choose the codes),
+    // and if they aren't set yet, find the favourite's goals market by name to price the pick anyway.
+    if (pick?.market === "FAVOURITE_TO_SCORE" && found.eventId && pick.detail?.favourite) {
+      const team = namer(pick.detail.favourite === "home" ? (pick.home ?? "") : (pick.away ?? ""));
+      const markets = team ? await reader.marketsNamed(found.eventId, team).catch(() => []) : [];
+      noteMarkets(
+        db,
+        TEAM_MARKETS_KEY,
+        markets.filter((m) => /over|under|goal|score/i.test(m.name)).map(({ name, code, selections }) => ({ name, code, selections })),
+        `${found.event ?? `${home} v ${away}`} (favourite ${team})`,
+      );
+      const line = pick.detail.targetLine ?? null;
+      const hit = odds === null && line !== null ? teamGoalsRunner(markets, team, line) : null;
+      if (hit) {
+        odds = await reader.priceOf(hit.market.marketId, hit.selectionId).catch(() => null);
+        if (odds !== null) db.setPickExchange(p.id, found.result, found.event, odds, check);
+      }
+    }
     // First Half Corner Race: note the corner markets on offer (to choose its market code), and if its code isn't set
     // yet, find the first-half corners market by name to price the pick anyway.
     if (pick?.market === "FIRST_HALF_CORNERS" && found.eventId) {

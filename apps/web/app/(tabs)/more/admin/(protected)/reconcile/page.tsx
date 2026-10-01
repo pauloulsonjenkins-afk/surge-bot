@@ -74,9 +74,17 @@ function BetfairLinkCard({ link }: { link: NonNullable<ReconcileReport["betfairL
  * The corner markets Betfair offered for First Half Corner Race alerts. The strategy can't be sent until its exact
  * market is chosen; this shows the codes and selections on offer so the right one can be picked.
  */
-function CornerMarketsCard({ markets }: { markets: NonNullable<ReconcileReport["cornerMarkets"]> }) {
+function CornerMarketsCard({
+  markets,
+  title = "Corner markets on Betfair",
+  subtitle = "Seen for First Half Corner Race alerts. Its bet can be sent once we know which of these it is.",
+}: {
+  markets: NonNullable<ReconcileReport["cornerMarkets"]>;
+  title?: string;
+  subtitle?: string;
+}) {
   return (
-    <Card title="Corner markets on Betfair" subtitle="Seen for First Half Corner Race alerts. Its bet can be sent once we know which of these it is.">
+    <Card title={title} subtitle={subtitle}>
       <ul className="divide-y divide-line">
         {markets.map((m) => (
           <li key={m.code || m.name} className="py-2 text-xs">
@@ -389,6 +397,13 @@ export default function ReconcilePage() {
 
       {data?.betfairLink && <BetfairLinkCard link={data.betfairLink} />}
       {data?.cornerMarkets && data.cornerMarkets.length > 0 && <CornerMarketsCard markets={data.cornerMarkets} />}
+      {data?.teamMarkets && data.teamMarkets.length > 0 && (
+        <CornerMarketsCard
+          markets={data.teamMarkets}
+          title="Team goal markets on Betfair"
+          subtitle="Seen for the favourite in Pass Master 1st half alerts (favourite to score again). Copy the codes for the favourite's own goals into Sending → Bet wording to send it."
+        />
+      )}
 
       <ImportCard report={data} />
 

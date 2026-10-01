@@ -19,7 +19,7 @@
  *   5. A daily limit on how many NEW picks can be handed over.
  *   6. Only markets whose exact code is known are sent. Corners are not. The underdog strategy is
  *      sent as a Double Chance bet on the underdog (win or draw); "Pass Master 1st half" is sent as the favourite in
- *      Match Odds; "First Half Goal" is sent as Over 0.5 first-half goals. Their exchange wording is set on the Sending page.
+ *      Match Odds (until 1 Oct 2026; now the favourite to score again, see FAVOURITE_TO_SCORE below); "First Half Goal" is sent as Over 0.5 first-half goals. Their exchange wording is set on the Sending page.
  *   7. A stake must be set for the strategy, and it must not exceed the
  *      "highest stake allowed" ceiling. A strategy cannot be switched on
  *      without a stake.
@@ -70,6 +70,14 @@ export interface SendingSettings {
   favouriteMarketType: string;
   favouriteHomeSelection: string;
   favouriteAwaySelection: string;
+  /**
+   * Favourite to score again ("Pass Master 1st half"): the market code for the favourite's own goals when the favourite is
+   * the home / away side, and the selection. {line} becomes the line ("1.5") and {line10} ten times it, two digits ("15", "05" for 0.5). An empty
+   * code = not sent yet (the code has to be confirmed from Betfair; see "Team goal markets on Betfair" on Reconcile).
+   */
+  favouriteScoresHomeMarketType: string;
+  favouriteScoresAwayMarketType: string;
+  favouriteScoresSelection: string;
   /** First-half goals ("First Half Goal", a pre-match alert): the market code and selection name for Over 0.5 first-half goals. */
   firstHalfGoalsMarketType: string;
   firstHalfGoalsSelection: string;
@@ -99,6 +107,9 @@ export const DEFAULT_SENDING: SendingSettings = {
   favouriteMarketType: "MATCH_ODDS",
   favouriteHomeSelection: "{home}",
   favouriteAwaySelection: "{away}",
+  favouriteScoresHomeMarketType: "",
+  favouriteScoresAwayMarketType: "",
+  favouriteScoresSelection: "Over {line} Goals",
   firstHalfGoalsMarketType: "FIRST_HALF_GOALS_05",
   firstHalfGoalsSelection: "Over 0.5 Goals",
   firstHalfCornersMarketType: "",
@@ -197,6 +208,9 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     firstHalfGoalsMarketType: cleanCode(raw.firstHalfGoalsMarketType, DEFAULT_SENDING.firstHalfGoalsMarketType),
     firstHalfGoalsSelection: cleanSelectionName(raw.firstHalfGoalsSelection, DEFAULT_SENDING.firstHalfGoalsSelection),
     firstHalfCornersMarketType: cleanLineTemplate(raw.firstHalfCornersMarketType, DEFAULT_SENDING.firstHalfCornersMarketType, true),
+    favouriteScoresHomeMarketType: cleanLineTemplate(raw.favouriteScoresHomeMarketType, DEFAULT_SENDING.favouriteScoresHomeMarketType, true),
+    favouriteScoresAwayMarketType: cleanLineTemplate(raw.favouriteScoresAwayMarketType, DEFAULT_SENDING.favouriteScoresAwayMarketType, true),
+    favouriteScoresSelection: cleanLineTemplate(raw.favouriteScoresSelection, DEFAULT_SENDING.favouriteScoresSelection, false),
     firstHalfCornersSelection: cleanLineTemplate(raw.firstHalfCornersSelection, DEFAULT_SENDING.firstHalfCornersSelection, false),
     aliases: typeof raw.aliases === "string" ? raw.aliases.slice(0, 5000) : "",
   };
@@ -247,6 +261,9 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
   if (patch.favouriteAwaySelection !== undefined) next.favouriteAwaySelection = cleanTemplate(patch.favouriteAwaySelection, current.favouriteAwaySelection);
   if (patch.firstHalfGoalsMarketType !== undefined) next.firstHalfGoalsMarketType = cleanCode(patch.firstHalfGoalsMarketType, current.firstHalfGoalsMarketType);
   if (patch.firstHalfGoalsSelection !== undefined) next.firstHalfGoalsSelection = cleanSelectionName(patch.firstHalfGoalsSelection, current.firstHalfGoalsSelection);
+  if (patch.favouriteScoresHomeMarketType !== undefined) next.favouriteScoresHomeMarketType = cleanLineTemplate(patch.favouriteScoresHomeMarketType, current.favouriteScoresHomeMarketType, true);
+  if (patch.favouriteScoresAwayMarketType !== undefined) next.favouriteScoresAwayMarketType = cleanLineTemplate(patch.favouriteScoresAwayMarketType, current.favouriteScoresAwayMarketType, true);
+  if (patch.favouriteScoresSelection !== undefined) next.favouriteScoresSelection = cleanLineTemplate(patch.favouriteScoresSelection, current.favouriteScoresSelection, false);
   if (patch.firstHalfCornersMarketType !== undefined) next.firstHalfCornersMarketType = cleanLineTemplate(patch.firstHalfCornersMarketType, current.firstHalfCornersMarketType, true);
   if (patch.firstHalfCornersSelection !== undefined) next.firstHalfCornersSelection = cleanLineTemplate(patch.firstHalfCornersSelection, current.firstHalfCornersSelection, false);
   if (typeof patch.aliases === "string") next.aliases = patch.aliases.slice(0, 5000);
@@ -390,11 +407,21 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
   }
   if (p.market === "BOTH_TEAMS_TO_SCORE") return { marketType: settings.bttsMarketType, selectionName: settings.bttsSelection };
   if (p.market === "FIRST_HALF_GOALS") return { marketType: settings.firstHalfGoalsMarketType, selectionName: settings.firstHalfGoalsSelection };
+  if (p.market === "FAVOURITE_TO_SCORE") {
+    const side = p.detail?.favourite ?? null;
+    if (side === null) return { error: "Could not tell which side is the favourite." };
+    const code = side === "home" ? settings.favouriteScoresHomeMarketType : settings.favouriteScoresAwayMarketType;
+    if (!code) return { error: "Set the favourite-to-score market codes on the Sending page (Bet wording) first." };
+    const line = p.detail?.targetLine ?? null;
+    if (line === null) return { error: "Could not work out the favourite's goal line." };
+    const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)).padStart(2, "0"));
+    return { marketType: fill(code), selectionName: fill(settings.favouriteScoresSelection) };
+  }
   if (p.market === "FIRST_HALF_CORNERS") {
     if (!settings.firstHalfCornersMarketType) return { error: "Set the first-half corners market code on the Sending page (Bet wording) first." };
     const line = p.detail?.targetLine ?? null;
     if (line === null) return { error: "Could not work out the corner line." };
-    const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)));
+    const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)).padStart(2, "0"));
     return { marketType: fill(settings.firstHalfCornersMarketType), selectionName: fill(settings.firstHalfCornersSelection) };
   }
   if (p.market === "FAVOURITE_TO_WIN" || p.market === "UNDERDOG_DOUBLE_CHANCE") {

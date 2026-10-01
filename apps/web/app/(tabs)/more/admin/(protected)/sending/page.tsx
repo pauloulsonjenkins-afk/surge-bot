@@ -36,6 +36,9 @@ interface Form {
   firstHalfCornersMarketType: string;
   firstHalfCornersSelection: string;
   aliases: string;
+  favouriteScoresHomeMarketType: string;
+  favouriteScoresAwayMarketType: string;
+  favouriteScoresSelection: string;
 }
 
 function toForm(s: SendingSettings): Form {
@@ -55,6 +58,9 @@ function toForm(s: SendingSettings): Form {
     firstHalfGoalsSelection: s.firstHalfGoalsSelection,
     firstHalfCornersMarketType: s.firstHalfCornersMarketType ?? "",
     firstHalfCornersSelection: s.firstHalfCornersSelection ?? "Over {line} Corners",
+    favouriteScoresHomeMarketType: s.favouriteScoresHomeMarketType ?? "",
+    favouriteScoresAwayMarketType: s.favouriteScoresAwayMarketType ?? "",
+    favouriteScoresSelection: s.favouriteScoresSelection ?? "Over {line} Goals",
     aliases: s.aliases,
   };
 }
@@ -229,6 +235,9 @@ export default function SendingPage() {
         firstHalfGoalsSelection: form!.firstHalfGoalsSelection,
         firstHalfCornersMarketType: form!.firstHalfCornersMarketType,
         firstHalfCornersSelection: form!.firstHalfCornersSelection,
+        favouriteScoresHomeMarketType: form!.favouriteScoresHomeMarketType,
+        favouriteScoresAwayMarketType: form!.favouriteScoresAwayMarketType,
+        favouriteScoresSelection: form!.favouriteScoresSelection,
         aliases: form!.aliases,
       },
       {
@@ -307,7 +316,11 @@ export default function SendingPage() {
             {sortedStrategies.map((s, idx) => {
               const key = s.label.toLowerCase();
               // First Half Corner Race can be sent once its Betfair market code is set under Bet wording.
-              const supported = s.market !== null && (SENDABLE.has(s.market) || (s.market === "FIRST_HALF_CORNERS" && !!settings.firstHalfCornersMarketType));
+              const supported =
+                s.market !== null &&
+                (SENDABLE.has(s.market) ||
+                  (s.market === "FIRST_HALF_CORNERS" && !!settings.firstHalfCornersMarketType) ||
+                  (s.market === "FAVOURITE_TO_SCORE" && !!settings.favouriteScoresHomeMarketType && !!settings.favouriteScoresAwayMarketType));
               const firstOff = !s.enabled && (idx === 0 || sortedStrategies[idx - 1]!.enabled) && onCount > 0;
               const note = !s.market ? "No market set" : !supported ? "Can't be sent yet" : marketName(s.market);
               const draft = stakeDraft[key];
@@ -667,10 +680,32 @@ export default function SendingPage() {
                 </div>
               </div>
               <div>
+                <p className="text-xs font-medium text-ink">Favourite to score again (Pass Master 1st half)</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  The favourite&rsquo;s own goals Over (its goals at the alert + 0.5), by full time. <code>{"{line}"}</code> becomes the line (1.5) and{" "}
+                  <code>{"{line10}"}</code> ten times it in two digits (15, or 05 for 0.5). Copy the codes from &ldquo;Team goal markets on Betfair&rdquo; on the Reconcile page.
+                  Leave a code empty and it stays in Sim.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <label className="text-xs text-ink-muted">
+                    Code when the favourite is at home
+                    <input placeholder="Not set" className={`${inputCls} mt-1 font-mono text-xs`} value={form.favouriteScoresHomeMarketType} onChange={(e) => setForm({ ...form, favouriteScoresHomeMarketType: e.target.value })} />
+                  </label>
+                  <label className="text-xs text-ink-muted">
+                    Code when the favourite is away
+                    <input placeholder="Not set" className={`${inputCls} mt-1 font-mono text-xs`} value={form.favouriteScoresAwayMarketType} onChange={(e) => setForm({ ...form, favouriteScoresAwayMarketType: e.target.value })} />
+                  </label>
+                  <label className="text-xs text-ink-muted">
+                    Selection name
+                    <input className={`${inputCls} mt-1 font-mono text-xs`} value={form.favouriteScoresSelection} onChange={(e) => setForm({ ...form, favouriteScoresSelection: e.target.value })} />
+                  </label>
+                </div>
+              </div>
+              <div>
                 <p className="text-xs font-medium text-ink">1st half corners (First Half Corner Race)</p>
                 <p className="mt-0.5 text-xs text-ink-muted">
                   One more corner before half-time: first-half corners Over the corners so far + 0.5. <code>{"{line}"}</code> becomes the line
-                  (5.5) and <code>{"{line10}"}</code> ten times it (55). Copy the code and wording from &ldquo;Corner markets on Betfair&rdquo; on the
+                  (5.5) and <code>{"{line10}"}</code> ten times it in two digits (55). Copy the code and wording from &ldquo;Corner markets on Betfair&rdquo; on the
                   Reconcile page. Leave the code empty and it stays in Sim.
                 </p>
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">

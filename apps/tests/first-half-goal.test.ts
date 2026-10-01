@@ -52,7 +52,7 @@ test("the real alert is read as a pre-match First Half Goal bet and is sendable"
 test("other strategies are unaffected, and still need a timer and a score", () => {
   assert.equal(parseAlert(ALERT.replace("First Half Goal", "Blistering Momentum")).market, "NEXT_GOAL");
   assert.ok(parseAlert(ALERT.replace("First Half Goal", "Blistering Momentum")).flags.length > 0);
-  assert.equal(parseAlert(ALERT.replace("First Half Goal", "Pass Master 1st half")).market, "FAVOURITE_TO_WIN");
+  assert.equal(parseAlert(ALERT.replace("First Half Goal", "Pass Master 1st half")).market, "FAVOURITE_TO_SCORE");
 });
 
 test("the full-match Over/Under 0.5 price in the alert is not mistaken for the first-half price", () => {

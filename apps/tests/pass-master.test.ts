@@ -1,15 +1,17 @@
 /**
- * "Pass Master 1st half": back the favourite (the shorter live price in the alert) in Match Odds.
- * The alert text here is made up to match the usual layout; no real Pass Master alert was available.
+ * "Pass Master 1st half": the favourite (the shorter live price in the alert) to score again before full time, i.e.
+ * the favourite's own goals Over (its goals at the alert + 0.5). Until 1 Oct 2026 it was wrongly a Match Odds bet on
+ * the favourite to win. The alert text here is made up to match the usual layout.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { computeWinLoss } from "../src/server/winloss";
+import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
+import { computeStrategyReturns } from "../src/server/winloss";
+import { teamGoalsRunner } from "../src/betfair/exchange";
 
-const alert = (opts: { live?: string; pre?: string; extra?: string[] } = {}) =>
+const alert = (opts: { live?: string; goals?: string; extra?: string[] } = {}) =>
   [
     "🔔 Pass Master 1st half",
     "",
@@ -17,9 +19,9 @@ const alert = (opts: { live?: string; pre?: string; extra?: string[] } = {}) =>
     "Lens vs CD Lille",
     "",
     "Timer: 28'",
-    "Goals: 0 - 0",
+    `Goals: ${opts.goals ?? "0 - 0"}`,
     "1X2 Pre-Match Odds:",
-    opts.pre ?? "3.60 3.20 2.10",
+    "3.60 3.20 2.10",
     "1X2 Live Odds:",
     opts.live ?? "2.40 3.10 3.00",
     "Over/Under 0.50 Odds:",
@@ -27,42 +29,41 @@ const alert = (opts: { live?: string; pre?: string; extra?: string[] } = {}) =>
     ...(opts.extra ?? []),
   ].join("\n");
 
-test("Pass Master 1st half is a favourite-to-win bet, not Over goals", () => {
+const done = (ft: string, opts: { live?: string; goals?: string; tick?: string } = {}) =>
+  alert({ ...opts, extra: ["", "⸻⸻ Match Summary ⸻⸻", "", "Half-Time Score: 0-0", `Full-Time Score: ${ft}`, "", opts.tick ?? "✅ Hit"] });
+
+test("Pass Master 1st half is the favourite to score again, not the favourite to win", () => {
   const p = parseAlert(alert());
-  assert.equal(p.market, "FAVOURITE_TO_WIN");
+  assert.equal(p.market, "FAVOURITE_TO_SCORE");
   assert.equal(p.favourite, "home", "2.40 is shorter than 3.00 on the live line");
+  assert.equal(p.targetLine, 0.5, "no goals yet: the favourite needs one");
+  assert.equal(p.selection, "Favourite to score (over 0.5)");
   assert.equal(p.sendable, true);
   assert.deepEqual(p.flags, []);
 });
 
-test("the favourite comes from the LIVE price, not the pre-match one, and can be either side", () => {
-  // pre-match the away side was shorter (2.10), but live the home side is (1.80)
-  assert.equal(parseAlert(alert({ live: "1.80 3.40 4.50" })).favourite, "home");
-  assert.equal(parseAlert(alert({ live: "5.50 3.40 1.50" })).favourite, "away");
+test("the line is the favourite's own goals at the alert + 0.5, whichever side it is", () => {
+  // Away favourite (1.50) already on 2 goals: it needs a 3rd.
+  const p = parseAlert(alert({ live: "5.50 3.40 1.50", goals: "1 - 2" }));
+  assert.equal(p.favourite, "away");
+  assert.equal(p.targetLine, 2.5);
 });
 
 test("no favourite is picked when it can't be told, and the pick is held back", () => {
   const equal = parseAlert(alert({ live: "2.50 3.10 2.50" }));
   assert.equal(equal.favourite, null);
   assert.equal(equal.sendable, false);
-  const none = parseAlert(alert().replace(/1X2 Live Odds:\n[^\n]*\n/, ""));
-  assert.equal(none.favourite, null);
-  assert.equal(none.sendable, false);
 });
 
-const done = (ft: string, live?: string) =>
-  alert({ live, extra: ["", "⸻⸻ Match Summary ⸻⸻", "", "Half-Time Score: 0-0", `Full-Time Score: ${ft}`, "", "✅ Hit"] });
-
-test("it is graded on the real bet: a hit only if the favourite wins, a draw loses", () => {
-  // home favourite (live 2.40 v 3.00)
-  assert.equal(parseAlert(done("2-1")).result, "hit");
-  assert.equal(parseAlert(done("1-1")).result, "miss", "a draw loses a Match Odds bet");
+test("graded on the favourite scoring again by full time; a win without a new goal is a miss", () => {
+  // Home favourite, 0-0 at the alert.
+  assert.equal(parseAlert(done("1-1")).result, "hit", "the favourite scored: a draw doesn't matter");
   assert.equal(parseAlert(done("0-1")).result, "miss");
-  // away favourite (live 5.50 v 1.50), and the alert's own tick is ignored
-  const away = parseAlert(done("0-2", "5.50 3.40 1.50"));
-  assert.equal(away.result, "hit");
-  assert.equal(away.resultSource, "score");
-  assert.equal(parseAlert(done("1-0", "5.50 3.40 1.50")).result, "miss");
+  // Away favourite on 2 at the alert (1-2): it needs a 3rd.
+  assert.equal(parseAlert(done("1-3", { live: "5.50 3.40 1.50", goals: "1 - 2" })).result, "hit");
+  const noNew = parseAlert(done("1-2", { live: "5.50 3.40 1.50", goals: "1 - 2", tick: "✅ Hit" }));
+  assert.equal(noNew.result, "miss", "it won, but didn't score again");
+  assert.equal(noNew.resultSource, "score");
 });
 
 function feedFor(text: string, tweak?: Parameters<typeof saveSendingSettings>[1]) {
@@ -72,48 +73,40 @@ function feedFor(text: string, tweak?: Parameters<typeof saveSendingSettings>[1]
   return buildFeed(db, { markSent: false });
 }
 
-test("sent as a Match Odds bet on the favourite's team, under its own name", () => {
-  const home = feedFor(alert());
-  assert.equal(home.rows[0]?.provider, "Pass Master 1st half");
-  assert.equal(home.rows[0]?.marketType, "MATCH_ODDS");
-  assert.equal(home.rows[0]?.selectionName, "Lens");
-  assert.equal(home.rows[0]?.eventName, "Lens v CD Lille");
-  const away = feedFor(alert({ live: "5.50 3.40 1.50" }));
-  assert.equal(away.rows[0]?.selectionName, "CD Lille");
-});
-
-test("the market code and wording can be changed, and team-name fixes apply", () => {
-  const feed = feedFor(alert({ live: "5.50 3.40 1.50" }), {
-    favouriteMarketType: "MATCH_ODDS_2",
-    favouriteAwaySelection: "{away} to score",
-    aliases: "CD Lille = Lille",
-  });
-  assert.equal(feed.rows[0]?.marketType, "MATCH_ODDS_2");
-  assert.equal(feed.rows[0]?.selectionName, "Lille to score");
-  assert.equal(feed.rows[0]?.eventName, "Lens v Lille");
-});
-
-test("an alert that can't name the favourite is skipped, not sent", () => {
-  const feed = feedFor(alert({ live: "2.50 3.10 2.50" }));
+test("never sent as Match Odds: held back until the favourite-to-score market codes are set", () => {
+  const feed = feedFor(alert());
   assert.equal(feed.rows.length, 0);
+  assert.match(feed.skipped[0]!.reason, /favourite-to-score market codes/);
 });
 
-test("an earlier saved market code of NEXT_GOAL is never used", () => {
-  const db = new EngineDb(":memory:", () => {});
-  saveSendingSettings(db, { favouriteMarketType: "NEXT_GOAL" });
-  assert.equal(getSendingSettings(db).favouriteMarketType, "MATCH_ODDS");
+test("once the codes are set, sent as the favourite's own goals Over its line, for the right side", () => {
+  const codes = { favouriteScoresHomeMarketType: "TEAM_A_OVER_UNDER_{line10}", favouriteScoresAwayMarketType: "TEAM_B_OVER_UNDER_{line10}", favouriteScoresSelection: "Over {line} Goals" };
+  const home = feedFor(alert(), codes);
+  assert.equal(home.rows[0]?.marketType, "TEAM_A_OVER_UNDER_05");
+  assert.equal(home.rows[0]?.selectionName, "Over 0.5 Goals");
+  assert.equal(home.rows[0]?.provider, "Pass Master 1st half");
+  const away = feedFor(alert({ live: "5.50 3.40 1.50", goals: "1 - 2" }), { ...codes, aliases: "CD Lille = Lille" });
+  assert.equal(away.rows[0]?.marketType, "TEAM_B_OVER_UNDER_25");
+  assert.equal(away.rows[0]?.selectionName, "Over 2.5 Goals");
+  assert.equal(away.rows[0]?.eventName, "Lens v Lille");
 });
 
-test("Win/Loss uses the favourite's live price from the alert as the odds", () => {
+test("the favourite's goals market is found on Betfair by name, to price it", () => {
+  const markets = [
+    { name: "Over/Under 2.5 Goals", runners: [{ selectionId: 1, runnerName: "Over 2.5 Goals" }] },
+    { name: "Lens Over/Under 0.5 Goals", runners: [{ selectionId: 2, runnerName: "Under 0.5 Goals" }, { selectionId: 3, runnerName: "Over 0.5 Goals" }] },
+    { name: "CD Lille Over/Under 0.5 Goals", runners: [{ selectionId: 4, runnerName: "Over 0.5 Goals" }] },
+  ];
+  assert.equal(teamGoalsRunner(markets, "Lens", 0.5)?.selectionId, 3);
+  assert.equal(teamGoalsRunner(markets, "CD Lille", 0.5)?.selectionId, 4);
+  assert.equal(teamGoalsRunner(markets, "Lens", 1.5), null);
+});
+
+test("with no price in the alert, Win/Loss uses the assumed odds until Betfair prices come in", () => {
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { stakes: { "pass master 1st half": 10 } });
-  const text = done("2-1"); // home favourite at 2.40
+  const text = done("1-1");
   db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
-  const id = db.listLivePicks(10)[0]!.id;
-  db.markSent([{ id, rowJson: JSON.stringify({ stake: 10 }) }]);
-  const wl = computeWinLoss(db);
-  const line = wl.reported.find((l) => l.key === "pass master 1st half")!;
-  assert.ok(line, "the strategy appears");
-  // £10 at 2.40 = £14 profit before commission
-  assert.ok(wl.periods.d1.strategies["pass master 1st half"]! > 10, String(wl.periods.d1.strategies["pass master 1st half"]));
+  const before = computeStrategyReturns(db)["pass master 1st half"]!.sim;
+  assert.equal(before.counted, 0, "unpriced: the 1X2 price is for winning, not scoring");
 });

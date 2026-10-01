@@ -23,6 +23,7 @@ export type MarketCode =
   | "FIRST_HALF_CORNERS"
   | "UNDERDOG_DOUBLE_CHANCE"
   | "FAVOURITE_TO_WIN"
+  | "FAVOURITE_TO_SCORE"
   | "FIRST_HALF_GOALS";
 
 export type PickResult = "hit" | "miss";
@@ -37,7 +38,7 @@ export interface ParsedAlert {
   market: MarketCode | null;
   /** For the underdog strategy: which side is the underdog (the longer pre-match price). Null for every other strategy. */
   underdog: "home" | "away" | null;
-  /** For "Pass Master 1st half": which side is the favourite (the shorter live 1X2 price in the alert), backed in Match Odds. Null for every other strategy. */
+  /** For "Pass Master 1st half": which side is the favourite (the shorter live 1X2 price in the alert), backed to score again. Null for every other strategy. */
   favourite: "home" | "away" | null;
   /** Human wording of the bet, e.g. "Over 1.5" or "Yes". Null when unmapped. */
   selection: string | null;
@@ -104,8 +105,9 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /\b(?:first|1st|1h)\s*half\s+goals?\b/, market: "FIRST_HALF_GOALS" },
   // "Time to fight": Over the next goal, the same bet as Momentum (line = goals so far + 0.5).
   { test: /time to fight/, market: "NEXT_GOAL" },
-  // "Pass Master 1st half": back the favourite (shortest live price) in Match Odds.
-  { test: /pass master 1st half/, market: "FAVOURITE_TO_WIN" },
+  // "Pass Master 1st half": the favourite (shortest live price) to score again before full time, i.e. the
+  // favourite's own goals Over (their goals at the alert + 0.5). It was Match Odds on the favourite until 1 Oct 2026.
+  { test: /pass master 1st half/, market: "FAVOURITE_TO_SCORE" },
   { test: /momentum/, market: "NEXT_GOAL" },
   { test: /action/, market: "NEXT_GOAL" },
 ];
@@ -366,7 +368,7 @@ export function parseAlert(text: string): ParsedAlert {
   let underdog: "home" | "away" | null = null;
   let favourite: "home" | "away" | null = null;
 
-  if (market === "FAVOURITE_TO_WIN") {
+  if (market === "FAVOURITE_TO_WIN" || market === "FAVOURITE_TO_SCORE") {
     // The favourite is the side with the shorter live win price (1X2 line: home, draw, away).
     const live = odds.live1x2;
     if (!live) {
@@ -376,6 +378,16 @@ export function parseAlert(text: string): ParsedAlert {
     } else {
       favourite = live[0] < live[2] ? "home" : "away";
       selection = "Favourite to win";
+      if (market === "FAVOURITE_TO_SCORE") {
+        // Another goal by the favourite: its goals at the alert + 0.5.
+        const favGoals = favourite === "home" ? goalsHome : goalsAway;
+        if (favGoals === null) {
+          flags.push("Could not read the score, so the favourite's goal line can't be worked out.");
+        } else {
+          targetLine = favGoals + 0.5;
+          selection = `Favourite to score (over ${targetLine})`;
+        }
+      }
     }
   } else if (market === "UNDERDOG_DOUBLE_CHANCE") {
     // The underdog is the side with the longer pre-match win price (1X2 line: home, draw, away).
@@ -454,6 +466,10 @@ export function parseAlert(text: string): ParsedAlert {
     // Favourite to win (Match Odds): hits only if the favourite wins. A draw loses.
     else if (market === "FAVOURITE_TO_WIN" && favourite !== null) {
       computed = (favourite === "home" ? a > b : b > a) ? "hit" : "miss";
+    }
+    // Favourite to score again: hits if the favourite's own full-time goals are over its line (goals at the alert + 0.5).
+    else if (market === "FAVOURITE_TO_SCORE" && favourite !== null && targetLine !== null) {
+      computed = (favourite === "home" ? a : b) > targetLine ? "hit" : "miss";
     }
     // Underdog win or draw: hits unless the underdog lost.
     else if (market === "UNDERDOG_DOUBLE_CHANCE" && underdog !== null) {

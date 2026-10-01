@@ -316,6 +316,10 @@ export interface SendingSettings {
   favouriteAwaySelection: string;
   firstHalfGoalsMarketType: string;
   firstHalfGoalsSelection: string;
+  /** Favourite to score again (Pass Master 1st half): codes per side, empty = not sent yet. Missing on an older engine. */
+  favouriteScoresHomeMarketType?: string;
+  favouriteScoresAwayMarketType?: string;
+  favouriteScoresSelection?: string;
   /** Empty = First Half Corner Race isn't sent yet. Missing on an older engine. */
   firstHalfCornersMarketType?: string;
   firstHalfCornersSelection?: string;
@@ -1018,6 +1022,8 @@ export interface ReconcileReport {
   betfairLink?: BetfairLinkStatus;
   /** Corner markets Betfair offered for First Half Corner Race alerts, to choose the one to send (missing on an older engine). */
   cornerMarkets?: Array<{ name: string; code: string; selections: string[]; seenAt: string; example: string }>;
+  /** Team goal markets Betfair offered for the favourite in Pass Master alerts (missing on an older engine). */
+  teamMarkets?: Array<{ name: string; code: string; selections: string[]; seenAt: string; example: string }>;
 }
 
 /** Mirrors BetfairLinkStatus in the engine's betfair/exchange.ts. */

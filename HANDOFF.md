@@ -41,6 +41,8 @@ Read this first in a new chat. Everything below is pushed to `main` (latest comm
 22. **Needs review** (Amend results): results the alert's tick disagrees with stay pinned at the top, any date, until amended, removed or kept (`review_ok_at`).
 23. **Horses:** horseshoe icon (`HorseshoeIcon.tsx`); a new day carries the last day's bet amounts, bet type, terms and Yankee stake over (rows without odds aren't saved).
 
+24. **Pass Master 1st half rebuilt (1 Oct):** it's the favourite (shorter live 1X2 price) to score again by full time: market `FAVOURITE_TO_SCORE`, line = the favourite's goals at the alert + 0.5, settled from the full-time score. It is no longer sent as Match Odds; it's held back until the favourite-to-score codes are set on Sending → Bet wording (per side, `{line}` / `{line10}` two digits). Reconcile lists "Team goal markets on Betfair" seen for these alerts; picks are priced by finding the favourite's goals market by name (`teamGoalsRunner`). Past picks are re-graded on engine start.
+
 ## Still open
 - **Reconcile needs a real export.** The column names in `COLUMNS` (reconcile.ts) are a best guess at BF Bot Manager's export. Import one real file and check "Columns read" on the Reconcile page; add any missed header name to `COLUMNS`. Set `BETFAIR_IMPORT_TOKEN` on the engine before using the script.
 - **First Half Corner Race needs its Betfair market code.** Confirmed bet: one more corner before half-time = first-half corners Over (corners so far + 0.5); the parser now sets that line. Picks are priced by finding Betfair's "1st Half Corners" market by name. To send it, copy the market code and selection wording from "Corner markets on Betfair" (Reconcile) into Sending → Bet wording ({line} = 5.5, {line10} = 55).

@@ -68,7 +68,7 @@ import { computeHitRateContext, computePickProfits, computeStrategyEquity, compu
 import { log } from "./log";
 import { listHorseBets, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
-import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements } from "../betfair/exchange";
+import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, teamMarketsSeen } from "../betfair/exchange";
 import { checkLeague, coverageOfAlertLeagues } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
@@ -626,6 +626,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         importTokenConfigured: Boolean(process.env.BETFAIR_IMPORT_TOKEN),
         betfairLink: getBetfairLinkStatus(),
         cornerMarkets: cornerMarketsSeen(db),
+        teamMarkets: teamMarketsSeen(db),
       });
       return;
     }
