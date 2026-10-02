@@ -13,7 +13,7 @@ import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { usePlacements, type Placement } from "@/queries/use-reconcile";
-import { useSetManualBet } from "@/queries/use-live";
+import { useClearWaiting, useSetManualBet, useSetPickResult } from "@/queries/use-live";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 
 // An alert that has had no result edited in after this long is treated as
@@ -236,7 +236,7 @@ function ManualBet({ pick, placement }: { pick: LivePick; placement?: Placement 
   );
 }
 
-function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
+function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; admin: boolean; placement?: Placement; waiting?: boolean }) {
   const [open, setOpen] = useState(false);
   const strategyNames = useStrategyNames();
   const stats = pick.detail?.stats ?? {};
@@ -271,9 +271,10 @@ function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; p
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="flex items-center justify-between gap-3">
-            <span className="truncate text-sm font-medium text-ink">{strategyNames.name(pick.strategy)}</span>
-            <span className="flex shrink-0 items-center gap-1">
+          {/* On a phone the chips wrap under the name rather than squeezing it out of sight. */}
+          <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <span className="min-w-0 max-w-full truncate text-sm font-medium text-ink">{strategyNames.name(pick.strategy)}</span>
+            <span className="flex flex-wrap items-center gap-1">
               {admin && <ExchangeChip pick={pick} />}
               <StatusChip pick={pick} admin={admin} placement={placement} />
             </span>
@@ -324,7 +325,65 @@ function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; p
           )}
         </div>
       )}
+
+      {admin && waiting && <WaitingActions pick={pick} placement={placement} />}
     </li>
+  );
+}
+
+/**
+ * Under a pick on "Waiting for a result" (admin): give it the result by hand, which settles it and moves it to the
+ * Trade Log, or clear it without one. Where Betfair has already settled the bet, its outcome is shown as the hint.
+ */
+function WaitingActions({ pick, placement }: { pick: LivePick; placement?: Placement }) {
+  const setResult = useSetPickResult();
+  const clear = useClearWaiting();
+  const busy = setResult.isPending || clear.isPending;
+  const error = setResult.error ?? clear.error;
+  if (pick.waitingClearedAt) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 pl-16 text-xs text-ink-muted">
+        Cleared without a result.
+        <button type="button" disabled={busy} onClick={() => clear.mutate({ id: pick.id, cleared: false })} className="font-medium text-ink underline disabled:opacity-40">
+          Put it back
+        </button>
+        {error && <span className="text-destructive">{error.message}</span>}
+      </div>
+    );
+  }
+  // Betfair's own settlement, when the bet was placed there: the likeliest answer.
+  const betfair = placement?.state === "won" ? "hit" : placement?.state === "lost" ? "miss" : null;
+  const btn = "min-h-9 rounded-md px-3 text-xs font-medium disabled:opacity-40";
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 pl-16">
+      <span className="text-xs text-ink-muted">{betfair ? `Betfair settled it as ${betfair === "hit" ? "won" : "lost"}:` : "Result:"}</span>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => setResult.mutate({ id: pick.id, result: "hit" })}
+        className={`${btn} ${betfair === "hit" ? "bg-hit text-surface" : "border border-line text-hit hover:bg-hit/10"}`}
+      >
+        Hit
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => setResult.mutate({ id: pick.id, result: "miss" })}
+        className={`${btn} ${betfair === "miss" ? "bg-loss text-surface" : "border border-line text-loss hover:bg-loss/10"}`}
+      >
+        Miss
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        title="Take it off this list without a result: it counts as neither a hit nor a miss."
+        onClick={() => clear.mutate({ id: pick.id, cleared: true })}
+        className={`${btn} ml-auto text-ink-muted hover:bg-surface-2 hover:text-ink`}
+      >
+        Clear
+      </button>
+      {error && <p className="w-full text-xs text-destructive">{error.message}</p>}
+    </div>
   );
 }
 
@@ -338,7 +397,17 @@ function matchKey(p: LivePick): string {
  * One match with every alert it has had: the teams, latest score and league once at the top, then one row per alert.
  * Several strategies often fire on the same match, and without this the same teams were listed again and again.
  */
-function MatchGroup({ picks, admin, placements }: { picks: LivePick[]; admin: boolean; placements: Record<string, Placement> }) {
+function MatchGroup({
+  picks,
+  admin,
+  placements,
+  waiting = false,
+}: {
+  picks: LivePick[];
+  admin: boolean;
+  placements: Record<string, Placement>;
+  waiting?: boolean;
+}) {
   // picks arrive newest first, so the first holds the latest score and minute.
   const latest = picks[0]!;
   const now = useNow();
@@ -349,7 +418,7 @@ function MatchGroup({ picks, admin, placements }: { picks: LivePick[]; admin: bo
     <li className="overflow-hidden rounded-xl border border-line bg-surface">
       <div className="flex items-start justify-between gap-3 border-b border-line bg-surface-2/40 px-3 py-2.5">
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-ink">
+          <h2 className="break-words text-sm font-semibold text-ink">
             {latest.home ?? "Unknown"} <span className="font-normal text-ink-muted">v</span> {latest.away ?? "Unknown"}
           </h2>
           <p className="truncate text-xs text-ink-muted">
@@ -372,7 +441,7 @@ function MatchGroup({ picks, admin, placements }: { picks: LivePick[]; admin: bo
       </div>
       <ul className="divide-y divide-line">
         {picks.map((p) => (
-          <PickRow key={p.id} pick={p} admin={admin} placement={placements[String(p.id)]} />
+          <PickRow key={p.id} pick={p} admin={admin} placement={placements[String(p.id)]} waiting={waiting} />
         ))}
       </ul>
     </li>
@@ -385,6 +454,7 @@ export default function LivePage() {
   const admin = useMe().data?.admin === true;
   // Admin only: whether each sent pick was actually placed and matched on Betfair.
   const placements = usePlacements(admin).data?.picks ?? {};
+  const [showCleared, setShowCleared] = useState(false);
 
   if (isLoading) return <ListSkeleton />;
 
@@ -406,12 +476,14 @@ export default function LivePage() {
   // Grouped by match, in order of each match's newest alert (Map keeps insertion order, and the list is newest first).
   const matches = new Map<string, LivePick[]>();
   for (const p of inPlay) (matches.get(matchKey(p)) ?? matches.set(matchKey(p), []).get(matchKey(p))!).push(p);
-  const waiting = (data ?? []).filter((p) => {
+  const older = (data ?? []).filter((p) => {
     const age = now - new Date(p.firstSeenAt).getTime();
     return p.status !== "settled" && age >= STILL_LIVE_MS && age < WAITING_MS;
   });
+  const waiting = older.filter((p) => !p.waitingClearedAt);
+  const cleared = older.length - waiting.length;
   const waitingMatches = new Map<string, LivePick[]>();
-  for (const p of waiting) (waitingMatches.get(matchKey(p)) ?? waitingMatches.set(matchKey(p), []).get(matchKey(p))!).push(p);
+  for (const p of showCleared ? older : waiting) (waitingMatches.get(matchKey(p)) ?? waitingMatches.set(matchKey(p), []).get(matchKey(p))!).push(p);
 
   return (
     <div className="space-y-6 px-4 py-4">
@@ -427,7 +499,7 @@ export default function LivePage() {
         </ul>
       )}
 
-      {waiting.length > 0 && (
+      {(waiting.length > 0 || (admin && cleared > 0)) && (
         <section id="waiting" aria-labelledby="waiting-title" className="scroll-mt-4 space-y-3">
           <div>
             <h2 id="waiting-title" className="text-sm font-semibold text-ink">
@@ -435,12 +507,17 @@ export default function LivePage() {
             </h2>
             <p className="text-xs text-ink-muted">
               Alerts from more than 3 hours ago with no result from InPlayGuru yet, usually pre-match alerts or a late result.
-              {admin && " If a match is long over, set its result in Amend results."}
+              {admin && " Give one its result if you know it, or clear it to take it off this list."}
             </p>
+            {admin && cleared > 0 && (
+              <button type="button" onClick={() => setShowCleared((v) => !v)} className="mt-1 text-xs font-medium text-ink underline">
+                {showCleared ? "Hide cleared" : `Show ${cleared} cleared`}
+              </button>
+            )}
           </div>
           <ul className="space-y-3">
             {[...waitingMatches.entries()].map(([key, picks]) => (
-              <MatchGroup key={key} picks={picks} admin={admin} placements={placements} />
+              <MatchGroup key={key} picks={picks} admin={admin} placements={placements} waiting />
             ))}
           </ul>
         </section>

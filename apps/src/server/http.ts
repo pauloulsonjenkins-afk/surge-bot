@@ -24,6 +24,7 @@
  *   POST /internal/strategies/remove            delete a strategy's stored picks (admin site only)
  *   POST /internal/picks/result                 amend (or reset) one pick's result (admin site only)
  *   POST /internal/picks/exclude                 mark (or unmark) a pick as "didn't actually bet" (admin site only)
+ *   POST /internal/picks/clear-waiting           clear (or put back) a pick on Live's "Waiting for a result": { id, cleared } (admin site only)
  *   GET  /internal/horses                       the admin's daily horse racing bets (admin site only)
  *   PUT  /internal/horses/day                   save one day's NAP / Next best / 3rd / 4th choice and EW Yankee (admin site only)
  *   POST /internal/horses/result                mark one horse bet won, lost, void or pending (admin site only)
@@ -853,6 +854,30 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       log.info(`Pick ${id} result ${result === null ? "reset to the alert's own result" : `set by hand to ${result}`} from the admin page.`);
+      send(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/internal/picks/clear-waiting") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : null;
+      if (id === null || typeof body.cleared !== "boolean") {
+        send(res, 400, { error: "id_and_cleared_required" });
+        return;
+      }
+      if (!db.setWaitingCleared(id, body.cleared)) {
+        send(res, 404, { error: "no_such_pick" });
+        return;
+      }
+      log.info(`Pick ${id} ${body.cleared ? "cleared from" : "put back on"} Live's Waiting for a result.`);
       send(res, 200, { ok: true });
       return;
     }

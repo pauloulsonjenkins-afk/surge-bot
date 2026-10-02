@@ -380,6 +380,8 @@ export interface LivePick {
   /** Whether Betfair had the exact market and selection the feed sends (null = not checked), and what was found. */
   marketCheck: "ok" | "noMarket" | "noSelection" | null;
   marketCheckDetail: string | null;
+  /** When the admin cleared it from Live's "Waiting for a result" without a result, or null. */
+  waitingClearedAt: string | null;
   /** The league's key on the Leagues page. */
   leagueKey: string;
   /** The full parsed alert (all stats, odds, etc.) for the detail view. */
@@ -642,6 +644,11 @@ export class EngineDb {
     if (!liveCols.some((c) => c.name === "unplaced_cleared_at")) {
       // When the admin cleared this pick from the Not placed list on Sending, having looked at it (betfair/unplaced.ts).
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN unplaced_cleared_at TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "waiting_cleared_at")) {
+      // When the admin cleared this pick from Live's "Waiting for a result" without giving it a result: it leaves that list
+      // and the Dashboard's "awaiting result" count, and counts as neither hit nor miss.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN waiting_cleared_at TEXT`);
     }
     if (!liveCols.some((c) => c.name === "review_ok_at")) {
       // When the admin accepted a result the alert's own tick disagreed with (Amend results, Needs review).
@@ -1026,6 +1033,7 @@ export class EngineDb {
       manualBet: parseManualBet(r.manual_bet),
       marketCheck: r.market_check === "ok" || r.market_check === "noMarket" || r.market_check === "noSelection" ? r.market_check : null,
       marketCheckDetail: (r.market_check_detail as string | null) ?? null,
+      waitingClearedAt: (r.waiting_cleared_at as string | null) ?? null,
       leagueKey: leagueIdentity((r.competition as string | null) ?? null, (r.country as string | null) ?? null).key,
       flags,
       detail,
@@ -1041,13 +1049,13 @@ export class EngineDb {
     const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
     const allRows = (
       since === null
-        ? this.db.prepare(`SELECT id, first_seen_at, strategy, market, competition, minute, country,
+        ? this.db.prepare(`SELECT id, first_seen_at, strategy, market, competition, minute, country, waiting_cleared_at,
                   COALESCE(result_override, result) AS result,
                   CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
            FROM live_picks WHERE excluded = 0${modeSql(mode)} ORDER BY id`).all()
         : this.db
             .prepare(
-              `SELECT id, first_seen_at, strategy, market, competition, minute, country,
+              `SELECT id, first_seen_at, strategy, market, competition, minute, country, waiting_cleared_at,
                       COALESCE(result_override, result) AS result,
                       CASE WHEN result_override IS NOT NULL THEN 'settled' ELSE status END AS status
                FROM live_picks WHERE first_seen_at >= ? AND excluded = 0${modeSql(mode)} ORDER BY id`,
@@ -1061,6 +1069,7 @@ export class EngineDb {
       competition: string | null;
       minute: number | null;
       country: string | null;
+      waiting_cleared_at: string | null;
       result: string | null;
       status: string;
     }>;
@@ -1099,7 +1108,8 @@ export class EngineDb {
     for (const r of rows) {
       const isHit = r.result === "hit";
       const isMiss = r.result === "miss";
-      if (r.status === "captured") pending++;
+      // A pick cleared from Live's "Waiting for a result" is no longer awaited.
+      if (r.status === "captured" && r.waiting_cleared_at === null) pending++;
       if (r.status === "flagged" || r.status === "unmapped") needsReview++;
 
       const sLabel = reportLabel(merges, r.strategy);
@@ -1607,6 +1617,18 @@ export class EngineDb {
   /** Marks (or unmarks) a pick as "didn't actually bet". Excluded picks are left out of stats and Win/Loss. */
   setPickExcluded(id: number, excluded: boolean): boolean {
     const info = this.db.prepare(`UPDATE live_picks SET excluded = ? WHERE id = ?`).run(excluded ? 1 : 0, id);
+    if (info.changes > 0) this.onChange();
+    return info.changes > 0;
+  }
+
+  /**
+   * Clears a pick from Live's "Waiting for a result" without a result (or, with false, puts it back). It stays stored,
+   * counts as neither hit nor miss, and leaves the Dashboard's "awaiting result" count. Returns false if there is no such pick.
+   */
+  setWaitingCleared(id: number, cleared: boolean): boolean {
+    const info = this.db
+      .prepare(`UPDATE live_picks SET waiting_cleared_at = ? WHERE id = ?`)
+      .run(cleared ? new Date().toISOString() : null, id);
     if (info.changes > 0) this.onChange();
     return info.changes > 0;
   }

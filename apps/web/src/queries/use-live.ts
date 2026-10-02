@@ -57,6 +57,29 @@ export function useSetPickResult() {
   });
 }
 
+/** Clears a pick from Live's "Waiting for a result" without a result, or (cleared = false) puts it back. */
+export function useClearWaiting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { id: number; cleared: boolean }) => {
+      const res = await fetch("/api/admin/picks/clear-waiting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(v),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiFetchError(body?.error ?? `Could not save (${res.status})`, res.status);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["live-picks"] });
+      qc.invalidateQueries({ queryKey: ["admin-live-picks"] });
+      qc.invalidateQueries({ queryKey: ["hit-rate-stats"] });
+    },
+  });
+}
+
 export function useLivePicks(limit = 50, enabled = true) {
   return useQuery({
     queryKey: ["live-picks", limit],

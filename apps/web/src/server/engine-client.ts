@@ -64,6 +64,8 @@ export interface LivePick {
   id: number;
   marketCheck?: "ok" | "noMarket" | "noSelection" | null;
   marketCheckDetail?: string | null;
+  /** When the admin cleared it from Live's "Waiting for a result" without a result (missing on an older engine). */
+  waitingClearedAt?: string | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
   exchangeEvent?: string | null;
   /** Betfair's back price for the bet the feed sends, read when the match was checked (admin only). */
@@ -149,6 +151,8 @@ export interface PublicPick {
   /** Whether Betfair had the exact market and selection the feed sends, and what was found (admin only). */
   marketCheck?: "ok" | "noMarket" | "noSelection" | null;
   marketCheckDetail?: string | null;
+  /** When the admin cleared it from Live's "Waiting for a result" without a result. */
+  waitingClearedAt?: string | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -186,6 +190,7 @@ export function toPublicPick(p: LivePick): PublicPick {
     exchangeOdds: p.exchangeOdds ?? null,
     marketCheck: p.marketCheck ?? null,
     marketCheckDetail: p.marketCheckDetail ?? null,
+    waitingClearedAt: p.waitingClearedAt ?? null,
     flags: p.flags,
     detail: p.detail
       ? {
@@ -458,6 +463,29 @@ export async function setPickResult(id: number, result: "hit" | "miss" | null): 
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`Engine responded ${res.status} when saving the result.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Clears a pick from Live's "Waiting for a result" without a result, or (cleared = false) puts it back. */
+export async function setPickWaitingCleared(id: number, cleared: boolean): Promise<void> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) {
+    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/picks/clear-waiting`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id, cleared }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} when clearing the pick.`);
   } finally {
     clearTimeout(timeout);
   }
