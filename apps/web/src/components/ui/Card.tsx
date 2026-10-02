@@ -1,13 +1,13 @@
 /**
  * The shared building blocks every page uses, so spacing, corners and type are the same everywhere.
  *
- *   <PageHeader>   the title at the top of a page (Archivo, 28px, wide), with an optional line under it and buttons on the right
+ *   <PageHeader>   the title at the top of a page (Inter 24px on phones, wide Archivo 28px from laptop width), with an optional line under it and buttons on the right
  *   <Card>         a panel, optionally with a title, a line under it and buttons on the right
  *   <HeroStat>     one headline number with a label, with no card around it (the Dashboard's top row)
  *   <Segmented>    a row of 2–4 options where one is selected
  *   <ToggleChip>   an on/off filter shaped like a chip, in place of a bare checkbox
  *
- * Type scale (see tailwind.config.ts): page title 28px, section title 16px, body 14px, meta 12px, key numbers 28px.
+ * Type scale (see tailwind.config.ts): page title 24px on phones and 28px wide, section title 16px, body 14px, meta 12px, key numbers 28px.
  */
 
 export function PageHeader({
@@ -25,7 +25,9 @@ export function PageHeader({
   return (
     <header className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <Heading className="font-display text-title font-bold text-ink [font-stretch:115%]">{title}</Heading>
+        <Heading className="text-2xl font-semibold tracking-tight text-ink lg:font-display lg:text-title lg:font-bold lg:tracking-normal lg:[font-stretch:115%]">
+          {title}
+        </Heading>
         {subtitle && <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}

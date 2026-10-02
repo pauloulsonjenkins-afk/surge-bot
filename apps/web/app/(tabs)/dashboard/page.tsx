@@ -2,6 +2,7 @@
 
 import { Card, PageHeader, Segmented } from "@/components/ui/Card";
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import { useHitRateStats, type HitRateStats } from "@/queries/use-stats";
@@ -76,6 +77,11 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8 px-4 py-4">
       <div className="space-y-4">
+        {/* The GoalBrew logo on phones and tablets; wide screens show it at the top of the sidebar. */}
+        <div className="lg:hidden">
+          <Image unoptimized priority src="/brand/goalbrew-logo-dark.svg" alt="GoalBrew" width={168} height={28} className="h-7 w-auto [[data-theme=light]_&]:hidden" />
+          <Image unoptimized src="/brand/goalbrew-logo-light.svg" alt="GoalBrew" width={168} height={28} className="hidden h-7 w-auto [[data-theme=light]_&]:block" />
+        </div>
         <PageHeader
           title="Dashboard"
           actions={
