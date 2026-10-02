@@ -8,6 +8,7 @@
 import type { EngineDb, LivePick } from "../storage/engine-db";
 import { addMatchName, betableUntil, getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { sendPush } from "../server/push";
+import { displayName } from "../inplayguru/strategy-names";
 import { log } from "../server/log";
 
 /** How long after a pick is sent it must have a bet on Betfair. */
@@ -106,7 +107,7 @@ export async function notifyUnplaced(db: EngineDb, lastOkAt: string | null, now 
   const message =
     fresh.length === 1
       ? {
-          title: `Not placed: ${first.strategy}`,
+          title: `Not placed: ${displayName(db, first.strategy)}`,
           body: [
             `${first.match}${firstPick ? scoreLine(firstPick) : ""}`,
             ...(firstPick ? matchStatsLines(firstPick) : []),
@@ -116,7 +117,7 @@ export async function notifyUnplaced(db: EngineDb, lastOkAt: string | null, now 
         }
       : {
           title: `${fresh.length} picks not placed`,
-          body: `No bet on Betfair 3 minutes after sending: ${fresh.map((u) => `${u.strategy} (${u.match})`).join("; ")}.`,
+          body: `No bet on Betfair 3 minutes after sending: ${fresh.map((u) => `${displayName(db, u.strategy)} (${u.match})`).join("; ")}.`,
         };
   log.info(`Not placed after 3 minutes: ${fresh.map((u) => `pick ${u.id} ${u.strategy} ${u.match}`).join("; ")}`);
   await sendPush(db, { ...message, url: "/more/admin/sending", tag: "unplaced" });

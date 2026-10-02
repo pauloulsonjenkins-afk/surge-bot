@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Card, Segmented, ToggleChip } from "@/components/ui/Card";
 import { Grouping, LeagueFilter, MINUTE_BUCKETS, OTHER_COUNTRY, ResolvedCell, TIER_LABEL, TOP_LEAGUES } from "@/domain/performance";
 import { Agg, aggregate, groupLeagues, matchesLeague } from "@/lib/performance/derive";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 const TINT = "color-mix(in srgb, var(--accent) 14%, transparent)";
 
@@ -58,6 +59,7 @@ export function PerformanceSection({
   const [leagueFilter, setLeagueFilter] = useState<LeagueFilter>({ type: "all" });
   const [topOnly, setTopOnly] = useState(true);
   const [tab, setTab] = useState<"strategy" | "minute" | "league">("strategy");
+  const strategyNames = useStrategyNames();
 
   const byStrategy = useMemo(() => (strategy ? cells.filter((a) => a.strategy === strategy) : cells), [cells, strategy]);
   const byLeague = useMemo(() => cells.filter((a) => matchesLeague(a, leagueFilter)), [cells, leagueFilter]);
@@ -129,7 +131,7 @@ export function PerformanceSection({
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-ink-muted">Showing</span>
           <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{filterLabel(leagueFilter, cells)}</span>
-          {strategy && <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{strategy}</span>}
+          {strategy && <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{strategyNames.name(strategy)}</span>}
           <span className="tabular-nums text-ink-muted">
             · {pct(total)} from {total.settled} settled · {total.alerts} alerts
           </span>
@@ -182,7 +184,7 @@ export function PerformanceSection({
                     }`}
                   >
                     <span className="min-w-0">
-                      <span className="block text-sm text-ink">{r.name}</span>
+                      <span className="block text-sm text-ink">{strategyNames.name(r.name)}</span>
                       <span className="text-xs text-ink-muted">
                         {r.agg.alerts} alerts
                         {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}

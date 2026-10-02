@@ -11,6 +11,7 @@ import { betText } from "@/lib/markets";
 import { gbp } from "@/lib/format";
 import { useMe } from "@/queries/use-me";
 import { useAdminLivePicks, useLivePicks, type LivePick, type PublicPick } from "@/queries/use-live";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
 
@@ -30,6 +31,7 @@ function modeOf(pick: Row): "live" | "sim" | "notPlaced" {
 
 function PickRow({ pick, admin }: { pick: Row; admin: boolean }) {
   const hit = pick.result === "hit";
+  const strategyNames = useStrategyNames();
   return (
     <li className="flex items-center gap-3 px-3 py-3">
       <div className="min-w-0 flex-1">
@@ -40,7 +42,7 @@ function PickRow({ pick, admin }: { pick: Row; admin: boolean }) {
           {admin && <ModeBadge mode={modeOf(pick)} />}
         </p>
         <p className="mt-0.5 truncate text-xs text-ink-muted">
-          {[pick.strategy.replace(/\([^)]*\)/g, "").trim(), betText(pick.market, pick.selection)]
+          {[strategyNames.name(pick.strategy), betText(pick.market, pick.selection)]
             .filter(Boolean)
             .join(" · ")}
         </p>

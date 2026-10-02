@@ -36,6 +36,8 @@
  *   GET  /internal/betfair/unplaced             sent picks with no Betfair bet 3 minutes on, last 24 hours (admin site only)
  *   POST /internal/betfair/unplaced/clear       clear reviewed picks from that list: { ids } (admin site only)
  *   POST /internal/betfair/unplaced/fix         add Betfair's team spelling to Match names and re-send the pick: { id } (admin site only)
+ *   GET  /internal/strategy-names               the names and descriptions the app shows for strategies (admin site only)
+ *   POST /internal/strategy-names               change one: { key, name, description }; empty goes back to the default (admin site only)
  *   GET  /internal/push                         the push key and how many devices get notifications (admin site only)
  *   POST /internal/push/subscribe|unsubscribe|test  add or remove a device, or send it a test (admin site only)
  *   GET  /internal/picks/discrepancies          results the alert's own tick disagrees with, still to review (admin site only)
@@ -59,6 +61,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { TelegramClient } from "telegram";
 import { parsePickMode, type EngineDb } from "../storage/engine-db";
 import { fixAndResend, listUnplaced, UNPLACED_AFTER_MS } from "../betfair/unplaced";
+import { listStrategyNames, saveStrategyName } from "../inplayguru/strategy-names";
 import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./push";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
@@ -437,6 +440,34 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       } catch (err) {
         send(res, 422, { error: "unreadable", message: err instanceof Error ? err.message : String(err) });
       }
+      return;
+    }
+
+    if (path === "/internal/strategy-names") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "GET") {
+        send(res, 200, { names: listStrategyNames(db) });
+        return;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        try {
+          saveStrategyName(db, body.key, body.name, body.description);
+        } catch (err) {
+          send(res, 400, { error: "invalid", message: err instanceof Error ? err.message : "Couldn't save that name." });
+          return;
+        }
+        send(res, 200, { names: listStrategyNames(db) });
+        return;
+      }
+      send(res, 405, { error: "method_not_allowed" });
       return;
     }
 

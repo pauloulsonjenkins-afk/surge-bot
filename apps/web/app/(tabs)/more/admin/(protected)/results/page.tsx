@@ -8,6 +8,7 @@ import { QueryError } from "@/components/ui/QueryError";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { betText } from "@/lib/markets";
 import { usePickDays, useAdminPicksWindow, useDiscrepancies, useReviewResult, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -22,10 +23,6 @@ const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeri
 /** "2026-09-29" -> "Tue 29 Sep" (the date is a plain calendar date, so no time zone shifts it). */
 function dayLabel(date: string): string {
   return dayFmt.format(new Date(`${date}T12:00:00Z`));
-}
-
-function label(raw: string): string {
-  return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
 }
 
 function ResultChip({ pick }: { pick: LivePick }) {
@@ -52,9 +49,10 @@ function PickCard({
   onKeep?: (p: LivePick) => void;
   busyKeep?: boolean;
 }) {
+  const strategyNames = useStrategyNames();
   return (
   <article className={`rounded-xl border border-line bg-surface p-3.5 ${p.excluded ? "opacity-50" : ""}`}>
-    <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label(p.strategy)}</p>
+    <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{strategyNames.name(p.strategy)}</p>
     <p className="mt-1 text-sm font-medium text-ink">
       {p.home ?? "Unknown"} v {p.away ?? "Unknown"}
     </p>

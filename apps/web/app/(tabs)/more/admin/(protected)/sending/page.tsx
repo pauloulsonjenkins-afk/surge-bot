@@ -11,6 +11,7 @@ import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow"
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { NotPlacedCard } from "@/components/admin/NotPlacedCard";
 import { NotificationsCard } from "@/components/admin/NotificationsCard";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -84,6 +85,7 @@ export default function SendingPage() {
   const save = useSaveSending();
   const remove = useDeleteStrategyFlow();
   const dialog = useDialog();
+  const strategyNames = useStrategyNames();
   const [form, setForm] = useState<Form | null>(null);
   const [saved, setSaved] = useState(false);
   // What has been typed into each strategy's stake box but not saved yet, keyed by lower-case name.
@@ -123,7 +125,7 @@ export default function SendingPage() {
         tone: "money",
         confirmLabel: live.length === 0 ? "Turn sending on" : `Start sending ${live.length} Live strateg${live.length === 1 ? "y" : "ies"}`,
         details: [
-          { label: "Live strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${x.label} £${x.stake?.toFixed(2) ?? "–"}`).join(", ") },
+          { label: "Live strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${strategyNames.name(x.label)} £${x.stake?.toFixed(2) ?? "–"}`).join(", ") },
           { label: "Daily limit", value: `${settings.dailyCap} new bets` },
           { label: "Most staked in a day", value: perDay > 0 ? `up to £${perDay.toFixed(2)}` : "–" },
           { label: "Highest stake allowed", value: `£${settings.maxStake.toFixed(2)}` },
@@ -141,7 +143,7 @@ export default function SendingPage() {
     const stop = s.stopLoss;
     const hasStop = stop !== null && (stop.dailyLoss !== null || stop.lossRun !== null);
     return dialog.confirm({
-      title: `Put ${s.label} Live?`,
+      title: `Put ${strategyNames.name(s.label)} Live?`,
       tone: "money",
       confirmLabel: `Put Live at £${stake.toFixed(2)}`,
       details: [
@@ -362,7 +364,7 @@ export default function SendingPage() {
                         ▸
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-sm text-ink">{s.label}</span>
+                        <span className="block truncate text-sm text-ink">{strategyNames.name(s.label)}</span>
                         <span className={`block truncate text-xs ${supported ? "text-ink-muted" : "text-warn"}`}>
                           {note}
                           {summary && <span className={s.stake === null ? "text-warn" : ""}> · {summary}</span>}

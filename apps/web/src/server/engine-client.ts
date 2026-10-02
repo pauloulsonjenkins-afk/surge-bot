@@ -1232,6 +1232,28 @@ export function fetchUnplaced(): Promise<UnplacedReport> {
   return engineCall("/internal/betfair/unplaced", "picks not placed");
 }
 
+/** What the app shows for a strategy. Mirrors StrategyInfo in the engine's inplayguru/strategy-names.ts. */
+export interface StrategyNameInfo {
+  name: string;
+  description: string;
+  /** InPlayGuru's rules, in short. */
+  trigger: string;
+  /** The bet sent. */
+  bet: string;
+  /** True when the admin has changed the name or description. */
+  custom: boolean;
+}
+
+/** Keyed by InPlayGuru's strategy name without its bracketed note, lower-cased. */
+export function fetchStrategyNames(): Promise<{ names: Record<string, StrategyNameInfo> }> {
+  return engineCall("/internal/strategy-names", "strategy names");
+}
+
+/** Changes a strategy's name and description; empty values go back to the default. */
+export function saveStrategyName(key: string, name: string, description: string): Promise<{ names: Record<string, StrategyNameInfo> }> {
+  return engineCall("/internal/strategy-names", "saving the strategy name", { method: "POST", body: { key, name, description } });
+}
+
 /** Adds Betfair's team spelling to Match names and sends a Not placed pick again under Betfair's event name. */
 export function fixUnplaced(id: number): Promise<{ ok: true; added: string[]; sent: boolean; message: string }> {
   return engineCall("/internal/betfair/unplaced/fix", "fixing the pick", { method: "POST", body: { id } });

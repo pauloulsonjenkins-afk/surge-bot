@@ -14,6 +14,7 @@ import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { usePlacements, type Placement } from "@/queries/use-reconcile";
 import { useSetManualBet } from "@/queries/use-live";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 // An alert that has had no result edited in after this long is treated as
 // finished rather than still in play. Finished picks live on the Trade Log.
@@ -25,11 +26,6 @@ function fmtTime(iso: string): string {
 
 function pairText(pair: [number, number] | undefined): string | null {
   return pair ? `${pair[0]} – ${pair[1]}` : null;
-}
-
-/** Strategy names carry a bracketed note from the alert ("Goal Brewing (v2)"); the row only has room for the name. */
-function shortStrategy(raw: string): string {
-  return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
 }
 
 /** The newest score we have: half-time once it is in, otherwise the score when the alert fired. */
@@ -239,6 +235,7 @@ function ManualBet({ pick, placement }: { pick: LivePick; placement?: Placement 
 
 function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
   const [open, setOpen] = useState(false);
+  const strategyNames = useStrategyNames();
   const stats = pick.detail?.stats ?? {};
   // Corners lead for the corners strategy; for the rest they come last.
   const cornersFirst = pick.market === "FIRST_HALF_CORNERS";
@@ -272,7 +269,7 @@ function PickRow({ pick, admin, placement }: { pick: LivePick; admin: boolean; p
 
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-3">
-            <span className="truncate text-sm font-medium text-ink">{shortStrategy(pick.strategy)}</span>
+            <span className="truncate text-sm font-medium text-ink">{strategyNames.name(pick.strategy)}</span>
             <span className="flex shrink-0 items-center gap-1">
               {admin && <ExchangeChip pick={pick} />}
               <StatusChip pick={pick} admin={admin} placement={placement} />

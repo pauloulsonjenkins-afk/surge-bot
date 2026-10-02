@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useClearUnplaced, useFixUnplaced, useUnplaced } from "@/queries/use-unplaced";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 const SHOW = 5;
 
@@ -19,6 +20,7 @@ export function NotPlacedCard() {
   const clear = useClearUnplaced();
   const fix = useFixUnplaced();
   const dialog = useDialog();
+  const strategyNames = useStrategyNames();
   const [all, setAll] = useState(false);
   // What the last "Add name & send" did, shown above the list.
   const [fixNote, setFixNote] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function NotPlacedCard() {
           <li key={p.id} className="flex items-start gap-3 py-2">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-ink">
-                {p.match} <span className="font-normal text-ink-muted">· {p.strategy}</span>
+                {p.match} <span className="font-normal text-ink-muted">· {strategyNames.name(p.strategy)}</span>
               </p>
               <p className="text-xs text-ink-muted">
                 {[

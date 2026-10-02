@@ -47,3 +47,8 @@ export async function cached<T>(key: string, ttlMs: number, load: () => Promise<
   loading.set(key, promise);
   return promise;
 }
+
+/** Drops a cached value, so the next request loads it fresh (after a change the admin just saved). */
+export function invalidate(key: string): void {
+  store.delete(key);
+}

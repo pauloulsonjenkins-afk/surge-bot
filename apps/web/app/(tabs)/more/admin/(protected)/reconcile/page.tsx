@@ -7,6 +7,7 @@ import { QueryError } from "@/components/ui/QueryError";
 import { gbp } from "@/lib/format";
 import { useAcknowledgeBets, useAddMatchName, useImportBetHistory, useReconcile, type ReconcileReport } from "@/queries/use-reconcile";
 import { useDialog } from "@/components/ui/ConfirmDialog";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const when = (iso: string) => whenFmt.format(new Date(iso));
@@ -203,6 +204,7 @@ function AutomaticCard({ configured }: { configured: boolean }) {
 }
 
 function StrategyRow({ s }: { s: ReconcileReport["strategies"][number] }) {
+  const strategyNames = useStrategyNames();
   const diff = Math.round((s.actualProfit - s.estimatedProfit) * 100) / 100;
   const cells: Array<[string, string, string?]> = [
     ["Unmatched", s.sent === 0 ? "–" : `${pct(s.unmatchedRate)} (${s.sent - s.matched} of ${s.sent})`, s.unmatchedRate && s.unmatchedRate > 0.1 ? "text-warn" : undefined],
@@ -213,7 +215,7 @@ function StrategyRow({ s }: { s: ReconcileReport["strategies"][number] }) {
   return (
     <li className="rounded-xl border border-line bg-surface p-3.5">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words text-sm font-medium text-ink">{s.label}</p>
+        <p className="min-w-0 break-words text-sm font-medium text-ink">{strategyNames.name(s.label)}</p>
         {s.compared > 0 && (
           <p className="shrink-0 text-right">
             <span className={`text-base font-semibold tabular-nums ${TONE[moneyTone(diff)]}`}>{diff === 0 ? "£0.00" : gbp(diff)}</span>

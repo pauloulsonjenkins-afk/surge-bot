@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import { useMe } from "@/queries/use-me";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 /**
  * The breakdowns from the plain hit-rate stats, used until the per-league performance figures have loaded
@@ -27,7 +28,8 @@ function SimpleBreakdown({ stats, isLoading }: { stats: HitRateStats | undefined
   const [tab, setTab] = useState<"strategy" | "minute" | "league">("strategy");
   // Leagues with nothing settled are left out of the chart; the busiest eight are shown.
   const leagues = (stats?.byLeague ?? []).filter((l) => l.hits + l.misses > 0).slice(0, 8);
-  const strategies = (stats?.byStrategy ?? []).filter((s) => s.hits + s.misses > 0);
+  const strategyNames = useStrategyNames();
+  const strategies = (stats?.byStrategy ?? []).filter((s) => s.hits + s.misses > 0).map((s) => ({ ...s, label: strategyNames.name(s.label) }));
 
   return (
     <Card
@@ -68,6 +70,7 @@ export default function DashboardPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
   const [strategy, setStrategy] = useState<string | null>(null);
+  const strategyNames = useStrategyNames();
   const mode = usePickMode();
   const { data: me } = useMe();
   const { data, isLoading, error } = useHitRateStats(days, strategy, mode);
@@ -108,7 +111,7 @@ export default function DashboardPage() {
           <ModeToggle />
           {strategy && (
             <span className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{strategy}</span>
+              <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{strategyNames.name(strategy)}</span>
               <button type="button" onClick={() => setStrategy(null)} className="text-ink-muted underline">
                 Show all
               </button>

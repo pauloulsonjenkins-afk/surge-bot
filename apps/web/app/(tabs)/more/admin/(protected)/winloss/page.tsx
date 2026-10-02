@@ -13,6 +13,7 @@ import { useSaveSending } from "@/queries/use-sending";
 import { useSaveWinLoss, useWinLoss, type WinLossState } from "@/queries/use-winloss";
 import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import type { PickMode } from "@/server/engine-client";
+import { useStrategyNames } from "@/queries/use-strategy-names";
 
 type PeriodKey = "d1" | "d7" | "mtd" | "ytd";
 const PERIODS: Array<{ key: PeriodKey; label: string }> = [
@@ -92,6 +93,7 @@ const MODE_NOTE: Record<PickMode, string> = {
 
 function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
   const qc = useQueryClient();
+  const strategyNames = useStrategyNames();
   const saveSending = useSaveSending();
   const saveWinLoss = useSaveWinLoss(mode);
   const [period, setPeriod] = useState<PeriodKey>("mtd");
@@ -137,7 +139,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
     : [{ key: "total", name: "Profit / loss", color: "var(--chart)" }];
   const combinedData = points.map((p) => ({ label: dateLabel(p.label), total: p.total, after: p.totalAfter }));
 
-  const strategySeries: LineSeries[] = lines.map((s, i) => ({ key: `k${i}`, name: s.label, color: PALETTE[i % PALETTE.length]! }));
+  const strategySeries: LineSeries[] = lines.map((s, i) => ({ key: `k${i}`, name: strategyNames.name(s.label), color: PALETTE[i % PALETTE.length]! }));
   const strategyData = points.map((p) => {
     const row: Record<string, number | string> = { label: dateLabel(p.label) };
     lines.forEach((s, i) => (row[`k${i}`] = p.s[s.key] ?? 0));
@@ -227,7 +229,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         ) : (
           <div>
             {lines.map((s) => (
-              <Figures key={s.key} title={s.label} values={PERIODS.map((p) => state.periods[p.key].strategies[s.key] ?? 0)} />
+              <Figures key={s.key} title={strategyNames.name(s.label)} values={PERIODS.map((p) => state.periods[p.key].strategies[s.key] ?? 0)} />
             ))}
             <Figures
               title={mode === "live" ? "Live total" : mode === "sim" ? "Sim total" : "Total"}
@@ -332,7 +334,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
                       ▸
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-ink">{s.label}</span>
+                      <span className="block truncate text-sm text-ink">{strategyNames.name(s.label)}</span>
                       <span className="block truncate text-xs text-ink-muted">
                         {marketName(s.market) ?? "No market set"} · {summary}
                       </span>

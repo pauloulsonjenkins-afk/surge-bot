@@ -13,6 +13,7 @@ import { ModeBadge, ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
 import { EquityCurve } from "@/components/admin/EquityCurve";
+import { strategyKey, useSaveStrategyName, useStrategyNames } from "@/queries/use-strategy-names";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -100,6 +101,100 @@ function OddsContext({ hitRate, money }: { hitRate: number | null; money: NonNul
   );
 }
 
+/**
+ * What a strategy looks for and what it backs (InPlayGuru's rules, in short), and the name and description the app
+ * shows for it. InPlayGuru's own name stays the key, so renaming here changes nothing about sending or results.
+ */
+function AboutStrategy({ label }: { label: string }) {
+  const names = useStrategyNames();
+  const save = useSaveStrategyName();
+  const info = names.info(label);
+  const [name, setName] = useState(info?.name ?? "");
+  const [description, setDescription] = useState(info?.description ?? "");
+  const [saved, setSaved] = useState(false);
+  const dirty = name.trim() !== (info?.name ?? "") || description.trim() !== (info?.description ?? "");
+  const submit = (n: string, d: string) =>
+    save.mutate(
+      { key: label, name: n, description: d },
+      {
+        onSuccess: (r) => {
+          const now = r.names[strategyKey(label)];
+          setName(now?.name ?? "");
+          setDescription(now?.description ?? "");
+          setSaved(true);
+          setTimeout(() => setSaved(false), 2500);
+        },
+      },
+    );
+  return (
+    <div className="mt-3 space-y-3 rounded-lg bg-surface-2 p-2.5 text-xs">
+      {(info?.trigger || info?.bet) && (
+        <dl className="space-y-1.5">
+          {info?.trigger && (
+            <div>
+              <dt className="text-ink-muted">When it fires</dt>
+              <dd className="text-ink">{info.trigger}</dd>
+            </div>
+          )}
+          {info?.bet && (
+            <div>
+              <dt className="text-ink-muted">The bet</dt>
+              <dd className="text-ink">{info.bet}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="text-ink-muted">InPlayGuru name</dt>
+            <dd className="text-ink">{label}</dd>
+          </div>
+        </dl>
+      )}
+      <label className="block text-ink-muted">
+        Name in the app
+        <input
+          value={name}
+          maxLength={40}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={label}
+          className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+        />
+      </label>
+      <label className="block text-ink-muted">
+        Description
+        <textarea
+          value={description}
+          maxLength={300}
+          rows={2}
+          onChange={(e) => setDescription(e.target.value)}
+          className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+        />
+      </label>
+      {save.error && <p className="text-destructive">{save.error.message}</p>}
+      <p className="text-ink-muted">Only what the app shows changes. Sending, stakes, results and BF Bot Manager keep using the InPlayGuru name.</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          disabled={!dirty || save.isPending}
+          onClick={() => submit(name, description)}
+          className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
+        >
+          Save
+        </button>
+        {info?.custom && (
+          <button
+            type="button"
+            disabled={save.isPending}
+            onClick={() => submit("", "")}
+            className="rounded-md border border-line px-3 py-1 text-xs font-medium text-ink hover:bg-surface disabled:opacity-50"
+          >
+            Back to the default
+          </button>
+        )}
+        {saved && <span className="text-hit">Saved</span>}
+      </div>
+    </div>
+  );
+}
+
 function StrategyCard({
   row,
   all,
@@ -137,6 +232,10 @@ function StrategyCard({
   const money = returnsFor(row, pickMode);
   const hint = verdict(row);
   const options = all.filter((o) => o.label !== row.label);
+  const names = useStrategyNames();
+  const info = names.info(row.label);
+  const shownName = names.name(row.label);
+  const [about, setAbout] = useState(false);
 
   return (
     <li className={`rounded-xl border bg-surface p-3.5 ${selected ? "border-accent" : "border-line"}`}>
@@ -147,7 +246,7 @@ function StrategyCard({
             checked={selected}
             disabled={row.sendingOn || busy}
             onChange={onToggle}
-            aria-label={`Select ${row.label}`}
+            aria-label={`Select ${shownName}`}
             title={row.sendingOn ? "Switch sending off for this strategy first (Sending page)" : undefined}
             style={{ accentColor: "var(--accent)" }}
             className="mt-1 h-4 w-4 shrink-0 disabled:opacity-40"
@@ -155,10 +254,14 @@ function StrategyCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2 break-words text-sm font-medium text-ink">
-            {row.label}
+            {shownName}
             <ModeBadge mode={modeOf(row)} />
           </p>
-          <p className={`text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>{marketName(row.market) ?? "No market set"}</p>
+          <p className={`text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>
+            {marketName(row.market) ?? "No market set"}
+            {shownName !== row.label && <span className="text-ink-muted"> · InPlayGuru: {row.label}</span>}
+          </p>
+          {info?.description && <p className="mt-1 text-xs text-ink">{info.description}</p>}
         </div>
         {/* The headline is the return on each £1 staked (what decides whether a strategy is worth betting), or the £ total when sorting by it. */}
         {sortBy === "profit" ? (
@@ -230,8 +333,8 @@ function StrategyCard({
         </div>
       )}
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-        {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{row.mergedInto}”</span>}
-        {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.join(", ")}</span>}
+        {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{names.name(row.mergedInto)}”</span>}
+        {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.map(names.name).join(", ")}</span>}
         {row.stake !== null && (
           <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">
             {modeOf(row) === "live" ? "Betting" : "Simulating at"} £{row.stake.toFixed(2)}
@@ -244,6 +347,14 @@ function StrategyCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          aria-expanded={about}
+          onClick={() => setAbout((v) => !v)}
+          className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
+        >
+          {about ? "Close" : "About and rename"}
+        </button>
         {row.mergedInto ? (
           <button
             type="button"
@@ -276,6 +387,8 @@ function StrategyCard({
       </div>
       {row.sendingOn && <p className="mt-1.5 text-xs text-ink-muted">To delete this one, switch it off on the Sending page first.</p>}
 
+      {about && <AboutStrategy label={row.label} />}
+
       {merging && !row.mergedInto && (
         <div className="mt-3 space-y-2 rounded-lg bg-surface-2 p-2.5">
           <label className="block text-xs text-ink-muted">
@@ -288,7 +401,7 @@ function StrategyCard({
               <option value="">Choose a strategy…</option>
               {options.map((o) => (
                 <option key={o.label} value={o.label}>
-                  {o.label}
+                  {names.name(o.label)}
                 </option>
               ))}
             </select>
