@@ -521,7 +521,7 @@ export default function StrategiesPage() {
                 type="button"
                 disabled={picked.size === 0 || bulkBusy}
                 onClick={() => void deleteSelected()}
-                className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-danger-ink disabled:opacity-40"
               >
                 {bulkBusy ? "Deleting…" : `Delete ${picked.size || ""} selected`.replace("  ", " ")}
               </button>

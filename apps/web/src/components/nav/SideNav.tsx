@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Lock, LogIn } from "lucide-react";
@@ -26,8 +27,10 @@ export default function SideNav() {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line bg-surface lg:flex">
       <div className="px-5 pb-4 pt-5">
-        <p className="text-base font-semibold tracking-tight text-ink">Goal Brewing Alerts</p>
-        <p className="text-xs text-ink-muted">Live football alerts</p>
+        {/* The GoalBrew logo, 28px tall; the light file has the deeper amber for light backgrounds. */}
+        <Image unoptimized priority src="/brand/goalbrew-logo-dark.svg" alt="GoalBrew" width={168} height={28} className="h-7 w-auto [[data-theme=light]_&]:hidden" />
+        <Image unoptimized src="/brand/goalbrew-logo-light.svg" alt="GoalBrew" width={168} height={28} className="hidden h-7 w-auto [[data-theme=light]_&]:block" />
+        <p className="mt-1.5 text-xs text-ink-muted">Live football alerts</p>
       </div>
 
       <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3">

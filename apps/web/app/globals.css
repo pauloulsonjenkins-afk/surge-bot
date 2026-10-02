@@ -3,6 +3,8 @@
 @tailwind utilities;
 
 /*
+ * GoalBrew brand colours (the GoalBrew design system's tokens.json: dark default, light "day").
+ *
  * Tokens grounded in the subject: a live odds/trading shell. The accent is
  * an amber, closer to a dot-matrix sportsbook board than a generic
  * acid-green "AI dashboard" glow. Numerals use tabular-nums throughout so
@@ -10,31 +12,33 @@
  *
  * Colour roles — each colour has one job:
  *   accent       "tap this" and "this is selected" only
- *   hit / loss   a winning / losing pick or amount (loss is a cool red, well away from the amber)
+ *   hit / loss   a winning / losing pick or amount (loss is the brand's "danger", always shown with a sign or a word)
  *   warn         something needs attention: a missing setting, a flag, a stopped strategy
- *   destructive  error messages and buttons that delete or remove
+ *   destructive  error messages and buttons that delete or remove (same colour as loss; text on it is danger-ink)
  *   chart        the data colour for single-series charts and bars (a calm blue, so charts don't compete with actions)
  *   series-1..4  categorical colours for charts with up to four lines (Horses: NAP, Next best, 3rd, 4th), always in this
  *                order. Checked for colour-blind separation on both surfaces; in light mode 3 and 4 are below 3:1 on the
  *                card, so charts using them also carry a legend, end labels and a table.
  *   On/off switches and "Sending on" use hit green: they report a state, they aren't a call to action.
  *
- * Cards are lifted a clear step above the page, so their borders can stay faint.
+ * Cards sit a small step above the page; their 1px line border, not a shadow, sets them apart.
  */
 :root {
   --app: #0e1116;
-  --surface: #171c24;
-  --surface-2: #1f252f;
-  --line: #262d38;
+  --surface: #12161d;
+  --surface-2: #171c25;
+  --line: #242a33;
   --ink: #e7e9ec;
-  --ink-muted: #939bab;
+  --ink-muted: #8b93a1;
   --accent: #e8a33d;
+  --accent-hover: #f2b65c;
   --accent-ink: #17110a;
   --hit: #3fbf8f;
-  --loss: #ef5f78;
+  --loss: #e8613d;
   --warn: #e6cf4f;
   --warn-ink: #1a1605;
-  --destructive: #e5484d;
+  --destructive: #e8613d;
+  --danger-ink: #1c0a05;
   --chart: #7aa7f5;
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -54,16 +58,18 @@
   --app: #f3f0e8;
   --surface: #fffefb;
   --surface-2: #efeadf;
-  --line: #e2dccf;
+  --line: #ded8ca;
   --ink: #1c1f26;
-  --ink-muted: #666b76;
-  --accent: #a86200;
+  --ink-muted: #61666f;
+  --accent: #985800;
+  --accent-hover: #7f4800;
   --accent-ink: #fffdf8;
   --hit: #0c6f4d;
-  --loss: #b8203f;
+  --loss: #b83a17;
   --warn: #7d6400;
   --warn-ink: #fffdf8;
-  --destructive: #c42b2f;
+  --destructive: #b83a17;
+  --danger-ink: #fffdf8;
   --chart: #2d62c4;
   --series-1: #2a78d6;
   --series-2: #eb6834;
@@ -74,4 +80,10 @@
 
 body {
   font-feature-settings: "tnum" 1;
+}
+
+/* Keyboard focus: a 2px ring in the accent, set off from the page by a 2px gap (the brand's focus-ring). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

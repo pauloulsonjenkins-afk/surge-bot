@@ -87,7 +87,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
 const TONE_BUTTON: Record<NonNullable<ConfirmOptions["tone"]>, string> = {
   default: "bg-accent text-accent-ink",
   money: "bg-hit text-app",
-  danger: "bg-destructive text-white",
+  danger: "bg-destructive text-danger-ink",
 };
 
 /** The box itself. Rendered by DialogProvider; pages use useDialog() rather than this directly. */

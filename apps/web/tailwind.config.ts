@@ -20,12 +20,14 @@ const TOKENS = [
   "ink",
   "ink-muted",
   "accent",
+  "accent-hover",
   "accent-ink",
   "hit",
   "loss",
   "warn",
   "warn-ink",
   "destructive",
+  "danger-ink",
   "chart",
 ] as const;
 
@@ -38,16 +40,23 @@ export default {
       colors: Object.fromEntries(TOKENS.map((t) => [t, token(t)])) as unknown as Record<string, string>,
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        // Archivo, used wide (font-stretch 112-115%) for page titles and key numbers.
+        display: ["var(--font-display)", "Helvetica Neue", "Arial", "sans-serif"],
+      },
+      // Buttons, inputs and list rows: the brand's radius-md (8px). Chips and cards keep their own.
+      borderRadius: {
+        md: "0.5rem",
       },
       /*
        * The type scale. Nothing goes below text-xs (12px).
-       *   page title     text-2xl font-semibold  (24px)
+       *   page title     text-title font-display font-bold, 115% wide (28px)
        *   section title  text-base font-semibold (16px)
        *   body           text-sm                 (14px)
        *   meta           text-xs                 (12px)
-       *   key numbers    text-stat font-semibold (28px), money and hit rate alike
+       *   key numbers    text-stat font-display font-bold, 112% wide (28px), money and hit rate alike
        */
       fontSize: {
+        title: ["1.75rem", { lineHeight: "2rem", letterSpacing: "-0.01em" }],
         stat: ["1.75rem", { lineHeight: "2.125rem", letterSpacing: "-0.01em" }],
       },
     },
