@@ -6,9 +6,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
+import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { matchBets } from "../src/betfair/reconcile";
-import { listUnplaced, notifyUnplaced } from "../src/betfair/unplaced";
+import { fixAndResend, listUnplaced, notifyUnplaced } from "../src/betfair/unplaced";
 
 const S = "Time to fight";
 const KEY = S.toLowerCase();
@@ -65,4 +65,58 @@ test("each unplaced pick is notified once, and old ones never", async () => {
   const much = old.later(45 * 60_000);
   assert.equal(await notifyUnplaced(old.db, much.toISOString(), much), 0, "sent too long ago to notify");
   assert.equal(listUnplaced(old.db, much.toISOString(), much).length, 3, "but still listed");
+});
+
+test("a cleared pick leaves the list and isn't notified about, the others stay", async () => {
+  const { db, sent, later } = setup();
+  const now = later(4 * 60_000);
+  assert.equal(db.clearUnplaced([sent[0]!.id, sent[1]!.id], now.toISOString()), 2);
+  // Clearing again changes nothing.
+  assert.equal(db.clearUnplaced([sent[0]!.id], now.toISOString()), 0);
+  assert.deepEqual(listUnplaced(db, now.toISOString(), now).map((u) => u.id), [sent[2]!.id]);
+  assert.equal(await notifyUnplaced(db, now.toISOString(), now), 1);
+});
+
+test("the feed sends Betfair's own event name once the match is found, and waits briefly for that check", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 100 });
+  const at = new Date(Date.now() - 5_000);
+  db.upsertLivePick("chat", 1, alert(1), parseAlert(alert(1)), at.toISOString());
+  const id = db.listLivePicks(5)[0]!.id;
+  // Not checked yet: held back for now, sent anyway once the wait is over.
+  assert.equal(buildFeed(db, { markSent: false, holdForExchangeMs: 45_000 }).rows.length, 0);
+  assert.equal(buildFeed(db, { markSent: false, holdForExchangeMs: 45_000, now: new Date(at.getTime() + 60_000) }).rows.length, 1);
+  // Found on Betfair under a fuller name: that name goes in the feed.
+  db.setPickExchange(id, "on", "Olympique Lyon1 v Nantes1", 1.5, { status: "ok", detail: "" });
+  const rows = buildFeed(db, { markSent: true, holdForExchangeMs: 45_000 }).rows;
+  assert.equal(rows[0]!.eventName, "Olympique Lyon1 v Nantes1");
+});
+
+test("a team Betfair spells differently: Add name & send saves the Match name and re-sends under Betfair's name", () => {
+  const { db, sent, later } = setup();
+  const p = sent[0]!;
+  db.setPickExchange(p.id, "nameDiffers", "Lyon1 v FC Nantes1", null, null);
+  const now = later(4 * 60_000);
+  const listed = listUnplaced(db, now.toISOString(), now).find((u) => u.id === p.id)!;
+  assert.equal(listed.betfairEvent, "Lyon1 v FC Nantes1");
+
+  const r = fixAndResend(db, p.id, now);
+  assert.equal(r.sent, true);
+  assert.deepEqual(r.added, ["Nantes1 = FC Nantes1"]);
+  assert.match(getSendingSettings(db).aliases, /Nantes1 = FC Nantes1/);
+  // Re-sent: the feed now serves Betfair's name, and the 3-minute clock starts again.
+  const row = buildFeed(db, { markSent: true }).rows.find((x) => x.pickId === p.id)!;
+  assert.equal(row.eventName, "Lyon1 v FC Nantes1");
+  assert.equal(listUnplaced(db, now.toISOString(), now).some((u) => u.id === p.id), false);
+});
+
+test("a Betfair price below the strategy's minimum odds is given as the reason", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, minOdds: { [KEY]: 1.2 }, dailyCap: 100 });
+  db.upsertLivePick("chat", 1, alert(1), parseAlert(alert(1)), new Date(Date.now() - 10_000).toISOString());
+  const id = db.listLivePicks(5)[0]!.id;
+  db.setPickExchange(id, "on", "Lyon1 v Nantes1", 1.08, { status: "ok", detail: "OVER_UNDER_05 · Over 0.5 Goals" });
+  buildFeed(db, { markSent: true });
+  const now = new Date(Date.now() + 4 * 60_000);
+  assert.match(listUnplaced(db, now.toISOString(), now)[0]!.reason, /price was 1\.08, below this strategy's minimum odds of 1\.20/);
 });

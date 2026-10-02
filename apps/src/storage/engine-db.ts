@@ -369,8 +369,10 @@ export interface LivePick {
    * add a Match name), off (not on the exchange), or null when not checked (no Betfair link, or not yet).
    */
   exchange: "on" | "nameDiffers" | "off" | null;
-  /** The Betfair event name found, for nameDiffers. */
+  /** The Betfair event name found (for "on", Betfair's exact name, which the bet feed sends). */
   exchangeEvent: string | null;
+  /** The Betfair back price of the bet the feed sends, read when the match was checked, or null. */
+  exchangeOdds: number | null;
   /** A bet the admin placed by hand on this pick (logged on Live), or null. */
   manualBet: ManualBet | null;
   /** Whether Betfair had the exact market and selection the feed sends (null = not checked), and what was found. */
@@ -634,6 +636,10 @@ export class EngineDb {
     if (!liveCols.some((c) => c.name === "unplaced_alert_at")) {
       // When the admin was notified that this sent pick had no bet on Betfair 3 minutes on (betfair/unplaced.ts).
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN unplaced_alert_at TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "unplaced_cleared_at")) {
+      // When the admin cleared this pick from the Not placed list on Sending, having looked at it (betfair/unplaced.ts).
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN unplaced_cleared_at TEXT`);
     }
     if (!liveCols.some((c) => c.name === "review_ok_at")) {
       // When the admin accepted a result the alert's own tick disagreed with (Amend results, Needs review).
@@ -933,6 +939,34 @@ export class EngineDb {
     if (ids.length > 0) this.onChange();
   }
 
+  /**
+   * Hands a sent pick over again under a corrected feed row (Betfair's event name), as if sent now: the 3-minute
+   * not-placed check starts again, and it is back on the Not placed list if it still isn't placed.
+   */
+  resendPick(id: number, rowJson: string, at: string): void {
+    this.db
+      .prepare(`UPDATE live_picks SET sent_at = ?, sent_row = ?, exchange = 'on', unplaced_alert_at = NULL, unplaced_cleared_at = NULL WHERE id = ?`)
+      .run(at, rowJson, id);
+    this.onChange();
+  }
+
+  /** The picks the admin has cleared from the Not placed list. */
+  unplacedClearedIds(): Set<number> {
+    const rows = this.db.prepare(`SELECT id FROM live_picks WHERE unplaced_cleared_at IS NOT NULL`).all() as Array<{ id: number }>;
+    return new Set(rows.map((r) => r.id));
+  }
+
+  /** Clears picks from the Not placed list (they stay sent and are settled as usual). Returns how many changed. */
+  clearUnplaced(ids: number[], at: string): number {
+    const stmt = this.db.prepare(`UPDATE live_picks SET unplaced_cleared_at = ? WHERE id = ? AND unplaced_cleared_at IS NULL`);
+    let changed = 0;
+    this.db.transaction(() => {
+      for (const id of ids) changed += stmt.run(at, id).changes;
+    })();
+    if (changed > 0) this.onChange();
+    return changed;
+  }
+
   getLivePick(id: number): LivePick | null {
     const r = this.db.prepare(`SELECT * FROM live_picks WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
     return r ? this.toLivePick(r) : null;
@@ -981,6 +1015,7 @@ export class EngineDb {
       sentRowJson: (r.sent_row as string | null) ?? null,
       exchange: r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off" ? r.exchange : null,
       exchangeEvent: (r.exchange_event as string | null) ?? null,
+      exchangeOdds: typeof r.exchange_odds === "number" && r.exchange_odds > 1 ? r.exchange_odds : null,
       manualBet: parseManualBet(r.manual_bet),
       marketCheck: r.market_check === "ok" || r.market_check === "noMarket" || r.market_check === "noSelection" ? r.market_check : null,
       marketCheckDetail: (r.market_check_detail as string | null) ?? null,

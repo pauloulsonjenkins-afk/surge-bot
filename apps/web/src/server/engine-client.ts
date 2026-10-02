@@ -1209,6 +1209,8 @@ export interface UnplacedPick {
   reason: string;
   /** When the admin was notified, or null. */
   alertedAt: string | null;
+  /** Betfair's name for the match when only a team's spelling differs: the pick can then be fixed and re-sent. */
+  betfairEvent: string | null;
 }
 
 export interface UnplacedReport {
@@ -1220,6 +1222,16 @@ export interface UnplacedReport {
 
 export function fetchUnplaced(): Promise<UnplacedReport> {
   return engineCall("/internal/betfair/unplaced", "picks not placed");
+}
+
+/** Adds Betfair's team spelling to Match names and sends a Not placed pick again under Betfair's event name. */
+export function fixUnplaced(id: number): Promise<{ ok: true; added: string[]; sent: boolean; message: string }> {
+  return engineCall("/internal/betfair/unplaced/fix", "fixing the pick", { method: "POST", body: { id } });
+}
+
+/** Clears reviewed picks from the Not placed list. */
+export function clearUnplaced(ids: number[]): Promise<{ ok: true; cleared: number }> {
+  return engineCall("/internal/betfair/unplaced/clear", "clearing picks not placed", { method: "POST", body: { ids } });
 }
 
 export interface PushState {

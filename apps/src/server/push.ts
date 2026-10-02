@@ -69,6 +69,8 @@ export interface PushMessage {
   url?: string;
   /** Notifications with the same tag replace each other instead of stacking. */
   tag?: string;
+  /** A Not placed pick whose team Betfair spells differently: the notification offers "Add name & send" for it. */
+  fixPickId?: number;
 }
 
 /**

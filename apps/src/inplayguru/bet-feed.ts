@@ -444,7 +444,7 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
  * real feed) newly included picks are stamped as sent; with false (the admin
  * preview) nothing is changed.
  */
-export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date }): FeedResult {
+export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; holdForExchangeMs?: number }): FeedResult {
   const now = opts.now ?? new Date();
   const settings = getSendingSettings(db);
   const empty = (blockedReason: string | null): FeedResult => ({
@@ -517,6 +517,15 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
 
     const alreadySent = p.sentAt !== null;
 
+    // A new pick waits (briefly) for its Betfair match check, so it goes out under Betfair's own event name: the
+    // betting software finds the match by that name, and a team spelt differently means no bet. The row is frozen
+    // once sent, so it can't be corrected later. Past the wait it goes anyway, under the alert's names.
+    const hold = opts.holdForExchangeMs ?? 0;
+    if (!alreadySent && hold > 0 && p.exchange === null && now.getTime() - alertTime(p) < hold) {
+      skipped.push(skip(p, "Finding the match on Betfair (a few seconds)."));
+      continue;
+    }
+
     // Stop loss: no NEW picks once a strategy has hit its limit today. Rows already handed over
     // are repeated above and are never affected.
     if (!alreadySent) {
@@ -556,7 +565,8 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date })
       provider: providerName(p.strategy),
       marketType: market.marketType,
       selectionName: market.selectionName,
-      eventName: `${alias(p.home)} v ${alias(p.away)}`,
+      // Betfair's exact event name when both teams were found there; otherwise the alert's names (with Match names).
+      eventName: p.exchange === "on" && p.exchangeEvent ? p.exchangeEvent : `${alias(p.home)} v ${alias(p.away)}`,
       betType: "BACK",
       stake,
       minPrice: settings.minOdds[label.toLowerCase()] ?? null,

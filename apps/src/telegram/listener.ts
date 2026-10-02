@@ -33,6 +33,7 @@ import type { EngineDb } from "../storage/engine-db";
 import { handleVerifiedPick } from "../inplayguru/receiver";
 import { isRealAlert, parseAlert } from "../inplayguru/parse-alert";
 import { recordSimBets } from "../inplayguru/bet-feed";
+import { requestExchangeCheck } from "../betfair/exchange";
 import { log } from "../server/log";
 
 const SYNC_EVERY_MS = 2 * 60 * 1000;
@@ -141,6 +142,8 @@ function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boo
     // An alert recovered by the catch-up sync is dated when it was posted, so a late recovery lands on the right day.
     const what = db.upsertLivePick(m.chatKey, m.messageId, m.text, parsed, messageAt, how === "sync" ? messageAt : undefined);
     status.lastAlertAt = new Date().toISOString();
+    // Find the match on Betfair now, so the bet feed can send Betfair's own event name.
+    requestExchangeCheck();
     // Record the simulated bet straight away, so it uses the stake and limits in force when the alert arrived.
     try {
       recordSimBets(db);

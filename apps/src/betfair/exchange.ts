@@ -607,6 +607,17 @@ export function getBetfairLinkStatus(): BetfairLinkStatus {
   return { ...status, missing: [...status.missing] };
 }
 
+/** Runs the new-alert match check now (set while the poller runs). */
+let checkNow: (() => void) | null = null;
+
+/**
+ * Looks up a new alert's match on Betfair straight away, rather than at the next 45-second poll, so the bet feed can
+ * send Betfair's own event name (see buildFeed's holdForExchangeMs). Does nothing when the Betfair link isn't set up.
+ */
+export function requestExchangeCheck(): void {
+  checkNow?.();
+}
+
 /** Starts reading bets from Betfair every POLL_MS, if the settings are there. Returns a stop function. */
 export function startBetfairPoller(db: EngineDb): () => void {
   const creds = readCredentials();
@@ -620,6 +631,28 @@ export function startBetfairPoller(db: EngineDb): () => void {
   const exchangeCache: MatchCache = new Map();
   let running = false;
   let competitionsAt = 0;
+  // The match lookup runs from the poll and on demand (requestExchangeCheck), one at a time; a request made while
+  // one is running runs it again afterwards, so a new alert is never left for the next poll.
+  let looking = false;
+  let lookAgain = false;
+  const lookup = async (): Promise<void> => {
+    if (looking) {
+      lookAgain = true;
+      return;
+    }
+    looking = true;
+    try {
+      do {
+        lookAgain = false;
+        await checkNewAlerts(db, reader, exchangeCache).catch((err: unknown) => {
+          log.warn(`Betfair event lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
+      } while (lookAgain);
+    } finally {
+      looking = false;
+    }
+  };
+  checkNow = () => void lookup();
   const tick = async () => {
     if (running) return;
     running = true;
@@ -648,9 +681,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
           .catch((err: unknown) => log.warn(`Betfair competitions list failed: ${err instanceof Error ? err.message : String(err)}`));
       }
       // Then look up any new alerts' matches; a failure here leaves them to try again next time.
-      await checkNewAlerts(db, reader, exchangeCache).catch((err: unknown) => {
-        log.warn(`Betfair event lookup failed: ${err instanceof Error ? err.message : String(err)}`);
-      });
+      await lookup();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Log a new problem once, not every 45 seconds.
@@ -665,7 +696,10 @@ export function startBetfairPoller(db: EngineDb): () => void {
   const timer = setInterval(() => void tick(), POLL_MS);
   timer.unref();
   log.info("Betfair bet check started (read only, every 45 seconds).");
-  return () => clearInterval(timer);
+  return () => {
+    clearInterval(timer);
+    checkNow = null;
+  };
 }
 
 // ---------------------------------------------------------------------------

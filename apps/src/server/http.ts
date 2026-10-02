@@ -34,6 +34,8 @@
  *   GET  /internal/betfair/placements           whether each recently sent pick was placed and matched on Betfair (admin site only)
  *   POST /internal/picks/manual-bet             log (or clear) a bet the admin placed by hand on a pick (admin site only)
  *   GET  /internal/betfair/unplaced             sent picks with no Betfair bet 3 minutes on, last 24 hours (admin site only)
+ *   POST /internal/betfair/unplaced/clear       clear reviewed picks from that list: { ids } (admin site only)
+ *   POST /internal/betfair/unplaced/fix         add Betfair's team spelling to Match names and re-send the pick: { id } (admin site only)
  *   GET  /internal/push                         the push key and how many devices get notifications (admin site only)
  *   POST /internal/push/subscribe|unsubscribe|test  add or remove a device, or send it a test (admin site only)
  *   GET  /internal/picks/discrepancies          results the alert's own tick disagrees with, still to review (admin site only)
@@ -56,7 +58,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { TelegramClient } from "telegram";
 import { parsePickMode, type EngineDb } from "../storage/engine-db";
-import { listUnplaced, UNPLACED_AFTER_MS } from "../betfair/unplaced";
+import { fixAndResend, listUnplaced, UNPLACED_AFTER_MS } from "../betfair/unplaced";
 import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./push";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
@@ -81,6 +83,8 @@ import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
 const FEED_PREFIX = "/feeds/bets/";
+/** How long a new pick waits for its Betfair match check before it is sent anyway (see buildFeed). */
+const EXCHANGE_HOLD_MS = 45_000;
 const BETFAIR_IMPORT_PREFIX = "/imports/betfair/";
 /** A bet history export can run to thousands of rows. */
 const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
@@ -436,7 +440,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
-    if (path === "/internal/betfair/unplaced" || path === "/internal/push" || path.startsWith("/internal/push/")) {
+    if (path === "/internal/betfair/unplaced" || path === "/internal/betfair/unplaced/clear" || path === "/internal/betfair/unplaced/fix" || path === "/internal/push" || path.startsWith("/internal/push/")) {
       if (!process.env.ADMIN_INTERNAL_KEY) {
         send(res, 500, { error: "not_configured" });
         return;
@@ -456,6 +460,29 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       if (req.method === "POST") {
         const body = await readJsonBody(req);
+        if (path === "/internal/betfair/unplaced/fix") {
+          if (!Number.isInteger(body.id)) {
+            send(res, 400, { error: "invalid", message: "No pick given." });
+            return;
+          }
+          try {
+            send(res, 200, { ok: true, ...fixAndResend(db, body.id as number) });
+          } catch (err) {
+            send(res, 400, { error: "invalid", message: err instanceof Error ? err.message : "Couldn't fix that pick." });
+          }
+          return;
+        }
+        if (path === "/internal/betfair/unplaced/clear") {
+          const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is number => Number.isInteger(x)) : [];
+          if (ids.length === 0) {
+            send(res, 400, { error: "invalid", message: "No picks given to clear." });
+            return;
+          }
+          const cleared = db.clearUnplaced(ids, new Date().toISOString());
+          log.info(`Not placed: ${cleared} pick${cleared === 1 ? "" : "s"} cleared by the admin.`);
+          send(res, 200, { ok: true, cleared });
+          return;
+        }
         if (path === "/internal/push/subscribe") {
           const sub = parseSubscription(body.subscription);
           if (!sub) {
@@ -694,7 +721,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       const ua = req.headers["user-agent"];
       noteFeedFetched(Array.isArray(ua) ? ua[0] : ua);
-      const feed = buildFeed(db, { markSent: true });
+      const feed = buildFeed(db, { markSent: true, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0 });
       if (feed.newlySent > 0) {
         log.info(`Bet feed: ${feed.newlySent} new pick(s) handed over (${feed.rows.length} row(s) served).`);
       }
@@ -999,7 +1026,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
       }
       const settings = getSendingSettings(db);
-      const preview = buildFeed(db, { markSent: false });
+      const preview = buildFeed(db, { markSent: false, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0 });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
       const stops = computeStopLoss(db);
       // The same limits run on each strategy's simulated bets: "would have stopped" for Sim strategies.
