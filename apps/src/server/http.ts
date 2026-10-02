@@ -63,6 +63,7 @@ import { parsePickMode, type EngineDb } from "../storage/engine-db";
 import { fixAndResend, listUnplaced, UNPLACED_AFTER_MS } from "../betfair/unplaced";
 import { listStrategyNames, saveStrategyName } from "../inplayguru/strategy-names";
 import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./push";
+import { buildDailySummary } from "./daily-summary";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
 import { verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
@@ -531,7 +532,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           return;
         }
         if (path === "/internal/push/test") {
-          const reached = await sendPush(db, { title: "Notifications are on", body: "You'll get one when a sent pick isn't placed within 3 minutes.", url: "/more/admin/sending", tag: "test" });
+          const reached = await sendPush(db, { title: "Notifications are on", body: "You'll get one when a sent pick isn't placed within 3 minutes, and today's results at 06:50, 14:00, 17:00 and 21:30.", url: "/more/admin/sending", tag: "test" });
+          // And today's summary as it stands, so its look can be checked without waiting for the next one.
+          await sendPush(db, { ...buildDailySummary(db), url: "/dashboard", tag: "summary-test" });
           send(res, 200, { reached });
           return;
         }

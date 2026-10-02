@@ -127,7 +127,7 @@ export function NotificationsCard() {
   return (
     <Card
       title="Notifications"
-      subtitle="A notification when a sent pick has no bet on Betfair 3 minutes later, so a betting software problem is caught on the first pick."
+      subtitle="A notification when a sent pick has no bet on Betfair 3 minutes later, so a betting software problem is caught on the first pick, and today's results so far at 06:50, 14:00, 17:00 and 21:30. Send a test to see both."
     >
       <p className="text-xs text-ink-muted">
         {device === "checking" && "Checking this device…"}

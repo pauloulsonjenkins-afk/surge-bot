@@ -16,6 +16,7 @@ import { startTelegramListener, stopTelegramListener } from "../telegram/listene
 import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 import { recordSimBets } from "../inplayguru/bet-feed";
+import { startDailySummary } from "./daily-summary";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -76,6 +77,9 @@ async function main(): Promise<void> {
 
   // Reads your bets from Betfair (read only) so the site knows within a minute whether a sent pick was placed.
   startBetfairPoller(db);
+
+  // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
+  startDailySummary(db);
 
   const server = createEngineHttpServer(env, db, backups);
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));
