@@ -7,8 +7,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Goal Brewing Alerts",
-    short_name: "Goal Brewing",
+    name: "GoalBrew",
+    short_name: "GoalBrew",
     description: "Live in-play football alerts.",
     start_url: "/",
     scope: "/",

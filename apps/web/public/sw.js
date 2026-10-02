@@ -5,10 +5,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "Goal Brewing Alerts", body: event.data ? event.data.text() : "" };
+    data = { title: "GoalBrew", body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || "Goal Brewing Alerts", {
+    self.registration.showNotification(data.title || "GoalBrew", {
       body: data.body || "",
       tag: data.tag,
       renotify: Boolean(data.tag),

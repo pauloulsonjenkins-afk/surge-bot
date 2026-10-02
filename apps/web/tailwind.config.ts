@@ -49,7 +49,7 @@ export default {
       },
       /*
        * The type scale. Nothing goes below text-xs (12px).
-       *   page title     text-2xl font-semibold (24px) on phones; from lg, text-title font-display font-bold, 115% wide (28px)
+       *   page title     text-title font-display font-bold, 115% wide (28px)
        *   section title  text-base font-semibold (16px)
        *   body           text-sm                 (14px)
        *   meta           text-xs                 (12px)

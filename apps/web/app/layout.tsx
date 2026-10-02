@@ -13,11 +13,11 @@ const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-san
 const archivo = Archivo({ subsets: ["latin"], display: "swap", variable: "--font-display", axes: ["wdth"] });
 
 export const metadata: Metadata = {
-  title: "Goal Brewing Alerts",
+  title: "GoalBrew",
   description: "Live in-play football alerts.",
-  applicationName: "Goal Brewing Alerts",
+  applicationName: "GoalBrew",
   // Opened from the home screen, iOS shows it full screen under a black status bar (not see-through, so nothing hides behind the notch).
-  appleWebApp: { capable: true, title: "Goal Brewing", statusBarStyle: "black" },
+  appleWebApp: { capable: true, title: "GoalBrew", statusBarStyle: "black" },
   icons: {
     icon: [
       { url: "/icons/favicon.svg", type: "image/svg+xml" },
