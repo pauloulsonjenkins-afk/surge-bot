@@ -1508,10 +1508,14 @@ export class EngineDb {
     if (changed) this.setSetting(STRATEGY_MERGES_KEY, JSON.stringify(merges));
   }
 
-  /** Every strategy with stored picks, for the admin Strategies page. Ignores the Leagues page's choices. */
-  listStrategiesForAdmin(): AdminStrategyRow[] {
+  /**
+   * Every strategy with stored picks, for the admin Strategies page. Ignores the Leagues page's choices. With `sinceIso`,
+   * alerts and results count only from then (the page's 1D / 7D / 30D / YTD); the strategy list itself is unchanged.
+   */
+  listStrategiesForAdmin(sinceIso: string | null = null): AdminStrategyRow[] {
     const merges = this.readStrategyMerges();
-    const floor = this.getFreshStart();
+    const fresh = this.getFreshStart();
+    const floor = fresh !== null && sinceIso !== null ? (fresh > sinceIso ? fresh : sinceIso) : (fresh ?? sinceIso);
     const rows = this.db
       .prepare(
         `SELECT strategy, market, excluded, sent_at, first_seen_at, COALESCE(result_override, result) AS result,

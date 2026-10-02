@@ -10,10 +10,12 @@ async function isAdmin(): Promise<boolean> {
   return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const raw = new URL(request.url).searchParams.get("since");
+  const since = raw && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : null;
   try {
-    return NextResponse.json(await fetchAdminStrategies());
+    return NextResponse.json(await fetchAdminStrategies(since));
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
   }

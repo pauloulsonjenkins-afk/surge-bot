@@ -49,7 +49,13 @@ export function HeroRow({
 
   const secondary = [
     `${formatNumber(totals.alerts)} alerts`,
-    `${formatNumber(totals.pending)} awaiting result`,
+    totals.pending > 0 ? (
+      <Link key="pending" href="/live" className="underline hover:text-ink">
+        {formatNumber(totals.pending)} awaiting result
+      </Link>
+    ) : (
+      "0 awaiting result"
+    ),
     totals.needsReview > 0 ? `${totals.needsReview} need review` : null,
   ].filter(Boolean);
 
@@ -92,7 +98,14 @@ export function HeroRow({
         )}
       </div>
       <HitRateContextRow stats={stats} />
-      <p className="text-xs text-ink-muted">{secondary.join(" · ")}</p>
+      <p className="text-xs text-ink-muted">
+        {secondary.map((s, i) => (
+          <span key={i}>
+            {i > 0 && " · "}
+            {s}
+          </span>
+        ))}
+      </p>
     </section>
   );
 }

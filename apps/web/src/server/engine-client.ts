@@ -898,7 +898,8 @@ async function freshStartRequest(method: "GET" | "POST", body?: { start: boolean
   }
 }
 
-export async function fetchAdminStrategies(): Promise<AdminStrategies> {
+/** Every strategy; with `since` (an ISO date), hits, misses and returns count only picks from then on. */
+export async function fetchAdminStrategies(since: string | null = null): Promise<AdminStrategies> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -907,7 +908,7 @@ export async function fetchAdminStrategies(): Promise<AdminStrategies> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(`${baseUrl}/internal/strategies`, {
+    const res = await fetch(`${baseUrl}/internal/strategies${since ? `?since=${encodeURIComponent(since)}` : ""}`, {
       headers: { Authorization: `Bearer ${internalKey}` },
       cache: "no-store",
       signal: controller.signal,

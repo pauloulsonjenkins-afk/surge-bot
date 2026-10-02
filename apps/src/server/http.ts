@@ -17,7 +17,7 @@
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
  *   /internal/users/*                           website user sign-up, sign-in and page access (admin site only; see users-routes.ts)
- *   GET  /internal/strategies                   every strategy with its counts, switch, stake and merge (admin site only)
+ *   GET  /internal/strategies[?since=ISO]       every strategy with its counts, switch, stake and merge, counted from `since` (admin site only)
  *   GET  /internal/strategies/equity?label=X    one strategy's running profit pick by pick, with drawdown and losing runs (admin site only)
  *   POST /internal/strategies/ignore            stop or start ignoring a strategy's new alerts (admin site only)
  *   POST /internal/strategies/merge             report one strategy under another's name, or undo that (admin site only)
@@ -888,10 +888,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const settings = getSendingSettings(db);
-      const returns = computeStrategyReturns(db);
+      const sinceParam = new URL(rawUrl, "http://internal").searchParams.get("since");
+      const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
+      const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
+      const returns = computeStrategyReturns(db, since);
       send(res, 200, {
         ignored: Object.values(db.getIgnoredStrategies()).sort(),
-        strategies: db.listStrategiesForAdmin().map((x) => ({
+        since,
+        strategies: db.listStrategiesForAdmin(since).map((x) => ({
           ...x,
           returns: returns[x.label.toLowerCase()] ?? null,
           sendingOn: settings.strategies[x.label.toLowerCase()] === true,

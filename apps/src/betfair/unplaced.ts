@@ -120,7 +120,8 @@ export async function notifyUnplaced(db: EngineDb, lastOkAt: string | null, now 
           body: `No bet on Betfair 3 minutes after sending: ${fresh.map((u) => `${displayName(db, u.strategy)} (${u.match})`).join("; ")}.`,
         };
   log.info(`Not placed after 3 minutes: ${fresh.map((u) => `pick ${u.id} ${u.strategy} ${u.match}`).join("; ")}`);
-  await sendPush(db, { ...message, url: "/more/admin/sending", tag: "unplaced" });
+  // A tag of its own, so a newer notification stacks under this one instead of replacing it on the phone.
+  await sendPush(db, { ...message, url: "/more/admin/sending", tag: `unplaced-${first.id}` });
   return fresh.length;
 }
 

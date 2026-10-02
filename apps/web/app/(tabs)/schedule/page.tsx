@@ -23,6 +23,10 @@ function kickoffTime(f: ScheduleFixture): string {
   return ukTime.format(new Date(f.timestamp * 1000));
 }
 
+// A game counts as in play for this long after kick-off: 90 minutes, half-time and stoppage time. The list has no live
+// scores, so "in play" is worked out from the kick-off time.
+const IN_PLAY_SEC = 115 * 60;
+
 type Phase = "upcoming" | "started" | "finished" | "postponed" | "cancelled" | "tbc";
 
 function phaseOf(f: ScheduleFixture, nowSec: number): Phase {
@@ -113,7 +117,8 @@ export default function SchedulePage() {
       const p = phaseOf(f, nowSec);
       return p === "postponed" || p === "cancelled";
     }).length;
-    return { games: all.length, leagues: leagues.size, countries: countries.size, toStart: toStart.length, next, off };
+    const inPlay = all.filter((f) => phaseOf(f, nowSec) === "started" && nowSec - f.timestamp < IN_PLAY_SEC).length;
+    return { games: all.length, leagues: leagues.size, countries: countries.size, toStart: toStart.length, inPlay, next, off };
   }, [all, nowSec]);
 
   const query = search.trim().toLowerCase();
@@ -203,6 +208,14 @@ export default function SchedulePage() {
               <span className="text-ink-muted"> · </span>
               <span className="font-semibold tabular-nums">{summary.toStart}</span> to start
               <span className="text-ink-muted"> · </span>
+              {summary.inPlay > 0 && (
+                <>
+                  <span className="text-hit" title="Kicked off in the last 115 minutes (worked out from kick-off times, not live scores)">
+                    ~<span className="font-semibold tabular-nums">{summary.inPlay}</span> in play now
+                  </span>
+                  <span className="text-ink-muted"> · </span>
+                </>
+              )}
               {summary.next ? (
                 <>
                   next <span className="font-semibold tabular-nums">{kickoffTime(summary.next)}</span>{" "}

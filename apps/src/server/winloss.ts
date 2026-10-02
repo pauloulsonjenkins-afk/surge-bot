@@ -507,12 +507,13 @@ export function pricingInputs(db: EngineDb) {
 
 /**
  * Live, Sim and All returns for every strategy (keyed by lower-case name), for the Strategies page. Worked out pick by
- * pick exactly as Win/Loss does, so the two always agree. Merged strategies are not combined here.
+ * pick exactly as Win/Loss does, so the two always agree. Merged strategies are not combined here. With `sinceIso`, only
+ * picks from then on count.
  */
-export function computeStrategyReturns(db: EngineDb): Record<string, { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }> {
+export function computeStrategyReturns(db: EngineDb, sinceIso: string | null = null): Record<string, { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }> {
   const { commission, price } = pricingInputs(db);
   const tallies = new Map<string, { live: ReturnTally; sim: ReturnTally; all: ReturnTally }>();
-  for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z")) {
+  for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
     const { key, priced, odds } = price(r);
     let t = tallies.get(key);
     if (!t) tallies.set(key, (t = { live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) }));

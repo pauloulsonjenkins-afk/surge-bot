@@ -8,11 +8,15 @@ export type { AdminStrategies, AdminStrategy, RemoveStrategyResult, StrategyEqui
 
 const KEY = ["admin-strategies"];
 
-export function useAdminStrategies() {
+/** Every strategy; with `since` (an ISO date), its figures count only picks from then on. */
+export function useAdminStrategies(since: string | null = null) {
   return useQuery({
-    queryKey: KEY,
-    queryFn: ({ signal }) => getJson<AdminStrategies>("/api/admin/strategies", "the strategies", signal),
+    queryKey: [...KEY, since],
+    queryFn: ({ signal }) =>
+      getJson<AdminStrategies>(`/api/admin/strategies${since ? `?since=${encodeURIComponent(since)}` : ""}`, "the strategies", signal),
     staleTime: 0,
+    // Switching period keeps the cards on screen until the new figures arrive.
+    placeholderData: (previous) => previous,
   });
 }
 

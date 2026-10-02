@@ -1,6 +1,6 @@
 "use client";
 
-import { PageHeader } from "@/components/ui/Card";
+import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
 import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
 import { useFreshStart } from "@/queries/use-fresh-start";
@@ -45,6 +45,25 @@ function returnsFor(row: AdminStrategy, mode: "all" | "live" | "sim") {
   const staked = r.live.staked + r.sim.staked;
   const profit = r.live.profit + r.sim.profit;
   return { settled: r.live.settled + r.sim.settled, counted: r.live.counted + r.sim.counted, staked, profit, roi: staked > 0 ? profit / staked : null };
+}
+
+type Period = "1D" | "7D" | "30D" | "YTD" | "ALL";
+
+const PERIODS: { value: Period; label: string }[] = [
+  { value: "1D", label: "1D" },
+  { value: "7D", label: "7D" },
+  { value: "30D", label: "30D" },
+  { value: "YTD", label: "YTD" },
+  { value: "ALL", label: "All" },
+];
+
+/** Where a period starts: the last 24 hours / 7 / 30 days (as on the Dashboard), or 1 January UK time for YTD. */
+function periodStart(period: Period): string | null {
+  if (period === "ALL") return null;
+  if (period === "YTD") return new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1)).toISOString(); // UK is on GMT in January
+  const days = period === "1D" ? 1 : period === "7D" ? 7 : 30;
+  // Whole minutes, so the request stays the same while the page is open.
+  return new Date(Math.floor((Date.now() - days * 86_400_000) / 60_000) * 60_000).toISOString();
 }
 
 type SortBy = "roi" | "profit" | "hitRate";
@@ -429,7 +448,9 @@ function StrategyCard({
 }
 
 export default function StrategiesPage() {
-  const { data, isLoading, error } = useAdminStrategies();
+  const [period, setPeriod] = useState<Period>("ALL");
+  const since = useMemo(() => periodStart(period), [period]);
+  const { data, isLoading, error, isPlaceholderData } = useAdminStrategies(since);
   const merge = useMergeStrategy();
   const remove = useDeleteStrategyFlow();
   const ignore = useIgnoreStrategy();
@@ -570,6 +591,7 @@ export default function StrategiesPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3">
+        <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />
         <ModeToggle />
         <div className="flex items-center gap-2 text-xs text-ink-muted">
           Sort by
@@ -588,6 +610,14 @@ export default function StrategiesPage() {
           </div>
         </div>
       </div>
+
+      {period !== "ALL" && (
+        <p className={`text-xs text-ink-muted ${isPlaceholderData ? "animate-pulse" : ""}`}>
+          {period === "YTD" ? "Since 1 January" : `Last ${period === "1D" ? "24 hours" : period === "7D" ? "7 days" : "30 days"}`}: hit rate, return and
+          profit count only alerts from this period. Go Live / back to Sim suggestions need {SAMPLE} priced picks in the period, so
+          short periods show figures without them. The profit curve is always all time.
+        </p>
+      )}
 
       {data && strategies.length > 0 && (
         <div className="space-y-2">
