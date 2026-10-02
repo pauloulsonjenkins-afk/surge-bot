@@ -135,3 +135,11 @@ test("a welcome message that got stored as a pick can be deleted like any strate
   assert.equal(db.listStrategiesForAdmin().some((r) => r.label === label), false);
   assert.equal(db.hitRateStats(null).totals.alerts, 0);
 });
+
+test("Favourite pressure 2nd half is a next-goal bet", () => {
+  const text = ["🔔 Favourite pressure 2nd half", "", "🇫🇷 France Ligue 1", "Lens vs Lille", "", "Timer: 58'", "Goals: 0 - 0", "Over/Under 0.50 Odds:", "1.55 2.40"].join("\n");
+  const p = parseAlert(text);
+  assert.equal(p.market, "NEXT_GOAL");
+  assert.equal(p.targetLine, 0.5);
+  assert.equal(p.sendable, true);
+});

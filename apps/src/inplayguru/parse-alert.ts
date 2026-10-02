@@ -111,6 +111,9 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /pass master 1st half/, market: "FAVOURITE_TO_SCORE" },
   // InPlayGuru strategies defined as "Over 0.5 Goals Since Picked (Next goal)" (checked on its Strategies page, 1 Oct 2026).
   { test: /home pressure/, market: "NEXT_GOAL" },
+  // "Favourite pressure 2nd half" (added 2 Oct 2026): Pass Master's favourite-dominance signal at 50-70', with the score
+  // level or the favourite a goal behind, backed as the next goal while it is still priced around 1.5+.
+  { test: /favou?rite pressure/, market: "NEXT_GOAL" },
   { test: /late goal hunter/, market: "NEXT_GOAL" },
   // "Over 1.5 Goals / Early Goal": Over 1.5 goals in the match, a fixed line.
   { test: /over 1\.5 goals/, market: "OVER_1_5" },
