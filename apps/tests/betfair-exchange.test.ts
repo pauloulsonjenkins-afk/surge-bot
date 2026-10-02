@@ -147,6 +147,11 @@ test("a league marked 'don't send' is recorded but never sent, and the Leagues p
   assert.match(feed.skipped[0]!.reason, /not on Betfair/);
 
   db.updateLeague(pick.leagueKey, { noSend: false });
+  // Sent by league again, but this match itself wasn't on Betfair, so it still isn't sent; once found, it is.
+  const again = buildFeed(db, { markSent: false, now });
+  assert.equal(again.rows.length, 0);
+  assert.match(again.skipped[0]!.reason, /Not on Betfair: the match wasn't found/);
+  db.setPickExchange(pick.id, "on", "Lyon v Nantes", null, null, "E1");
   assert.equal(buildFeed(db, { markSent: false, now }).rows.length, 1);
 });
 

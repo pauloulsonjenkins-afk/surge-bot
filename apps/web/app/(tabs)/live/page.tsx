@@ -138,6 +138,17 @@ function ExchangeChip({ pick }: { pick: LivePick }) {
       </span>
     );
   }
+  // On Betfair: its price for the bet as sent, so a price under the strategy's minimum odds is easy to spot.
+  if (pick.exchange === "on" && pick.exchangeOdds != null) {
+    return (
+      <span
+        title="Betfair's back price for the bet as sent: read when the alert arrived, and again while a pick waits for its minimum odds."
+        className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium tabular-nums text-ink-muted"
+      >
+        Betfair {pick.exchangeOdds.toFixed(2)}
+      </span>
+    );
+  }
   if (pick.exchange === "nameDiffers") {
     return (
       <span title={`Betfair lists it as “${pick.exchangeEvent ?? "?"}”. Add the team’s Betfair name under Match names on the Sending page.`} className="shrink-0 rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn">

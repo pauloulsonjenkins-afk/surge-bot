@@ -525,6 +525,11 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       skipped.push(skip(p, "Finding the match on Betfair (a few seconds)."));
       continue;
     }
+    // Not on Betfair: the betting software can't find it either, so it isn't sent (and doesn't use up the daily limit).
+    if (!alreadySent && p.exchange === "off") {
+      skipped.push(skip(p, "Not on Betfair: the match wasn't found there."));
+      continue;
+    }
 
     // Stop loss: no NEW picks once a strategy has hit its limit today. Rows already handed over
     // are repeated above and are never affected.
@@ -545,6 +550,13 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     const stake = settings.stakes[label.toLowerCase()];
     if (stake === undefined) {
       skipped.push(skip(p, "No stake set for this strategy."));
+      continue;
+    }
+    // Betfair's price below the strategy's minimum odds: the betting software would turn it down. Held, and the price
+    // is read again each Betfair poll (betfair/exchange.ts repriceHeld); it goes out once the price reaches the minimum.
+    const minPrice = settings.minOdds[label.toLowerCase()] ?? null;
+    if (!alreadySent && minPrice !== null && p.exchangeOdds !== null && p.exchangeOdds < minPrice) {
+      skipped.push(skip(p, `Betfair price ${p.exchangeOdds.toFixed(2)} is below the minimum odds ${minPrice.toFixed(2)}: waiting for it to rise.`));
       continue;
     }
     if (stake > settings.maxStake) {
@@ -569,7 +581,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       eventName: p.exchange === "on" && p.exchangeEvent ? p.exchangeEvent : `${alias(p.home)} v ${alias(p.away)}`,
       betType: "BACK",
       stake,
-      minPrice: settings.minOdds[label.toLowerCase()] ?? null,
+      minPrice,
     };
     rows.push(row);
     if (!alreadySent) toMark.push({ id: p.id, rowJson: JSON.stringify(row) });

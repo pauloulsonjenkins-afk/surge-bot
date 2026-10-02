@@ -24,7 +24,7 @@
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
 import { eventScore, matchBets } from "./reconcile";
-import { exchangeNamer, feedMarket, getSendingSettings, kickoffAt } from "../inplayguru/bet-feed";
+import { betableUntil, exchangeNamer, feedMarket, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 import { notifyUnplaced, UNPLACED_AFTER_MS } from "./unplaced";
 
@@ -545,7 +545,7 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
         }
       }
     }
-    db.setPickExchange(p.id, found.result, found.event, odds, check);
+    db.setPickExchange(p.id, found.result, found.event, odds, check, found.eventId);
     // Favourite to score again ("Pass Master 1st half"): note the favourite's goal markets on offer (to choose the codes),
     // and if they aren't set yet, find the favourite's goals market by name to price the pick anyway.
     if (pick?.market === "FAVOURITE_TO_SCORE" && found.eventId && pick.detail?.favourite) {
@@ -561,7 +561,7 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
       const hit = odds === null && line !== null ? teamGoalsRunner(markets, team, line) : null;
       if (hit) {
         odds = await reader.priceOf(hit.market.marketId, hit.selectionId).catch(() => null);
-        if (odds !== null) db.setPickExchange(p.id, found.result, found.event, odds, check);
+        if (odds !== null) db.setPickExchange(p.id, found.result, found.event, odds, check, found.eventId);
       }
     }
     // First Half Corner Race: note the corner markets on offer (to choose its market code), and if its code isn't set
@@ -577,10 +577,39 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
       const hit = odds === null && line !== null ? firstHalfCornersRunner(markets, line) : null;
       if (hit) {
         odds = await reader.priceOf(hit.market.marketId, hit.selectionId).catch(() => null);
-        if (odds !== null) db.setPickExchange(p.id, found.result, found.event, odds);
+        if (odds !== null) db.setPickExchange(p.id, found.result, found.event, odds, check, found.eventId);
       }
     }
     if (found.result === "off") log.info(`Not on Betfair: ${home} v ${away} (pick ${p.id}).`);
+  }
+}
+
+/** How many held picks have their price read again per poll. */
+const REPRICE_PER_POLL = 10;
+
+/**
+ * Picks held back because Betfair's price was below their strategy's minimum odds (see buildFeed): reads the price
+ * again, so a pick goes out as soon as its price reaches the minimum, while its match can still be bet.
+ */
+async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<void> {
+  const settings = getSendingSettings(db);
+  if (!settings.enabled) return;
+  const namer = exchangeNamer(db);
+  const now = Date.now();
+  const held = db
+    .listLivePicks(200)
+    .filter((p) => {
+      if (p.sentAt !== null || p.status !== "captured" || p.excluded || p.exchange !== "on" || !p.exchangeEventId || p.exchangeOdds === null) return false;
+      const key = strategyLabel(p.strategy).toLowerCase();
+      const min = settings.minOdds[key];
+      return settings.strategies[key] === true && min !== undefined && p.exchangeOdds < min && now <= betableUntil(p, settings.maxAgeMinutes);
+    })
+    .slice(0, REPRICE_PER_POLL);
+  for (const p of held) {
+    const market = feedMarket(p, settings, namer);
+    if ("error" in market) continue;
+    const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName).catch(() => null);
+    if (bet?.price != null && bet.price !== p.exchangeOdds) db.setPickExchangeOdds(p.id, bet.price);
   }
 }
 
@@ -682,6 +711,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
       }
       // Then look up any new alerts' matches; a failure here leaves them to try again next time.
       await lookup();
+      // And read again the price of picks waiting for it to reach their minimum odds.
+      await repriceHeld(db, reader).catch((err: unknown) => log.warn(`Betfair re-pricing failed: ${err instanceof Error ? err.message : String(err)}`));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Log a new problem once, not every 45 seconds.

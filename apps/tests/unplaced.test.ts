@@ -115,10 +115,14 @@ test("a Betfair price below the strategy's minimum odds is given as the reason",
   saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, minOdds: { [KEY]: 1.2 }, dailyCap: 100 });
   db.upsertLivePick("chat", 1, alert(1), parseAlert(alert(1)), new Date(Date.now() - 10_000).toISOString());
   const id = db.listLivePicks(5)[0]!.id;
-  db.setPickExchange(id, "on", "Lyon1 v Nantes1", 1.08, { status: "ok", detail: "OVER_UNDER_05 · Over 0.5 Goals" });
+  // Sent before the Betfair check came back (the wait ran out); the check then found a price under the minimum.
   buildFeed(db, { markSent: true });
+  db.setPickExchange(id, "on", "Lyon1 v Nantes1", 1.08, { status: "ok", detail: "OVER_UNDER_05 · Over 0.5 Goals" });
   const now = new Date(Date.now() + 4 * 60_000);
-  assert.match(listUnplaced(db, now.toISOString(), now)[0]!.reason, /price was 1\.08, below this strategy's minimum odds of 1\.20/);
+  const listed = listUnplaced(db, now.toISOString(), now)[0]!;
+  assert.match(listed.reason, /price was 1\.08, below this strategy's minimum odds of 1\.20/);
+  assert.equal(listed.price, 1.08);
+  assert.equal(listed.minPrice, 1.2);
 });
 
 test("the notification shows the score, shots/on target, corners and a momentum bar", () => {
@@ -136,4 +140,22 @@ test("the notification shows the score, shots/on target, corners and a momentum 
     "Corners 1–4 · Dangerous attacks 36–53",
     "Momentum ██░░░░░░░░ 20–80",
   ]);
+});
+
+test("a match not on Betfair isn't sent, and a price under the minimum odds waits until it rises", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, minOdds: { [KEY]: 1.2 }, dailyCap: 100 });
+  for (const n of [1, 2]) db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), new Date(Date.now() - 10_000).toISOString());
+  const [b, a] = db.listLivePicks(5);
+  db.setPickExchange(a!.id, "off", null);
+  db.setPickExchange(b!.id, "on", "Lyon2 v Nantes2", 1.1, { status: "ok", detail: "" }, "E2");
+  let feed = buildFeed(db, { markSent: true });
+  assert.equal(feed.rows.length, 0);
+  assert.match(feed.skipped.find((s) => s.pickId === a!.id)!.reason, /Not on Betfair/);
+  assert.match(feed.skipped.find((s) => s.pickId === b!.id)!.reason, /price 1\.10 is below the minimum odds 1\.20/);
+  // The price is read again and has reached the minimum: it goes out.
+  db.setPickExchangeOdds(b!.id, 1.25);
+  feed = buildFeed(db, { markSent: true });
+  assert.deepEqual(feed.rows.map((r) => r.pickId), [b!.id]);
+  assert.equal(db.getLivePick(b!.id)!.exchangeEventId, "E2");
 });

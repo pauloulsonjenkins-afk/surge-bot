@@ -66,6 +66,8 @@ export interface LivePick {
   marketCheckDetail?: string | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
   exchangeEvent?: string | null;
+  /** Betfair's back price for the bet the feed sends, read when the match was checked (admin only). */
+  exchangeOdds?: number | null;
   chatId: string;
   messageId: number;
   firstSeenAt: string;
@@ -142,6 +144,8 @@ export interface PublicPick {
   exchange?: "on" | "nameDiffers" | "off" | null;
   /** The Betfair event found when a team is spelled differently there. */
   exchangeEvent?: string | null;
+  /** Betfair's back price for the bet the feed sends, read when the match was checked. */
+  exchangeOdds?: number | null;
   /** Whether Betfair had the exact market and selection the feed sends, and what was found (admin only). */
   marketCheck?: "ok" | "noMarket" | "noSelection" | null;
   marketCheckDetail?: string | null;
@@ -179,6 +183,7 @@ export function toPublicPick(p: LivePick): PublicPick {
     sentAt: p.sentAt,
     exchange: p.exchange ?? null,
     exchangeEvent: p.exchangeEvent ?? null,
+    exchangeOdds: p.exchangeOdds ?? null,
     marketCheck: p.marketCheck ?? null,
     marketCheckDetail: p.marketCheckDetail ?? null,
     flags: p.flags,
@@ -1211,6 +1216,9 @@ export interface UnplacedPick {
   alertedAt: string | null;
   /** Betfair's name for the match when only a team's spelling differs: the pick can then be fixed and re-sent. */
   betfairEvent: string | null;
+  /** Betfair's back price for the bet as sent, and the minimum odds sent with it. Missing on an older engine. */
+  price?: number | null;
+  minPrice?: number | null;
 }
 
 export interface UnplacedReport {

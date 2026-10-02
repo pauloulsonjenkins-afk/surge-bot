@@ -371,8 +371,10 @@ export interface LivePick {
   exchange: "on" | "nameDiffers" | "off" | null;
   /** The Betfair event name found (for "on", Betfair's exact name, which the bet feed sends). */
   exchangeEvent: string | null;
-  /** The Betfair back price of the bet the feed sends, read when the match was checked, or null. */
+  /** The Betfair back price of the bet the feed sends, read when the match was checked (and again while held), or null. */
   exchangeOdds: number | null;
+  /** Betfair's id for the match found, or null. */
+  exchangeEventId: string | null;
   /** A bet the admin placed by hand on this pick (logged on Live), or null. */
   manualBet: ManualBet | null;
   /** Whether Betfair had the exact market and selection the feed sends (null = not checked), and what was found. */
@@ -653,6 +655,10 @@ export class EngineDb {
     if (!liveCols.some((c) => c.name === "exchange_odds")) {
       // The Betfair back price of the bet the feed would send, read when the alert arrived (betfair/exchange.ts).
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_odds REAL`);
+    }
+    if (!liveCols.some((c) => c.name === "exchange_event_id")) {
+      // Betfair's id for the match found, so the price can be read again while a pick waits for it to rise.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_event_id TEXT`);
     }
     const betCols = this.db.prepare(`PRAGMA table_info(betfair_bets)`).all() as Array<{ name: string }>;
     if (!betCols.some((c) => c.name === "acknowledged_at")) {
@@ -1016,6 +1022,7 @@ export class EngineDb {
       exchange: r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off" ? r.exchange : null,
       exchangeEvent: (r.exchange_event as string | null) ?? null,
       exchangeOdds: typeof r.exchange_odds === "number" && r.exchange_odds > 1 ? r.exchange_odds : null,
+      exchangeEventId: (r.exchange_event_id as string | null) ?? null,
       manualBet: parseManualBet(r.manual_bet),
       marketCheck: r.market_check === "ok" || r.market_check === "noMarket" || r.market_check === "noSelection" ? r.market_check : null,
       marketCheckDetail: (r.market_check_detail as string | null) ?? null,
@@ -1321,10 +1328,17 @@ export class EngineDb {
     event: string | null,
     odds: number | null = null,
     check: { status: string; detail: string } | null = null,
+    eventId: string | null = null,
   ): void {
     this.db
-      .prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ?, exchange_odds = ?, market_check = ?, market_check_detail = ? WHERE id = ?`)
-      .run(result, event, odds, check?.status ?? null, check?.detail ?? null, id);
+      .prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ?, exchange_odds = ?, market_check = ?, market_check_detail = ?, exchange_event_id = ? WHERE id = ?`)
+      .run(result, event, odds, check?.status ?? null, check?.detail ?? null, eventId, id);
+    this.onChange();
+  }
+
+  /** A fresh Betfair price for a pick waiting for its price to reach the strategy's minimum odds. */
+  setPickExchangeOdds(id: number, odds: number): void {
+    this.db.prepare(`UPDATE live_picks SET exchange_odds = ? WHERE id = ?`).run(odds, id);
     this.onChange();
   }
 

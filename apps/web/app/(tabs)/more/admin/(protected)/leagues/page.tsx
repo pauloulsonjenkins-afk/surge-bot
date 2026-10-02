@@ -212,6 +212,12 @@ function LeagueCard({
 
 const offFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
+/** Looked up on Betfair at least 3 times and never found there (not even with a team spelt differently). */
+function neverOnBetfair(r: AdminLeagueRow): boolean {
+  const ex = r.exchange;
+  return !!ex && ex.off >= 3 && ex.on === 0 && ex.nameDiffers === 0;
+}
+
 /**
  * Leagues whose alerts' matches weren't on Betfair when they arrived (looked up by the engine; see betfair/exchange.ts),
  * worst first. "Don't send" keeps recording their alerts but never hands them to the betting software, and Live tags
@@ -222,16 +228,30 @@ function NotOnBetfair({ rows, busy, onChange }: { rows: AdminLeagueRow[]; busy: 
     .filter((r) => (r.exchange?.off ?? 0) > 0 || r.noSend)
     .sort((a, b) => (b.exchange?.off ?? 0) - (a.exchange?.off ?? 0) || a.league.localeCompare(b.league));
   const anyChecked = rows.some((r) => (r.exchange?.checked ?? 0) > 0);
+  // Suggested: looked up at least 3 times and never once found on Betfair, still being sent.
+  const suggested = list.filter((r) => !r.noSend && neverOnBetfair(r));
   if (rows.length > 0 && rows[0]!.exchange === undefined) return null; // older engine
   return (
     <section className="space-y-2 rounded-xl border border-line bg-surface p-3.5">
-      <div>
-        <h3 className="text-sm font-medium text-ink">Not on Betfair ({list.length})</h3>
-        <p className="mt-0.5 text-xs text-ink-muted">
-          {anyChecked
-            ? "Leagues whose matches weren’t on the exchange when the alert arrived. “Don’t send” keeps recording their alerts but never sends them to your betting software, and Live tags new ones “Not on exchange”."
-            : "Each new alert’s match is looked up on Betfair once the live check is connected (see Reconcile). Leagues whose matches aren’t there will list here."}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-ink">Not on Betfair ({list.length})</h3>
+          <p className="mt-0.5 text-xs text-ink-muted">
+            {anyChecked
+              ? "Leagues whose matches weren’t on the exchange when the alert arrived. A match that isn’t on Betfair is never sent anyway; “Don’t send” also stops the league’s other alerts. Suggested: never found on Betfair in 3 or more alerts."
+              : "Each new alert’s match is looked up on Betfair once the live check is connected (see Reconcile). Leagues whose matches aren’t there will list here."}
+          </p>
+        </div>
+        {suggested.length > 0 && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => suggested.forEach((r) => onChange(r.key, true))}
+            className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
+          >
+            Don’t send {suggested.length} suggested
+          </button>
+        )}
       </div>
       {list.length > 0 && (
         <ul className="divide-y divide-line">
@@ -240,7 +260,10 @@ function NotOnBetfair({ rows, busy, onChange }: { rows: AdminLeagueRow[]; busy: 
             return (
               <li key={r.key} className="flex items-start justify-between gap-3 py-2">
                 <span className="min-w-0">
-                  <span className="block truncate text-sm text-ink">{r.league}</span>
+                  <span className="block truncate text-sm text-ink">
+                    {r.league}
+                    {!r.noSend && neverOnBetfair(r) && <span className="ml-1.5 rounded-full bg-warn/15 px-1.5 py-0.5 text-xs text-warn">Suggested</span>}
+                  </span>
                   <span className="block text-xs text-ink-muted">
                     {[r.country, `${ex.off} of ${ex.checked} alert${ex.checked === 1 ? "" : "s"} not on Betfair`, ex.on > 0 && `${ex.on} were`, ex.lastOffAt && `last ${offFmt.format(new Date(ex.lastOffAt))}`]
                       .filter(Boolean)

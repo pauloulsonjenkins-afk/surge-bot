@@ -57,7 +57,14 @@ export function NotPlacedCard() {
                 {p.match} <span className="font-normal text-ink-muted">· {p.strategy}</span>
               </p>
               <p className="text-xs text-ink-muted">
-                {[p.competition, `sent ${when.format(new Date(p.sentAt))}`, p.alertedAt ? "notified" : null].filter(Boolean).join(" · ")}
+                {[
+                  p.competition,
+                  `sent ${when.format(new Date(p.sentAt))}`,
+                  p.price != null ? `Betfair ${p.price.toFixed(2)}${p.minPrice != null ? ` (min ${p.minPrice.toFixed(2)})` : ""}` : null,
+                  p.alertedAt ? "notified" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
               <p className="mt-0.5 text-xs text-ink">{p.reason}</p>
               {p.betfairEvent && (

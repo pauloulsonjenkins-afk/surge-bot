@@ -27,6 +27,9 @@ export interface UnplacedPick {
   alertedAt: string | null;
   /** Betfair's name for the match when only a team's spelling differs: the pick can then be fixed and re-sent. */
   betfairEvent: string | null;
+  /** Betfair's back price for the bet as sent (read when the match was checked), and the minimum odds sent with it. */
+  price: number | null;
+  minPrice: number | null;
 }
 
 /**
@@ -57,6 +60,8 @@ export function listUnplaced(db: EngineDb, lastOkAt: string | null, now = new Da
       reason: reasonFor(pick.exchange, pick.marketCheck, pick.marketCheckDetail, pick.exchangeOdds, minPriceSent(pick.sentRowJson)),
       alertedAt: alerted.get(p.id) ?? null,
       betfairEvent: pick.exchange === "nameDiffers" && pick.exchangeEvent ? pick.exchangeEvent : null,
+      price: pick.exchangeOdds,
+      minPrice: minPriceSent(pick.sentRowJson),
     });
   }
   return out.sort((a, b) => (a.sentAt < b.sentAt ? 1 : -1));
