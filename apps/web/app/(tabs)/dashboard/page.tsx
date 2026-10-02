@@ -65,7 +65,7 @@ function SimpleBreakdown({ stats, isLoading }: { stats: HitRateStats | undefined
 }
 
 export default function DashboardPage() {
-  const [timeframe, setTimeframe] = useState<Timeframe>("7D");
+  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
   const [strategy, setStrategy] = useState<string | null>(null);
   const mode = usePickMode();
