@@ -8,7 +8,7 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { matchBets } from "../src/betfair/reconcile";
-import { fixAndResend, listUnplaced, notifyUnplaced } from "../src/betfair/unplaced";
+import { fixAndResend, listUnplaced, matchStatsLines, notifyUnplaced, scoreLine } from "../src/betfair/unplaced";
 
 const S = "Time to fight";
 const KEY = S.toLowerCase();
@@ -119,4 +119,21 @@ test("a Betfair price below the strategy's minimum odds is given as the reason",
   buildFeed(db, { markSent: true });
   const now = new Date(Date.now() + 4 * 60_000);
   assert.match(listUnplaced(db, now.toISOString(), now)[0]!.reason, /price was 1\.08, below this strategy's minimum odds of 1\.20/);
+});
+
+test("the notification shows the score, shots/on target, corners and a momentum bar", () => {
+  const text = [
+    "🔔 Time to fight", "", "🇫🇷 France Ligue 1", "Lyon vs Nantes", "", "Timer: 68'", "Goals: 1 - 3", "Corners: 1 - 4",
+    "Momentum: 20 - 80", "Shots On Target: 2 - 4", "Shots Off Target: 0 - 7", "Dangerous Attacks: 36 - 53",
+  ].join("\n");
+  const db = new EngineDb(":memory:", () => {});
+  const at = new Date("2026-10-02T12:00:00Z");
+  db.upsertLivePick("chat", 1, text, parseAlert(text), at.toISOString());
+  const p = db.listLivePicks(5)[0]!;
+  assert.equal(scoreLine(p, new Date(at.getTime() + 3 * 60_000)), " · 1–3 at 68' (now ~71')");
+  assert.deepEqual(matchStatsLines(p), [
+    "Shots/on target: Lyon 2/2 · Nantes 11/4",
+    "Corners 1–4 · Dangerous attacks 36–53",
+    "Momentum ██░░░░░░░░ 20–80",
+  ]);
 });

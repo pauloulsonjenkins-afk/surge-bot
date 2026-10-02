@@ -5,7 +5,7 @@
  * has almost always been turned down: a market type not ticked, a strategy paused, a price rule, or a match it can't
  * find. Listed on the Sending page, and the admin gets one push notification per pick.
  */
-import type { EngineDb } from "../storage/engine-db";
+import type { EngineDb, LivePick } from "../storage/engine-db";
 import { addMatchName, betableUntil, getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { sendPush } from "../server/push";
 import { log } from "../server/log";
@@ -97,11 +97,16 @@ export async function notifyUnplaced(db: EngineDb, lastOkAt: string | null, now 
     now.toISOString(),
   );
   const first = fresh[0]!;
+  const firstPick = db.getLivePick(first.id);
   const message =
     fresh.length === 1
       ? {
           title: `Not placed: ${first.strategy}`,
-          body: `${first.match}: no bet on Betfair 3 minutes after it was sent. ${first.reason}`,
+          body: [
+            `${first.match}${firstPick ? scoreLine(firstPick) : ""}`,
+            ...(firstPick ? matchStatsLines(firstPick) : []),
+            `No bet on Betfair 3 minutes after it was sent. ${first.reason}`,
+          ].join("\n"),
           ...(first.betfairEvent ? { fixPickId: first.id } : {}),
         }
       : {
@@ -146,4 +151,51 @@ export function fixAndResend(db: EngineDb, id: number, now = new Date()): { adde
   db.resendPick(id, JSON.stringify({ ...row, eventName: pick.exchangeEvent }), now.toISOString());
   log.info(`Not placed: pick ${id} re-sent as "${pick.exchangeEvent}"${added.length ? `; Match names added: ${added.join("; ")}` : ""}.`);
   return { added, sent: true, message: `Sent again as "${pick.exchangeEvent}".` };
+}
+
+/**
+ * The score for a notification's first line: " · 1–3 at 68' (now ~71')" for an in-play pick, from the alert (there's
+ * no live score feed, so it is the score when the alert came in). Empty for a pre-match pick.
+ */
+export function scoreLine(p: LivePick, now = new Date()): string {
+  if (p.goalsHome === null || p.goalsAway === null) return "";
+  const score = `${p.goalsHome}–${p.goalsAway}`;
+  if (p.minute === null) return ` · ${score} at alert`;
+  const alertAt = Date.parse(p.messageAt ?? p.firstSeenAt);
+  let est = p.minute + Math.max(0, Math.floor((now.getTime() - alertAt) / 60_000));
+  // Half-time: the clock stops at 45 for about 15 minutes.
+  if (p.minute <= 45 && est > 45) est = Math.max(45, est - 15);
+  const later = est > p.minute && est <= 95 ? ` (now ~${est}')` : "";
+  return ` · ${score} at ${p.minute}'${later}`;
+}
+
+/**
+ * A few match stats from the alert for a notification: shots/on target per team, corners, dangerous attacks and a
+ * momentum bar, e.g. "Shots/on target: Lyon 7/2 · Nantes 11/4". Only the stats the alert carried; none pre-match.
+ */
+export function matchStatsLines(p: LivePick): string[] {
+  const s = p.detail?.stats ?? {};
+  const home = p.home ?? "Home";
+  const away = p.away ?? "Away";
+  const lines: string[] = [];
+  const on = s["Shots On Target"];
+  if (on) {
+    const off = s["Shots Off Target"] ?? [0, 0];
+    const blocked = s["Shots Blocked"] ?? [0, 0];
+    const shots = (i: 0 | 1) => on[i] + off[i] + blocked[i];
+    lines.push(`Shots/on target: ${home} ${shots(0)}/${on[0]} · ${away} ${shots(1)}/${on[1]}`);
+  }
+  const extra = [
+    s["Corners"] ? `Corners ${s["Corners"][0]}–${s["Corners"][1]}` : null,
+    s["Dangerous Attacks"] ? `Dangerous attacks ${s["Dangerous Attacks"][0]}–${s["Dangerous Attacks"][1]}` : null,
+    s["xG"] ? `xG ${s["xG"][0]}–${s["xG"][1]}` : null,
+  ].filter((x): x is string => x !== null);
+  if (extra.length > 0) lines.push(extra.join(" · "));
+  const m = s["Momentum"];
+  if (m && m[0] + m[1] > 0) {
+    const cells = 10;
+    const filled = Math.round((m[0] / (m[0] + m[1])) * cells);
+    lines.push(`Momentum ${"█".repeat(filled)}${"░".repeat(cells - filled)} ${m[0]}–${m[1]}`);
+  }
+  return lines;
 }
