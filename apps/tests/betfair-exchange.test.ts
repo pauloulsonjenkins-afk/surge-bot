@@ -215,4 +215,6 @@ test("only a team's own goals markets are listed for choosing the favourite-to-s
   assert.equal(isTeamGoalsMarket({ code: "FIRST_HALF_GOALS_05" }), false);
   assert.equal(isTeamGoalsMarket({ code: "OVER_UNDER_35" }), false);
   assert.equal(isTeamGoalsMarket({ code: "MATCH_ODDS_AND_OU_25" }), false);
+  assert.equal(isTeamGoalsMarket({ code: "TEAM_A_WIN_TO_NIL" }), false);
+  assert.equal(isTeamGoalsMarket({ code: "TEAM_B_2" }), false);
 });

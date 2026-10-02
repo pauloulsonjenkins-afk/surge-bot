@@ -427,7 +427,7 @@ export function teamMarketsSeen(db: EngineDb): Array<CornerMarket & { seenAt: st
  * team's name also returns its whole-match markets (Over/Under, First Half Goals...), which aren't the team's goals.
  */
 export function isTeamGoalsMarket(m: { code: string | null }): boolean {
-  return /^TEAM_[AB]_/.test(m.code ?? "");
+  return /^TEAM_[AB]_OVER_UNDER_\d+$/.test(m.code ?? "");
 }
 
 function marketsSeen(db: EngineDb, key: string): Array<CornerMarket & { seenAt: string; example: string }> {

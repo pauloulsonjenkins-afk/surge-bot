@@ -403,7 +403,7 @@ export default function ReconcilePage() {
         <CornerMarketsCard
           markets={data.teamMarkets}
           title="Team goal markets on Betfair"
-          subtitle="Seen for the favourite in Pass Master 1st half alerts (favourite to score again). Copy the codes for the favourite's own goals into Sending → Bet wording to send it."
+          subtitle="Seen for the favourite in Pass Master 1st half alerts (favourite to score again). In Sending → Bet wording use TEAM_A_OVER_UNDER_{line10} (home favourite), TEAM_B_OVER_UNDER_{line10} (away) and Over {line} Goals."
         />
       )}
 
