@@ -19,6 +19,9 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
 // An alert that has had no result edited in after this long is treated as
 // finished rather than still in play. Finished picks live on the Trade Log.
 const STILL_LIVE_MS = 3 * 60 * 60 * 1000;
+// Older alerts still without a result are listed under "Waiting for a result" for this long (the Dashboard's 1D),
+// so its "awaiting result" figure can be checked here.
+const WAITING_MS = 24 * 60 * 60 * 1000;
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -377,7 +380,8 @@ function MatchGroup({ picks, admin, placements }: { picks: LivePick[]; admin: bo
 }
 
 export default function LivePage() {
-  const { data, isLoading, error } = useLivePicks(50);
+  // Enough for a busy day: the waiting list goes back 24 hours.
+  const { data, isLoading, error } = useLivePicks(200);
   const admin = useMe().data?.admin === true;
   // Admin only: whether each sent pick was actually placed and matched on Betfair.
   const placements = usePlacements(admin).data?.picks ?? {};
@@ -402,6 +406,12 @@ export default function LivePage() {
   // Grouped by match, in order of each match's newest alert (Map keeps insertion order, and the list is newest first).
   const matches = new Map<string, LivePick[]>();
   for (const p of inPlay) (matches.get(matchKey(p)) ?? matches.set(matchKey(p), []).get(matchKey(p))!).push(p);
+  const waiting = (data ?? []).filter((p) => {
+    const age = now - new Date(p.firstSeenAt).getTime();
+    return p.status !== "settled" && age >= STILL_LIVE_MS && age < WAITING_MS;
+  });
+  const waitingMatches = new Map<string, LivePick[]>();
+  for (const p of waiting) (waitingMatches.get(matchKey(p)) ?? waitingMatches.set(matchKey(p), []).get(matchKey(p))!).push(p);
 
   return (
     <div className="space-y-6 px-4 py-4">
@@ -415,6 +425,25 @@ export default function LivePage() {
             <MatchGroup key={key} picks={picks} admin={admin} placements={placements} />
           ))}
         </ul>
+      )}
+
+      {waiting.length > 0 && (
+        <section id="waiting" aria-labelledby="waiting-title" className="scroll-mt-4 space-y-3">
+          <div>
+            <h2 id="waiting-title" className="text-sm font-semibold text-ink">
+              Waiting for a result <span className="font-normal text-ink-muted">· {waiting.length}</span>
+            </h2>
+            <p className="text-xs text-ink-muted">
+              Alerts from more than 3 hours ago with no result from InPlayGuru yet, usually pre-match alerts or a late result.
+              {admin && " If a match is long over, set its result in Amend results."}
+            </p>
+          </div>
+          <ul className="space-y-3">
+            {[...waitingMatches.entries()].map(([key, picks]) => (
+              <MatchGroup key={key} picks={picks} admin={admin} placements={placements} />
+            ))}
+          </ul>
+        </section>
       )}
 
       <p className="text-center text-xs text-ink-muted">
