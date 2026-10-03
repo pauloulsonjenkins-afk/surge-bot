@@ -118,7 +118,8 @@ test("is the match on Betfair: on, a team spelled differently, or not there", ()
     eventId: null,
   });
   assert.equal(judgeExchange("Lyon", "Nantes", ["Lyon v FC Nantes Atlantique"]).result, "on");
-  assert.deepEqual(judgeExchange("Spurs", "Arsenal", ["Tottenham v Arsenal"]), { result: "nameDiffers", event: "Tottenham v Arsenal", eventId: null });
+  assert.deepEqual(judgeExchange("Spurs", "Arsenal", ["Tottenham v Arsenal"]), { result: "off", event: null, eventId: null }, "a nickname can't be told from another club: add it under Match names");
+  assert.deepEqual(judgeExchange("Arsenal", "Tottenham Hotspur", ["Arsenal v Tottenham"]), { result: "on", event: "Arsenal v Tottenham", eventId: null });
   assert.deepEqual(judgeExchange("Kodagu FC", "Megt Centre", []), { result: "off", event: null, eventId: null });
   assert.equal(searchWord("Wigan Athletic U21"), "Wigan");
   assert.equal(searchWord("FC Kobenhavn"), "Kobenhavn");

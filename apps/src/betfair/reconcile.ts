@@ -364,6 +364,41 @@ function sameTeam(a: string[], b: string[]): boolean {
   return Math.min(x.length, y.length) >= 6 && (x.includes(y) || y.includes(x));
 }
 
+/** Words too common in club names to show two names are the same club. */
+const GENERIC = new Set(["united", "city", "town", "real", "sporting", "athletic", "atletico", "deportivo", "sport", "sports", "union", "racing", "inter", "olympic", "olympique", "dynamo", "dinamo", "royal", "national", "nacional", "university", "universidad", "santa", "saint"]);
+
+/**
+ * A team name written differently but plainly the same club: a shared distinctive word ("Dukla Praha" / "Dukla Prague",
+ * "Bourg-Peronnas" / "Bourg-en-Bresse") or initials ("United Arab Emirates" / "UAE").
+ */
+function closeName(a: string[], b: string[]): boolean {
+  const distinctive = (x: string[]) => x.filter((t) => t.length >= 4 && !GENERIC.has(t));
+  const [da, db] = [distinctive(a), distinctive(b)];
+  if (da.some((t) => db.some((u) => t === u || t.startsWith(u) || u.startsWith(t)))) return true;
+  const initials = (x: string[]) => x.map((t) => t[0]).join("");
+  return (a.length >= 2 && b.includes(initials(a))) || (b.length >= 2 && a.includes(initials(b)));
+}
+
+/** Women's and age-group sides, from the names as written ("(W)", "Women", "U19", "U-21"). */
+function squadOf(event: string): string {
+  const women = /\(w\)|\bwomen\b|\bladies\b|\bfemenil\b|\bfeminin/i.test(event);
+  const age = /\bu-?(1[5-9]|2[0-3])\b/i.exec(event)?.[1] ?? "";
+  return `${women ? "w" : ""}${age}`;
+}
+
+/**
+ * Whether a Betfair event can be the alert's match: the same squad (a women's or U19 match is never the senior one), and
+ * both teams the same club, even where one is spelled differently. eventScore alone counts one shared team, so
+ * "Portugalete v Alaves B" scored the same as "Portugal v Norway".
+ */
+export function couldBeSameMatch(betEvent: string, pickEvent: string): boolean {
+  if (squadOf(betEvent) !== squadOf(pickEvent)) return false;
+  const a = teamsOf(betEvent);
+  const b = teamsOf(pickEvent);
+  if (!a || !b) return false;
+  return (sameTeam(a[0], b[0]) || closeName(a[0], b[0])) && (sameTeam(a[1], b[1]) || closeName(a[1], b[1]));
+}
+
 /** How well a bet's event matches a pick's: 2 = both teams, 1 = one team, 0 = neither. */
 export function eventScore(betEvent: string, pickEvent: string): number {
   const a = teamsOf(betEvent);

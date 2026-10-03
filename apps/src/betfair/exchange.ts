@@ -23,7 +23,7 @@
  */
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
-import { eventScore, matchBets } from "./reconcile";
+import { couldBeSameMatch, eventScore, matchBets } from "./reconcile";
 import { betableUntil, exchangeNamer, feedMarket, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 import { notifyUnplaced, UNPLACED_AFTER_MS } from "./unplaced";
@@ -359,7 +359,10 @@ export function judgeExchange(
   let best: { score: number; name: string; id: string | null } | null = null;
   for (const e of events) {
     const name = typeof e === "string" ? e : e.name;
-    const score = eventScore(name, `${home} v ${away}`);
+    // An event only counts if it can really be this match: the same squad, and the other team the same club when only
+    // one name matches (otherwise "Portugalete v Alaves B" was taken for "Portugal v Norway").
+    const pickEvent = `${home} v ${away}`;
+    const score = couldBeSameMatch(name, pickEvent) ? eventScore(name, pickEvent) : 0;
     if (!best || score > best.score) best = { score, name, id: typeof e === "string" ? null : e.id };
   }
   if (best?.score === 2) return { result: "on", event: best.name, eventId: best.id };
