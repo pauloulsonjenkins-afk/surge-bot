@@ -16,6 +16,7 @@ import { EquityCurve } from "@/components/admin/EquityCurve";
 import { strategyKey, useSaveStrategyName, useStrategyNames } from "@/queries/use-strategy-names";
 import { ChevronDown } from "lucide-react";
 import { BreakevenBar } from "@/components/ui/BreakevenBar";
+import { ukMidnightIso } from "@/lib/uk-time";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -59,11 +60,12 @@ const PERIODS: { value: Period; label: string }[] = [
   { value: "ALL", label: "All" },
 ];
 
-/** Where a period starts: the last 24 hours / 7 / 30 days (as on the Dashboard), or 1 January UK time for YTD. */
+/** Where a period starts: today since UK midnight, 7 / 30 days back (as on the Dashboard), or 1 January UK time for YTD. */
 function periodStart(period: Period): string | null {
   if (period === "ALL") return null;
+  if (period === "1D") return ukMidnightIso();
   if (period === "YTD") return new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1)).toISOString(); // UK is on GMT in January
-  const days = period === "1D" ? 1 : period === "7D" ? 7 : 30;
+  const days = period === "7D" ? 7 : 30;
   // Whole minutes, so the request stays the same while the page is open.
   return new Date(Math.floor((Date.now() - days * 86_400_000) / 60_000) * 60_000).toISOString();
 }
@@ -634,7 +636,7 @@ export default function StrategiesPage() {
 
       {period !== "ALL" && (
         <p className={`text-xs text-ink-muted ${isPlaceholderData ? "animate-pulse" : ""}`}>
-          {period === "YTD" ? "Since 1 January" : `Last ${period === "1D" ? "24 hours" : period === "7D" ? "7 days" : "30 days"}`} only. Figures from
+          {period === "YTD" ? "Since 1 January" : period === "1D" ? "Today (since midnight)" : `Last ${period === "7D" ? "7 days" : "30 days"}`} only. Figures from
           fewer than {SAMPLE} priced picks are faded and get no Live / Sim suggestion; the equity curve is always all time.
         </p>
       )}

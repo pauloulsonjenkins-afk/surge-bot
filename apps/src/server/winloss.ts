@@ -551,6 +551,9 @@ export interface HitRateContext {
   /** Picks that could be priced in £, and the return on each £1 staked on them. */
   counted: number;
   roi: number | null;
+  /** Profit and stakes in £ over those priced picks (admin only, like roi). */
+  profit: number;
+  staked: number;
   /** Of the priced picks, how many were priced at an assumed price (a guess). */
   assumed: number;
 }
@@ -565,7 +568,19 @@ export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: 
     t.add(r, priced, odds);
   }
   const s = t.result();
-  return { settled: s.settled, hits: s.hits, range: s.range, oddsKnown: t.oddsCount, avgOdds: s.avgOdds, breakeven: s.breakeven, counted: s.counted, roi: s.roi, assumed: s.assumed };
+  return {
+    settled: s.settled,
+    hits: s.hits,
+    range: s.range,
+    oddsKnown: t.oddsCount,
+    avgOdds: s.avgOdds,
+    breakeven: s.breakeven,
+    counted: s.counted,
+    roi: s.roi,
+    profit: s.profit,
+    staked: s.staked,
+    assumed: s.assumed,
+  };
 }
 
 /**

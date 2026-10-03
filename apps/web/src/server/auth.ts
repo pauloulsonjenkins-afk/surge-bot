@@ -64,15 +64,20 @@ function fromBase64Url(input: string): Uint8Array {
   return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 }
 
+/**
+ * What a session's signature covers: its expiry and a fingerprint of the current admin password, so changing
+ * ADMIN_PASSWORD signs every device out (the password itself is never in the token).
+ */
+async function signedPart(key: CryptoKey, expiryStr: string): Promise<Uint8Array> {
+  const fingerprint = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`pw:${process.env.ADMIN_PASSWORD ?? ""}`));
+  return new TextEncoder().encode(`${expiryStr}.${toBase64Url(fingerprint).slice(0, 16)}`);
+}
+
 /** Issues a signed session token: "<expiry>.<signature>". */
 export async function createSessionToken(): Promise<string> {
-  const expiry = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+  const expiry = String(Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS);
   const key = await hmacKey(getSecret());
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(String(expiry))
-  );
+  const sig = await crypto.subtle.sign("HMAC", key, (await signedPart(key, expiry)) as BufferSource);
   return `${expiry}.${toBase64Url(sig)}`;
 }
 
@@ -87,12 +92,7 @@ export async function verifySessionToken(token: string | undefined | null): Prom
 
   try {
     const key = await hmacKey(getSecret());
-    return await crypto.subtle.verify(
-      "HMAC",
-      key,
-      fromBase64Url(sigPart) as BufferSource,
-      new TextEncoder().encode(expiryStr)
-    );
+    return await crypto.subtle.verify("HMAC", key, fromBase64Url(sigPart) as BufferSource, (await signedPart(key, expiryStr)) as BufferSource);
   } catch {
     return false;
   }

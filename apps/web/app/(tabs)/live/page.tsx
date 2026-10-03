@@ -319,7 +319,7 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
         </div>
       )}
 
-      {admin && waiting && <WaitingActions pick={pick} placement={placement} />}
+      {admin && waiting && <WaitingActions pick={pick} placement={placement} name={strategyNames.name(pick.strategy)} />}
     </li>
   );
 }
@@ -328,7 +328,9 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
  * Under a pick on "Waiting for a result" (admin): give it the result by hand, which settles it and moves it to the
  * Trade Log, or clear it without one. Where Betfair has already settled the bet, its outcome is shown as the hint.
  */
-function WaitingActions({ pick, placement }: { pick: LivePick; placement?: Placement }) {
+function WaitingActions({ pick, placement, name }: { pick: LivePick; placement?: Placement; name: string }) {
+  // Every waiting row has the same three buttons, so each says which pick it's for (for screen readers).
+  const which = `${name}, ${pick.home ?? "?"} v ${pick.away ?? "?"}`;
   const setResult = useSetPickResult();
   const clear = useClearWaiting();
   const busy = setResult.isPending || clear.isPending;
@@ -337,7 +339,13 @@ function WaitingActions({ pick, placement }: { pick: LivePick; placement?: Place
     return (
       <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 pl-16 text-xs text-ink-muted">
         Cleared without a result.
-        <button type="button" disabled={busy} onClick={() => clear.mutate({ id: pick.id, cleared: false })} className="font-medium text-ink underline disabled:opacity-40">
+        <button
+          type="button"
+          disabled={busy}
+          aria-label={`Put ${which} back on the list`}
+          onClick={() => clear.mutate({ id: pick.id, cleared: false })}
+          className="font-medium text-ink underline disabled:opacity-40"
+        >
           Put it back
         </button>
         {error && <span className="text-destructive">{error.message}</span>}
@@ -353,6 +361,7 @@ function WaitingActions({ pick, placement }: { pick: LivePick; placement?: Place
       <button
         type="button"
         disabled={busy}
+        aria-label={`Mark ${which} as a hit`}
         onClick={() => setResult.mutate({ id: pick.id, result: "hit" })}
         className={`${btn} ${betfair === "hit" ? "bg-hit text-surface" : "border border-line text-hit hover:bg-hit/10"}`}
       >
@@ -361,6 +370,7 @@ function WaitingActions({ pick, placement }: { pick: LivePick; placement?: Place
       <button
         type="button"
         disabled={busy}
+        aria-label={`Mark ${which} as a miss`}
         onClick={() => setResult.mutate({ id: pick.id, result: "miss" })}
         className={`${btn} ${betfair === "miss" ? "bg-loss text-surface" : "border border-line text-loss hover:bg-loss/10"}`}
       >
@@ -370,6 +380,7 @@ function WaitingActions({ pick, placement }: { pick: LivePick; placement?: Place
         type="button"
         disabled={busy}
         title="Take it off this list without a result: it counts as neither a hit nor a miss."
+        aria-label={`Clear ${which} without a result`}
         onClick={() => clear.mutate({ id: pick.id, cleared: true })}
         className={`${btn} ml-auto text-ink-muted hover:bg-surface-2 hover:text-ink`}
       >

@@ -12,15 +12,16 @@ import { usePersistedQuery } from "./persist";
  * If that route is missing or fails, this returns null and the dashboard keeps showing
  * its existing By strategy / By alert minute / By league cards.
  */
-export function usePerformanceCells(days: number | null, mode: PickMode = "all") {
+export function usePerformanceCells(days: number | null, mode: PickMode = "all", since: string | null = null) {
   return usePersistedQuery({
-    queryKey: ["performance", "cells", days, mode],
+    queryKey: ["performance", "cells", since ?? days, mode],
     retry: false,
     staleTime: 0,
     refetchInterval: 30_000,
     queryFn: async ({ signal }): Promise<ResolvedCell[] | null> => {
       const query = new URLSearchParams();
-      if (days) query.set("days", String(days));
+      if (since) query.set("since", since);
+      else if (days) query.set("days", String(days));
       if (mode !== "all") query.set("mode", mode);
       const qs = query.toString();
       const res = await fetch(`/api/performance/breakdown${qs ? `?${qs}` : ""}`, { cache: "no-store", signal });

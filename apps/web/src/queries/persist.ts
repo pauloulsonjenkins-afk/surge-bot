@@ -64,11 +64,16 @@ export function usePersistedQuery<TData>(options: UseQueryOptions<TData, Error, 
   } as UseQueryOptions<TData, Error, TData, QueryKey>);
 }
 
-/** Saves the kept queries' latest figures a couple of seconds after they change. Returns the way to stop. */
+/**
+ * Saves the kept queries' latest figures when the app is put away (another app, another tab, the phone locked) and at
+ * most once a minute while it's open, rather than after every poll: the lists run to a few hundred KB, and writing them
+ * every 15 seconds is noticeable work for a phone. Returns the way to stop.
+ */
 export function keepCache(client: QueryClient): () => void {
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let changed = false;
   const save = () => {
-    timer = null;
+    if (!changed) return;
+    changed = false;
     try {
       const snapshot: Snapshot = { ...read() };
       for (const q of client.getQueryCache().getAll()) {
@@ -86,11 +91,19 @@ export function keepCache(client: QueryClient): () => void {
     }
   };
   const unsubscribe = client.getQueryCache().subscribe((event) => {
-    if (event.type === "updated" && event.action.type === "success" && timer === null) timer = setTimeout(save, 2000);
+    if (event.type === "updated" && event.action.type === "success") changed = true;
   });
+  const onHide = () => {
+    if (document.visibilityState === "hidden") save();
+  };
+  document.addEventListener("visibilitychange", onHide);
+  window.addEventListener("pagehide", save);
+  const timer = setInterval(save, 60_000);
   return () => {
     unsubscribe();
-    if (timer !== null) clearTimeout(timer);
+    document.removeEventListener("visibilitychange", onHide);
+    window.removeEventListener("pagehide", save);
+    clearInterval(timer);
   };
 }
 

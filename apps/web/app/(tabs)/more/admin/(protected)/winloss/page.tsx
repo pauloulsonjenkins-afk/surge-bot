@@ -268,13 +268,12 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
       )}
 
       {/* ---- graphs ---- */}
-      <div role="tablist" aria-label="Graph period" className="inline-flex gap-1 rounded-lg border border-line bg-surface p-1">
+      <div role="group" aria-label="Graph period" className="inline-flex gap-1 rounded-lg border border-line bg-surface p-1">
         {PERIODS.map((p) => (
           <button
             key={p.key}
             type="button"
-            role="tab"
-            aria-selected={period === p.key}
+            aria-pressed={period === p.key}
             onClick={() => setPeriod(p.key)}
             className={`rounded-md px-3 py-1.5 text-xs font-medium ${period === p.key ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"}`}
           >

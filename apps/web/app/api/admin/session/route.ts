@@ -8,13 +8,14 @@ import {
 
 // Small in-memory throttle so a script can't hammer the login route. Resets on deploy/restart,
 // which is fine for a solo-admin gate.
-//  - Per address: 8 tries per 5 minutes.
-//  - Overall: 40 tries per 5 minutes from everyone together, so changing the address a request
-//    claims to come from (a forged X-Forwarded-For header) can't get round the limit.
+//  - Per address: 8 tries per 5 minutes, each failed try after the second waiting longer (up to 5 seconds).
+//  - Overall: 300 tries per 5 minutes from everyone together, so changing the address a request claims to come from
+//    (a forged X-Forwarded-For header) can't get round the limit. It was 40, which let anyone keep the admin locked
+//    out by sending 40 bad tries every 5 minutes.
 const attempts = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 8;
-const MAX_ATTEMPTS_ALL = 40;
+const MAX_ATTEMPTS_ALL = 300;
 let all = { count: 0, resetAt: 0 };
 
 /**
@@ -55,6 +56,9 @@ export async function POST(req: NextRequest) {
       { status: 429 }
     );
   }
+  // Guessing gets slower with every try from the same address (0.25s, 0.5s, 1s… up to 5s), the right password included.
+  const tries = attempts.get(ip)?.count ?? 0;
+  if (tries > 2) await new Promise((r) => setTimeout(r, Math.min(250 * 2 ** (tries - 3), 5000)));
 
   let password: unknown;
   try {

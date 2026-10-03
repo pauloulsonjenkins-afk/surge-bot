@@ -8,7 +8,6 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { gbp } from "@/components/admin/WinLossLines";
 import type { Timeframe } from "./TimeframeToggle";
 import type { PickMode } from "@/server/engine-client";
-import { profitFor, useDashboardWinLoss } from "./WinLossSummary";
 import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
 import { useMe } from "@/queries/use-me";
 import { useSending } from "@/queries/use-sending";
@@ -22,23 +21,25 @@ const TONE = { hit: "text-hit", loss: "text-loss", muted: "text-ink", ink: "text
  *   Admin:    profit is the big number; return, record, hit rate (against break-even) and odds sit underneath, and a
  *             strip above says whether sending is on and what needs looking at.
  *   Everyone: hit rate is the big number (money figures are private).
- * The sentence under the figures leads with the money where it is known, so it can't say "above break-even" while
- * the account is losing.
+ * Every figure here, the profit included, comes from the same picks over the same window (stats.context), so they
+ * always agree; the sentence under them leads with the money, so it can't say "above break-even" while losing.
+ * Calendar figures (this month, this year, after running costs) are on Win/Loss.
  */
+const WINDOW: Record<Timeframe, string> = { "1D": "Today", "7D": "Last 7 days", "30D": "Last 30 days", ALL: "All time" };
+
 export function HeroRow({
   stats,
   isLoading,
   timeframe,
-  strategy,
   mode,
 }: {
   stats: HitRateStats | undefined;
   isLoading: boolean;
   timeframe: Timeframe;
+  /** The strategy the Dashboard is filtered to; the stats passed in are already for it. */
   strategy: string | null;
   mode: PickMode;
 }) {
-  const winLoss = useDashboardWinLoss(mode);
   const admin = useMe().data?.admin === true;
 
   if (isLoading || !stats) return <HeroSkeleton />;
@@ -46,7 +47,8 @@ export function HeroRow({
   const { totals } = stats;
   const c = stats.context;
   const settled = totals.hits + totals.misses;
-  const profit = winLoss.data ? profitFor(winLoss.data, timeframe, strategy) : null;
+  // The money over exactly the picks the figures below count. Null for anyone but the admin (the stats route removes it).
+  const money = c && typeof c.profit === "number" ? { profit: c.profit, staked: c.staked ?? 0 } : null;
   const hitRate = totals.hitRate === null ? "–" : `${totals.hitRate}%`;
   const breakeven = c?.breakeven ?? null;
 
@@ -74,14 +76,14 @@ export function HeroRow({
     <section aria-label="Summary" className="space-y-4">
       {admin && <StatusStrip pending={totals.pending} />}
 
-      {profit ? (
+      {money ? (
         <Hero
-          label={`${mode === "sim" ? "Sim profit" : mode === "live" ? "Live profit" : "Profit"} · ${profit.label}`}
-          value={profit.value === 0 ? "£0.00" : gbp(profit.value)}
-          tone={moneyTone(profit.value)}
+          label={`${mode === "sim" ? "Sim profit" : mode === "live" ? "Live profit" : "Profit"} · ${WINDOW[timeframe]}`}
+          value={money.profit === 0 ? "£0.00" : gbp(money.profit)}
+          tone={moneyTone(money.profit)}
           sub={
             <>
-              {profit.afterCost !== null && <span className="tabular-nums">{gbp(profit.afterCost)} after costs · </span>}
+              {money.staked > 0 && <span className="tabular-nums">{gbp(money.staked, false)} staked · </span>}
               <Link href="/more/admin/winloss" className="underline hover:text-ink">
                 Win/Loss
               </Link>
@@ -98,9 +100,9 @@ export function HeroRow({
       )}
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-        {profit && c?.roi != null && <Figure label="Return per £1" value={roiText(c.roi)} tone={moneyTone(c.roi)} />}
+        {money && c?.roi != null && <Figure label="Return per £1" value={roiText(c.roi)} tone={moneyTone(c.roi)} />}
         <Figure label="Hits – Misses" value={record} />
-        {profit ? (
+        {money ? (
           <Figure
             label="Hit rate"
             value={hitRate}
@@ -112,7 +114,7 @@ export function HeroRow({
         <Figure label="Average odds" value={c?.avgOdds == null ? "–" : c.avgOdds.toFixed(2)} />
       </dl>
 
-      <Verdict stats={stats} money={profit !== null} />
+      <Verdict stats={stats} money={money !== null} />
 
       <p className="text-xs text-ink-muted">
         {secondary.map((s, i) => (
@@ -192,7 +194,7 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
  * how many strategies are Live, sent picks Betfair has no bet for, and picks still waiting for a result.
  */
 function StatusStrip({ pending }: { pending: number }) {
-  const sending = useSending();
+  const sending = useSending(60_000);
   const unplaced = useUnplaced();
   const s = sending.data;
   if (!s) return <Skeleton className="h-8 w-72" />;

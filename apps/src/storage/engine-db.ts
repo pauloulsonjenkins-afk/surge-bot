@@ -675,6 +675,7 @@ export class EngineDb {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_live_picks_first_seen ON live_picks (first_seen_at);
       CREATE INDEX IF NOT EXISTS idx_live_picks_sent_at ON live_picks (sent_at);
+      CREATE INDEX IF NOT EXISTS idx_betfair_bets_pick ON betfair_bets (pick_id, matched);
     `);
   }
 
@@ -1045,8 +1046,8 @@ export class EngineDb {
    * The picks the Dashboard's figures count over the last `days` days: not excluded, in the mode, with hidden or reset
    * leagues left out and, optionally, only one strategy (as reported, after merges).
    */
-  private statsRows(days: number | null, strategy: string | null, mode: PickMode) {
-    const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
+  private statsRows(days: number | null, strategy: string | null, mode: PickMode, sinceIso: string | null = null) {
+    const since = this.floorSince(sinceIso ?? (days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()));
     const allRows = (
       since === null
         ? this.db.prepare(`SELECT id, first_seen_at, strategy, market, competition, minute, country, waiting_cleared_at,
@@ -1083,8 +1084,8 @@ export class EngineDb {
   }
 
   /** Ids of the settled picks hitRateStats counts as hits and misses, so other figures can use exactly the same picks. */
-  statsSettledIds(days: number | null, strategy: string | null = null, mode: PickMode = "all"): Set<number> {
-    return new Set(this.statsRows(days, strategy, mode).filter((r) => r.result === "hit" || r.result === "miss").map((r) => r.id));
+  statsSettledIds(days: number | null, strategy: string | null = null, mode: PickMode = "all", sinceIso: string | null = null): Set<number> {
+    return new Set(this.statsRows(days, strategy, mode, sinceIso).filter((r) => r.result === "hit" || r.result === "miss").map((r) => r.id));
   }
 
   /**
@@ -1092,8 +1093,8 @@ export class EngineDb {
    * league and UK calendar day. A pick counts as a hit or miss only when the
    * alert itself carries a Hit/Miss marker, so nothing here is guessed.
    */
-  hitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all"): HitRateStats {
-    const rows = this.statsRows(days, strategy, mode);
+  hitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all", sinceIso: string | null = null): HitRateStats {
+    const rows = this.statsRows(days, strategy, mode, sinceIso);
     const merges = this.readStrategyMerges();
 
     let hits = 0;
@@ -1172,8 +1173,8 @@ export class EngineDb {
    * parsed one. The country is read from the flag in the stored alert text, so alerts saved
    * before the parser knew about countries are covered too.
    */
-  performanceCells(days: number | null, mode: PickMode = "all"): PerformanceCell[] {
-    const since = this.floorSince(days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
+  performanceCells(days: number | null, mode: PickMode = "all", sinceIso: string | null = null): PerformanceCell[] {
+    const since = this.floorSince(sinceIso ?? (days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()));
     const cols = `first_seen_at, strategy, competition, minute, COALESCE(result_override, result) AS result, country`;
     const rows = (
       since === null
@@ -2169,6 +2170,14 @@ export class EngineDb {
     const floor = this.getFreshStart();
     if (floor === null) return since;
     return since === null || floor > since ? floor : since;
+  }
+
+  /**
+   * Rows written on this connection so far (SQLite's total_changes()). It goes up with every write, whatever made it,
+   * so a figure worked out from the data can be reused for as long as this number stays the same.
+   */
+  changeCount(): number {
+    return (this.db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n;
   }
 
   getSetting(key: string): string | null {

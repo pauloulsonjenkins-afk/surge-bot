@@ -6,13 +6,17 @@ import { usePersistedQuery } from "./persist";
 
 export type { HitRateRow, HitRateStats, StrategyStats };
 
-/** days = null means all time. strategy = null means every strategy. mode = live / sim picks only (admin), or all. */
-export function useHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all") {
+/**
+ * days = null means all time; `since` (an ISO time, e.g. UK midnight for "Today") takes its place when given.
+ * strategy = null means every strategy. mode = live / sim picks only (admin), or all.
+ */
+export function useHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all", since: string | null = null) {
   return usePersistedQuery({
-    queryKey: ["hit-rate-stats", days, strategy, mode],
+    queryKey: ["hit-rate-stats", since ?? days, strategy, mode],
     queryFn: ({ signal }) => {
       const query = new URLSearchParams();
-      if (days) query.set("days", String(days));
+      if (since) query.set("since", since);
+      else if (days) query.set("days", String(days));
       if (strategy) query.set("strategy", strategy);
       if (mode !== "all") query.set("mode", mode);
       const qs = query.toString();

@@ -278,6 +278,9 @@ export interface HitRateContext {
   counted: number;
   /** Return per £1 staked; null for anyone but the admin. */
   roi: number | null;
+  /** Profit and stakes in £ over the priced picks; null for anyone but the admin (missing on an older engine). */
+  profit?: number | null;
+  staked?: number | null;
   /** Of the priced picks, how many were priced at an assumed price (missing on an older engine). */
   assumed?: number;
 }
@@ -292,7 +295,8 @@ export function parsePickMode(v: unknown): PickMode {
   return v === "live" || v === "sim" ? v : "all";
 }
 
-export async function fetchHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all"): Promise<HitRateStats> {
+/** `since` (an ISO time, e.g. UK midnight for "Today") takes the place of `days` when given. */
+export async function fetchHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all", since: string | null = null): Promise<HitRateStats> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -303,7 +307,8 @@ export async function fetchHitRateStats(days: number | null, strategy: string | 
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const query = new URLSearchParams();
-    if (days) query.set("days", String(days));
+    if (since) query.set("since", since);
+    else if (days) query.set("days", String(days));
     if (strategy) query.set("strategy", strategy);
     if (mode !== "all") query.set("mode", mode);
     const qs = query.toString();
@@ -644,7 +649,7 @@ export interface EnginePerformanceCell {
   misses: number;
 }
 
-export async function fetchPerformanceCells(days: number | null, mode: PickMode = "all"): Promise<EnginePerformanceCell[]> {
+export async function fetchPerformanceCells(days: number | null, mode: PickMode = "all", since: string | null = null): Promise<EnginePerformanceCell[]> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) {
@@ -655,7 +660,8 @@ export async function fetchPerformanceCells(days: number | null, mode: PickMode 
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const query = new URLSearchParams();
-    if (days) query.set("days", String(days));
+    if (since) query.set("since", since);
+    else if (days) query.set("days", String(days));
     if (mode !== "all") query.set("mode", mode);
     const qs = query.toString();
     const res = await fetch(`${baseUrl}/internal/performance${qs ? `?${qs}` : ""}`, {

@@ -2,6 +2,7 @@
 
 import { Card, PageHeader, Segmented } from "@/components/ui/Card";
 import { useState } from "react";
+import { ukMidnightIso } from "@/lib/uk-time";
 import Image from "next/image";
 import Link from "next/link";
 import { Lock } from "lucide-react";
@@ -69,13 +70,16 @@ function SimpleBreakdown({ stats, isLoading }: { stats: HitRateStats | undefined
 
 export default function DashboardPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
-  const days = TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null;
+  // 1D is today since UK midnight (as on Win/Loss, the Trade Log and the daily summary); the others count days back.
+  // The same string all day, so the queries keep their key until midnight.
+  const since = timeframe === "1D" ? ukMidnightIso() : null;
+  const days = timeframe === "1D" ? null : (TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null);
   const [strategy, setStrategy] = useState<string | null>(null);
   const strategyNames = useStrategyNames();
   const mode = usePickMode();
   const { data: me } = useMe();
-  const { data, isLoading, error } = useHitRateStats(days, strategy, mode);
-  const performance = usePerformanceCells(days, mode);
+  const { data, isLoading, error } = useHitRateStats(days, strategy, mode, since);
+  const performance = usePerformanceCells(days, mode, since);
   const performanceCells = performance.data ?? [];
 
   return (
@@ -138,7 +142,7 @@ export default function DashboardPage() {
           )}
 
           {performanceCells.length > 0 ? (
-            <PerformanceSection key={`${days ?? "all"}:${mode}`} cells={performanceCells} strategy={strategy} onStrategyChange={setStrategy} />
+            <PerformanceSection key={`${since ?? days ?? "all"}:${mode}`} cells={performanceCells} strategy={strategy} onStrategyChange={setStrategy} />
           ) : (
             <SimpleBreakdown stats={data} isLoading={isLoading} />
           )}

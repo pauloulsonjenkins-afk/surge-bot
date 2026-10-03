@@ -6,12 +6,12 @@
  *   GET  /internal/picks                        recent captured picks (admin site only)
  *   GET  /internal/live[?hours=N|?date=D]       parsed alerts for the Live tab and Results page, optionally for a window (admin site only)
  *   GET  /internal/live/days                    UK days that have picks, with counts, for the Results page (admin site only)
- *   GET  /internal/stats?days=N[&strategy=X]    hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
+ *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
- *   GET  /internal/performance?days=N           totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
+ *   GET  /internal/performance?days=N|since=ISO  totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
@@ -156,6 +156,39 @@ function isAdminAuthorized(req: IncomingMessage): boolean {
 // the live listener connection for the rest of this process's lifetime.
 let activeTelegramClient: TelegramClient | null = null;
 
+/**
+ * The last answer to the same request, reused while nothing in the database has changed (and for at most a minute,
+ * so figures that move with the clock still roll on). The Dashboard, Strategies and Win/Loss poll every 15-30 seconds,
+ * and each answer re-reads every settled pick: between alerts and results the data is the same, so is the answer.
+ */
+const responseMemo = new WeakMap<EngineDb, Map<string, { version: number; at: number; body: Record<string, unknown> }>>();
+const MEMO_MAX_AGE_MS = 60_000;
+
+function memoized(db: EngineDb, key: string, compute: () => Record<string, unknown>): Record<string, unknown> {
+  let byKey = responseMemo.get(db);
+  if (!byKey) responseMemo.set(db, (byKey = new Map()));
+  const version = db.changeCount();
+  const hit = byKey.get(key);
+  if (hit && hit.version === version && Date.now() - hit.at < MEMO_MAX_AGE_MS) return hit.body;
+  const body = compute();
+  byKey.set(key, { version, at: Date.now(), body });
+  // Oldest first out, so a run of different requests can't grow it without limit.
+  if (byKey.size > 100) byKey.delete(byKey.keys().next().value as string);
+  return body;
+}
+
+/** A "since" query value as an ISO time, or null when missing or not a date. */
+function sinceParam(url: URL): string | null {
+  const raw = url.searchParams.get("since");
+  const ms = raw ? Date.parse(raw) : NaN;
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+/** Now minus `days`, to the whole minute, so the same window asked twice within a minute is the same question. */
+function daysBack(days: number): string {
+  return new Date(Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 60_000) * 60_000).toISOString();
+}
+
 export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: BackupScheduler): Server {
   return createServer((req, res) => {
     handle(req, res).catch((err) => {
@@ -224,11 +257,18 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         const now = Date.now();
         range = { from: new Date(now - Math.min(hoursParam, 24 * 31) * 3_600_000).toISOString(), to: new Date(now + 60_000).toISOString() };
       }
-      const picks = db.listLivePicks(limit, range);
-      // Profit per settled pick, for the admin's Trade Log. Worked out exactly as Win/Loss does.
-      const oldest = picks.reduce<string | null>((min, p) => (min === null || p.firstSeenAt < min ? p.firstSeenAt : min), null);
-      const profits = oldest ? computePickProfits(db, oldest) : {};
-      send(res, 200, { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null })) });
+      const window = range ? `${range.from.slice(0, 16)}:${range.to.slice(0, 16)}` : "latest";
+      send(
+        res,
+        200,
+        memoized(db, `live:${limit}:${window}`, () => {
+          const picks = db.listLivePicks(limit, range);
+          // Profit per settled pick, for the admin's Trade Log. Worked out exactly as Win/Loss does.
+          const oldest = picks.reduce<string | null>((min, p) => (min === null || p.firstSeenAt < min ? p.firstSeenAt : min), null);
+          const profits = oldest ? computePickProfits(db, oldest) : {};
+          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null })) };
+        }),
+      );
       return;
     }
 
@@ -260,12 +300,16 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
       const strategy = url.searchParams.get("strategy")?.trim().slice(0, 120) || null;
       const mode = parsePickMode(url.searchParams.get("mode"));
-      const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-      send(res, 200, {
-        ...db.hitRateStats(days, strategy, mode),
-        // The odds, break-even hit rate, range and return that the headline hit rate needs beside it.
-        context: computeHitRateContext(db, db.statsSettledIds(days, strategy, mode), since),
-      });
+      const since = sinceParam(url) ?? (days === null ? null : daysBack(days));
+      send(
+        res,
+        200,
+        memoized(db, `stats:${since}:${strategy ?? ""}:${mode}`, () => ({
+          ...db.hitRateStats(days, strategy, mode, since),
+          // The odds, break-even hit rate, range, return and profit that the headline figures need beside them.
+          context: computeHitRateContext(db, db.statsSettledIds(days, strategy, mode, since), since),
+        })),
+      );
       return;
     }
 
@@ -282,7 +326,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const url = new URL(rawUrl, "http://internal");
       const daysParam = Number(url.searchParams.get("days"));
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
-      send(res, 200, { cells: db.performanceCells(days, parsePickMode(url.searchParams.get("mode"))) });
+      const mode = parsePickMode(url.searchParams.get("mode"));
+      const since = sinceParam(url) ?? (days === null ? null : daysBack(days));
+      send(res, 200, memoized(db, `performance:${since}:${mode}`, () => ({ cells: db.performanceCells(days, mode, since) })));
       return;
     }
 
@@ -786,7 +832,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
       }
       const winLossMode = parsePickMode(new URL(rawUrl, "http://internal").searchParams.get("mode"));
-      send(res, 200, { ...computeWinLoss(db, new Date(), winLossMode) });
+      // The UK day is in the key, so "today" and the month roll over at midnight even with no new data.
+      send(res, 200, memoized(db, `winloss:${winLossMode}:${ukDateOf(new Date())}`, () => ({ ...computeWinLoss(db, new Date(), winLossMode) })));
       return;
     }
 

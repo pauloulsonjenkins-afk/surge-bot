@@ -9,12 +9,13 @@ export type { SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLo
 
 const KEY = ["sending"];
 
-export function useSending() {
+/** Sending settings and the feed preview. The Sending page refreshes every 15 seconds; the Dashboard's strip, which only needs the switch, asks less often. */
+export function useSending(refetchInterval = 15_000) {
   return usePersistedQuery({
     queryKey: KEY,
     queryFn: () => getJson<SendingState>("/api/admin/sending", "sending options"),
     staleTime: 0,
-    refetchInterval: 15_000,
+    refetchInterval,
   });
 }
 

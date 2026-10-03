@@ -362,8 +362,9 @@ function parseAliases(text: string): Map<string, string> {
   return map;
 }
 
+/** One quoted CSV field. Quotes are dropped and line breaks become spaces, so no value can break a row in two. */
 function csvField(v: string): string {
-  return `"${v.replace(/"/g, "")}"`;
+  return `"${v.replace(/"/g, "").replace(/[\r\n]+/g, " ")}"`;
 }
 
 /**

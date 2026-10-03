@@ -106,13 +106,13 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   return (
-    <div role="tablist" aria-label={label} className={`inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5 ${className}`}>
+    // A set of toggle buttons (one pressed), not tabs: they filter what's shown, they don't switch between panels.
+    <div role="group" aria-label={label} className={`inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5 ${className}`}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
-          role="tab"
-          aria-selected={value === o.value}
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             value === o.value ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
