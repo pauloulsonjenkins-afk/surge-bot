@@ -48,14 +48,17 @@ export default {
         md: "0.5rem",
       },
       /*
-       * The type scale. Nothing goes below text-xs (12px).
+       * The type scale. Nothing goes below text-xs (13px).
+       *   hero number    text-hero font-display font-bold, 112% wide (44px): the one figure to read first on a page
        *   page title     text-title font-display font-bold, 115% wide (28px)
+       *   key numbers    text-stat font-display font-bold, 112% wide (28px)
        *   section title  text-base font-semibold (16px)
        *   body           text-sm                 (14px)
-       *   meta           text-xs                 (12px)
-       *   key numbers    text-stat font-display font-bold, 112% wide (28px), money and hit rate alike
+       *   meta           text-xs                 (13px; 12px was too small on a phone for how much of the app it carries)
        */
       fontSize: {
+        xs: ["0.8125rem", { lineHeight: "1.125rem" }],
+        hero: ["2.75rem", { lineHeight: "1", letterSpacing: "-0.02em" }],
         title: ["1.75rem", { lineHeight: "2rem", letterSpacing: "-0.01em" }],
         stat: ["1.75rem", { lineHeight: "2.125rem", letterSpacing: "-0.01em" }],
       },

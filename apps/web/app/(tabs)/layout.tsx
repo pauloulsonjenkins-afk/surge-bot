@@ -20,14 +20,17 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
     }
   }, [pathname, setLastMoreRoute]);
 
-  // Pages full of charts get more room on wide screens; lists and forms read best at a narrower width.
+  // Pages full of charts get more room on wide screens; lists and forms read best at a narrower width. Both start at the
+  // same left edge, so moving between pages doesn't make the content jump sideways.
   const wide = pathname.startsWith("/dashboard") || pathname.startsWith("/more/admin/winloss") || pathname.startsWith("/more/admin/horses");
 
   return (
     <div className="flex min-h-dvh flex-col bg-app text-ink">
       <SideNav />
       <main className="flex-1 overflow-y-auto pb-[calc(64px+env(safe-area-inset-bottom,0px))] lg:pb-10 lg:pl-60">
-        <div className={`mx-auto w-full ${wide ? "max-w-5xl" : "max-w-3xl"} lg:pt-4`}>{children}</div>
+        <div className="mx-auto w-full max-w-5xl lg:pt-4">
+          <div className={wide ? "" : "max-w-3xl"}>{children}</div>
+        </div>
       </main>
       <BottomNav />
     </div>

@@ -12,6 +12,7 @@ import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
+import { Chip, WarnIcon, type ChipTone } from "@/components/ui/Chip";
 import { usePlacements, type Placement } from "@/queries/use-reconcile";
 import { useClearWaiting, useSetManualBet, useSetPickResult } from "@/queries/use-live";
 import { useStrategyNames } from "@/queries/use-strategy-names";
@@ -82,106 +83,82 @@ function matchClock(pick: LivePick, now: number): string | null {
 const money = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}£${Math.abs(n).toFixed(2)}`;
 
 /** The admin's view of a sent pick: what Betfair says happened to it (see pickPlacements in the engine). */
-function placementChip(p: Placement): { label: string; cls: string; title: string } {
+function placementChip(p: Placement): { label: string; tone: ChipTone; title: string } {
   switch (p.state) {
     case "matched":
-      return { label: `Matched £${p.matched.toFixed(2)} @ ${p.odds?.toFixed(2) ?? "–"}`, cls: "bg-hit/15 text-hit", title: "The bet is on Betfair and matched." };
+      return { label: `Matched £${p.matched.toFixed(2)} @ ${p.odds?.toFixed(2) ?? "–"}`, tone: "neutral", title: "The bet is on Betfair and matched." };
     case "won":
-      return { label: `Won ${money(p.profit ?? 0)}`, cls: "bg-hit/15 text-hit", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
+      return { label: `Won ${money(p.profit ?? 0)}`, tone: "hit", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
     case "lost":
-      return { label: `Lost ${money(p.profit ?? 0)}`, cls: "bg-loss/15 text-loss", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
+      return { label: `Lost ${money(p.profit ?? 0)}`, tone: "loss", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
     case "waiting":
-      return { label: "Placed, not matched yet", cls: "bg-warn/15 text-warn", title: "The bet is on Betfair, waiting for someone to match it." };
+      return { label: "Placed, not matched yet", tone: "muted", title: "The bet is on Betfair, waiting for someone to match it." };
     case "lapsed":
-      return { label: "Not matched", cls: "bg-warn/15 text-warn", title: "The bet was placed but lapsed or was cancelled before it matched." };
+      return { label: "Not matched", tone: "warn", title: "The bet was placed but lapsed or was cancelled before it matched." };
     case "notPlaced":
       return {
         label: "Not placed",
-        cls: "bg-loss/15 text-loss",
+        tone: "warn",
         title: "No bet on Betfair 3 minutes after the pick was sent. BF Bot Manager may be off, or turned it down (market types, Time to bet, minimum odds).",
       };
     case "manual":
       return {
         label: `Placed by hand £${p.manual?.stake.toFixed(2) ?? "–"} @ ${p.manual?.odds.toFixed(2) ?? "–"}`,
-        cls: "bg-hit/15 text-hit",
+        tone: "neutral",
         title: "You logged this as placed yourself, so it counts as a live bet.",
       };
     case "beforeKickoff":
       return {
         label: "Sent · until kick-off",
-        cls: "bg-accent/15 text-accent",
+        tone: "muted",
         title: "A pre-match bet: it stays in the feed until kick-off, so your betting software can place it any time before the start.",
       };
     default:
-      return { label: "Sent · checking", cls: "bg-accent/15 text-accent", title: "Sent to your betting software. Checking Betfair for the bet." };
+      return { label: "Sent · checking", tone: "muted", title: "Sent to your betting software. Checking Betfair for the bet." };
   }
 }
 
-/** What Betfair said about the match when the alert arrived; shown to the admin beside the status. */
-function ExchangeChip({ pick }: { pick: LivePick }) {
-  // The match is on Betfair, but not the exact market or selection the feed sends: the betting software can't place it.
+/**
+ * What Betfair said about the match when the alert arrived, when it's a problem (admin): the match isn't there, its
+ * name is spelled differently, or the exact market isn't. Shown as a warning icon on the row and in full when it's opened.
+ */
+function exchangeIssue(pick: LivePick): { label: string; detail: string } | null {
   if (pick.exchange === "on" && (pick.marketCheck === "noMarket" || pick.marketCheck === "noSelection")) {
-    return (
-      <span
-        title={`${pick.marketCheckDetail ?? ""} Fix the market code or selection wording on the Sending page (Bet wording).`}
-        className="shrink-0 rounded-full bg-loss/15 px-2 py-0.5 text-xs font-medium text-loss"
-      >
-        Not on Betfair as sent
-      </span>
-    );
+    return {
+      label: "Not on Betfair as sent",
+      detail: `${pick.marketCheckDetail ?? ""} Fix the market code or selection wording on the Sending page (Bet wording).`.trim(),
+    };
   }
   if (pick.exchange === "off") {
-    return (
-      <span title="This match wasn’t on Betfair when the alert arrived, so no bet can be placed. Mark the league “Don’t send” on the Leagues page." className="shrink-0 rounded-full bg-loss/15 px-2 py-0.5 text-xs font-medium text-loss">
-        Not on exchange
-      </span>
-    );
-  }
-  // On Betfair: its price for the bet as sent, so a price under the strategy's minimum odds is easy to spot.
-  if (pick.exchange === "on" && pick.exchangeOdds != null) {
-    return (
-      <span
-        title="Betfair's back price for the bet as sent: read when the alert arrived, and again while a pick waits for its minimum odds."
-        className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium tabular-nums text-ink-muted"
-      >
-        Betfair {pick.exchangeOdds.toFixed(2)}
-      </span>
-    );
+    return {
+      label: "Not on exchange",
+      detail: "This match wasn’t on Betfair when the alert arrived, so no bet can be placed. Mark the league “Don’t send” on the Leagues page.",
+    };
   }
   if (pick.exchange === "nameDiffers") {
-    return (
-      <span title={`Betfair lists it as “${pick.exchangeEvent ?? "?"}”. Add the team’s Betfair name under Match names on the Sending page.`} className="shrink-0 rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn">
-        Name differs on Betfair
-      </span>
-    );
+    return {
+      label: "Name differs on Betfair",
+      detail: `Betfair lists it as “${pick.exchangeEvent ?? "?"}”. Add the team’s Betfair name under Match names on the Sending page.`,
+    };
   }
   return null;
 }
 
+/** The one status chip on a row. */
 function StatusChip({ pick, admin, placement }: { pick: LivePick; admin: boolean; placement?: Placement }) {
   // The admin sees which picks are only simulated; for everyone else it's just "Captured".
   if (admin && placement && (pick.sentAt || placement.manual)) {
     const c = placementChip(placement);
     return (
-      <span title={c.title} className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${c.cls}`}>
+      <Chip tone={c.tone} title={c.title}>
         {c.label}
-      </span>
+      </Chip>
     );
   }
   if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return <ModeBadge mode="sim" />;
-  let label = "Captured";
-  let cls = "bg-surface-2 text-ink-muted";
-  if (pick.sentAt) {
-    label = "Sent to bet";
-    cls = "bg-accent/15 text-accent";
-  } else if (pick.status === "flagged") {
-    label = "Needs review";
-    cls = "bg-warn/15 text-warn";
-  } else if (pick.status === "unmapped") {
-    label = "Unmapped";
-    cls = "bg-warn/15 text-warn";
-  }
-  return <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
+  if (pick.status === "flagged") return <Chip tone="warn">Needs review</Chip>;
+  if (pick.status === "unmapped") return <Chip tone="warn">Unmapped</Chip>;
+  return <Chip tone="muted">{pick.sentAt ? "Sent to bet" : "Captured"}</Chip>;
 }
 
 /**
@@ -254,6 +231,7 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
   // Pre-match alerts (First Half Goal) arrive before kick-off, so they have no match minute.
   const preMatch = pick.minute === null && pick.market === "FIRST_HALF_GOALS";
   const minute = pick.minute !== null ? `${pick.minute}'` : preMatch ? "Pre" : (pick.timerRaw ?? "–");
+  const issue = exchangeIssue(pick);
 
   return (
     <li>
@@ -271,16 +249,22 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
         </span>
 
         <span className="min-w-0 flex-1">
-          {/* On a phone the chips wrap under the name rather than squeezing it out of sight. */}
+          {/* On a phone the chip wraps under the name rather than squeezing it out of sight. */}
           <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="min-w-0 max-w-full truncate text-sm font-medium text-ink">{strategyNames.name(pick.strategy)}</span>
-            <span className="flex flex-wrap items-center gap-1">
-              {admin && <ExchangeChip pick={pick} />}
+            <span className="flex flex-wrap items-center gap-1.5">
+              {admin && issue && <WarnIcon label={issue.label} detail={issue.detail} />}
               <StatusChip pick={pick} admin={admin} placement={placement} />
             </span>
           </span>
           <span className="mt-1 block truncate text-xs text-ink-muted">
-            {[betText(pick.market, pick.selection) ?? "No market set", `at ${fmtTime(pick.firstSeenAt)}`].join(" · ")}
+            {[
+              betText(pick.market, pick.selection) ?? "No market set",
+              admin && pick.exchange === "on" && pick.exchangeOdds != null ? `Betfair ${pick.exchangeOdds.toFixed(2)}` : null,
+              `at ${fmtTime(pick.firstSeenAt)}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </span>
         </span>
 
@@ -314,6 +298,15 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
                 <li key={f}>{f}</li>
               ))}
             </ul>
+          )}
+
+          {admin && issue && (
+            <p className="flex items-start gap-1.5 text-xs text-warn">
+              <WarnIcon label={issue.label} />
+              <span>
+                <span className="font-medium">{issue.label}.</span> {issue.detail}
+              </span>
+            </p>
           )}
 
           {admin && <ManualBet pick={pick} placement={placement} />}

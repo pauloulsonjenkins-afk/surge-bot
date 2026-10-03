@@ -403,7 +403,7 @@ export default function SendingPage() {
                               save.mutate({ strategies: { [key]: live } });
                             }}
                             className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-default ${
-                              selected ? (live ? "bg-hit text-app" : "bg-surface text-ink shadow-sm") : "text-ink-muted hover:text-ink disabled:opacity-40"
+                              selected ? (live ? "bg-accent text-accent-ink" : "bg-surface text-ink shadow-sm") : "text-ink-muted hover:text-ink disabled:opacity-40"
                             }`}
                           >
                             {live ? "Live" : "Sim"}
@@ -524,7 +524,8 @@ export default function SendingPage() {
               <li key={r.pickId} className="rounded-md bg-surface-2 px-3 py-2 text-xs">
                 <p className="font-medium text-ink">{r.eventName}</p>
                 <p className="text-ink-muted">
-                  {r.provider} · {r.selectionName} · £{r.stake.toFixed(2)}
+                  {strategyNames.name(r.provider)}
+                  {strategyNames.name(r.provider) !== r.provider && <> (sent as “{r.provider}”)</>} · {r.selectionName} · £{r.stake.toFixed(2)}
                   {r.minPrice !== null ? ` · min odds ${r.minPrice.toFixed(2)}` : ""} · <span className="font-mono">{r.marketType}</span>
                 </p>
               </li>

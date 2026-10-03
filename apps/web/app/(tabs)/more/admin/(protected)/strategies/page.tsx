@@ -14,6 +14,8 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
 import { EquityCurve } from "@/components/admin/EquityCurve";
 import { strategyKey, useSaveStrategyName, useStrategyNames } from "@/queries/use-strategy-names";
+import { ChevronDown } from "lucide-react";
+import { BreakevenBar } from "@/components/ui/BreakevenBar";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -255,10 +257,30 @@ function StrategyCard({
   const info = names.info(row.label);
   const shownName = names.name(row.label);
   const [about, setAbout] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const ret = money as StrategyReturn | null;
+  // The headline is the return on each £1 staked (what decides whether a strategy is worth betting), or the £ total
+  // when sorting by it.
+  const headline =
+    sortBy === "profit"
+      ? {
+          value: money && money.staked > 0 ? gbp(money.profit) : "–",
+          tone: roiTone(money && money.staked > 0 ? money.profit : null),
+          sub: money && money.staked > 0 ? `${roiText(money.roi)} return` : "profit",
+        }
+      : {
+          value: roiText(money?.roi ?? null),
+          tone: roiTone(money?.roi ?? null),
+          sub: money && money.staked > 0 ? `${gbp(money.profit)} on ${gbp(money.staked, false)}` : "return per £1",
+        };
+  // Too few priced picks to act on: the figures still show, but faded.
+  const thin = (money?.counted ?? 0) < SAMPLE;
 
   return (
-    <li className={`rounded-xl border bg-surface p-3.5 ${selected ? "border-accent" : "border-line"}`}>
-      <div className="flex items-start justify-between gap-3">
+    <li className={`overflow-hidden rounded-xl border bg-surface ${selected ? "border-accent" : "border-line"}`}>
+      {/* The row to compare by: name, record and hit rate against break-even on the left, the headline figure on the right. */}
+      <div className="flex items-center gap-3 px-3.5 py-3">
         {selecting && (
           <input
             type="checkbox"
@@ -268,179 +290,184 @@ function StrategyCard({
             aria-label={`Select ${shownName}`}
             title={row.sendingOn ? "Switch sending off for this strategy first (Sending page)" : undefined}
             style={{ accentColor: "var(--accent)" }}
-            className="mt-1 h-4 w-4 shrink-0 disabled:opacity-40"
+            className="h-4 w-4 shrink-0 disabled:opacity-40"
           />
         )}
-        <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-2 break-words text-sm font-medium text-ink">
-            {shownName}
-            <ModeBadge mode={modeOf(row)} />
-          </p>
-          <p className={`text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>
-            {marketName(row.market) ?? "No market set"}
-            {shownName !== row.label && <span className="text-ink-muted"> · InPlayGuru: {row.label}</span>}
-          </p>
-          {info?.description && <p className="mt-1 text-xs text-ink">{info.description}</p>}
-        </div>
-        {/* The headline is the return on each £1 staked (what decides whether a strategy is worth betting), or the £ total when sorting by it. */}
-        {sortBy === "profit" ? (
-          <div className="shrink-0 text-right">
-            <p className={`text-xl font-semibold tabular-nums ${roiTone(money && money.staked > 0 ? money.profit : null)}`}>
-              {money && money.staked > 0 ? gbp(money.profit) : "–"}
-            </p>
-            <p className="text-xs text-ink-muted">{money && money.staked > 0 ? `${roiText(money.roi)} on ${gbp(money.staked, false)}` : "profit"}</p>
-          </div>
-        ) : (
-          <div className="shrink-0 text-right">
-            <p className={`text-xl font-semibold tabular-nums ${roiTone(money?.roi ?? null)}`}>{roiText(money?.roi ?? null)}</p>
-            <p className="text-xs text-ink-muted">{money && money.staked > 0 ? `${gbp(money.profit)} on ${gbp(money.staked, false)}` : "return per £1"}</p>
-          </div>
-        )}
+        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+              <span className="min-w-0 break-words">{shownName}</span>
+              <ModeBadge mode={modeOf(row)} />
+            </span>
+            <span className={`mt-0.5 block truncate text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>
+              {[marketName(row.market) ?? "No market set", settled > 0 ? `${hits}–${misses}` : "no results yet", hitRate !== null ? `${hitRate}% hit rate` : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+            <span className="mt-1.5 block max-w-xs">
+              <BreakevenBar hitRate={hitRate} breakeven={ret?.breakeven} range={ret?.range} />
+            </span>
+          </span>
+          <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
+            <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
+            <span className="block text-xs text-ink-muted">{headline.sub}</span>
+            {thin && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} priced</span>}
+          </span>
+          <ChevronDown size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={hitRate === null ? "No settled alerts yet" : `Hit rate ${hitRate}%`}>
-        <div className="h-full rounded-full bg-chart" style={{ width: `${hitRate ?? 0}%` }} />
-      </div>
-      <p className="mt-2 text-xs text-ink-muted">
-        {hitRate === null ? "No results yet" : `${hitRate}% hit rate`} · {hits}–{misses}
-        {pickMode === "all" && ` · ${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"}`}
-        {settled > 0 && settled < SAMPLE ? " · small sample" : ""} · last {lastSeen.format(new Date(row.lastAlertAt))}
-      </p>
-      {money && money.settled > 0 && <OddsContext hitRate={hitRate} money={money} />}
-      {/* Live and simulation side by side, so a strategy's real results can be checked against what it does unbet. */}
-      {(live.settled > 0 || sim.settled > 0) && (
-        <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
-          {(["live", "sim"] as const).map((m) => {
-            const rec = m === "live" ? live : sim;
-            const ret = row.returns?.[m] ?? null;
-            return (
-              <div key={m} className="rounded-md bg-surface-2 px-2.5 py-1.5">
-                <dt className="text-ink-muted">{m === "live" ? "Live" : "Sim"}</dt>
-                <dd className="tabular-nums text-ink">
-                  {rec.settled === 0 ? (
-                    m === "live" ? "No bets yet" : "None"
-                  ) : (
-                    <>
-                      <span className={roiTone(ret?.roi ?? null)}>{roiText(ret?.roi ?? null)}</span>
-                      <span className="text-ink-muted">
-                        {" "}
-                        · {rec.hits}–{rec.misses} · {rec.hitRate}%
-                      </span>
-                    </>
-                  )}
-                </dd>
-              </div>
-            );
-          })}
-        </dl>
-      )}
-      {hint && <p className={`mt-2 text-xs ${hint.tone === "good" ? "text-hit" : "text-warn"}`}>{hint.text}</p>}
-      {money && money.counted > 0 && (
-        <div className="mt-2">
-          <button
-            type="button"
-            aria-expanded={showCurve}
-            onClick={() => setShowCurve((v) => !v)}
-            className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
-          >
-            {showCurve ? "Hide equity curve" : "Equity curve and drawdown"}
-          </button>
-          {showCurve && (
-            <div className="mt-2">
-              <EquityCurve label={row.label} mode={pickMode} />
+      {hint && <p className={`-mt-1 px-3.5 pb-3 text-xs ${hint.tone === "good" ? "text-hit" : "text-warn"}`}>{hint.text}</p>}
+
+      {open && (
+        <div className="space-y-3 border-t border-line px-3.5 py-3">
+          {(info?.description || shownName !== row.label) && (
+            <div className="text-xs">
+              {info?.description && <p className="text-ink">{info.description}</p>}
+              {shownName !== row.label && <p className="mt-0.5 text-ink-muted">InPlayGuru: {row.label}</p>}
             </div>
           )}
-        </div>
-      )}
-      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-        {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{names.name(row.mergedInto)}”</span>}
-        {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.map(names.name).join(", ")}</span>}
-        {row.stake !== null && (
-          <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">
-            {modeOf(row) === "live" ? "Betting" : "Simulating at"} £{row.stake.toFixed(2)}
-          </span>
-        )}
-        {modeOf(row) === "sim" && row.stake === null && (
-          <span className="rounded-full bg-warn/15 px-2 py-0.5 text-warn">No stake: sim profit can’t be worked out</span>
-        )}
-        {row.sent > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">{row.sent} sent to bet</span>}
-      </div>
+          <p className="text-xs text-ink-muted">
+            {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
+            {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
+          </p>
+          {money && money.settled > 0 && <OddsContext hitRate={hitRate} money={money} />}
+          {/* Live and simulation side by side, so a strategy's real results can be checked against what it does unbet. */}
+          {(live.settled > 0 || sim.settled > 0) && (
+            <dl className="grid grid-cols-2 gap-2 text-xs">
+              {(["live", "sim"] as const).map((m) => {
+                const rec = m === "live" ? live : sim;
+                const r = row.returns?.[m] ?? null;
+                return (
+                  <div key={m} className="rounded-md bg-surface-2 px-2.5 py-1.5">
+                    <dt className="text-ink-muted">{m === "live" ? "Live" : "Sim"}</dt>
+                    <dd className="tabular-nums text-ink">
+                      {rec.settled === 0 ? (
+                        m === "live" ? "No bets yet" : "None"
+                      ) : (
+                        <>
+                          <span className={roiTone(r?.roi ?? null)}>{roiText(r?.roi ?? null)}</span>
+                          <span className="text-ink-muted">
+                            {" "}
+                            · {rec.hits}–{rec.misses} · {rec.hitRate}%{r && r.counted < rec.settled ? ` · ${r.counted} priced` : ""}
+                          </span>
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          )}
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{names.name(row.mergedInto)}”</span>}
+            {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.map(names.name).join(", ")}</span>}
+            {row.stake !== null && (
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">
+                {modeOf(row) === "live" ? "Betting" : "Simulating at"} £{row.stake.toFixed(2)}
+              </span>
+            )}
+            {modeOf(row) === "sim" && row.stake === null && (
+              <span className="rounded-full bg-warn/15 px-2 py-0.5 text-warn">No stake: sim profit can’t be worked out</span>
+            )}
+            {row.sent > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">{row.sent} sent to bet</span>}
+          </div>
+          {money && money.counted > 0 && (
+            <div>
+              <button
+                type="button"
+                aria-expanded={showCurve}
+                onClick={() => setShowCurve((v) => !v)}
+                className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
+              >
+                {showCurve ? "Hide equity curve" : "Equity curve and drawdown"}
+              </button>
+              {showCurve && (
+                <div className="mt-2">
+                  <EquityCurve label={row.label} mode={pickMode} />
+                </div>
+              )}
+            </div>
+          )}
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          aria-expanded={about}
-          onClick={() => setAbout((v) => !v)}
-          className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
-        >
-          {about ? "Close" : "About and rename"}
-        </button>
-        {row.mergedInto ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onMerge(null)}
-            className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
-          >
-            Undo merge
-          </button>
-        ) : (
-          options.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
-              onClick={() => setMerging((v) => !v)}
+              aria-expanded={about}
+              onClick={() => setAbout((v) => !v)}
               className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
             >
-              {merging ? "Cancel merge" : "Merge into another…"}
+              {about ? "Close" : "About and rename"}
             </button>
-          )
-        )}
-        <button
-          type="button"
-          disabled={busy || row.sendingOn}
-          onClick={onDelete}
-          title={row.sendingOn ? "Switch sending off for this strategy first (Sending page)" : undefined}
-          className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-destructive hover:bg-surface-2 disabled:opacity-40"
-        >
-          Delete strategy
-        </button>
-      </div>
-      {row.sendingOn && <p className="mt-1.5 text-xs text-ink-muted">To delete this one, switch it off on the Sending page first.</p>}
+            {row.mergedInto ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onMerge(null)}
+                className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
+              >
+                Undo merge
+              </button>
+            ) : (
+              options.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMerging((v) => !v)}
+                  className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
+                >
+                  {merging ? "Cancel merge" : "Merge into another…"}
+                </button>
+              )
+            )}
+            {/* A Live strategy can't be deleted (switch it off on Sending first), so the button only shows when it can be used. */}
+            {!row.sendingOn && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onDelete}
+                className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-destructive hover:bg-surface-2 disabled:opacity-40"
+              >
+                Delete strategy
+              </button>
+            )}
+          </div>
 
-      {about && <AboutStrategy label={row.label} />}
+          {about && <AboutStrategy label={row.label} />}
 
-      {merging && !row.mergedInto && (
-        <div className="mt-3 space-y-2 rounded-lg bg-surface-2 p-2.5">
-          <label className="block text-xs text-ink-muted">
-            Count this strategy’s alerts under
-            <select
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
-            >
-              <option value="">Choose a strategy…</option>
-              {options.map((o) => (
-                <option key={o.label} value={o.label}>
-                  {names.name(o.label)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="text-xs text-ink-muted">
-            The Dashboard and stats then treat both as one strategy, and nothing is deleted. Sending is not affected: each strategy keeps its own
-            switch and stake.
-          </p>
-          <button
-            type="button"
-            disabled={busy || !target}
-            onClick={() => {
-              onMerge(target);
-              setMerging(false);
-              setTarget("");
-            }}
-            className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
-          >
-            Merge
-          </button>
+          {merging && !row.mergedInto && (
+            <div className="space-y-2 rounded-lg bg-surface-2 p-2.5">
+              <label className="block text-xs text-ink-muted">
+                Count this strategy’s alerts under
+                <select
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+                >
+                  <option value="">Choose a strategy…</option>
+                  {options.map((o) => (
+                    <option key={o.label} value={o.label}>
+                      {names.name(o.label)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-xs text-ink-muted">
+                The Dashboard and stats then treat both as one strategy, and nothing is deleted. Sending is not affected: each strategy keeps its own
+                switch and stake.
+              </p>
+              <button
+                type="button"
+                disabled={busy || !target}
+                onClick={() => {
+                  onMerge(target);
+                  setMerging(false);
+                  setTarget("");
+                }}
+                className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
+              >
+                Merge
+              </button>
+            </div>
+          )}
         </div>
       )}
     </li>
@@ -581,13 +608,7 @@ export default function StrategiesPage() {
       <PageHeader
         as="h2"
         title="Strategies"
-        subtitle={
-          <>
-          Every strategy the app has seen. The big figure is the return on each £1 staked, which is what decides whether a strategy is worth
-          betting: a high hit rate at short odds can still lose money. Counted from your fresh start, if you have set one in Settings. <span className="text-ink">Merge</span> counts one strategy’s alerts under another on the Dashboard and stats
-          (nothing is deleted and it can be undone). <span className="text-ink">Delete</span> removes a strategy’s saved alerts for good.
-          </>
-        }
+        subtitle="Ranked by the return on each £1 staked: a high hit rate at short odds can still lose money. Tap one for its details, equity curve, rename, merge and delete."
       />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -613,9 +634,8 @@ export default function StrategiesPage() {
 
       {period !== "ALL" && (
         <p className={`text-xs text-ink-muted ${isPlaceholderData ? "animate-pulse" : ""}`}>
-          {period === "YTD" ? "Since 1 January" : `Last ${period === "1D" ? "24 hours" : period === "7D" ? "7 days" : "30 days"}`}: hit rate, return and
-          profit count only alerts from this period. Go Live / back to Sim suggestions need {SAMPLE} priced picks in the period, so
-          short periods show figures without them. The profit curve is always all time.
+          {period === "YTD" ? "Since 1 January" : `Last ${period === "1D" ? "24 hours" : period === "7D" ? "7 days" : "30 days"}`} only. Figures from
+          fewer than {SAMPLE} priced picks are faded and get no Live / Sim suggestion; the equity curve is always all time.
         </p>
       )}
 

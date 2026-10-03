@@ -87,3 +87,24 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* The scrollbar's space is always kept, so a page doesn't shift sideways when it grows long enough to scroll. */
+html {
+  scrollbar-gutter: stable;
+}
+
+/*
+ * Touch screens: every button and form control at least 40px tall, the size a finger can hit reliably (most of the
+ * app's buttons were 24-29px). A button centres its label on its own, so only the height changes; an icon-only button
+ * also gets the width, so it stays square.
+ */
+@media (pointer: coarse) {
+  button,
+  select,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+    min-height: 2.5rem;
+  }
+  button:has(> svg:only-child) {
+    min-width: 2.5rem;
+  }
+}

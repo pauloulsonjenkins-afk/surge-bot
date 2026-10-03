@@ -11,6 +11,7 @@ import ThemeToggle from "@/components/ui/ThemeToggle";
 import { HeroRow } from "@/components/dashboard/SummaryCards";
 import { TIMEFRAMES, TimeframeToggle, type Timeframe } from "@/components/dashboard/TimeframeToggle";
 import { DailyResultsChart } from "@/components/dashboard/DailyResultsChart";
+import { TodayProfitChart } from "@/components/dashboard/TodayProfitChart";
 import { HitRateTrendChart } from "@/components/dashboard/HitRateTrendChart";
 import { RateBarChart } from "@/components/dashboard/RateBarChart";
 import { PerformanceSection } from "@/components/dashboard/PerformanceSection";
@@ -126,8 +127,15 @@ export default function DashboardPage() {
         <QueryError error={error} next="/dashboard" />
       ) : (
         <>
-          <DailyResultsChart stats={data} isLoading={isLoading} />
-          <HitRateTrendChart stats={data} isLoading={isLoading} />
+          {/* 1D: one day can only ever make one bar and no trend, so the admin gets today's running profit instead. */}
+          {timeframe === "1D" ? (
+            me?.admin && <TodayProfitChart mode={mode} strategy={strategy} />
+          ) : (
+            <>
+              <DailyResultsChart stats={data} isLoading={isLoading} />
+              <HitRateTrendChart stats={data} isLoading={isLoading} />
+            </>
+          )}
 
           {performanceCells.length > 0 ? (
             <PerformanceSection key={`${days ?? "all"}:${mode}`} cells={performanceCells} strategy={strategy} onStrategyChange={setStrategy} />

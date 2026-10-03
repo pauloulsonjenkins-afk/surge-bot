@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { forgetCache } from "@/queries/persist";
 
 export default function AdminLogoutButton() {
   const router = useRouter();
@@ -9,6 +10,8 @@ export default function AdminLogoutButton() {
 
   async function handleLogout() {
     setPending(true);
+    // The figures kept in the browser for a quick start include private ones, so they go too.
+    forgetCache();
     try {
       await fetch("/api/admin/session", { method: "DELETE" });
     } finally {

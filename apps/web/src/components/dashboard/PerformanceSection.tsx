@@ -38,7 +38,7 @@ function filterLabel(f: LeagueFilter, cells: ResolvedCell[]): string {
 }
 
 function LowSample() {
-  return <span className="ml-1 text-xs text-ink-muted">low n</span>;
+  return <span className="ml-1 text-xs text-ink-muted">small sample</span>;
 }
 
 /**
