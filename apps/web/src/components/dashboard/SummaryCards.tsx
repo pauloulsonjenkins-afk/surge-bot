@@ -199,15 +199,15 @@ function StatusStrip({ pending }: { pending: number }) {
   const on = s.settings.enabled;
   const live = s.strategies.filter((x) => x.enabled).length;
   const notPlaced = unplaced.data?.configured ? unplaced.data.picks.length : null;
-  const pill = "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium";
+  const pill = "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium";
   return (
     <nav aria-label="Status" className="flex flex-wrap gap-2">
       <Link href="/more/admin/sending" className={`${pill} ${on ? "border-line text-ink" : "border-warn/40 bg-warn/10 text-warn"}`}>
         <span aria-hidden className={`h-2 w-2 rounded-full ${on ? "bg-hit" : "bg-warn"}`} />
         Sending {on ? "on" : "off"}
       </Link>
-      <Link href="/more/admin/sending" className={`${pill} border-line text-ink`}>
-        {live} Live {live === 1 ? "strategy" : "strategies"}
+      <Link href="/more/admin/sending" className={`${pill} border-line text-ink`} title="Strategies whose picks are sent to bet">
+        {live} Live
       </Link>
       {notPlaced !== null && (
         <Link
@@ -217,8 +217,8 @@ function StatusStrip({ pending }: { pending: number }) {
           {notPlaced} not placed
         </Link>
       )}
-      <Link href="/live" className={`${pill} border-line ${pending > 0 ? "text-ink" : "text-ink-muted"}`}>
-        {pending} waiting for a result
+      <Link href="/live" className={`${pill} border-line ${pending > 0 ? "text-ink" : "text-ink-muted"}`} title="Picks still waiting for a result">
+        {pending} waiting
       </Link>
     </nav>
   );

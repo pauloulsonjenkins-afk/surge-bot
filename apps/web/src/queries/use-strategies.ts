@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdminStrategies, AdminStrategy, PickMode, RemoveStrategyResult, StrategyEquity, StrategyReturn } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 
 export type { AdminStrategies, AdminStrategy, RemoveStrategyResult, StrategyEquity, StrategyReturn };
 
@@ -10,7 +11,7 @@ const KEY = ["admin-strategies"];
 
 /** Every strategy; with `since` (an ISO date), its figures count only picks from then on. */
 export function useAdminStrategies(since: string | null = null) {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: [...KEY, since],
     queryFn: ({ signal }) =>
       getJson<AdminStrategies>(`/api/admin/strategies${since ? `?since=${encodeURIComponent(since)}` : ""}`, "the strategies", signal),

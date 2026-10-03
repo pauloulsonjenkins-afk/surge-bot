@@ -1,9 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { PerformanceCell, ResolvedCell } from "@/domain/performance";
 import { resolveCells } from "@/lib/performance/leagues";
 import type { PickMode } from "@/server/engine-client";
+import { usePersistedQuery } from "./persist";
 
 /**
  * Totals by league, strategy and alert minute for the dashboard's breakdown.
@@ -13,7 +13,7 @@ import type { PickMode } from "@/server/engine-client";
  * its existing By strategy / By alert minute / By league cards.
  */
 export function usePerformanceCells(days: number | null, mode: PickMode = "all") {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: ["performance", "cells", days, mode],
     retry: false,
     staleTime: 0,

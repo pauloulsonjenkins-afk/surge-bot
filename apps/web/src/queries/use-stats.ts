@@ -1,14 +1,14 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import type { HitRateRow, HitRateStats, PickMode, StrategyStats } from "@/server/engine-client";
 import { getJson } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 
 export type { HitRateRow, HitRateStats, StrategyStats };
 
 /** days = null means all time. strategy = null means every strategy. mode = live / sim picks only (admin), or all. */
 export function useHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all") {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: ["hit-rate-stats", days, strategy, mode],
     queryFn: ({ signal }) => {
       const query = new URLSearchParams();

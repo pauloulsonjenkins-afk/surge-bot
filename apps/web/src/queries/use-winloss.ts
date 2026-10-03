@@ -1,8 +1,9 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PickMode, WinLossPatch, WinLossState } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 
 export type { WinLossPatch, WinLossState };
 
@@ -11,7 +12,7 @@ const KEY = ["winloss"];
 const modeQs = (mode: PickMode) => (mode === "all" ? "" : `?mode=${mode}`);
 
 export function useWinLoss(mode: PickMode = "all") {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: [...KEY, mode],
     queryFn: () => getJson<WinLossState>(`/api/admin/winloss${modeQs(mode)}`, "the win/loss figures"),
     staleTime: 0,

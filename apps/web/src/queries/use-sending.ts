@@ -1,15 +1,16 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 
 export type { SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus };
 
 const KEY = ["sending"];
 
 export function useSending() {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: KEY,
     queryFn: () => getJson<SendingState>("/api/admin/sending", "sending options"),
     staleTime: 0,

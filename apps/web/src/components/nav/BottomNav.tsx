@@ -51,7 +51,7 @@ export default function BottomNav() {
               <Link
                 href={target}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-col items-center gap-0.5 py-2 text-xs transition-colors ${
+                className={`flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors ${
                   active ? "text-accent" : "text-ink-muted"
                 }`}
               >

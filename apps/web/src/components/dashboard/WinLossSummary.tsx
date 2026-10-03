@@ -1,17 +1,17 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import type { WinLossState } from "@/queries/use-winloss";
 import type { PickMode } from "@/server/engine-client";
 import { getJson } from "@/queries/fetch-json";
 import type { Timeframe } from "./TimeframeToggle";
+import { usePersistedQuery } from "@/queries/persist";
 
 /**
  * Win / loss in pounds, for the Dashboard's hero row. Money figures are private, so this only loads for a
  * signed-in admin: for anyone else the request is refused and the hook returns no data.
  */
 export function useDashboardWinLoss(mode: PickMode = "all") {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: ["winloss", mode],
     queryFn: ({ signal }) =>
       getJson<WinLossState>(`/api/admin/winloss${mode === "all" ? "" : `?mode=${mode}`}`, "the win/loss figures", signal),

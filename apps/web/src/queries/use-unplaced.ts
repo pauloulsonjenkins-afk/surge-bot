@@ -1,8 +1,9 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { UnplacedReport } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 
 export type { UnplacedReport };
 
@@ -10,7 +11,7 @@ const KEY = ["unplaced"];
 
 /** Sent picks with no Betfair bet 3 minutes on (last 24 hours), refreshed every half minute. */
 export function useUnplaced() {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: KEY,
     queryFn: ({ signal }) => getJson<UnplacedReport>("/api/admin/betfair/unplaced", "picks not placed", signal),
     refetchInterval: 30_000,

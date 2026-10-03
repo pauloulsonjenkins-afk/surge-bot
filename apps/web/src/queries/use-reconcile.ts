@@ -3,12 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BetfairLinkStatus, BetImportSummary, Placement, ReconcileReport } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 
 export type { BetfairLinkStatus, BetImportSummary, Placement, ReconcileReport };
 
 /** Admin only: whether each recently sent pick was placed and matched on Betfair, refreshed as the engine checks. */
 export function usePlacements(enabled: boolean) {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: ["placements"],
     queryFn: ({ signal }) => getJson<{ link: BetfairLinkStatus; picks: Record<string, Placement> }>("/api/admin/betfair/placements", "bet placements", signal),
     enabled,

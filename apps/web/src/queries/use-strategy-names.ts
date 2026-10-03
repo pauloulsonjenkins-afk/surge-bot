@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StrategyNameInfo } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
+import { useHydrated } from "./use-me";
 
 export type { StrategyNameInfo };
 
@@ -38,12 +39,14 @@ function remembered(): Names | undefined {
  * ("Wake-up Call"), falling back to InPlayGuru's own; `info(raw)` also has the description, trigger and bet (admin).
  */
 export function useStrategyNames() {
+  const hydrated = useHydrated();
   const query = useQuery<{ names: Names }>({
     queryKey: KEY,
     queryFn: ({ signal }) => getJson<{ names: Names }>("/api/strategy-names", "strategy names", signal),
     staleTime: 5 * 60 * 1000,
+    // Only once hydrated: the server never has them, and the first render must match its HTML.
     placeholderData: () => {
-      const names = typeof window === "undefined" ? undefined : remembered();
+      const names = hydrated ? remembered() : undefined;
       return names ? { names } : undefined;
     },
   });

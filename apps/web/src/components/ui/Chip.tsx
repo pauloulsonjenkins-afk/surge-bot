@@ -20,9 +20,11 @@ const TONES: Record<ChipTone, string> = {
 
 export function Chip({ tone = "neutral", title, children }: { tone?: ChipTone; title?: string; children: React.ReactNode }) {
   return (
-    <span title={title} className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${TONES[tone]}`}>
+    // max-w-full + truncate: on a very narrow screen a long chip ("Placed by hand £2.00 @ 1.65") ends in "…" rather than
+    // running past the edge of its card.
+    <span title={title} className={`inline-flex max-w-full shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${TONES[tone]}`}>
       {tone === "warn" && <TriangleAlert size={12} aria-hidden className="shrink-0" />}
-      {children}
+      <span className="truncate">{children}</span>
     </span>
   );
 }

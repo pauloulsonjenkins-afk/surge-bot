@@ -300,7 +300,7 @@ function StrategyCard({
               <ModeBadge mode={modeOf(row)} />
             </span>
             <span className={`mt-0.5 block truncate text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>
-              {[marketName(row.market) ?? "No market set", settled > 0 ? `${hits}–${misses}` : "no results yet", hitRate !== null ? `${hitRate}% hit rate` : null]
+              {[marketName(row.market) ?? "No market set", settled > 0 ? `${hits}–${misses}` : "no results yet", hitRate !== null ? `${hitRate}%` : null]
                 .filter(Boolean)
                 .join(" · ")}
             </span>

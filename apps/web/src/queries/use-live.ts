@@ -8,6 +8,7 @@ export type { LivePick, PublicPick };
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiFetchError } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 
 /** Amend one pick's result by hand (null puts back the alert's own result). */
 export function useSetPickExcluded() {
@@ -81,7 +82,7 @@ export function useClearWaiting() {
 }
 
 export function useLivePicks(limit = 50, enabled = true) {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: ["live-picks", limit],
     enabled,
     queryFn: async ({ signal }): Promise<PublicPick[]> => {
@@ -97,7 +98,7 @@ export function useLivePicks(limit = 50, enabled = true) {
 
 /** Signed-in view for the Results page (includes what is needed to amend a result). */
 export function useAdminLivePicks(limit = 100, enabled = true) {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: ["admin-live-picks", limit],
     enabled,
     queryFn: async (): Promise<LivePick[]> => {
