@@ -45,6 +45,8 @@
  *   POST /internal/picks/review                 accept a reviewed result (admin site only)
  *   GET/POST /internal/betfair/coverage         which leagues are on Betfair: those your alerts came from, or a pasted list (admin site only)
  *   POST /internal/betfair/match-name           add an "alert name = Betfair name" Match names line and re-link bets (admin site only)
+ *   POST /internal/betfair/use-match            a pick not found on Betfair: use one of the events offered: { id, event } (admin site only)
+ *   POST /internal/betfair/coverage/override    which Betfair competition a league is: { league, competition | "none" | null } (admin site only)
  *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -61,7 +63,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { TelegramClient } from "telegram";
 import { parsePickMode, type EngineDb } from "../storage/engine-db";
-import { fixAndResend, listUnplaced, UNPLACED_AFTER_MS } from "../betfair/unplaced";
+import { fixAndResend, listUnplaced, UNPLACED_AFTER_MS, chooseBetfairMatch } from "../betfair/unplaced";
 import { listStrategyNames, saveStrategyName } from "../inplayguru/strategy-names";
 import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./push";
 import { buildDailySummary } from "./daily-summary";
@@ -81,7 +83,7 @@ import { log } from "./log";
 import { listHorseBets, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, teamMarketsSeen } from "../betfair/exchange";
-import { checkLeague, coverageOfAlertLeagues, saveLeagueList, savedListCoverage } from "../betfair/competitions";
+import { checkLeague, coverageOfAlertLeagues, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -663,7 +665,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const latest = competitions.reduce<string | null>((m, c) => (m === null || c.lastSeen > m ? c.lastSeen : m), null);
       const base = { competitionCount: competitions.length, competitionsUpdatedAt: latest };
       if (req.method === "GET") {
-        send(res, 200, { ...base, leagues: coverageOfAlertLeagues(db), saved: savedListCoverage(db) });
+        // The competition names too, to choose from when a league is matched by hand.
+        const names = [...new Set(competitions.map((c) => c.name))].sort((a, b) => a.localeCompare(b));
+        send(res, 200, { ...base, leagues: coverageOfAlertLeagues(db), saved: savedListCoverage(db), competitions: names });
         return;
       }
       // POST { names: [...] }: a pasted list, e.g. InPlayGuru's leagues.
@@ -674,6 +678,32 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       // { save: true } keeps the list, so it's re-checked as Betfair's competitions build up.
       if (body.save === true && names.length > 0) saveLeagueList(db, names);
       send(res, 200, { ...base, leagues: names.map((n) => checkLeague(n, competitions)) });
+      return;
+    }
+
+    if ((path === "/internal/betfair/use-match" || path === "/internal/betfair/coverage/override") && req.method === "POST") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      try {
+        if (path === "/internal/betfair/use-match") {
+          const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : NaN;
+          if (!Number.isFinite(id) || typeof body.event !== "string") throw new Error("id and event are needed.");
+          send(res, 200, chooseBetfairMatch(db, id, body.event));
+        } else {
+          setLeagueOverride(db, body.league, body.competition);
+          log.info(`League "${String(body.league)}" set to Betfair's "${String(body.competition)}" on the Leagues page.`);
+          send(res, 200, { ok: true });
+        }
+      } catch (err) {
+        send(res, 400, { error: "invalid", message: err instanceof Error ? err.message : String(err) });
+      }
       return;
     }
 

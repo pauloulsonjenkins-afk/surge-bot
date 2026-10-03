@@ -37,6 +37,45 @@ export interface CoverageResult {
   /** Alerts from this league whose match was / wasn't found on Betfair (leagues from your alerts only). */
   alertsOn?: number;
   alertsOff?: number;
+  /** Set by hand on the Leagues page (see setLeagueOverride), not worked out from the names. */
+  overridden?: boolean;
+}
+
+const OVERRIDES_KEY = "betfair_league_overrides";
+
+/** League name (as checked) -> the Betfair competition it is, or "none" when it isn't on Betfair. Set on the Leagues page. */
+export function getLeagueOverrides(db: EngineDb): Record<string, string> {
+  try {
+    const raw = db.getSetting(OVERRIDES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    return Object.fromEntries(Object.entries(parsed).filter((e): e is [string, string] => typeof e[1] === "string"));
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Says which Betfair competition a league is (its name exactly as Betfair lists it), that it isn't on Betfair
+ * ("none"), or (null) goes back to matching by name. Throws with a reason for the admin.
+ */
+export function setLeagueOverride(db: EngineDb, league: unknown, competition: unknown): void {
+  if (typeof league !== "string" || !league.trim() || league.length > 160) throw new Error("Which league?");
+  const key = norm(league);
+  const overrides = getLeagueOverrides(db);
+  if (competition === null) delete overrides[key];
+  else if (competition === "none") overrides[key] = "none";
+  else if (typeof competition === "string" && db.listBetfairCompetitions().some((c) => c.name === competition)) overrides[key] = competition;
+  else throw new Error("That isn't a competition Betfair has listed.");
+  db.setSetting(OVERRIDES_KEY, JSON.stringify(overrides));
+}
+
+/** A result with any override applied: the chosen competition (on), or not on Betfair. */
+function withOverride(r: CoverageResult, overrides: Record<string, string>, competitions: BetfairCompetition[]): CoverageResult {
+  const o = overrides[norm(r.name)];
+  if (!o) return r;
+  if (o === "none") return { ...r, status: "not", betfair: null, overridden: true };
+  const c = competitions.find((x) => x.name === o);
+  return { ...r, status: "on", betfair: { name: o, region: c?.region ?? null, lastSeen: c?.lastSeen ?? new Date(0).toISOString() }, overridden: true };
 }
 
 const norm = (s: string) =>
@@ -233,7 +272,8 @@ export function savedListCoverage(db: EngineDb): { savedAt: string; leagues: Cov
     if (!raw) return null;
     const saved = JSON.parse(raw) as { savedAt: string; names: string[] };
     const competitions = db.listBetfairCompetitions();
-    return { savedAt: saved.savedAt, leagues: saved.names.map((n) => checkLeague(n, competitions)) };
+    const overrides = getLeagueOverrides(db);
+    return { savedAt: saved.savedAt, leagues: saved.names.map((n) => withOverride(checkLeague(n, competitions), overrides, competitions)) };
   } catch {
     return null;
   }
@@ -242,12 +282,13 @@ export function savedListCoverage(db: EngineDb): { savedAt: string; leagues: Cov
 /** The leagues your alerts came from, checked, with what Betfair said about their alerts' matches. */
 export function coverageOfAlertLeagues(db: EngineDb): CoverageResult[] {
   const competitions = db.listBetfairCompetitions();
+  const overrides = getLeagueOverrides(db);
   return db.listLeaguesForAdmin().map((l) => {
     const name = l.country && !norm(l.league).startsWith(norm(l.country)) ? `${l.country} ${l.league}` : l.league;
     const r = checkLeague(name, competitions, l.country);
     const ex = l.exchange;
     // An alert from this league found on Betfair settles it, whatever the names say.
     const status: CoverageStatus = ex.on > 0 ? "on" : r.status;
-    return { ...r, name, status, alertsOn: ex.on, alertsOff: ex.off };
+    return withOverride({ ...r, name, status, alertsOn: ex.on, alertsOff: ex.off }, overrides, competitions);
   });
 }

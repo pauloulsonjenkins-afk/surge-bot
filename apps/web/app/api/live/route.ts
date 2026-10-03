@@ -29,5 +29,5 @@ export async function GET(request: Request) {
  * Which picks were bet is private, as on /api/stats (which keeps the Live / Sim split and the money to the admin).
  */
 function hidePrivate(p: PublicPick): PublicPick {
-  return { ...p, sentAt: null, exchange: null, exchangeEvent: null, exchangeOdds: null, marketCheck: null, marketCheckDetail: null };
+  return { ...p, sentAt: null, exchange: null, exchangeEvent: null, exchangeOdds: null, marketCheck: null, marketCheckDetail: null, exchangeCandidates: null };
 }

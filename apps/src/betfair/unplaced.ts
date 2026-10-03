@@ -161,6 +161,50 @@ export function fixAndResend(db: EngineDb, id: number, now = new Date()): { adde
 }
 
 /**
+ * For a pick whose match wasn't found on Betfair: the admin picks one of the events Betfair's search did return (see
+ * nearMatches). Its team names are added under Match names, so later alerts find it, and the pick is marked as on
+ * Betfair under that event: an unsent pick then goes out with the next feed (if it can still be bet), and one already
+ * sent is handed over again under Betfair's name. Throws with a reason for the admin.
+ */
+export function chooseBetfairMatch(db: EngineDb, id: number, eventName: string, now = new Date()): { added: string[]; sent: boolean; message: string } {
+  const pick = db.getLivePick(id);
+  if (!pick || !pick.home || !pick.away) throw new Error("That pick couldn't be found.");
+  const chosen = (pick.exchangeCandidates ?? []).find((c) => c.name === eventName);
+  if (!chosen) throw new Error("That match isn't one Betfair offered for this pick.");
+  if (pick.manualBet || db.pickIdsWithBets().has(id)) throw new Error("That pick already has a bet.");
+  const teams = chosen.name.split(/\s+v\s+/i);
+  if (teams.length !== 2) throw new Error(`Couldn't read the two teams from "${chosen.name}".`);
+  const added: string[] = [];
+  for (const [ours, theirs] of [
+    [pick.home, teams[0]!],
+    [pick.away, teams[1]!],
+  ] as const) {
+    if (ours.trim().toLowerCase() !== theirs.trim().toLowerCase()) added.push(addMatchName(db, ours, theirs));
+  }
+  db.setPickExchange(id, "on", chosen.name, null, null, chosen.id);
+  db.setPickExchangeCandidates(id, null);
+  const settings = getSendingSettings(db);
+  if (now.getTime() > betableUntil(pick, settings.maxAgeMinutes)) {
+    return { added, sent: false, message: "Names added for next time, but it's too late to bet this one now." };
+  }
+  if (pick.sentAt) {
+    let row: Record<string, unknown> = {};
+    try {
+      row = pick.sentRowJson ? (JSON.parse(pick.sentRowJson) as Record<string, unknown>) : {};
+    } catch {
+      row = {};
+    }
+    if (typeof row.marketType === "string") {
+      db.resendPick(id, JSON.stringify({ ...row, eventName: chosen.name }), now.toISOString());
+      log.info(`Pick ${id} re-sent as "${chosen.name}"${added.length ? `; Match names added: ${added.join("; ")}` : ""}.`);
+      return { added, sent: true, message: `Sent again as "${chosen.name}".` };
+    }
+  }
+  log.info(`Pick ${id} matched by hand to Betfair's "${chosen.name}"${added.length ? `; Match names added: ${added.join("; ")}` : ""}.`);
+  return { added, sent: true, message: `Matched to "${chosen.name}": it goes out with the next feed if its strategy is Live.` };
+}
+
+/**
  * The score for a notification's first line: " · 1–3 at 68' (now ~71')" for an in-play pick, from the alert (there's
  * no live score feed, so it is the score when the alert came in). Empty for a pre-match pick.
  */

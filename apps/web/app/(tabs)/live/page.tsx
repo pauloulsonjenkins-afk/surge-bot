@@ -14,7 +14,7 @@ import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { Chip, WarnIcon, type ChipTone } from "@/components/ui/Chip";
 import { usePlacements, type Placement } from "@/queries/use-reconcile";
-import { useClearWaiting, useSetManualBet, useSetPickResult } from "@/queries/use-live";
+import { useChooseBetfairMatch, useClearWaiting, useSetManualBet, useSetPickResult } from "@/queries/use-live";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 
 // An alert that has had no result edited in after this long is treated as
@@ -142,6 +142,38 @@ function exchangeIssue(pick: LivePick): { label: string; detail: string } | null
     };
   }
   return null;
+}
+
+/**
+ * A match not found on Betfair, with the nearest events its search did return: if one is this match under Betfair's
+ * names, using it adds those names under Match names (so it's found next time) and sends the pick if still in time.
+ */
+function BetfairChoices({ pick }: { pick: LivePick }) {
+  const choose = useChooseBetfairMatch();
+  const [done, setDone] = useState<string | null>(null);
+  return (
+    <div className="space-y-1.5 rounded-md bg-surface-2 p-2.5 text-xs">
+      <p className="font-medium text-ink">Is it one of these on Betfair?</p>
+      <ul className="space-y-1">
+        {pick.exchangeCandidates!.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 break-words text-ink">{c.name}</span>
+            <button
+              type="button"
+              disabled={choose.isPending || done !== null}
+              onClick={() => choose.mutate({ id: pick.id, event: c.name }, { onSuccess: (r) => setDone(r.message) })}
+              className="rounded-md border border-line px-2.5 py-1 font-medium text-ink hover:bg-surface disabled:opacity-40"
+            >
+              Use this match
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="text-ink-muted">Its team names are added under Match names, so later alerts for these teams are found too.</p>
+      {done && <p className="text-hit">{done}</p>}
+      {choose.error && <p className="text-destructive">{choose.error.message}</p>}
+    </div>
+  );
 }
 
 /** The one status chip on a row. */
@@ -308,6 +340,8 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
               </span>
             </p>
           )}
+
+          {admin && pick.exchange === "off" && (pick.exchangeCandidates?.length ?? 0) > 0 && <BetfairChoices pick={pick} />}
 
           {admin && <ManualBet pick={pick} placement={placement} />}
 

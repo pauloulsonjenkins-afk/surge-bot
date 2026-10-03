@@ -66,6 +66,8 @@ export interface LivePick {
   marketCheckDetail?: string | null;
   /** When the admin cleared it from Live's "Waiting for a result" without a result (missing on an older engine). */
   waitingClearedAt?: string | null;
+  /** Not found on Betfair: the nearest events its search returned, to choose from (missing on an older engine). */
+  exchangeCandidates?: Array<{ name: string; id: string }> | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
   exchangeEvent?: string | null;
   /** Betfair's back price for the bet the feed sends, read when the match was checked (admin only). */
@@ -153,6 +155,8 @@ export interface PublicPick {
   marketCheckDetail?: string | null;
   /** When the admin cleared it from Live's "Waiting for a result" without a result. */
   waitingClearedAt?: string | null;
+  /** Not found on Betfair: the nearest events its search returned (admin only). */
+  exchangeCandidates?: Array<{ name: string; id: string }> | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -191,6 +195,7 @@ export function toPublicPick(p: LivePick): PublicPick {
     marketCheck: p.marketCheck ?? null,
     marketCheckDetail: p.marketCheckDetail ?? null,
     waitingClearedAt: p.waitingClearedAt ?? null,
+    exchangeCandidates: p.exchangeCandidates ?? null,
     flags: p.flags,
     detail: p.detail
       ? {
@@ -1121,6 +1126,16 @@ export interface UnlinkedBet {
 }
 
 /** Adds "alert name = Betfair name" to the Sending page's Match names and re-links bets. */
+/** A pick not found on Betfair: use one of the events Betfair's search offered (Match names added, pick sent if in time). */
+export function chooseBetfairMatch(id: number, event: string): Promise<{ added: string[]; sent: boolean; message: string }> {
+  return engineCall("/internal/betfair/use-match", "using that match", { method: "POST", body: { id, event } });
+}
+
+/** Which Betfair competition a league is ("none": not on Betfair; null: back to matching by name). */
+export function setLeagueOverride(league: string, competition: string | null): Promise<{ ok: true }> {
+  return engineCall("/internal/betfair/coverage/override", "matching the league", { method: "POST", body: { league, competition } });
+}
+
 export function addMatchName(from: string, to: string): Promise<{ line: string; linked: number }> {
   return engineCall("/internal/betfair/match-name", "adding the match name", { method: "POST", body: { from, to } });
 }
@@ -1201,12 +1216,16 @@ export interface CoverageResult {
   betfair: { name: string; region: string | null; lastSeen: string } | null;
   alertsOn?: number;
   alertsOff?: number;
+  /** Matched by hand on the Leagues page rather than by name (missing on an older engine). */
+  overridden?: boolean;
 }
 
 export interface CoverageReport {
   competitionCount: number;
   competitionsUpdatedAt: string | null;
   leagues: CoverageResult[];
+  /** Every competition name Betfair has listed, to choose from when matching a league by hand (GET only). */
+  competitions?: string[];
   /** A saved list (e.g. InPlayGuru's), re-checked each time (GET only; missing on an older engine). */
   saved?: { savedAt: string; leagues: CoverageResult[] } | null;
 }

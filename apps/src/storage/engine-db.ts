@@ -249,6 +249,19 @@ export interface ManualBet {
   at: string;
 }
 
+/** The stored Betfair events offered for a pick, or null. */
+function parseCandidates(raw: unknown): Array<{ name: string; id: string }> | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const list = JSON.parse(raw) as unknown;
+    if (!Array.isArray(list)) return null;
+    const ok = list.filter((c): c is { name: string; id: string } => !!c && typeof c.name === "string" && typeof c.id === "string");
+    return ok.length > 0 ? ok : null;
+  } catch {
+    return null;
+  }
+}
+
 export function parseManualBet(raw: unknown): ManualBet | null {
   if (typeof raw !== "string" || !raw) return null;
   try {
@@ -382,6 +395,8 @@ export interface LivePick {
   marketCheckDetail: string | null;
   /** When the admin cleared it from Live's "Waiting for a result" without a result, or null. */
   waitingClearedAt: string | null;
+  /** Not found on Betfair: the nearest events its search returned, to choose from if a team is named differently. */
+  exchangeCandidates: Array<{ name: string; id: string }> | null;
   /** The league's key on the Leagues page. */
   leagueKey: string;
   /** The full parsed alert (all stats, odds, etc.) for the detail view. */
@@ -644,6 +659,11 @@ export class EngineDb {
     if (!liveCols.some((c) => c.name === "unplaced_cleared_at")) {
       // When the admin cleared this pick from the Not placed list on Sending, having looked at it (betfair/unplaced.ts).
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN unplaced_cleared_at TEXT`);
+    }
+    if (!liveCols.some((c) => c.name === "exchange_candidates")) {
+      // When a match wasn't found on Betfair: the nearest events Betfair's search did return (JSON [{ name, id }]), so
+      // the admin can pick the right one if Betfair names the teams differently.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_candidates TEXT`);
     }
     if (!liveCols.some((c) => c.name === "waiting_cleared_at")) {
       // When the admin cleared this pick from Live's "Waiting for a result" without giving it a result: it leaves that list
@@ -1035,6 +1055,7 @@ export class EngineDb {
       marketCheck: r.market_check === "ok" || r.market_check === "noMarket" || r.market_check === "noSelection" ? r.market_check : null,
       marketCheckDetail: (r.market_check_detail as string | null) ?? null,
       waitingClearedAt: (r.waiting_cleared_at as string | null) ?? null,
+      exchangeCandidates: parseCandidates(r.exchange_candidates),
       leagueKey: leagueIdentity((r.competition as string | null) ?? null, (r.country as string | null) ?? null).key,
       flags,
       detail,
@@ -1632,6 +1653,14 @@ export class EngineDb {
       .run(cleared ? new Date().toISOString() : null, id);
     if (info.changes > 0) this.onChange();
     return info.changes > 0;
+  }
+
+  /** Saves (or, with null or an empty list, clears) the Betfair events offered for a pick that wasn't found there. */
+  setPickExchangeCandidates(id: number, candidates: Array<{ name: string; id: string }> | null): void {
+    this.db
+      .prepare(`UPDATE live_picks SET exchange_candidates = ? WHERE id = ?`)
+      .run(candidates && candidates.length > 0 ? JSON.stringify(candidates.slice(0, 5)) : null, id);
+    this.onChange();
   }
 
   setResultOverride(id: number, result: "hit" | "miss" | null): boolean {

@@ -27,6 +27,19 @@ export function useCheckCoverage() {
   });
 }
 
+/** Matches a league to a Betfair competition by hand ("none": not on Betfair; null: back to matching by name). */
+export function useSetLeagueOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { league: string; competition: string | null }) => {
+      const res = await fetch("/api/admin/betfair/coverage/override", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiFetchError(body?.error ?? `Couldn't save (${res.status})`, res.status);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["betfair-coverage"] }),
+  });
+}
+
 const KEY = ["admin-leagues"];
 
 export function useAdminLeagues() {

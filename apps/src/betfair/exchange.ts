@@ -493,7 +493,38 @@ function noteMarkets(db: EngineDb, key: string, markets: CornerMarket[], example
   db.setSetting(key, JSON.stringify(map));
 }
 
-type MatchCache = Map<string, { result: "on" | "nameDiffers" | "off"; event: string | null; eventId: string | null; at: number }>;
+type MatchCache = Map<
+  string,
+  { result: "on" | "nameDiffers" | "off"; event: string | null; eventId: string | null; candidates: Array<{ id: string; name: string }>; at: number }
+>;
+
+/**
+ * The events Betfair's search returned that come closest to the alert's match, best first: those with one team
+ * matching, then those sharing a word of 4+ letters with either team. Offered on Live when the match wasn't found, so a
+ * game Betfair lists under other team names can be picked ("Odra Bytom" for "Odra Bytom Odrzanski").
+ */
+export function nearMatches(home: string, away: string, events: Array<{ id: string; name: string }>, limit = 5): Array<{ id: string; name: string }> {
+  const words = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length >= 4);
+  const ours = [...words(home), ...words(away)];
+  const pickEvent = `${home} v ${away}`;
+  const seen = new Set<string>();
+  return events
+    .filter((e) => / v /i.test(e.name) && !seen.has(e.id) && seen.add(e.id))
+    .map((e) => ({
+      e,
+      score: eventScore(e.name, pickEvent) * 10 + words(e.name).filter((w) => ours.some((o) => o.startsWith(w) || w.startsWith(o))).length,
+    }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((x) => x.e);
+}
 
 async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchCache): Promise<void> {
   const namer = exchangeNamer(db);
@@ -511,18 +542,25 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
     let found = cache.get(key);
     if (!found || now - found.at > 30 * 60 * 1000) {
       const at = new Date(p.firstSeenAt);
-      let judged = judgeExchange(home, away, await reader.searchEvents(searchWord(home), at));
+      // Every event the searches return, kept to offer the nearest ones if the match isn't found.
+      const seen: Array<{ id: string; name: string }> = [];
+      const search = async (text: string) => {
+        const events = await reader.searchEvents(text, at);
+        seen.push(...events);
+        return events;
+      };
+      let judged = judgeExchange(home, away, await search(searchWord(home)));
       if (judged.result !== "on") {
-        const byAway = judgeExchange(home, away, await reader.searchEvents(searchWord(away), at));
+        const byAway = judgeExchange(home, away, await search(searchWord(away)));
         if (byAway.result === "on" || (byAway.result === "nameDiffers" && judged.result === "off")) judged = byAway;
       }
       // One word can miss (Betfair's search is word-based and some names are abbreviated): try each full name too.
       for (const name of [home, away]) {
         if (judged.result !== "off") break;
-        const byName = judgeExchange(home, away, await reader.searchEvents(name, at));
+        const byName = judgeExchange(home, away, await search(name));
         if (byName.result !== "off") judged = byName;
       }
-      found = { ...judged, at: now };
+      found = { ...judged, candidates: judged.result === "off" ? nearMatches(home, away, seen) : [], at: now };
       cache.set(key, found);
     }
     // The price of the bet the feed would send, read now, so the pick can be priced even when the alert has none.
@@ -549,6 +587,7 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
       }
     }
     db.setPickExchange(p.id, found.result, found.event, odds, check, found.eventId);
+    db.setPickExchangeCandidates(p.id, found.result === "off" ? found.candidates : null);
     // Favourite to score again ("Pass Master 1st half"): note the favourite's goal markets on offer (to choose the codes),
     // and if they aren't set yet, find the favourite's goals market by name to price the pick anyway.
     if (pick?.market === "FAVOURITE_TO_SCORE" && found.eventId && pick.detail?.favourite) {

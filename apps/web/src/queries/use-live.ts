@@ -58,6 +58,28 @@ export function useSetPickResult() {
   });
 }
 
+/** A pick not found on Betfair: use one of the events Betfair offered (Match names added, pick sent if still in time). */
+export function useChooseBetfairMatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { id: number; event: string }): Promise<{ sent: boolean; message: string }> => {
+      const res = await fetch("/api/admin/betfair/use-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(v),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; sent?: boolean; message?: string };
+      if (!res.ok) throw new ApiFetchError(body.error ?? `Couldn't use that match (${res.status})`, res.status);
+      return { sent: Boolean(body.sent), message: body.message ?? "Done." };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["live-picks"] });
+      qc.invalidateQueries({ queryKey: ["admin-live-picks"] });
+      qc.invalidateQueries({ queryKey: ["sending"] });
+    },
+  });
+}
+
 /** Clears a pick from Live's "Waiting for a result" without a result, or (cleared = false) puts it back. */
 export function useClearWaiting() {
   const qc = useQueryClient();

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Card, Segmented } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useCheckCoverage, useCoverage, type CoverageReport, type CoverageResult } from "@/queries/use-leagues";
+import { useCheckCoverage, useCoverage, useSetLeagueOverride, type CoverageReport, type CoverageResult } from "@/queries/use-leagues";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
@@ -15,8 +15,77 @@ const BADGE: Record<Filter, { label: string; cls: string }> = {
   on: { label: "On Betfair", cls: "bg-hit/15 text-hit" },
 };
 
+/**
+ * Says by hand which Betfair competition a league is, when the names don't line up ("Poland III Liga" / "Polish 3 Liga"),
+ * or that it isn't on Betfair; or puts it back to matching by name.
+ */
+function MatchLeague({ league, competitions }: { league: CoverageResult; competitions: string[] }) {
+  const save = useSetLeagueOverride();
+  const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState("");
+  const listId = `bf-competitions-${league.name.replace(/[^a-z0-9]+/gi, "-")}`;
+  if (league.overridden && !open) {
+    return (
+      <span className="mt-1 flex flex-wrap items-center gap-2">
+        <span className="text-ink-muted">Set by you.</span>
+        <button type="button" disabled={save.isPending} onClick={() => save.mutate({ league: league.name, competition: null })} className="underline disabled:opacity-40">
+          Undo
+        </button>
+        <button type="button" onClick={() => setOpen(true)} className="underline">
+          Change
+        </button>
+      </span>
+    );
+  }
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="mt-1 underline">
+        {league.status === "on" ? "Wrong competition?" : "Match to a Betfair competition"}
+      </button>
+    );
+  }
+  return (
+    <span className="mt-1.5 block space-y-1.5">
+      <input
+        list={listId}
+        value={choice}
+        onChange={(e) => setChoice(e.target.value)}
+        placeholder="Type to search Betfair's competitions"
+        className="w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink"
+      />
+      <datalist id={listId}>
+        {competitions.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+      <span className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          disabled={save.isPending || !competitions.includes(choice)}
+          onClick={() => save.mutate({ league: league.name, competition: choice }, { onSuccess: () => setOpen(false) })}
+          className="rounded-md bg-accent px-2.5 py-1 font-medium text-accent-ink disabled:opacity-40"
+        >
+          Use this competition
+        </button>
+        <button
+          type="button"
+          disabled={save.isPending}
+          onClick={() => save.mutate({ league: league.name, competition: "none" }, { onSuccess: () => setOpen(false) })}
+          className="rounded-md border border-line px-2.5 py-1 font-medium text-ink disabled:opacity-40"
+        >
+          Not on Betfair
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="px-1.5 py-1 text-ink-muted underline">
+          Cancel
+        </button>
+      </span>
+      {save.error && <span className="block text-destructive">{save.error.message}</span>}
+    </span>
+  );
+}
+
 /** The results with a filter, a count per status, and a button that copies the shown names one per line. */
-function Results({ leagues, source }: { leagues: CoverageResult[]; source: "alerts" | "list" }) {
+function Results({ leagues, source, competitions = [] }: { leagues: CoverageResult[]; source: "alerts" | "list"; competitions?: string[] }) {
   const [filter, setFilter] = useState<Filter>("not");
   const [copied, setCopied] = useState(false);
   const count = (f: Filter) => leagues.filter((l) => l.status === f).length;
@@ -49,10 +118,10 @@ function Results({ leagues, source }: { leagues: CoverageResult[]; source: "aler
       </div>
       <p className="text-xs text-ink-muted">
         {filter === "not"
-          ? "No Betfair competition for the country fits. Double-check any you know are on Betfair: it only lists a league while it has upcoming matches."
+          ? "No Betfair competition for the country fits. If you know it's on Betfair under another name, match it below: Betfair only lists a league while it has upcoming matches."
           : filter === "maybe"
-            ? "Betfair has a competition for the country under a different name. Check the name shown: if it's the same league, it's on Betfair."
-            : "A Betfair competition matches."}
+            ? "Betfair has a competition for the country under a different name. If it's the same league, or a different one is, match it below."
+            : "A Betfair competition matches. These labels don't change what's sent: each match is checked on Betfair by its teams."}
       </p>
       {shown.length === 0 ? (
         <p className="text-xs text-ink-muted">None.</p>
@@ -73,6 +142,7 @@ function Results({ leagues, source }: { leagues: CoverageResult[]; source: "aler
                     Your alerts: {l.alertsOn ?? 0} on Betfair, {l.alertsOff ?? 0} not
                   </span>
                 )}
+                {competitions.length > 0 && <MatchLeague league={l} competitions={competitions} />}
               </span>
               <span className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${BADGE[l.status].cls}`}>{BADGE[l.status].label}</span>
             </li>
@@ -168,7 +238,7 @@ export function BetfairCoverage() {
         ) : tab === "alerts" && (isLoading || !data) ? (
           <Skeleton className="h-32 w-full" />
         ) : report && (tab === "alerts" || check.data || saved) ? (
-          <Results key={tab} leagues={report.leagues} source={tab} />
+          <Results key={tab} leagues={report.leagues} source={tab} competitions={data?.competitions ?? []} />
         ) : null}
       </div>
     </Card>
