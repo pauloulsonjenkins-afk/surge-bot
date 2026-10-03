@@ -143,3 +143,9 @@ test("Favourite pressure 2nd half is a next-goal bet", () => {
   assert.equal(p.targetLine, 0.5);
   assert.equal(p.sendable, true);
 });
+
+test("gallery strategies on trial map to their bets", () => {
+  const alert = (name: string) => [`🔔 ${name}`, "", "🇫🇷 France Ligue 1 (3rd vs 9th)", "Lyon vs Nantes", "", "Timer: 75'", "Goals: 0 - 0", "Over/Under 0.50 Odds:", "1.40 2.80"].join("\n");
+  assert.equal(parseAlert(alert("Losing team pushing hard")).market, "NEXT_GOAL");
+  assert.equal(parseAlert(alert("Super favorite 0-0 at 75'")).market, "FAVOURITE_TO_SCORE");
+});

@@ -114,6 +114,11 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "Favourite pressure 2nd half" (added 2 Oct 2026): Pass Master's favourite-dominance signal at 50-70', with the score
   // level or the favourite a goal behind, backed as the next goal while it is still priced around 1.5+.
   { test: /favou?rite pressure/, market: "NEXT_GOAL" },
+  // From InPlayGuru's gallery, on Sim to be judged at Betfair prices (added 3 Oct 2026):
+  // "Losing team pushing hard": the losing side's momentum 60+ and at least double the winners', backed as the next goal.
+  { test: /losing team pushing/, market: "NEXT_GOAL" },
+  // "Super favorite 0-0 at 75'": a 1.50-or-shorter pre-match favourite still 0-0 at 75', backed to score.
+  { test: /super favou?rite 0-0/, market: "FAVOURITE_TO_SCORE" },
   { test: /late goal hunter/, market: "NEXT_GOAL" },
   // "Over 1.5 Goals / Early Goal": Over 1.5 goals in the match, a fixed line.
   { test: /over 1\.5 goals/, market: "OVER_1_5" },

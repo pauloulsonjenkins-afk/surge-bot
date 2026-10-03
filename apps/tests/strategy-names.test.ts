@@ -16,7 +16,7 @@ test("defaults: the coffee names, found from InPlayGuru's name with or without i
   assert.equal(displayName(db, "Some New Strategy (v2)"), "Some New Strategy");
   assert.equal(strategyKey("Underdog taking charge"), "underdog taking charge");
   const all = listStrategyNames(db);
-  assert.equal(Object.keys(all).length, 12);
+  assert.equal(Object.keys(all).length, 14);
   assert.ok(Object.values(all).every((s) => s.description && s.trigger && s.bet && !s.custom));
 });
 

@@ -91,6 +91,18 @@ const DEFAULTS: Record<string, StrategyInfo> = {
     trigger: "50' to 70', favourite level or one behind, its momentum 60+ and passing 65%+, 2.00 or less pre-match, next-goal price 1.40+.",
     bet: "Next goal (Over the goals so far + 0.5)",
   },
+  "losing team pushing hard": {
+    name: "Comeback Roast",
+    description: "The team behind is pressing hard: backs the next goal.",
+    trigger: "Losing team's momentum 60+ and at least double the winning team's.",
+    bet: "Next goal (Over the goals so far + 0.5)",
+  },
+  "super favorite 0-0 at 75'": {
+    name: "Last Drop",
+    description: "A big favourite still 0-0 at 75 minutes: backs the favourite to score.",
+    trigger: "75', 0-0, favourite 1.50 or shorter pre-match.",
+    bet: "Favourite to score (its goals Over 0.5)",
+  },
   "pass master 1st half": {
     name: "Filter Coffee",
     description: "The favourite is passing well in the first half: backs it to score again. Sim only, as Betfair doesn't list the market.",
