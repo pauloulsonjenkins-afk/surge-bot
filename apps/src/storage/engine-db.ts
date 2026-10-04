@@ -875,7 +875,7 @@ export class EngineDb {
   }
 
   /** Every record, oldest first, with the pick's match, minute, score and result, and the betting software's own bet on it. For the Excel download. */
-  listDirectBetsForExport(): Array<DirectBet & { home: string | null; away: string | null; competition: string | null; minute: number | null; score: string | null; result: string | null; feedMatched: number | null; feedOdds: number | null; feedProfit: number | null }> {
+  listDirectBetsForExport(): Array<DirectBet & { home: string | null; away: string | null; competition: string | null; minute: number | null; score: string | null; result: string | null; feedMatched: number | null; feedOdds: number | null; feedProfit: number | null; betStatus: string | null; betProfit: number | null }> {
     const rows = this.db
       .prepare(
         `SELECT d.*, p.home AS home, p.away AS away, p.competition AS competition, p.minute AS minute,
@@ -884,11 +884,13 @@ export class EngineDb {
                 (SELECT SUM(b.matched) FROM betfair_bets b WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id)) AS feed_matched,
                 (SELECT SUM(b.matched * b.odds) / NULLIF(SUM(b.matched), 0) FROM betfair_bets b
                   WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id) AND b.matched > 0) AS feed_odds,
-                (SELECT SUM(b.profit) FROM betfair_bets b WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id)) AS feed_profit
+                (SELECT SUM(b.profit) FROM betfair_bets b WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id)) AS feed_profit,
+                (SELECT b.status FROM betfair_bets b WHERE b.bet_id = d.bet_id) AS bet_status,
+                (SELECT b.profit FROM betfair_bets b WHERE b.bet_id = d.bet_id) AS bet_profit
          FROM direct_bets d LEFT JOIN live_picks p ON p.id = d.pick_id
          ORDER BY d.created_at`,
       )
-      .all() as Array<DirectBetRow & { home: string | null; away: string | null; competition: string | null; minute: number | null; score: string | null; result: string | null; feed_matched: number | null; feed_odds: number | null; feed_profit: number | null }>;
+      .all() as Array<DirectBetRow & { home: string | null; away: string | null; competition: string | null; minute: number | null; score: string | null; result: string | null; feed_matched: number | null; feed_odds: number | null; feed_profit: number | null; bet_status: string | null; bet_profit: number | null }>;
     return rows.map((r) => ({
       ...toDirectBet(r),
       home: r.home,
@@ -900,6 +902,8 @@ export class EngineDb {
       feedMatched: r.feed_matched,
       feedOdds: r.feed_odds,
       feedProfit: r.feed_profit,
+      betStatus: r.bet_status,
+      betProfit: r.bet_profit,
     }));
   }
 

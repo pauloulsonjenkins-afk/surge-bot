@@ -494,6 +494,9 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     // switches say now. Otherwise turning a strategy off and on again could make its row vanish
     // and reappear, which betting software may read as a second tip.
     if (p.sentAt !== null) {
+      // Handed to direct betting in Live (betfair/direct.ts), not to the betting software: never in the feed, even after
+      // Live is switched off, or the betting software would place a pick GoalBrew already bet.
+      if (db.getDirectBet(p.id)?.mode === "live") continue;
       const frozen = parseFrozenRow(p);
       if (frozen) {
         rows.push(frozen);

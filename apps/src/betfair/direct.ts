@@ -715,7 +715,7 @@ export function directExportCsv(db: EngineDb): string {
   const header = [
     "Time (UK)", "Pick", "Mode", "Outcome", "Strategy", "Match", "League", "Minute", "Score", "Market", "Selection",
     "Stake", "Min odds", "Price shown", "Lay shown", "Gap %", "Overround %", "Price asked",
-    "Bet id", "Matched", "Avg price matched", "Not matched", "Reason",
+    "Bet id", "Matched", "Avg price matched", "Not matched", "Betfair status", "Profit", "Reason",
     "BF Bot Manager matched", "BF Bot Manager odds", "BF Bot Manager profit", "Pick result", "Last update (UK)",
   ];
   const lines = db.listDirectBetsForExport().map((b) =>
@@ -742,6 +742,8 @@ export function directExportCsv(db: EngineDb): string {
       b.sizeMatched,
       b.avgPrice,
       b.cancelled,
+      b.betStatus,
+      b.betProfit,
       b.reason,
       b.feedMatched,
       b.feedOdds,

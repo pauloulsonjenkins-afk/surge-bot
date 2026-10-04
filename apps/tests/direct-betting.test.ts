@@ -294,3 +294,19 @@ test("the Excel download has every record, with what was shown, asked and done",
   assert.equal(get("Price asked"), "1.71");
   assert.equal(get("Matched"), "2");
 });
+
+test("no double bets: in Live the feed is empty, and after Live is switched off GoalBrew's picks never reach the feed", async () => {
+  const { db, add, bf } = setup("live");
+  add("Lyon", "Nice");
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(bf.placed.length, 1);
+  // While Live, the betting software is handed nothing (the feed route serves no rows when directIsLive).
+  assert.equal(directIsLive(db, ENV), true);
+  // Switched back off: the feed resumes, but the pick GoalBrew placed isn't in it.
+  saveDirectSettings(db, { mode: "off" }, new Date(), ENV);
+  const feed = buildFeed(db, { markSent: true });
+  assert.equal(feed.rows.length, 0);
+  // A new pick after that goes to the betting software as normal.
+  add("Lens", "Brest");
+  assert.equal(buildFeed(db, { markSent: true }).newlySent, 1);
+});
