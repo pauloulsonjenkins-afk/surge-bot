@@ -1,12 +1,13 @@
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bot, ChevronRight, PencilLine, Scale, Send, Settings, TrendingUp, Trophy, Users } from "lucide-react";
+import { Bot, ChevronRight, PencilLine, Scale, Send, Settings, TrendingUp, Trophy, Users, Zap } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
   "/more/admin/sending": Send,
+  "/more/admin/direct": Zap,
   "/more/admin/strategies": Bot,
   "/more/admin/leagues": Trophy,
   "/more/admin/winloss": TrendingUp,

@@ -12,6 +12,8 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { NotPlacedCard } from "@/components/admin/NotPlacedCard";
 import { NotificationsCard } from "@/components/admin/NotificationsCard";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import Link from "next/link";
+import { useDirect } from "@/queries/use-direct";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -272,6 +274,7 @@ export default function SendingPage() {
   return (
     <div className="space-y-3">
       <PageHeader as="h2" title="Sending" subtitle="Controls which picks are handed to your betting software." />
+      <DirectNotice />
 
       {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
       {remove.error && <p className="text-sm text-destructive">{remove.error.message}</p>}
@@ -786,5 +789,22 @@ export default function SendingPage() {
         )}
       </section>
     </div>
+  );
+}
+
+/** When direct betting is on, say so here: in Live the betting software is handed nothing new. */
+function DirectNotice() {
+  const { data } = useDirect();
+  if (!data || data.effectiveMode === "off") return null;
+  const live = data.effectiveMode === "live";
+  return (
+    <p className={`rounded-lg border px-3 py-2 text-sm ${live ? "border-warn/40 bg-warn/10 text-ink" : "border-line text-ink-muted"}`}>
+      {live
+        ? "Direct betting is Live: GoalBrew places these picks on Betfair itself, and the feed gives your betting software nothing new. "
+        : "Direct betting is in Shadow: your betting software still places these picks; GoalBrew notes what it would have bet. "}
+      <Link href="/more/admin/direct" className="font-medium text-accent underline">
+        Direct betting
+      </Link>
+    </p>
   );
 }

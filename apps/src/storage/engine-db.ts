@@ -43,6 +43,91 @@ export interface StoredWebhook extends CapturedWebhook {
   id: number;
 }
 
+/** What a pick is to be bet as, when direct betting first takes it. */
+export interface DirectBetInfo {
+  strategy: string;
+  eventName: string;
+  marketType: string;
+  selectionName: string;
+  stake: number;
+  minPrice: number | null;
+}
+
+/**
+ * Direct betting's record of one pick (betfair/direct.ts). States: waiting (for a price or an open market), placing
+ * (order sent, answer not known yet), placed, shadow (Shadow mode: what it would have done), skipped, failed.
+ */
+export interface DirectBet extends DirectBetInfo {
+  pickId: number;
+  mode: "shadow" | "live";
+  state: "waiting" | "placing" | "placed" | "shadow" | "skipped" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  marketId: string | null;
+  selectionId: number | null;
+  price: number | null;
+  bestLay: number | null;
+  overround: number | null;
+  betId: string | null;
+  sizeMatched: number | null;
+  avgPrice: number | null;
+  cancelled: number | null;
+  reason: string | null;
+  attempts: number;
+}
+
+interface DirectBetRow {
+  pick_id: number;
+  mode: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  strategy: string | null;
+  event_name: string | null;
+  market_type: string | null;
+  selection_name: string | null;
+  market_id: string | null;
+  selection_id: number | null;
+  stake: number | null;
+  min_price: number | null;
+  price: number | null;
+  best_lay: number | null;
+  overround: number | null;
+  bet_id: string | null;
+  size_matched: number | null;
+  avg_price: number | null;
+  cancelled: number | null;
+  reason: string | null;
+  attempts: number;
+}
+
+function toDirectBet(r: DirectBetRow): DirectBet {
+  return {
+    pickId: r.pick_id,
+    mode: r.mode === "live" ? "live" : "shadow",
+    state: r.state as DirectBet["state"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    strategy: r.strategy ?? "",
+    eventName: r.event_name ?? "",
+    marketType: r.market_type ?? "",
+    selectionName: r.selection_name ?? "",
+    stake: r.stake ?? 0,
+    minPrice: r.min_price,
+    marketId: r.market_id,
+    selectionId: r.selection_id,
+    price: r.price,
+    bestLay: r.best_lay,
+    overround: r.overround,
+    betId: r.bet_id,
+    sizeMatched: r.size_matched,
+    avgPrice: r.avg_price,
+    cancelled: r.cancelled,
+    reason: r.reason,
+    attempts: r.attempts,
+  };
+}
+
 /** Hit-rate figures for the Dashboard and Strategies pages. Results come from the alert's own Hit/Miss marker. */
 export interface HitRateRow {
   label: string;
@@ -696,7 +781,153 @@ export class EngineDb {
       CREATE INDEX IF NOT EXISTS idx_live_picks_first_seen ON live_picks (first_seen_at);
       CREATE INDEX IF NOT EXISTS idx_live_picks_sent_at ON live_picks (sent_at);
       CREATE INDEX IF NOT EXISTS idx_betfair_bets_pick ON betfair_bets (pick_id, matched);
+
+      -- Direct betting (betfair/direct.ts): one row per pick it has looked at, so a pick is never placed twice.
+      CREATE TABLE IF NOT EXISTS direct_bets (
+        pick_id         INTEGER PRIMARY KEY,
+        mode            TEXT NOT NULL,
+        state           TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL,
+        strategy        TEXT,
+        event_name      TEXT,
+        market_type     TEXT,
+        selection_name  TEXT,
+        market_id       TEXT,
+        selection_id    INTEGER,
+        stake           REAL,
+        min_price       REAL,
+        price           REAL,
+        best_lay        REAL,
+        overround       REAL,
+        bet_id          TEXT,
+        size_matched    REAL,
+        avg_price       REAL,
+        cancelled       REAL,
+        reason          TEXT,
+        attempts        INTEGER NOT NULL DEFAULT 0
+      );
     `);
+  }
+
+  // ---- Direct betting ----
+
+  /** Takes a pick for direct betting. False when it already has a row (looked at before, by this or another mode). */
+  claimDirectBet(pickId: number, mode: "shadow" | "live", info: DirectBetInfo, at: string): boolean {
+    const r = this.db
+      .prepare(
+        `INSERT INTO direct_bets (pick_id, mode, state, created_at, updated_at, strategy, event_name, market_type, selection_name, stake, min_price)
+         VALUES (?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(pick_id) DO NOTHING`,
+      )
+      .run(pickId, mode, at, at, info.strategy, info.eventName, info.marketType, info.selectionName, info.stake, info.minPrice);
+    if (r.changes === 1) this.onChange();
+    return r.changes === 1;
+  }
+
+  updateDirectBet(pickId: number, fields: Partial<Omit<DirectBet, "pickId" | "mode" | "createdAt">>, at: string): void {
+    const cols: Record<string, string> = {
+      state: "state", strategy: "strategy", eventName: "event_name", marketType: "market_type", selectionName: "selection_name",
+      marketId: "market_id", selectionId: "selection_id", stake: "stake", minPrice: "min_price", price: "price", bestLay: "best_lay",
+      overround: "overround", betId: "bet_id", sizeMatched: "size_matched", avgPrice: "avg_price", cancelled: "cancelled",
+      reason: "reason", attempts: "attempts",
+    };
+    const sets: string[] = ["updated_at = ?"];
+    const values: unknown[] = [at];
+    for (const [k, v] of Object.entries(fields)) {
+      const col = cols[k];
+      if (!col || v === undefined) continue;
+      sets.push(`${col} = ?`);
+      values.push(v);
+    }
+    values.push(pickId);
+    this.db.prepare(`UPDATE direct_bets SET ${sets.join(", ")} WHERE pick_id = ?`).run(...values);
+    this.onChange();
+  }
+
+  getDirectBet(pickId: number): DirectBet | null {
+    const r = this.db.prepare(`SELECT * FROM direct_bets WHERE pick_id = ?`).get(pickId) as DirectBetRow | undefined;
+    return r ? toDirectBet(r) : null;
+  }
+
+  /** Newest first, with the match and what the betting software's own bet on the pick matched at (for comparing in Shadow). */
+  listDirectBets(limit = 50): Array<DirectBet & { home: string | null; away: string | null; feedMatched: number | null; feedOdds: number | null }> {
+    const rows = this.db
+      .prepare(
+        `SELECT d.*, p.home AS home, p.away AS away,
+                (SELECT SUM(b.matched) FROM betfair_bets b WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id)) AS feed_matched,
+                (SELECT SUM(b.matched * b.odds) / NULLIF(SUM(b.matched), 0) FROM betfair_bets b
+                  WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id) AND b.matched > 0) AS feed_odds
+         FROM direct_bets d LEFT JOIN live_picks p ON p.id = d.pick_id
+         ORDER BY d.created_at DESC LIMIT ?`,
+      )
+      .all(Math.min(Math.max(limit, 1), 200)) as Array<DirectBetRow & { home: string | null; away: string | null; feed_matched: number | null; feed_odds: number | null }>;
+    return rows.map((r) => ({ ...toDirectBet(r), home: r.home, away: r.away, feedMatched: r.feed_matched, feedOdds: r.feed_odds }));
+  }
+
+  /** Rows still being worked on: waiting for a price, being placed, or placed with some of the stake unmatched. */
+  listOpenDirectBets(): DirectBet[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM direct_bets WHERE state IN ('waiting', 'placing') OR (state = 'placed' AND bet_id IS NOT NULL AND COALESCE(size_matched, 0) + COALESCE(cancelled, 0) < stake - 0.001)`)
+      .all() as DirectBetRow[];
+    return rows.map(toDirectBet);
+  }
+
+  /** Total stake placed directly (live) since a time: the daily stake limit. */
+  directStakeSince(sinceIso: string): number {
+    const r = this.db
+      .prepare(`SELECT COALESCE(SUM(stake), 0) AS s FROM direct_bets WHERE mode = 'live' AND state IN ('placing', 'placed') AND created_at >= ?`)
+      .get(sinceIso) as { s: number };
+    return r.s;
+  }
+
+  /** Bets placed directly whose Betfair record isn't linked to its pick yet. */
+  linkDirectBets(): number {
+    const r = this.db
+      .prepare(
+        `UPDATE betfair_bets SET pick_id = (SELECT d.pick_id FROM direct_bets d WHERE d.bet_id = betfair_bets.bet_id)
+         WHERE pick_id IS NULL AND bet_id IN (SELECT bet_id FROM direct_bets WHERE bet_id IS NOT NULL)`,
+      )
+      .run();
+    if (r.changes > 0) this.onChange();
+    return r.changes;
+  }
+
+  /** Webhooks that didn't come from the Telegram listener (which stores its messages here too), newest first. */
+  listExternalWebhooks(limit = 10): StoredWebhook[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, received_at, body_sha256, content_type, signature_verified, body FROM inplayguru_webhooks
+         WHERE body NOT LIKE '{"source":"telegram"%' ORDER BY id DESC LIMIT ?`,
+      )
+      .all(Math.min(Math.max(limit, 1), 50)) as Array<{ id: number; received_at: string; body_sha256: string; content_type: string | null; signature_verified: number; body: string }>;
+    return rows.map((r) => ({ id: r.id, receivedAt: r.received_at, bodySha256: r.body_sha256, contentType: r.content_type, signatureVerified: !!r.signature_verified, body: r.body }));
+  }
+
+  /**
+   * The same alert already stored from the other source (Telegram or the webhook): same strategy and teams, first seen
+   * within 15 minutes, at the same score. Null when there isn't one.
+   */
+  findTwinPick(strategy: string, home: string, away: string, goals: [number | null, number | null], at: string, otherSource: "webhook" | "telegram"): { id: number } | null {
+    const from = new Date(Date.parse(at) - 15 * 60_000).toISOString();
+    const to = new Date(Date.parse(at) + 15 * 60_000).toISOString();
+    const r = this.db
+      .prepare(
+        `SELECT id FROM live_picks
+         WHERE lower(strategy) = lower(?) AND lower(home) = lower(?) AND lower(away) = lower(?)
+           AND first_seen_at BETWEEN ? AND ?
+           AND COALESCE(goals_home, -1) = COALESCE(?, -1) AND COALESCE(goals_away, -1) = COALESCE(?, -1)
+           AND ${otherSource === "webhook" ? "chat_id = 'webhook'" : "chat_id <> 'webhook'"}
+         ORDER BY id LIMIT 1`,
+      )
+      .get(strategy, home, away, from, to, goals[0], goals[1]) as { id: number } | undefined;
+    return r ?? null;
+  }
+
+  /** Moves a pick to another source's key (a webhook pick taken over by its Telegram message, which carries later edits). */
+  rekeyLivePick(id: number, chatId: string, messageId: number): void {
+    this.db.prepare(`UPDATE live_picks SET chat_id = ?, message_id = ? WHERE id = ?`).run(chatId, messageId, id);
+    this.onChange();
   }
 
   /** Stores a webhook. Returns false if an identical body was already stored (a retry or replay). */

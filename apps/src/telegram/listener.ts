@@ -139,6 +139,12 @@ function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boo
       if (how === "new") log.info(`Telegram message ${m.messageId} is not an alert; not added to the live picks.`);
       return false;
     }
+    // The same alert already came in by InPlayGuru's webhook: this message takes that pick over (Telegram's later
+    // edit carries the result), rather than making a second one.
+    if (parsed.home && parsed.away && db.getLivePickText(m.chatKey, m.messageId) === null) {
+      const twin = db.findTwinPick(parsed.strategyRaw, parsed.home, parsed.away, [parsed.goalsHome, parsed.goalsAway], messageAt, "webhook");
+      if (twin) db.rekeyLivePick(twin.id, m.chatKey, m.messageId);
+    }
     // An alert recovered by the catch-up sync is dated when it was posted, so a late recovery lands on the right day.
     const what = db.upsertLivePick(m.chatKey, m.messageId, m.text, parsed, messageAt, how === "sync" ? messageAt : undefined);
     status.lastAlertAt = new Date().toISOString();

@@ -8,6 +8,7 @@ export const ADMIN_GROUPS = [
     label: "Operate",
     items: [
       { href: "/more/admin/sending", label: "Sending", description: "What is sent to your betting software, and stakes." },
+      { href: "/more/admin/direct", label: "Direct betting", description: "Place bets on Betfair from GoalBrew itself (off until you switch it on)." },
       { href: "/more/admin/strategies", label: "Strategies", description: "Hit rate for each strategy, merge or delete." },
       { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier." },
     ],

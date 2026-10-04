@@ -1334,3 +1334,67 @@ export function pushAction(
 ): Promise<{ ok?: boolean; reached?: number }> {
   return engineCall(`/internal/push/${action}`, action === "test" ? "the test notification" : "notification settings", { method: "POST", body, timeoutMs: 20_000 });
 }
+
+// ---- Direct betting (engine: betfair/direct.ts) ----
+
+export type DirectMode = "off" | "shadow" | "live";
+export interface DirectSettings {
+  mode: DirectMode;
+  since: string;
+  maxSpreadPct: number;
+  minOverround: number;
+  maxOverround: number;
+  strategyLimits: Record<string, { maxSpreadPct?: number; maxOverround?: number }>;
+  cancelUnmatchedSeconds: number;
+  dailyStakeLimit: number;
+  webhook: "record" | "use";
+}
+export interface DirectBetRow {
+  pickId: number;
+  mode: "shadow" | "live";
+  state: "waiting" | "placing" | "placed" | "shadow" | "skipped" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  strategy: string;
+  eventName: string;
+  marketType: string;
+  selectionName: string;
+  stake: number;
+  minPrice: number | null;
+  price: number | null;
+  bestLay: number | null;
+  overround: number | null;
+  betId: string | null;
+  sizeMatched: number | null;
+  avgPrice: number | null;
+  cancelled: number | null;
+  reason: string | null;
+  home: string | null;
+  away: string | null;
+  /** What the betting software's own bet on this pick matched (Shadow comparison). */
+  feedMatched: number | null;
+  feedOdds: number | null;
+}
+export interface DirectStatus {
+  settings: DirectSettings;
+  effectiveMode: DirectMode;
+  readiness: {
+    betfairLinked: boolean;
+    liveAllowed: boolean;
+    loginOk: boolean | null;
+    error: string | null;
+    available: number | null;
+    exposure: number | null;
+    delayedKey: boolean | null;
+    checkedAt: string | null;
+  };
+  stakedToday: number;
+  sendingOn: boolean;
+  strategies: string[];
+  bets: DirectBetRow[];
+  webhooks: Array<{ receivedAt: string; signatureVerified: boolean; understood: boolean; summary: string | null; sample: string }>;
+  webhooksTotal: number;
+}
+
+export const fetchDirect = () => engineCall<DirectStatus>("/internal/direct", "direct betting", { timeoutMs: 15000 });
+export const saveDirect = (patch: Partial<DirectSettings>) => engineCall<DirectStatus>("/internal/direct", "direct betting", { method: "PUT", body: patch, timeoutMs: 15000 });

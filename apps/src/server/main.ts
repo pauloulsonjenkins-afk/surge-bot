@@ -17,6 +17,7 @@ import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 import { recordSimBets } from "../inplayguru/bet-feed";
 import { startDailySummary } from "./daily-summary";
+import { startDirectBetting } from "../betfair/direct";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
 
   // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
   startDailySummary(db);
+  startDirectBetting(db);
 
   const server = createEngineHttpServer(env, db, backups);
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));

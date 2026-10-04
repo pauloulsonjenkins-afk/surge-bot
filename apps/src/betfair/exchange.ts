@@ -3,7 +3,8 @@
  * was actually placed and matched (the bet history import only covers settled bets, after the match).
  *
  * READ ONLY. This module calls only listCurrentOrders, listClearedOrders, listMarketCatalogue, listEvents,
- * listMarketBook and listCompetitions. It has no code that places, changes or cancels a bet, and must never be given any.
+ * listMarketBook and listCompetitions. It has no code that places, changes or cancels a bet, and must never be given any:
+ * placing lives in direct.ts, behind its own switches and its own login.
  *
  * It also looks each new alert's match up on Betfair (listEvents), so the Leagues page can list leagues whose matches
  * aren't on the exchange, and Live can say "Not on exchange" as soon as such an alert arrives. When the match is there,
@@ -76,7 +77,7 @@ export function missingSettings(env = process.env): string[] {
   return missing;
 }
 
-function post(url: string, body: string, headers: Record<string, string>, tls?: { cert: string; key: string }): Promise<{ status: number; text: string }> {
+export function post(url: string, body: string, headers: Record<string, string>, tls?: { cert: string; key: string }): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
     const req = httpsRequest(url, { method: "POST", headers: { ...headers, "Content-Length": Buffer.byteLength(body) }, timeout: 20_000, ...(tls ?? {}) }, (res) => {
       const chunks: Buffer[] = [];
@@ -730,6 +731,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
     try {
       const bets = await reader.recentBets();
       db.saveBetfairBets(bets, new Date().toISOString());
+      // Bets GoalBrew placed itself (direct.ts) are linked by their bet id before any guessing by match and time.
+      db.linkDirectBets();
       const linked = matchBets(db);
       if (linked > 0) log.info(`Betfair: ${linked} new bet(s) linked to picks.`);
       const corrected = db.markBetPicksOnExchange();

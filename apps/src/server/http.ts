@@ -47,6 +47,7 @@
  *   POST /internal/betfair/match-name           add an "alert name = Betfair name" Match names line and re-link bets (admin site only)
  *   POST /internal/betfair/use-match            a pick not found on Betfair: use one of the events offered: { id, event } (admin site only)
  *   POST /internal/betfair/coverage/override    which Betfair competition a league is: { league, competition | "none" | null } (admin site only)
+ *   GET/PUT /internal/direct                    direct betting: mode, limits, readiness, recent bets and webhooks (admin site only)
  *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -69,20 +70,22 @@ import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./pus
 import { buildDailySummary } from "./daily-summary";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
-import { verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
-import { handleVerifiedPick } from "../inplayguru/receiver";
+import { sha256Hex, verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
+import { parseAlert } from "../inplayguru/parse-alert";
+import { alertTextFrom, handleVerifiedPick, useWebhookAlert } from "../inplayguru/receiver";
+import { directIsLive, directReadiness, effectiveMode, getDirectSettings, saveDirectSettings, stakedToday, wake as wakeDirect } from "../betfair/direct";
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
-import { addMatchName, buildFeed, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, saveSendingSettings } from "../inplayguru/bet-feed";
+import { addMatchName, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, recordSimBets, saveSendingSettings, toCsv } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { listHorseBets, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
-import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, teamMarketsSeen } from "../betfair/exchange";
+import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
 import { checkLeague, coverageOfAlertLeagues, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
@@ -90,8 +93,6 @@ import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
 const FEED_PREFIX = "/feeds/bets/";
-/** How long a new pick waits for its Betfair match check before it is sent anyway (see buildFeed). */
-const EXCHANGE_HOLD_MS = 45_000;
 const BETFAIR_IMPORT_PREFIX = "/imports/betfair/";
 /** A bet history export can run to thousands of rows. */
 const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
@@ -832,6 +833,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       const ua = req.headers["user-agent"];
       noteFeedFetched(Array.isArray(ua) ? ua[0] : ua);
+      // GoalBrew places the bets itself (Direct betting: Live), so the betting software is handed nothing.
+      if (directIsLive(db)) {
+        const csv = toCsv([]);
+        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Length": Buffer.byteLength(csv), "Cache-Control": "no-store" });
+        res.end(csv);
+        return;
+      }
       const feed = buildFeed(db, { markSent: true, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0 });
       if (feed.newlySent > 0) {
         log.info(`Bet feed: ${feed.newlySent} new pick(s) handed over (${feed.rows.length} row(s) served).`);
@@ -1131,6 +1139,43 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
+    if (path === "/internal/direct" && (req.method === "GET" || req.method === "PUT")) {
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "PUT") {
+        try {
+          saveDirectSettings(db, await readJsonBody(req));
+        } catch (err) {
+          send(res, 400, { error: err instanceof Error ? err.message : "invalid" });
+          return;
+        }
+      }
+      const settings = getDirectSettings(db);
+      const webhooks = db.listExternalWebhooks(10).map((w) => {
+        const text = alertTextFrom(w.body);
+        let summary: string | null = null;
+        if (text) {
+          const p = parseAlert(text);
+          summary = `${p.strategyRaw}: ${p.home ?? "?"} v ${p.away ?? "?"}`;
+        }
+        return { receivedAt: w.receivedAt, signatureVerified: w.signatureVerified, understood: text !== null, summary, sample: w.body.slice(0, 800) };
+      });
+      send(res, 200, {
+        settings,
+        effectiveMode: effectiveMode(settings),
+        readiness: await directReadiness(),
+        stakedToday: stakedToday(db),
+        sendingOn: getSendingSettings(db).enabled,
+        strategies: db.listStrategiesForAdmin().map((s) => s.label),
+        bets: db.listDirectBets(50),
+        webhooks,
+        webhooksTotal: db.countWebhooks(),
+      });
+      return;
+    }
+
     if (path === "/internal/sending" && (req.method === "GET" || req.method === "PUT")) {
       if (!process.env.ADMIN_INTERNAL_KEY) {
         send(res, 500, { error: "not_configured" });
@@ -1256,6 +1301,20 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
 
       const outcome = handleVerifiedPick(db, body, req.headers["content-type"] ?? null, signatureVerified);
+      // "Webhook alerts: use" (Direct betting page): the alert becomes a pick, as a Telegram message does.
+      if (outcome === "captured" && getDirectSettings(db).webhook === "use") {
+        try {
+          const used = useWebhookAlert(db, body.toString("utf8"), sha256Hex(body));
+          log.info(`InPlayGuru webhook used as a pick: ${used}.`);
+          if (used === "added" || used === "updated") {
+            requestExchangeCheck();
+            recordSimBets(db);
+            wakeDirect();
+          }
+        } catch (err) {
+          log.error(`Could not use an InPlayGuru webhook as a pick: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       send(res, 200, { status: outcome });
       return;
     }

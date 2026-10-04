@@ -309,6 +309,9 @@ export interface FeedResult {
   blockedReason: string | null;
 }
 
+/** How long a new pick waits for its Betfair match check before it is sent anyway (see buildFeed). */
+export const EXCHANGE_HOLD_MS = 45_000;
+
 const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
 
 /** "Both Teams to Score (Favorite conceded first)" -> "Both Teams to Score". */
