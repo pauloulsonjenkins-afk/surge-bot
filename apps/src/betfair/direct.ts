@@ -708,12 +708,25 @@ function cell(v: string | number | null | undefined): string {
 }
 
 /**
+ * Who actually got a bet matched on the pick: GoalBrew (its own bet), BF Bot Manager (any other bet on Betfair linked to
+ * the pick), both, or neither. A GoalBrew bet placed but never matched says so.
+ */
+function placedBy(b: { betId: string | null; sizeMatched: number | null; feedMatched: number | null }): string {
+  const goalbrew = b.betId !== null && (b.sizeMatched ?? 0) > 0;
+  const bfbm = (b.feedMatched ?? 0) > 0;
+  if (goalbrew && bfbm) return "Both";
+  if (goalbrew) return "GoalBrew";
+  if (bfbm) return "BF Bot Manager";
+  return b.betId !== null ? "Neither (GoalBrew bet not matched)" : "Neither";
+}
+
+/**
  * Every direct betting record as CSV (opens in Excel), oldest first: what was shown and asked, what happened, and
  * alongside it what the betting software's own bet on the same pick got, and the pick's result.
  */
 export function directExportCsv(db: EngineDb): string {
   const header = [
-    "Time (UK)", "Pick", "Mode", "Outcome", "Strategy", "Match", "League", "Minute", "Score", "Market", "Selection",
+    "Time (UK)", "Pick", "Mode", "Outcome", "Bet placed by", "Strategy", "Match", "League", "Minute", "Score", "Market", "Selection",
     "Stake", "Min odds", "Price shown", "Lay shown", "Gap %", "Overround %", "Price asked",
     "Bet id", "Matched", "Avg price matched", "Not matched", "Betfair status", "Profit", "Reason",
     "BF Bot Manager matched", "BF Bot Manager odds", "BF Bot Manager profit", "Pick result", "Last update (UK)",
@@ -724,6 +737,7 @@ export function directExportCsv(db: EngineDb): string {
       b.pickId,
       b.mode,
       b.state === "shadow" ? "would bet" : b.state,
+      placedBy(b),
       b.strategy,
       b.home && b.away ? `${b.home} v ${b.away}` : b.eventName,
       b.competition,

@@ -283,7 +283,7 @@ test("the Excel download has every record, with what was shown, asked and done",
   const csv = directExportCsv(db);
   assert.ok(csv.startsWith("\uFEFF"), "marked as UTF-8 for Excel");
   const [header, row] = csv.slice(1).trim().split("\r\n");
-  assert.match(header!, /^Time \(UK\),Pick,Mode,Outcome,Strategy,Match/);
+  assert.match(header!, /^Time \(UK\),Pick,Mode,Outcome,Bet placed by,Strategy,Match/);
   const cols = header!.split(",");
   const vals = row!.split(",");
   const get = (name: string) => vals[cols.indexOf(name)];
@@ -293,6 +293,7 @@ test("the Excel download has every record, with what was shown, asked and done",
   assert.equal(get("Price shown"), "1.8");
   assert.equal(get("Price asked"), "1.71");
   assert.equal(get("Matched"), "2");
+  assert.equal(get("Bet placed by"), "GoalBrew");
 });
 
 test("no double bets: in Live the feed is empty, and after Live is switched off GoalBrew's picks never reach the feed", async () => {
@@ -309,4 +310,16 @@ test("no double bets: in Live the feed is empty, and after Live is switched off 
   // A new pick after that goes to the betting software as normal.
   add("Lens", "Brest");
   assert.equal(buildFeed(db, { markSent: true }).newlySent, 1);
+});
+
+test("the download says who placed each bet: BF Bot Manager's bet on a Shadow pick shows as BF Bot Manager", async () => {
+  const { db, add, bf } = setup("shadow");
+  const id = add();
+  buildFeed(db, { markSent: true });
+  await runDirect(db, bf, new Date(), ENV);
+  db.saveBetfairBets([{ betId: "BFBM1", placedAt: new Date().toISOString(), settledAt: null, event: "Lyon v Nice", market: "Over/Under 1.5 Goals", selection: "Over 1.5 Goals", side: "BACK", provider: null, status: "matched", stake: 2, matched: 2, odds: 1.82, profit: null } as never], new Date().toISOString());
+  db.linkBetfairBets([{ betId: "BFBM1", pickId: id }]);
+  const [header, row] = directExportCsv(db).slice(1).trim().split("\r\n");
+  const cols = header!.split(",");
+  assert.equal(row!.split(",")[cols.indexOf("Bet placed by")], "BF Bot Manager");
 });
