@@ -49,6 +49,7 @@
  *   POST /internal/betfair/coverage/override    which Betfair competition a league is: { league, competition | "none" | null } (admin site only)
  *   GET/PUT /internal/direct                    direct betting: mode, limits, readiness, recent bets and webhooks (admin site only)
  *   GET  /internal/direct/export                every direct betting record as CSV, for Excel (admin site only)
+ *   GET  /internal/picks/export                 every pick ever received, with stats, prices, results and money, as CSV for Excel (admin site only)
  *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -69,6 +70,7 @@ import { fixAndResend, listUnplaced, UNPLACED_AFTER_MS, chooseBetfairMatch } fro
 import { listStrategyNames, saveStrategyName } from "../inplayguru/strategy-names";
 import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./push";
 import { buildDailySummary } from "./daily-summary";
+import { picksExportCsv } from "./picks-export";
 import type { BackupScheduler } from "../storage/spaces-sync";
 import type { ServerEnv } from "./server-env";
 import { sha256Hex, verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
@@ -1137,6 +1139,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         hiddenFromResults,
         ignoring: ignoreFuture,
       });
+      return;
+    }
+
+    if (path === "/internal/picks/export" && req.method === "GET") {
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const csv = picksExportCsv(db);
+      res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Length": Buffer.byteLength(csv), "Cache-Control": "no-store" });
+      res.end(csv);
       return;
     }
 

@@ -1415,3 +1415,19 @@ export async function fetchDirectExport(): Promise<string> {
     clearTimeout(timeout);
   }
 }
+
+/** Every pick ever received as CSV (the Settings page's Excel download). */
+export async function fetchPicksExport(): Promise<string> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/picks/export`, { headers: { Authorization: `Bearer ${internalKey}` }, cache: "no-store", signal: controller.signal });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} for the picks download.`);
+    return await res.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}

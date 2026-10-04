@@ -1196,6 +1196,12 @@ export class EngineDb {
     return rows.map((r) => this.toLivePick(r));
   }
 
+  /** Every pick ever stored, oldest first, with no cap (the Settings page's Excel download). */
+  listAllLivePicks(): LivePick[] {
+    const rows = this.db.prepare(`SELECT * FROM live_picks ORDER BY first_seen_at, id`).all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.toLivePick(r));
+  }
+
   /** One pick by id, or null. */
   // ---- Push notifications and unplaced-bet alerts -----------------------------------------------------
 
@@ -1981,7 +1987,7 @@ export class EngineDb {
    * date, with just what the Win/Loss figures need: the odds printed in the
    * alert, the line it was on, and the stake if it was actually sent.
    */
-  listResultsForWinLoss(sinceIso: string): Array<{
+  listResultsForWinLoss(sinceIso: string, opts: { ignoreFreshStart?: boolean } = {}): Array<{
     id: number;
     firstSeenAt: string;
     strategy: string;
@@ -2022,7 +2028,7 @@ export class EngineDb {
          WHERE first_seen_at >= ? AND excluded = 0 AND COALESCE(result_override, result) IN ('hit', 'miss')
          ORDER BY first_seen_at, id`,
       )
-      .all(this.floorSince(sinceIso) ?? sinceIso) as Array<{
+      .all((opts.ignoreFreshStart ? null : this.floorSince(sinceIso)) ?? sinceIso) as Array<{
       id: number;
       first_seen_at: string;
       strategy: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/Card";
+import { Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import TelegramConnection from "@/components/admin/TelegramConnection";
@@ -149,11 +150,33 @@ function PublicViewCard() {
   );
 }
 
+function DownloadCard() {
+  return (
+    <section className="rounded-xl border border-line bg-surface p-3.5">
+      <h3 className="text-sm font-medium text-ink">Download every pick</h3>
+      <p className="mt-0.5 text-xs text-ink-muted">
+        Every alert ever received, one row each, for Excel: time, weekday and hour; strategy, Live or Sim and how it was bet; league, teams, minute and
+        score; every stat the alert carried; prices; the result; and stake, odds and profit, worked out the same way as the Dashboard and Win/Loss.
+        Removed picks are included and marked, so filter on Excluded if you want them out.
+      </p>
+      <a
+        href="/api/admin/picks/export"
+        download
+        className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink"
+      >
+        <Download size={16} aria-hidden />
+        Download for Excel
+      </a>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="space-y-3">
       <PageHeader as="h2" title="Settings" />
       <PublicViewCard />
+      <DownloadCard />
       <FreshStartCard />
       <section className="rounded-xl border border-line bg-surface p-3.5">
         <TelegramConnection />
