@@ -1347,6 +1347,7 @@ export interface DirectSettings {
   strategyLimits: Record<string, { maxSpreadPct?: number; maxOverround?: number }>;
   cancelUnmatchedSeconds: number;
   dailyStakeLimit: number;
+  acceptBelowPct: number;
   webhook: "record" | "use";
 }
 export interface DirectBetRow {

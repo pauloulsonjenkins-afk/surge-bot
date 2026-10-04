@@ -198,7 +198,7 @@ function NumberField({ label, value, onChange, suffix, step = 1 }: { label: stri
   );
 }
 
-type Form = { maxSpreadPct: string; minOverround: string; maxOverround: string; cancelUnmatchedSeconds: string; dailyStakeLimit: string; limits: Record<string, { spread: string; over: string }> };
+type Form = { maxSpreadPct: string; minOverround: string; maxOverround: string; cancelUnmatchedSeconds: string; dailyStakeLimit: string; acceptBelowPct: string; limits: Record<string, { spread: string; over: string }> };
 
 function toForm(s: DirectSettings, strategies: string[]): Form {
   const limits: Form["limits"] = {};
@@ -212,6 +212,7 @@ function toForm(s: DirectSettings, strategies: string[]): Form {
     maxOverround: String(s.maxOverround),
     cancelUnmatchedSeconds: String(s.cancelUnmatchedSeconds),
     dailyStakeLimit: String(s.dailyStakeLimit),
+    acceptBelowPct: String(s.acceptBelowPct),
     limits,
   };
 }
@@ -243,6 +244,7 @@ function Limits({ data }: { data: DirectStatus }) {
         maxOverround: Number(form.maxOverround),
         cancelUnmatchedSeconds: Number(form.cancelUnmatchedSeconds),
         dailyStakeLimit: Number(form.dailyStakeLimit),
+        acceptBelowPct: Number(form.acceptBelowPct),
         strategyLimits,
       },
       { onSuccess: () => reset() },
@@ -260,6 +262,13 @@ function Limits({ data }: { data: DirectStatus }) {
         <NumberField label="Overround up to" value={form.maxOverround} onChange={(v) => set({ maxOverround: v })} suffix="%" />
         <NumberField label="Cancel unmatched after" value={form.cancelUnmatchedSeconds} onChange={(v) => set({ cancelUnmatchedSeconds: v })} suffix="seconds" />
         <NumberField label="Most staked a day" value={form.dailyStakeLimit} onChange={(v) => set({ dailyStakeLimit: v })} suffix="£" />
+      </div>
+      <p className="mt-4 text-xs text-ink-muted">
+        Price asked for: each bet asks for a price this far under the one shown (never under the strategy&apos;s minimum odds), and Betfair matches it at the
+        best price really on offer. That way a price a few seconds old doesn&apos;t stop the bet matching. 0 asks for exactly the price shown.
+      </p>
+      <div className="mt-2">
+        <NumberField label="Accept down to" value={form.acceptBelowPct} onChange={(v) => set({ acceptBelowPct: v })} suffix="% under the price shown" />
       </div>
 
       <details className="mt-4">

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { directIsLive, getDirectSettings, overroundOf, runDirect, saveDirectSettings, type Book, type PlaceResult, type RefOrder, type Trading } from "../src/betfair/direct";
+import { askPrice, directIsLive, getDirectSettings, overroundOf, tickAtOrAbove, runDirect, saveDirectSettings, type Book, type PlaceResult, type RefOrder, type Trading } from "../src/betfair/direct";
 import { alertTextFrom, useWebhookAlert } from "../src/inplayguru/receiver";
 
 const ENV = { BF_APP_KEY: "k", BF_USERNAME: "u", BF_PASSWORD: "p", BF_CERT_PEM: "c", BF_KEY_PEM: "k", BF_DIRECT_BETTING: "allow" } as NodeJS.ProcessEnv;
@@ -101,7 +101,8 @@ test("Live places a pick once, with its own reference, and the CSV feed hands ov
   const id = add();
   await runDirect(db, bf, new Date(), ENV);
   await runDirect(db, bf, new Date(), ENV);
-  assert.deepEqual(bf.placed, [{ price: 1.8, size: 2, ref: `GB${id}` }]);
+  // It asks 5% under the 1.80 shown (on Betfair's price steps), so an old price doesn't stop it matching.
+  assert.deepEqual(bf.placed, [{ price: 1.71, size: 2, ref: `GB${id}` }]);
   const d = db.getDirectBet(id)!;
   assert.equal(d.state, "placed");
   assert.equal(d.betId, "B1");
@@ -132,7 +133,7 @@ test("a wide back/lay gap or a price under the minimum waits, and the bet goes o
   bf.back = 1.75;
   await runDirect(db, bf, new Date(), ENV);
   assert.equal(bf.placed.length, 1);
-  assert.equal(bf.placed[0]!.price, 1.75);
+  assert.equal(bf.placed[0]!.price, 1.7, "never asks below the minimum odds");
 });
 
 test("a suspended market waits; a refusal that isn't worth retrying fails without another try", async () => {
@@ -253,4 +254,24 @@ test("webhook alerts: the alert is found in any JSON shape, and the same alert f
   // And a webhook after Telegram is left to Telegram's pick.
   assert.equal(useWebhookAlert(db, JSON.stringify({ text, at: 2 }), "b".repeat(64)), "alreadyFromTelegram");
   assert.equal(db.listLivePicks(5).length, 1);
+});
+
+test("the price asked: rounded up to Betfair's steps, never under the minimum odds or over the price shown", () => {
+  assert.equal(tickAtOrAbove(1.711), 1.72);
+  assert.equal(tickAtOrAbove(2.01), 2.02);
+  assert.equal(tickAtOrAbove(3.33), 3.35);
+  assert.equal(tickAtOrAbove(7.1), 7.2);
+  assert.equal(tickAtOrAbove(2), 2);
+  assert.equal(askPrice(1.8, null, 5), 1.71);
+  assert.equal(askPrice(1.8, 1.75, 5), 1.75);
+  assert.equal(askPrice(3.4, null, 5), 3.25);
+  assert.equal(askPrice(1.8, null, 0), 1.8);
+});
+
+test("Shadow says what price it would take down to", async () => {
+  const { db, add, bf } = setup("shadow");
+  const id = add();
+  buildFeed(db, { markSent: true });
+  await runDirect(db, bf, new Date(), ENV);
+  assert.match(db.getDirectBet(id)!.reason ?? "", /at 1.80 \(taking down to 1.71\)/);
 });

@@ -24,6 +24,8 @@
  *     market's overround, with per-strategy limits. A pick that fails one waits and is checked again until it is
  *     too old to bet.
  *   - A daily limit on the total staked directly, on top of the feed's own daily limit and stake ceiling.
+ *   - Each bet asks for the lowest price accepted (a set % under the price shown, never under the minimum odds) and
+ *     Betfair matches it at the best price really on offer, so slightly old prices (the delayed app key) still match.
  *   - Any stake still unmatched after a set time is cancelled (only bets this module placed).
  *   - Switching away from Live stops any pick still waiting from being placed.
  */
@@ -61,6 +63,12 @@ export interface DirectSettings {
   cancelUnmatchedSeconds: number;
   /** Most staked directly per UK day, in pounds. */
   dailyStakeLimit: number;
+  /**
+   * How far below the price shown a bet may be matched, in percent (never below the strategy's minimum odds). The bet
+   * asks for that lowest price and Betfair matches it at the best price really on offer, so prices that are a little
+   * old (Betfair's delayed app key) don't stop it matching. 0 = ask for exactly the price shown.
+   */
+  acceptBelowPct: number;
   webhook: WebhookUse;
 }
 
@@ -79,6 +87,7 @@ export const DEFAULT_DIRECT: DirectSettings = {
   },
   cancelUnmatchedSeconds: 120,
   dailyStakeLimit: 50,
+  acceptBelowPct: 5,
   webhook: "record",
 };
 
@@ -130,6 +139,7 @@ export function getDirectSettings(db: EngineDb): DirectSettings {
     strategyLimits: raw.strategyLimits === undefined ? { ...d.strategyLimits } : limitsOf(raw.strategyLimits),
     cancelUnmatchedSeconds: num(raw.cancelUnmatchedSeconds, 10, 1800, d.cancelUnmatchedSeconds),
     dailyStakeLimit: num(raw.dailyStakeLimit, 1, 5000, d.dailyStakeLimit),
+    acceptBelowPct: num(raw.acceptBelowPct, 0, 20, d.acceptBelowPct),
     webhook: raw.webhook === "use" ? "use" : "record",
   };
 }
@@ -141,7 +151,7 @@ export function getDirectSettings(db: EngineDb): DirectSettings {
 export function saveDirectSettings(db: EngineDb, body: Record<string, unknown>, now = new Date(), env = process.env): DirectSettings {
   const before = getDirectSettings(db);
   const merged: Record<string, unknown> = { ...before };
-  for (const k of ["mode", "maxSpreadPct", "minOverround", "maxOverround", "strategyLimits", "cancelUnmatchedSeconds", "dailyStakeLimit", "webhook"] as const) {
+  for (const k of ["mode", "maxSpreadPct", "minOverround", "maxOverround", "strategyLimits", "cancelUnmatchedSeconds", "dailyStakeLimit", "acceptBelowPct", "webhook"] as const) {
     if (body[k] !== undefined) merged[k] = body[k];
   }
   if (body.mode !== undefined && body.mode !== "off" && body.mode !== "shadow" && body.mode !== "live") throw new Error("Mode must be off, shadow or live.");
@@ -339,6 +349,32 @@ export function overroundOf(book: Book, marketType: string): number | null {
   return Math.round((/DOUBLE_CHANCE/i.test(marketType) ? sum / 2 : sum) * 10) / 10;
 }
 
+/** Betfair's price steps: up to each price, the step between prices. */
+const LADDER: Array<[number, number]> = [[2, 0.01], [3, 0.02], [4, 0.05], [6, 0.1], [10, 0.2], [20, 0.5], [30, 1], [50, 2], [100, 5], [1000, 10]];
+
+/** The lowest price Betfair accepts that is at least `price` (rounded up to the next step). */
+export function tickAtOrAbove(price: number): number {
+  if (price <= 1.01) return 1.01;
+  let from = 1;
+  for (const [upTo, step] of LADDER) {
+    if (price <= upTo + 1e-9) {
+      const n = Math.ceil((price - from) / step - 1e-9);
+      return Math.round((from + n * step) * 100) / 100;
+    }
+    from = upTo;
+  }
+  return 1000;
+}
+
+/**
+ * The price a back bet asks for: `acceptBelowPct` under the price shown, never under the minimum odds, on Betfair's
+ * price steps, and never above the price shown.
+ */
+export function askPrice(shown: number, minPrice: number | null, acceptBelowPct: number): number {
+  const floor = Math.max(minPrice ?? 1.01, shown * (1 - acceptBelowPct / 100));
+  return Math.min(shown, tickAtOrAbove(floor));
+}
+
 /** Gap between best lay and best back, as a percentage of the back price. */
 export function spreadPct(back: number, lay: number | null): number | null {
   return lay === null ? null : Math.round(((lay - back) / back) * 1000) / 10;
@@ -514,8 +550,12 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   if (over === null) return wait("Not every selection has a price, so the overround can't be checked.");
   if (over < s.minOverround || over > maxOver) return wait(`Overround ${over}% is outside ${s.minOverround}% to ${maxOver}%.`);
 
+  // The price asked for: the lowest accepted. Betfair matches it at the best price on offer, which is at least this.
+  const ask = askPrice(me.back, d.minPrice, s.acceptBelowPct);
+  const taking = ask < me.back ? ` (taking down to ${ask.toFixed(2)})` : "";
+
   if (d.mode === "shadow") {
-    db.updateDirectBet(d.pickId, { state: "shadow", reason: `Would back ${money(d.stake)} at ${me.back.toFixed(2)}.` }, at);
+    db.updateDirectBet(d.pickId, { state: "shadow", reason: `Would back ${money(d.stake)} at ${me.back.toFixed(2)}${taking}.` }, at);
     return;
   }
 
@@ -535,7 +575,7 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   db.updateDirectBet(d.pickId, { state: "placing", attempts: attempt, price: me.back }, at);
   let result: PlaceResult;
   try {
-    result = await t.place({ marketId, selectionId, price: me.back, size: d.stake, ref, attempt });
+    result = await t.place({ marketId, selectionId, price: ask, size: d.stake, ref, attempt });
   } catch (err) {
     // No answer: it may or may not have been placed. The next pass asks Betfair by the reference.
     db.updateDirectBet(d.pickId, { attempts: 0, reason: `No answer from Betfair (${err instanceof Error ? err.message : String(err)}); checking.` }, at);
@@ -543,7 +583,7 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   }
   if (result.ok) {
     db.updateDirectBet(d.pickId, { state: "placed", betId: result.betId, sizeMatched: result.sizeMatched, avgPrice: result.avgPrice, reason: null }, at);
-    log.info(`Direct betting: pick ${d.pickId} placed, ${money(d.stake)} at ${me.back.toFixed(2)} (bet ${result.betId}, ${money(result.sizeMatched)} matched).`);
+    log.info(`Direct betting: pick ${d.pickId} placed, ${money(d.stake)} asking ${ask.toFixed(2)} (shown ${me.back.toFixed(2)}; bet ${result.betId}, ${money(result.sizeMatched)} matched).`);
     return;
   }
   if (RETRY.has(result.code)) {
