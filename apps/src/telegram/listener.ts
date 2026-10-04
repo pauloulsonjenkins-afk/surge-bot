@@ -44,6 +44,12 @@ const SYNC_MESSAGES = 40;
  * with their final results. Messages already stored and unchanged are skipped, so this is cheap.
  */
 const BACKFILL_MESSAGES = 500;
+/** Alerts with no result yet, older than this, are read again by message id (their full-time edit may have been missed)... */
+const RECHECK_AFTER_MS = 2 * 60 * 60 * 1000;
+/** ...for this many days back... */
+const RECHECK_DAYS = 4;
+/** ...every this many syncs (about every 10 minutes), and on the first. */
+const RECHECK_EVERY = 5;
 
 /** What /health reports about the listener. */
 export interface ListenerStatus {
@@ -219,6 +225,7 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
 
   let syncing = false;
   let backfilled = false;
+  let syncCount = 0;
   const sync = async () => {
     if (syncing || stopped) return;
     syncing = true;
@@ -247,6 +254,20 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
         if (stored === null && !isAlert(text)) continue; // not an alert: nothing to catch up
         if (stored === null && isIgnored(db, text)) continue; // an ignored strategy: nothing to catch up
         if (store(db, { chatKey: chatId, messageId: m.id, date: m.date, text, senderLabel: "sync" }, "sync")) recovered++;
+      }
+      // Alerts older than the window above that still have no result: read each again by its own message, so a
+      // full-time edit missed (a restart, a dropped connection) still lands. Every few syncs, as these change rarely.
+      if (syncCount++ % RECHECK_EVERY === 0) {
+        const now = Date.now();
+        const ids = db.listOpenAlertMessageIds(chatId, new Date(now - RECHECK_DAYS * 86_400_000).toISOString(), new Date(now - RECHECK_AFTER_MS).toISOString());
+        for (let i = 0; i < ids.length; i += 50) {
+          const batch = await client.getMessages(chatRef, { ids: ids.slice(i, i + 50) });
+          for (const m of batch) {
+            const text = m?.message ?? "";
+            if (!m || !text.trim() || db.getLivePickText(chatId, m.id) === text) continue;
+            if (store(db, { chatKey: chatId, messageId: m.id, date: m.date, text, senderLabel: "sync" }, "sync")) recovered++;
+          }
+        }
       }
       status.recoveredBySync += recovered;
       status.lastSyncAt = new Date().toISOString();

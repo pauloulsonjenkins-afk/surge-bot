@@ -1173,6 +1173,22 @@ export class EngineDb {
     return row ? row.raw_text : null;
   }
 
+  /**
+   * Telegram message ids of this chat's alerts first seen between two times that still have no result (no full-time
+   * score, not removed, not cleared from Live): the ones whose full-time edit may have been missed. Oldest first.
+   */
+  listOpenAlertMessageIds(chatId: string, fromIso: string, toIso: string, limit = 100): number[] {
+    const rows = this.db
+      .prepare(
+        `SELECT message_id FROM live_picks
+         WHERE chat_id = ? AND first_seen_at >= ? AND first_seen_at < ?
+           AND COALESCE(result_override, result) IS NULL AND ft_score IS NULL AND excluded = 0 AND waiting_cleared_at IS NULL
+         ORDER BY first_seen_at LIMIT ?`,
+      )
+      .all(chatId, fromIso, toIso, limit) as Array<{ message_id: number }>;
+    return rows.map((r) => r.message_id);
+  }
+
   countLivePicks(): number {
     const row = this.db.prepare(`SELECT COUNT(*) AS n FROM live_picks`).get() as { n: number };
     return row.n;
