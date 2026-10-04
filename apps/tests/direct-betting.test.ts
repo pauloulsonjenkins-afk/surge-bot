@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { askPrice, directIsLive, getDirectSettings, overroundOf, tickAtOrAbove, runDirect, saveDirectSettings, type Book, type PlaceResult, type RefOrder, type Trading } from "../src/betfair/direct";
+import { askPrice, directExportCsv, directIsLive, getDirectSettings, overroundOf, tickAtOrAbove, runDirect, saveDirectSettings, type Book, type PlaceResult, type RefOrder, type Trading } from "../src/betfair/direct";
 import { alertTextFrom, useWebhookAlert } from "../src/inplayguru/receiver";
 
 const ENV = { BF_APP_KEY: "k", BF_USERNAME: "u", BF_PASSWORD: "p", BF_CERT_PEM: "c", BF_KEY_PEM: "k", BF_DIRECT_BETTING: "allow" } as NodeJS.ProcessEnv;
@@ -274,4 +274,23 @@ test("Shadow says what price it would take down to", async () => {
   buildFeed(db, { markSent: true });
   await runDirect(db, bf, new Date(), ENV);
   assert.match(db.getDirectBet(id)!.reason ?? "", /at 1.80 \(taking down to 1.71\)/);
+});
+
+test("the Excel download has every record, with what was shown, asked and done", async () => {
+  const { db, add, bf } = setup("live");
+  add("Lyon", "Nice");
+  await runDirect(db, bf, new Date(), ENV);
+  const csv = directExportCsv(db);
+  assert.ok(csv.startsWith("\uFEFF"), "marked as UTF-8 for Excel");
+  const [header, row] = csv.slice(1).trim().split("\r\n");
+  assert.match(header!, /^Time \(UK\),Pick,Mode,Outcome,Strategy,Match/);
+  const cols = header!.split(",");
+  const vals = row!.split(",");
+  const get = (name: string) => vals[cols.indexOf(name)];
+  assert.equal(get("Mode"), "live");
+  assert.equal(get("Outcome"), "placed");
+  assert.equal(get("Match"), "Lyon v Nice");
+  assert.equal(get("Price shown"), "1.8");
+  assert.equal(get("Price asked"), "1.71");
+  assert.equal(get("Matched"), "2");
 });

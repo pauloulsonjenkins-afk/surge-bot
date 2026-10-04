@@ -1399,3 +1399,19 @@ export interface DirectStatus {
 
 export const fetchDirect = () => engineCall<DirectStatus>("/internal/direct", "direct betting", { timeoutMs: 15000 });
 export const saveDirect = (patch: Partial<DirectSettings>) => engineCall<DirectStatus>("/internal/direct", "direct betting", { method: "PUT", body: patch, timeoutMs: 15000 });
+
+/** Every direct betting record as CSV (for the Excel download). */
+export async function fetchDirectExport(): Promise<string> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch(`${baseUrl}/internal/direct/export`, { headers: { Authorization: `Bearer ${internalKey}` }, cache: "no-store", signal: controller.signal });
+    if (!res.ok) throw new Error(`Engine responded ${res.status} for the direct betting download.`);
+    return await res.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}

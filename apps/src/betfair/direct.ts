@@ -555,7 +555,7 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   const taking = ask < me.back ? ` (taking down to ${ask.toFixed(2)})` : "";
 
   if (d.mode === "shadow") {
-    db.updateDirectBet(d.pickId, { state: "shadow", reason: `Would back ${money(d.stake)} at ${me.back.toFixed(2)}${taking}.` }, at);
+    db.updateDirectBet(d.pickId, { state: "shadow", askPrice: ask, reason: `Would back ${money(d.stake)} at ${me.back.toFixed(2)}${taking}.` }, at);
     return;
   }
 
@@ -572,7 +572,7 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
     return;
   }
   const attempt = d.attempts + 1;
-  db.updateDirectBet(d.pickId, { state: "placing", attempts: attempt, price: me.back }, at);
+  db.updateDirectBet(d.pickId, { state: "placing", attempts: attempt, price: me.back, askPrice: ask }, at);
   let result: PlaceResult;
   try {
     result = await t.place({ marketId, selectionId, price: ask, size: d.stake, ref, attempt });
@@ -687,4 +687,71 @@ export async function directReadiness(env = process.env): Promise<DirectReadines
 /** Money staked directly today, for the page. */
 export function stakedToday(db: EngineDb, now = new Date()): number {
   return db.directStakeSince(ukDayBounds(ukDateOf(now)).from);
+}
+
+// ---------------------------------------------------------------------------
+// The Excel download (Direct betting page): every record, one row each
+
+const ukTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+/** "2026-10-04 19:32:05", UK time, which Excel reads as a date and time. */
+function excelTime(iso: string | null): string {
+  if (!iso) return "";
+  const parts = Object.fromEntries(ukTime.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function cell(v: string | number | null | undefined): string {
+  if (v === null || v === undefined) return "";
+  const s = typeof v === "number" ? String(Math.round(v * 100) / 100) : v.replace(/[\r\n]+/g, " ");
+  return /[",]/.test(s) || /^[=+\-@]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Every direct betting record as CSV (opens in Excel), oldest first: what was shown and asked, what happened, and
+ * alongside it what the betting software's own bet on the same pick got, and the pick's result.
+ */
+export function directExportCsv(db: EngineDb): string {
+  const header = [
+    "Time (UK)", "Pick", "Mode", "Outcome", "Strategy", "Match", "League", "Minute", "Score", "Market", "Selection",
+    "Stake", "Min odds", "Price shown", "Lay shown", "Gap %", "Overround %", "Price asked",
+    "Bet id", "Matched", "Avg price matched", "Not matched", "Reason",
+    "BF Bot Manager matched", "BF Bot Manager odds", "BF Bot Manager profit", "Pick result", "Last update (UK)",
+  ];
+  const lines = db.listDirectBetsForExport().map((b) =>
+    [
+      excelTime(b.createdAt),
+      b.pickId,
+      b.mode,
+      b.state === "shadow" ? "would bet" : b.state,
+      b.strategy,
+      b.home && b.away ? `${b.home} v ${b.away}` : b.eventName,
+      b.competition,
+      b.minute,
+      b.score,
+      b.marketType,
+      b.selectionName,
+      b.stake,
+      b.minPrice,
+      b.price,
+      b.bestLay,
+      b.price !== null ? spreadPct(b.price, b.bestLay) : null,
+      b.overround,
+      b.askPrice,
+      b.betId,
+      b.sizeMatched,
+      b.avgPrice,
+      b.cancelled,
+      b.reason,
+      b.feedMatched,
+      b.feedOdds,
+      b.feedProfit,
+      b.result,
+      excelTime(b.updatedAt),
+    ]
+      .map(cell)
+      .join(","),
+  );
+  // The byte order mark tells Excel the file is UTF-8, so £ and accented team names come out right.
+  return "\uFEFF" + [header.join(","), ...lines].join("\r\n") + "\r\n";
 }

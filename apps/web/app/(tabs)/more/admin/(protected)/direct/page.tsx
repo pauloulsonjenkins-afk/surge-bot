@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useHydrated } from "@/queries/use-me";
-import { Check, Minus, X } from "lucide-react";
+import { Check, Download, Minus, X } from "lucide-react";
 import { Card, PageHeader, Segmented } from "@/components/ui/Card";
 import { Chip, type ChipTone } from "@/components/ui/Chip";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -417,7 +417,20 @@ const STATE: Record<DirectBetRow["state"], { label: string; tone: ChipTone }> = 
 
 function Activity({ bets }: { bets: DirectBetRow[] }) {
   return (
-    <Card title="Recent" subtitle="Each pick direct betting has looked at, newest first. In Shadow, compare with what BF Bot Manager got.">
+    <Card
+      title="Recent"
+      subtitle="The latest 50 picks direct betting has looked at, newest first. In Shadow, compare with what BF Bot Manager got. The download has every one."
+      actions={
+        <a
+          href="/api/admin/direct/export"
+          download
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2"
+        >
+          <Download size={14} aria-hidden />
+          Download for Excel
+        </a>
+      }
+    >
       {bets.length === 0 ? (
         <p className="text-xs text-ink-muted">Nothing yet. Picks show here once direct betting is in Shadow or Live and the feed sends one.</p>
       ) : (

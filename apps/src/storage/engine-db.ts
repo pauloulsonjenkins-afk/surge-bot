@@ -67,6 +67,7 @@ export interface DirectBet extends DirectBetInfo {
   selectionId: number | null;
   price: number | null;
   bestLay: number | null;
+  askPrice: number | null;
   overround: number | null;
   betId: string | null;
   sizeMatched: number | null;
@@ -92,6 +93,7 @@ interface DirectBetRow {
   min_price: number | null;
   price: number | null;
   best_lay: number | null;
+  ask_price?: number | null;
   overround: number | null;
   bet_id: string | null;
   size_matched: number | null;
@@ -118,6 +120,7 @@ function toDirectBet(r: DirectBetRow): DirectBet {
     selectionId: r.selection_id,
     price: r.price,
     bestLay: r.best_lay,
+    askPrice: r.ask_price ?? null,
     overround: r.overround,
     betId: r.bet_id,
     sizeMatched: r.size_matched,
@@ -808,6 +811,11 @@ export class EngineDb {
         attempts        INTEGER NOT NULL DEFAULT 0
       );
     `);
+    const directCols = this.db.prepare(`PRAGMA table_info(direct_bets)`).all() as Array<{ name: string }>;
+    if (!directCols.some((c) => c.name === "ask_price")) {
+      // The price each bet asked for (Shadow: would have asked for), as against the price shown.
+      this.db.exec(`ALTER TABLE direct_bets ADD COLUMN ask_price REAL`);
+    }
   }
 
   // ---- Direct betting ----
@@ -829,6 +837,7 @@ export class EngineDb {
     const cols: Record<string, string> = {
       state: "state", strategy: "strategy", eventName: "event_name", marketType: "market_type", selectionName: "selection_name",
       marketId: "market_id", selectionId: "selection_id", stake: "stake", minPrice: "min_price", price: "price", bestLay: "best_lay",
+      askPrice: "ask_price",
       overround: "overround", betId: "bet_id", sizeMatched: "size_matched", avgPrice: "avg_price", cancelled: "cancelled",
       reason: "reason", attempts: "attempts",
     };
@@ -863,6 +872,35 @@ export class EngineDb {
       )
       .all(Math.min(Math.max(limit, 1), 200)) as Array<DirectBetRow & { home: string | null; away: string | null; feed_matched: number | null; feed_odds: number | null }>;
     return rows.map((r) => ({ ...toDirectBet(r), home: r.home, away: r.away, feedMatched: r.feed_matched, feedOdds: r.feed_odds }));
+  }
+
+  /** Every record, oldest first, with the pick's match, minute, score and result, and the betting software's own bet on it. For the Excel download. */
+  listDirectBetsForExport(): Array<DirectBet & { home: string | null; away: string | null; competition: string | null; minute: number | null; score: string | null; result: string | null; feedMatched: number | null; feedOdds: number | null; feedProfit: number | null }> {
+    const rows = this.db
+      .prepare(
+        `SELECT d.*, p.home AS home, p.away AS away, p.competition AS competition, p.minute AS minute,
+                CASE WHEN p.goals_home IS NULL THEN NULL ELSE p.goals_home || '-' || p.goals_away END AS score,
+                COALESCE(p.result_override, p.result) AS result,
+                (SELECT SUM(b.matched) FROM betfair_bets b WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id)) AS feed_matched,
+                (SELECT SUM(b.matched * b.odds) / NULLIF(SUM(b.matched), 0) FROM betfair_bets b
+                  WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id) AND b.matched > 0) AS feed_odds,
+                (SELECT SUM(b.profit) FROM betfair_bets b WHERE b.pick_id = d.pick_id AND (d.bet_id IS NULL OR b.bet_id <> d.bet_id)) AS feed_profit
+         FROM direct_bets d LEFT JOIN live_picks p ON p.id = d.pick_id
+         ORDER BY d.created_at`,
+      )
+      .all() as Array<DirectBetRow & { home: string | null; away: string | null; competition: string | null; minute: number | null; score: string | null; result: string | null; feed_matched: number | null; feed_odds: number | null; feed_profit: number | null }>;
+    return rows.map((r) => ({
+      ...toDirectBet(r),
+      home: r.home,
+      away: r.away,
+      competition: r.competition,
+      minute: r.minute,
+      score: r.score,
+      result: r.result,
+      feedMatched: r.feed_matched,
+      feedOdds: r.feed_odds,
+      feedProfit: r.feed_profit,
+    }));
   }
 
   /** Rows still being worked on: waiting for a price, being placed, or placed with some of the stake unmatched. */

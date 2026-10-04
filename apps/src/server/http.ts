@@ -48,6 +48,7 @@
  *   POST /internal/betfair/use-match            a pick not found on Betfair: use one of the events offered: { id, event } (admin site only)
  *   POST /internal/betfair/coverage/override    which Betfair competition a league is: { league, competition | "none" | null } (admin site only)
  *   GET/PUT /internal/direct                    direct betting: mode, limits, readiness, recent bets and webhooks (admin site only)
+ *   GET  /internal/direct/export                every direct betting record as CSV, for Excel (admin site only)
  *   POST /internal/betfair/acknowledge          mark unlinked bets as known (not from the feed), or put them back (admin site only)
  *   POST /internal/telegram/login/start         begin Telegram user-session login
  *   POST /internal/telegram/login/code          submit the SMS/app login code
@@ -73,7 +74,7 @@ import type { ServerEnv } from "./server-env";
 import { sha256Hex, verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
 import { parseAlert } from "../inplayguru/parse-alert";
 import { alertTextFrom, handleVerifiedPick, useWebhookAlert } from "../inplayguru/receiver";
-import { directIsLive, directReadiness, effectiveMode, getDirectSettings, saveDirectSettings, stakedToday, wake as wakeDirect } from "../betfair/direct";
+import { directExportCsv, directIsLive, directReadiness, effectiveMode, getDirectSettings, saveDirectSettings, stakedToday, wake as wakeDirect } from "../betfair/direct";
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
@@ -1136,6 +1137,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         hiddenFromResults,
         ignoring: ignoreFuture,
       });
+      return;
+    }
+
+    if (path === "/internal/direct/export" && req.method === "GET") {
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const csv = directExportCsv(db);
+      res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Length": Buffer.byteLength(csv), "Cache-Control": "no-store" });
+      res.end(csv);
       return;
     }
 
