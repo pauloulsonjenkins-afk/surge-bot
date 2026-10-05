@@ -8,6 +8,7 @@ import { gbp } from "@/lib/format";
 import { useAcknowledgeBets, useAddMatchName, useImportBetHistory, useReconcile, type ReconcileReport } from "@/queries/use-reconcile";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { useUiStore } from "@/state/ui.store";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const when = (iso: string) => whenFmt.format(new Date(iso));
@@ -84,10 +85,25 @@ function CornerMarketsCard({
   title?: string;
   subtitle?: string;
 }) {
+  const cleared = useUiStore((s) => s.clearedMarkets);
+  const clearMarkets = useUiStore((s) => s.clearMarkets);
+  const keyOf = (m: (typeof markets)[number]) => m.code || m.name;
+  // Cleared markets stay hidden; one Betfair adds later shows the card again.
+  const shown = markets.filter((m) => !cleared.includes(keyOf(m)));
+  if (shown.length === 0) return null;
   return (
     <Card title={title} subtitle={subtitle}>
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => clearMarkets(shown.map(keyOf))}
+          className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
+        >
+          Clear
+        </button>
+      </div>
       <ul className="divide-y divide-line">
-        {markets.map((m) => (
+        {shown.map((m) => (
           <li key={m.code || m.name} className="py-2 text-xs">
             <span className="block text-ink">
               {m.name} <code className="text-ink-muted">{m.code || "no code"}</code>

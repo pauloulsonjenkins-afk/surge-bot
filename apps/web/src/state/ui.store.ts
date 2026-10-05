@@ -13,6 +13,10 @@ interface UiState {
   /** Admin only: whether the Dashboard, Win/Loss and Strategies show live picks, simulation picks or both. */
   pickMode: PickMode;
   setPickMode: (mode: PickMode) => void;
+
+  /** Betfair market codes cleared from the Reconcile page's market cards; a market not cleared yet still shows. */
+  clearedMarkets: string[];
+  clearMarkets: (codes: string[]) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -27,10 +31,13 @@ export const useUiStore = create<UiState>()(
       // Live by default: real money is what decides whether a strategy is worth betting.
       pickMode: "live",
       setPickMode: (pickMode) => set({ pickMode }),
+
+      clearedMarkets: [],
+      clearMarkets: (codes) => set((s) => ({ clearedMarkets: [...new Set([...s.clearedMarkets, ...codes])] })),
     }),
     {
       name: "surge-ui", // localStorage key
-      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode }),
+      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode, clearedMarkets: s.clearedMarkets }),
       // Version 1 made Live the default: a choice saved before then (usually the old default, All) starts on Live once.
       version: 1,
       migrate: (persisted, version) => {
