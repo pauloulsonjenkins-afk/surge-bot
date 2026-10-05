@@ -86,7 +86,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
-import { listHorseBets, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "./horses";
+import { listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
 import { checkLeague, coverageOfAlertLeagues, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
@@ -767,7 +767,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       try {
         if (req.method === "GET" && path === "/internal/horses") {
-          send(res, 200, { bets: listHorseBets(db), days: listHorseDays(db) });
+          send(res, 200, { bets: listHorseBets(db), days: listHorseDays(db), courses: listHorseCourses(db), knownCourses: RACECOURSES });
           return;
         }
         if (req.method === "PUT" && path === "/internal/horses/day") {

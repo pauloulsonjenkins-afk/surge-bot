@@ -2,7 +2,7 @@
 
 import { Bar, BarChart, Cell, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { gbp } from "@/lib/format";
-import { RANK_COLOUR, RANK_LABEL, RANKS, type Point } from "@/lib/horses";
+import { RANK_COLOUR, RANK_LABEL, RANKS, type Point, type Summary } from "@/lib/horses";
 
 const axisTick = { fill: "var(--ink-muted)", fontSize: 10 };
 const money = (v: number) => `${v < 0 ? "−" : ""}£${Math.abs(v)}`;
@@ -51,6 +51,50 @@ export function RunningProfitChart({ points }: { points: Point[] }) {
           />
           <Line type="linear" dataKey="total" stroke="var(--chart)" strokeWidth={2} dot={points.length <= 20 ? { r: 3, fill: "var(--chart)" } : false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
         </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** Profit at each racecourse, best first: one bar each, green above zero, red below. */
+export function CourseChart({ rows }: { rows: Array<{ label: string; summary: Summary }> }) {
+  const data = rows.map((r) => ({ label: r.label, profit: r.summary.profit, s: r.summary }));
+  const height = Math.max(120, data.length * 30 + 24);
+  return (
+    <div className="w-full" style={{ height }} role="img" aria-label={`Profit by racecourse: ${data.map((d) => `${d.label} ${gbp(d.profit)}`).join(", ")}`}>
+      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 340, height }}>
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 16, bottom: 0, left: 0 }} barCategoryGap="22%">
+          <XAxis type="number" tick={axisTick} tickLine={false} axisLine={false} tickFormatter={money} />
+          <YAxis type="category" dataKey="label" tick={{ ...axisTick, fill: "var(--ink)" }} tickLine={false} axisLine={false} width={104} interval={0} />
+          <ReferenceLine x={0} stroke="var(--line)" />
+          <Tooltip
+            cursor={{ fill: "var(--surface-2)" }}
+            content={(p) => {
+              const d = (p.payload as ReadonlyArray<{ payload?: (typeof data)[number] }> | undefined)?.[0]?.payload;
+              if (!p.active || !d) return null;
+              const roi = d.s.roi === null ? "–" : `${d.s.roi > 0 ? "+" : d.s.roi < 0 ? "−" : ""}${Math.abs(Math.round(d.s.roi * 1000) / 10)}%`;
+              return (
+                <div className="rounded-lg border border-line bg-surface px-3 py-2 shadow-xl">
+                  <p className="text-xs font-medium text-ink">{d.label}</p>
+                  <p className="text-xs tabular-nums text-ink">
+                    <span className="text-ink-muted">Profit</span> {gbp(d.profit)}
+                  </p>
+                  <p className="text-xs tabular-nums text-ink">
+                    <span className="text-ink-muted">Per £1</span> {roi}
+                  </p>
+                  <p className="text-xs tabular-nums text-ink">
+                    <span className="text-ink-muted">Bets</span> {d.s.bets} ({d.s.won} won)
+                  </p>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="profit" radius={[4, 4, 4, 4]} isAnimationActive={false}>
+            {data.map((d) => (
+              <Cell key={d.label} fill={d.profit >= 0 ? "var(--hit)" : "var(--loss)"} />
+            ))}
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );

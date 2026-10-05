@@ -12,8 +12,8 @@ export function useHorseBets() {
   return useQuery({
     queryKey: KEY,
     queryFn: async ({ signal }) => {
-      const data = await getJson<{ bets: HorseBet[]; days?: HorseDay[] }>("/api/admin/horses", "your horse bets", signal);
-      return { bets: data.bets, days: data.days ?? [] };
+      const data = await getJson<{ bets: HorseBet[]; days?: HorseDay[]; courses?: string[]; knownCourses?: string[] }>("/api/admin/horses", "your horse bets", signal);
+      return { bets: data.bets, days: data.days ?? [], courses: data.courses ?? [], knownCourses: data.knownCourses ?? [] };
     },
     staleTime: 30_000,
   });

@@ -24,6 +24,8 @@ export interface HorseBet {
   /** 1 = NAP, 2 = Next best, 3 = 3rd choice, 4 = 4th choice. */
   rank: HorseRank;
   horse: string | null;
+  /** The racecourse, e.g. "Ascot", or null. */
+  course: string | null;
   /** Per part: an each-way bet's total cost is twice this. */
   stake: number;
   betType: HorseBetType;
@@ -48,6 +50,7 @@ export interface HorseDay {
 export interface HorseEntry {
   rank: HorseRank;
   horse?: string | null;
+  course?: string | null;
   stake: number | string;
   odds: number | string;
   betType?: HorseBetType;
@@ -80,6 +83,38 @@ export function listHorseBets(db: EngineDb): HorseBet[] {
   return db.listHorseBets();
 }
 
+/**
+ * A racecourse as typed, tidied so the same course always groups together: spaces squeezed, matched (ignoring case,
+ * spaces and punctuation) to a course already used or a known UK or Irish course, else given capital letters.
+ * Null when blank.
+ */
+export function cleanCourse(v: unknown, known: string[] = []): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!s) return null;
+  const key = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const match = [...known, ...RACECOURSES].find((c) => key(c) === key(s));
+  if (match) return match;
+  return s.replace(/\b([a-z])/g, (m) => m.toUpperCase());
+}
+
+/** UK and Irish racecourses, offered as suggestions before any have been used. */
+export const RACECOURSES = [
+  "Aintree", "Ascot", "Ayr", "Bangor-on-Dee", "Bath", "Beverley", "Brighton", "Carlisle", "Cartmel", "Catterick", "Chelmsford City",
+  "Cheltenham", "Chepstow", "Chester", "Doncaster", "Epsom", "Exeter", "Fakenham", "Ffos Las", "Fontwell", "Goodwood", "Hamilton",
+  "Haydock", "Hereford", "Hexham", "Huntingdon", "Kelso", "Kempton", "Leicester", "Lingfield", "Ludlow", "Market Rasen", "Musselburgh",
+  "Newbury", "Newcastle", "Newmarket", "Newton Abbot", "Nottingham", "Perth", "Plumpton", "Pontefract", "Redcar", "Ripon", "Salisbury",
+  "Sandown", "Sedgefield", "Southwell", "Stratford", "Taunton", "Thirsk", "Towcester", "Uttoxeter", "Warwick", "Wetherby", "Wincanton",
+  "Windsor", "Wolverhampton", "Worcester", "Yarmouth", "York",
+  "Ballinrobe", "Bellewstown", "Clonmel", "Cork", "Curragh", "Down Royal", "Downpatrick", "Dundalk", "Fairyhouse", "Galway", "Gowran Park",
+  "Kilbeggan", "Killarney", "Laytown", "Leopardstown", "Limerick", "Listowel", "Naas", "Navan", "Punchestown", "Roscommon", "Sligo",
+  "Thurles", "Tipperary", "Tramore", "Wexford",
+];
+
+export function listHorseCourses(db: EngineDb): string[] {
+  return db.listHorseCourses().map((c) => c.course);
+}
+
 export function listHorseDays(db: EngineDb): HorseDay[] {
   return db.listHorseDays();
 }
@@ -95,8 +130,9 @@ export function saveHorseDay(db: EngineDb, day: unknown, entries: unknown, yanke
   const yankee = yankeeStake === null || yankeeStake === undefined || yankeeStake === "" ? null : parseStake(yankeeStake);
   if (yankeeStake !== null && yankeeStake !== undefined && yankeeStake !== "" && yankee === null) throw new Error("EW Yankee: enter a unit stake, for example 1 or 0.50.");
   const label = (r: number) => ["NAP", "Next best", "3rd choice", "4th choice"][r - 1];
+  const known = db.listHorseCourses().map((c) => c.course);
   const rows: Array<
-    | { rank: HorseRank; horse: string | null; stake: number; odds: number; oddsText: string; betType: HorseBetType; ewFraction: number | null; ewPlaces: number | null }
+    | { rank: HorseRank; horse: string | null; course: string | null; stake: number; odds: number; oddsText: string; betType: HorseBetType; ewFraction: number | null; ewPlaces: number | null }
     | { rank: HorseRank; remove: true }
   > = [];
   for (const raw of entries as Array<Partial<HorseEntry>>) {
@@ -113,6 +149,7 @@ export function saveHorseDay(db: EngineDb, day: unknown, entries: unknown, yanke
     if (stake === null) throw new Error(`${label(rank)}: enter a bet amount, for example 5 or 2.50.`);
     if (odds === null) throw new Error(`${label(rank)}: enter the odds as a fraction (5/2), evens, or a decimal (3.5).`);
     const horse = typeof raw.horse === "string" && raw.horse.trim() ? raw.horse.trim().slice(0, 80) : null;
+    const course = cleanCourse(raw.course, known);
     const betType: HorseBetType = raw.betType === "ew" ? "ew" : "win";
     let ewFraction: number | null = null;
     let ewPlaces: number | null = null;
@@ -124,7 +161,7 @@ export function saveHorseDay(db: EngineDb, day: unknown, entries: unknown, yanke
       if (places !== null && (!Number.isInteger(places) || places < 1 || places > 10)) throw new Error(`${label(rank)}: the number of places should be 1 to 10.`);
       ewPlaces = places;
     }
-    rows.push({ rank, horse, stake, odds, oddsText: oddsText.slice(0, 20), betType, ewFraction, ewPlaces });
+    rows.push({ rank, horse, course, stake, odds, oddsText: oddsText.slice(0, 20), betType, ewFraction, ewPlaces });
   }
   if (yankee !== null && rows.filter((r) => !("remove" in r)).length !== 4) {
     throw new Error("An EW Yankee needs all four selections: fill in NAP, Next best, 3rd and 4th choice.");

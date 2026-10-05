@@ -9,6 +9,7 @@ import { useHorseBets, useSaveHorseDay, useSetHorseResult, type HorseBet, type H
 import {
   RANK_LABEL,
   RANKS,
+  byCourse,
   byOddsBand,
   byRank,
   byType,
@@ -29,7 +30,7 @@ import {
   type Preset,
   type Summary,
 } from "@/lib/horses";
-import { ByChoiceChart, PeriodProfitChart, RunningProfitChart } from "@/components/horses/HorseCharts";
+import { ByChoiceChart, CourseChart, PeriodProfitChart, RunningProfitChart } from "@/components/horses/HorseCharts";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short", year: "numeric" });
 const monthFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", month: "short", year: "numeric" });
@@ -48,8 +49,8 @@ function previewOdds(v: string): number | null {
   return s && Number.isFinite(n) && n >= 1.01 ? n : null;
 }
 
-type Row = { horse: string; stake: string; odds: string; betType: "win" | "ew"; ewFraction: number; ewPlaces: string };
-const EMPTY: Row = { horse: "", stake: "", odds: "", betType: "win", ewFraction: 4, ewPlaces: "" };
+type Row = { horse: string; course: string; stake: string; odds: string; betType: "win" | "ew"; ewFraction: number; ewPlaces: string };
+const EMPTY: Row = { horse: "", course: "", stake: "", odds: "", betType: "win", ewFraction: 4, ewPlaces: "" };
 
 /**
  * The day's saved choices, or for a day with nothing saved yet, the last earlier day's amounts carried over (stake,
@@ -72,6 +73,7 @@ function rowsFor(bets: HorseBet[], day: string): Record<number, Row> & { carried
     if (b.day !== day) continue;
     out[b.rank] = {
       horse: b.horse ?? "",
+      course: b.course ?? "",
       stake: String(b.stake),
       odds: b.oddsText,
       betType: b.betType,
@@ -93,7 +95,23 @@ function yankeeStakeFor(days: HorseDay[], bets: HorseBet[], d: string): string {
 // ---------------------------------------------------------------------------
 // Entry
 
-function EntryCard({ bets, days, day, setDay }: { bets: HorseBet[]; days: HorseDay[]; day: string; setDay: (d: string) => void }) {
+function EntryCard({
+  bets,
+  days,
+  day,
+  setDay,
+  courses,
+  knownCourses,
+}: {
+  bets: HorseBet[];
+  days: HorseDay[];
+  day: string;
+  setDay: (d: string) => void;
+  /** Racecourses used before, most used first. */
+  courses: string[];
+  /** UK and Irish courses, suggested after your own. */
+  knownCourses: string[];
+}) {
   const save = useSaveHorseDay();
   const [rows, setRows] = useState<Record<number, Row> & { carriedFrom?: string }>(() => rowsFor(bets, day));
   const yankeeFor = (d: string) => yankeeStakeFor(days, bets, d);
@@ -132,7 +150,7 @@ function EntryCard({ bets, days, day, setDay }: { bets: HorseBet[]; days: HorseD
       const terms = r.betType === "ew" || yankeeOn;
       // A carried-over amount on a row left without odds means "no bet on this one today".
       const stake = filled(r) ? r.stake : "";
-      return { rank, horse: r.horse, stake, odds: r.odds, betType: r.betType, ewFraction: terms ? r.ewFraction : null, ewPlaces: r.ewPlaces };
+      return { rank, horse: r.horse, course: r.course, stake, odds: r.odds, betType: r.betType, ewFraction: terms ? r.ewFraction : null, ewPlaces: r.ewPlaces };
     });
     save.mutate({ day, entries, yankeeStake: yankeeOn ? yankee : null }, { onSuccess: () => setSaved(true) });
   }
@@ -165,16 +183,52 @@ function EntryCard({ bets, days, day, setDay }: { bets: HorseBet[]; days: HorseD
           </p>
         )}
 
+        {/* Your own courses first (most used), then every UK and Irish course, as typing suggestions. */}
+        <datalist id="horse-courses">
+          {[...courses, ...knownCourses.filter((c) => !courses.some((u) => u.toLowerCase() === c.toLowerCase()))].map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+        {courses.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Recent racecourses">
+            <span className="text-xs text-ink-muted">Tap to fill the next empty racecourse:</span>
+            {courses.slice(0, 8).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  const next = RANKS.find((rank) => !rows[rank]!.course.trim());
+                  if (next) set(next, { course: c });
+                }}
+                className="rounded-full border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+
         {RANKS.map((rank) => {
           const r = rows[rank]!;
           const dec = previewOdds(r.odds);
           return (
             <fieldset key={rank} className="rounded-lg border border-line p-2.5">
               <legend className="px-1 text-xs font-semibold text-ink">{RANK_LABEL[rank]}</legend>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
-                <label className="col-span-2 text-xs text-ink-muted sm:col-span-1">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1.4fr_1.2fr_1fr_1fr_auto]">
+                <label className="text-xs text-ink-muted">
                   Horse (optional)
                   <input className={`${inputCls} mt-1`} value={r.horse} onChange={(e) => set(rank, { horse: e.target.value })} />
+                </label>
+                <label className="text-xs text-ink-muted">
+                  Racecourse
+                  <input
+                    list="horse-courses"
+                    autoComplete="off"
+                    placeholder="e.g. Ascot"
+                    className={`${inputCls} mt-1`}
+                    value={r.course}
+                    onChange={(e) => set(rank, { course: e.target.value })}
+                  />
                 </label>
                 <label className="text-xs text-ink-muted">
                   Bet amount (£)
@@ -315,6 +369,7 @@ function DayRecord({ day, bets, yankee, onEdit }: { day: string; bets: HorseBet[
               <span className="min-w-0 text-xs">
                 <span className="font-semibold text-ink">{RANK_LABEL[b.rank]}</span>
                 {b.horse && <span className="text-ink"> · {b.horse}</span>}
+                {b.course && <span className="text-ink-muted"> · {b.course}</span>}
                 <span className="block tabular-nums text-ink-muted">
                   £{b.stake.toFixed(2)}
                   {b.betType === "ew" ? ` EW (1/${b.ewFraction}${b.ewPlaces ? `, ${b.ewPlaces} places` : ""})` : " win"} @ {b.oddsText}
@@ -417,6 +472,8 @@ function Analysis({ bets, allYankees }: { bets: HorseBet[]; allYankees: YankeeMo
   const s = summarise(chosen, yk);
   const points = useMemo(() => series(chosen, grain, yk), [chosen, grain, yk]);
   const rankRows = byRank(chosen).map((x) => ({ label: RANK_LABEL[x.rank], summary: x.summary }));
+  const courseRows = useMemo(() => byCourse(chosen), [chosen]);
+  const noCourse = chosen.filter((b) => !b.course).length;
   const run = longestLosingRun(chosen);
   const best = [...rankRows].filter((r) => r.summary.roi !== null).sort((a, b) => (b.summary.roi ?? 0) - (a.summary.roi ?? 0));
   const days = useMemo(() => series(chosen, "day", yk), [chosen, yk]);
@@ -493,6 +550,22 @@ function Analysis({ bets, allYankees }: { bets: HorseBet[]; allYankees: YankeeMo
             <div className="mt-3">
               <SummaryTable rows={rankRows} first="Choice" />
             </div>
+          </Card>
+
+          <Card
+            title="Racecourses"
+            subtitle={`Profit at each course you've bet at, best first. Hover or tap a bar for return per £1 and wins.${noCourse > 0 ? ` ${noCourse} bet${noCourse === 1 ? "" : "s"} in this period ${noCourse === 1 ? "has" : "have"} no course entered.` : ""}`}
+          >
+            {courseRows.length === 0 ? (
+              <p className="text-xs text-ink-muted">Add a racecourse to your bets to see which tracks you do well at.</p>
+            ) : (
+              <>
+                <CourseChart rows={courseRows} />
+                <div className="mt-3">
+                  <SummaryTable rows={courseRows} first="Racecourse" />
+                </div>
+              </>
+            )}
           </Card>
 
           <Card title="Patterns">
@@ -577,7 +650,7 @@ export default function HorsesPage() {
       ) : (
         <>
           <div ref={entryRef}>
-            <EntryCard bets={bets} days={days} day={day} setDay={setDay} />
+            <EntryCard bets={bets} days={days} day={day} setDay={setDay} courses={data.courses} knownCourses={data.knownCourses} />
           </div>
 
           <section className="space-y-2" aria-label="Daily record">

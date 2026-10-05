@@ -775,6 +775,11 @@ export class EngineDb {
       // Betfair's id for the match found, so the price can be read again while a pick waits for it to rise.
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_event_id TEXT`);
     }
+    const horseCols = this.db.prepare(`PRAGMA table_info(horse_bets)`).all() as Array<{ name: string }>;
+    if (!horseCols.some((c) => c.name === "course")) {
+      // The racecourse of each horse bet (Horses page: results by racecourse).
+      this.db.exec(`ALTER TABLE horse_bets ADD COLUMN course TEXT`);
+    }
     const betCols = this.db.prepare(`PRAGMA table_info(betfair_bets)`).all() as Array<{ name: string }>;
     if (!betCols.some((c) => c.name === "acknowledged_at")) {
       // Set when the admin marks an unlinked bet as known (not from the feed), so the list shows only new ones.
@@ -2199,6 +2204,7 @@ export class EngineDb {
       day: String(r.day),
       rank: Number(r.rank) as HorseBet["rank"],
       horse: (r.horse as string | null) ?? null,
+      course: (r.course as string | null) ?? null,
       stake: Number(r.stake),
       betType: r.bet_type === "ew" ? "ew" : "win",
       ewFraction: r.ew_fraction === null || r.ew_fraction === undefined ? null : Number(r.ew_fraction),
@@ -2218,16 +2224,16 @@ export class EngineDb {
   saveHorseDay(
     day: string,
     rows: Array<
-      | { rank: number; horse: string | null; stake: number; odds: number; oddsText: string; betType: string; ewFraction: number | null; ewPlaces: number | null }
+      | { rank: number; horse: string | null; course?: string | null; stake: number; odds: number; oddsText: string; betType: string; ewFraction: number | null; ewPlaces: number | null }
       | { rank: number; remove: true }
     >,
     yankeeStake: number | null = null,
   ): void {
     const now = new Date().toISOString();
     const upsert = this.db.prepare(
-      `INSERT INTO horse_bets (day, rank, horse, stake, odds, odds_text, bet_type, ew_fraction, ew_places, result, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-       ON CONFLICT(day, rank) DO UPDATE SET horse = excluded.horse, stake = excluded.stake, odds = excluded.odds,
+      `INSERT INTO horse_bets (day, rank, horse, course, stake, odds, odds_text, bet_type, ew_fraction, ew_places, result, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+       ON CONFLICT(day, rank) DO UPDATE SET horse = excluded.horse, course = excluded.course, stake = excluded.stake, odds = excluded.odds,
          odds_text = excluded.odds_text, bet_type = excluded.bet_type, ew_fraction = excluded.ew_fraction, ew_places = excluded.ew_places,
          updated_at = excluded.updated_at,
          result = CASE WHEN horse_bets.stake = excluded.stake AND horse_bets.odds = excluded.odds AND horse_bets.bet_type = excluded.bet_type
@@ -2238,12 +2244,19 @@ export class EngineDb {
     this.db.transaction(() => {
       for (const r of rows) {
         if ("remove" in r) del.run(day, r.rank);
-        else upsert.run(day, r.rank, r.horse, r.stake, r.odds, r.oddsText, r.betType, r.ewFraction, r.ewPlaces, now);
+        else upsert.run(day, r.rank, r.horse, r.course ?? null, r.stake, r.odds, r.oddsText, r.betType, r.ewFraction, r.ewPlaces, now);
       }
       if (yankeeStake === null) this.db.prepare(`DELETE FROM horse_days WHERE day = ?`).run(day);
       else this.db.prepare(`INSERT INTO horse_days (day, yankee_stake) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET yankee_stake = excluded.yankee_stake`).run(day, yankeeStake);
     })();
     this.onChange();
+  }
+
+  /** Every racecourse used so far, most used first: the quick picks when entering a day. */
+  listHorseCourses(): Array<{ course: string; bets: number }> {
+    return this.db
+      .prepare(`SELECT course, COUNT(*) AS bets FROM horse_bets WHERE course IS NOT NULL AND course <> '' GROUP BY lower(course) ORDER BY bets DESC, MAX(day) DESC`)
+      .all() as Array<{ course: string; bets: number }>;
   }
 
   setHorseResult(id: number, result: HorseBet["result"]): boolean {

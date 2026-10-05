@@ -1164,6 +1164,8 @@ export interface HorseBet {
   /** 1 = NAP, 2 = Next best, 3 = 3rd choice, 4 = 4th choice. */
   rank: 1 | 2 | 3 | 4;
   horse: string | null;
+  /** The racecourse, e.g. "Ascot", or null. */
+  course: string | null;
   /** Per part: an each-way bet costs twice this. */
   stake: number;
   betType: "win" | "ew";
@@ -1186,6 +1188,7 @@ export interface HorseDay {
 export interface HorseEntryInput {
   rank: number;
   horse: string;
+  course: string;
   stake: string;
   odds: string;
   betType: "win" | "ew";
@@ -1193,7 +1196,8 @@ export interface HorseEntryInput {
   ewPlaces: string;
 }
 
-export function fetchHorseBets(): Promise<{ bets: HorseBet[]; days?: HorseDay[] }> {
+/** courses: racecourses used so far, most used first; knownCourses: UK and Irish courses, for suggestions. */
+export function fetchHorseBets(): Promise<{ bets: HorseBet[]; days?: HorseDay[]; courses?: string[]; knownCourses?: string[] }> {
   return engineCall("/internal/horses", "the horse bets");
 }
 

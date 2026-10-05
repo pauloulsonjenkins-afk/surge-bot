@@ -248,6 +248,15 @@ export function byWeekday(bets: HorseBet[]): Array<{ label: string; summary: Sum
   })).filter((x) => x.summary.bets > 0);
 }
 
+/** One row per racecourse, best profit first; bets with no course entered are left out. */
+export function byCourse(bets: HorseBet[]): Array<{ label: string; summary: Summary }> {
+  const courses = new Map<string, HorseBet[]>();
+  for (const b of bets) if (b.course) (courses.get(b.course) ?? courses.set(b.course, []).get(b.course)!).push(b);
+  return [...courses.entries()]
+    .map(([label, list]) => ({ label, summary: summarise(list) }))
+    .sort((a, b) => b.summary.profit - a.summary.profit || b.summary.bets - a.summary.bets);
+}
+
 export function byRank(bets: HorseBet[]): Array<{ rank: HorseBet["rank"]; summary: Summary }> {
   return RANKS.map((rank) => ({ rank, summary: summarise(bets.filter((b) => b.rank === rank)) }));
 }

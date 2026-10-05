@@ -22,7 +22,7 @@ export async function GET() {
 
 const text = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v) : "");
 
-/** Body: { day: "YYYY-MM-DD", entries: [{ rank, horse, stake, odds, betType, ewFraction, ewPlaces }], yankeeStake: string | null }. */
+/** Body: { day: "YYYY-MM-DD", entries: [{ rank, horse, course, stake, odds, betType, ewFraction, ewPlaces }], yankeeStake: string | null }. */
 export async function PUT(request: Request) {
   if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = (await request.json().catch(() => ({}))) as { day?: unknown; entries?: unknown; yankeeStake?: unknown };
@@ -30,6 +30,7 @@ export async function PUT(request: Request) {
   const entries: HorseEntryInput[] = (body.entries as Array<Record<string, unknown>>).slice(0, 4).map((e) => ({
     rank: Number(e.rank),
     horse: text(e.horse),
+    course: text(e.course),
     stake: text(e.stake),
     odds: text(e.odds),
     betType: e.betType === "ew" ? "ew" : "win",

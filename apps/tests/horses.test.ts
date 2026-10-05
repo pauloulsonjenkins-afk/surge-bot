@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
-import { listHorseBets, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "../src/server/horses";
+import { cleanCourse, listHorseBets, listHorseCourses, listHorseDays, parseOdds, saveHorseDay, setHorseResult } from "../src/server/horses";
 
 test("odds as fractions, evens or decimals", () => {
   assert.equal(parseOdds("5/2"), 3.5);
@@ -80,4 +80,29 @@ test("mistakes are refused with a reason naming the choice", () => {
   assert.throws(() => saveHorseDay(db, "2026-10-01", [{ rank: 3, stake: "x", odds: "2/1" }]), /3rd choice: enter a bet amount/);
   assert.throws(() => saveHorseDay(db, "yesterday", []), /Choose a date/);
   assert.throws(() => setHorseResult(db, 999, "won"), /No such bet/);
+});
+
+test("racecourses: tidied so one course always groups together, remembered most used first, and changing one keeps the result", () => {
+  assert.equal(cleanCourse("  newton   abbot "), "Newton Abbot");
+  assert.equal(cleanCourse("KEMPTON"), "Kempton");
+  assert.equal(cleanCourse("bangor on dee"), "Bangor-on-Dee");
+  assert.equal(cleanCourse("my local track"), "My Local Track");
+  assert.equal(cleanCourse("my local TRACK", ["My Local Track"]), "My Local Track");
+  assert.equal(cleanCourse(""), null);
+
+  const db = new EngineDb(":memory:", () => {});
+  saveHorseDay(db, "2026-10-01", [
+    { rank: 1, course: "ascot", stake: 5, odds: "5/2" },
+    { rank: 2, course: "Kempton", stake: 5, odds: "3/1" },
+  ]);
+  saveHorseDay(db, "2026-10-02", [{ rank: 1, course: "ASCOT", stake: 5, odds: "2/1" }]);
+  assert.deepEqual(listHorseCourses(db), ["Ascot", "Kempton"]);
+
+  const nap = listHorseBets(db).find((b) => b.day === "2026-10-02")!;
+  assert.equal(nap.course, "Ascot");
+  setHorseResult(db, nap.id, "won");
+  saveHorseDay(db, "2026-10-02", [{ rank: 1, course: "Sandown", stake: 5, odds: "2/1" }]);
+  const after = listHorseBets(db).find((b) => b.day === "2026-10-02")!;
+  assert.equal(after.course, "Sandown");
+  assert.equal(after.result, "won", "only a changed stake or price resets the result");
 });
