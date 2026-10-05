@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal } from "lucide-react";
+import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal, Crown } from "lucide-react";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
 import { TAB_PAGE } from "@/lib/user-pages";
@@ -13,6 +13,8 @@ export const TABS = [
   { href: "/live", label: "Live", icon: Radio, isMore: false },
   { href: "/trade-log", label: "Trade Log", icon: ListChecks, isMore: false },
   { href: "/schedule", label: "Schedule", icon: CalendarDays, isMore: false },
+  // The Members platform (beta): opens its own frame at /members.
+  { href: "/members", label: "Members", icon: Crown, isMore: false },
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
 ] as const;
 

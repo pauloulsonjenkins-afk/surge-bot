@@ -40,10 +40,10 @@ export default function SignupPage() {
         <div className="w-full max-w-xs">
           <h1 className="mb-2 text-lg font-medium tracking-tight text-ink">Request received</h1>
           <p className="mb-4 text-sm text-ink-muted">
-            If that email wasn&apos;t already registered, your account now exists. It can&apos;t see any pages until an admin switches
-            them on, so check back later. If you already have an account, just sign in.
+            If that email wasn&apos;t already registered, your account now exists, with a free Members membership. Sign in and open
+            Members. If you already have an account, just sign in.
           </p>
-          <Link href="/login" className="text-sm text-accent underline">
+          <Link href="/login?next=/members" className="text-sm text-accent underline">
             Go to sign in
           </Link>
         </div>
@@ -55,7 +55,7 @@ export default function SignupPage() {
     <div className="flex min-h-full flex-col items-center justify-center px-6 py-10">
       <div className="w-full max-w-xs">
         <h1 className="mb-1 text-lg font-medium tracking-tight text-ink">Create account</h1>
-        <p className="mb-6 text-sm text-ink-muted">New accounts start with no access. An admin chooses which pages you can see.</p>
+        <p className="mb-6 text-sm text-ink-muted">Every new account gets a free Members membership (house results and a simulation bank).</p>
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <input

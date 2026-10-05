@@ -18,6 +18,7 @@ export const TAB_PAGE: Record<string, UserPage | null> = {
   "/live": "live",
   "/trade-log": "live",
   "/schedule": "schedule",
+  "/members": null,
   "/more": null,
 };
 
