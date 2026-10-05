@@ -86,7 +86,8 @@ function MatchLeague({ league, competitions }: { league: CoverageResult; competi
 
 /** The results with a filter, a count per status, and a button that copies the shown names one per line. */
 function Results({ leagues, source, competitions = [] }: { leagues: CoverageResult[]; source: "alerts" | "list"; competitions?: string[] }) {
-  const [filter, setFilter] = useState<Filter>("not");
+  // On Betfair and Possible are what matter; Not on Betfair is kept a tap away (names can be matched there).
+  const [filter, setFilter] = useState<Filter>("on");
   const [copied, setCopied] = useState(false);
   const count = (f: Filter) => leagues.filter((l) => l.status === f).length;
   const shown = leagues.filter((l) => l.status === filter).sort((a, b) => a.name.localeCompare(b.name));
@@ -108,7 +109,7 @@ function Results({ leagues, source, competitions = [] }: { leagues: CoverageResu
           label="Show"
           value={filter}
           onChange={setFilter}
-          options={(["not", "maybe", "on"] as const).map((f) => ({ value: f, label: `${BADGE[f].label} (${count(f)})` }))}
+          options={(["on", "maybe", "not"] as const).map((f) => ({ value: f, label: `${BADGE[f].label} (${count(f)})` }))}
         />
         {shown.length > 0 && (
           <button type="button" onClick={() => void copy()} className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2">

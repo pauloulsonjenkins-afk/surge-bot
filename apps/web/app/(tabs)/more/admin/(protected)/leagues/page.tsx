@@ -72,7 +72,7 @@ function LeagueCard({
       <>
       {(row.hidden || row.resetAt || row.noSend) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-          {row.hidden && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Hidden from dashboard</span>}
+          {row.hidden && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Hidden from stats</span>}
           {row.noSend && <span className="rounded-full bg-loss/15 px-2 py-0.5 text-loss">Not sent: not on Betfair</span>}
           {row.resetAt && (
             <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">
@@ -89,7 +89,7 @@ function LeagueCard({
           onClick={() => onChange({ hidden: !row.hidden })}
           className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
         >
-          {row.hidden ? "Show on dashboard" : "Hide from dashboard"}
+          {row.hidden ? "Show in stats" : "Hide from stats"}
         </button>
 
         {!confirming ? (
@@ -295,7 +295,8 @@ function NotOnBetfair({ rows, busy, onChange }: { rows: AdminLeagueRow[]; busy: 
 export default function LeaguesPage() {
   const { data, isLoading, error } = useAdminLeagues();
   const update = useUpdateLeague();
-  const [filter, setFilter] = useState<Filter>("all");
+  // Hidden leagues (e.g. not on Betfair) are cleared from the list unless asked for.
+  const [filter, setFilter] = useState<Filter>("shown");
   const [search, setSearch] = useState("");
 
   const countries = useMemo(() => {
@@ -325,7 +326,8 @@ export default function LeaguesPage() {
         subtitle={
           <>
           Every league the Dashboard has seen. Tap a league to hide it, reset its stats or set its country and tier. Nothing is
-          deleted, so all of it can be undone. Win/loss figures are not affected.
+          deleted, so all of it can be undone. A hidden league leaves every stats page (Dashboard, Win/Loss, Strategies), except
+          bets with real money on them, which always count.
           </>
         }
       />

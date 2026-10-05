@@ -2008,7 +2008,12 @@ export class EngineDb {
    * date, with just what the Win/Loss figures need: the odds printed in the
    * alert, the line it was on, and the stake if it was actually sent.
    */
-  listResultsForWinLoss(sinceIso: string, opts: { ignoreFreshStart?: boolean } = {}): Array<{
+  /**
+   * Settled picks for the money figures (Win/Loss, Strategies, stop loss, Reconcile, the Members platform). Leagues
+   * hidden on the Leagues page are left out, as on the Dashboard, except picks with real money on them (a Betfair bet
+   * or one placed by hand), which always count. `includeHiddenLeagues` keeps everything (the Excel download).
+   */
+  listResultsForWinLoss(sinceIso: string, opts: { ignoreFreshStart?: boolean; includeHiddenLeagues?: boolean } = {}): Array<{
     id: number;
     firstSeenAt: string;
     strategy: string;
@@ -2039,7 +2044,7 @@ export class EngineDb {
     const rows = this.db
       .prepare(
         `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange, manual_bet,
-                exchange_odds,
+                exchange_odds, competition, country,
                 (SELECT SUM(b.matched * b.odds) / SUM(b.matched) FROM betfair_bets b
                   WHERE b.pick_id = live_picks.id AND b.matched > 0 AND b.odds > 1) AS bet_odds,
                 (SELECT SUM(b.matched) FROM betfair_bets b WHERE b.pick_id = live_picks.id AND b.matched > 0) AS bet_stake,
@@ -2065,10 +2070,15 @@ export class EngineDb {
       bet_odds: number | null;
       bet_stake: number | null;
       bet_profit: number | null;
+      competition: string | null;
+      country: string | null;
     }>;
     const betfairFrom = (this.db.prepare(`SELECT ${BETFAIR_FROM_SQL} AS t`).get() as { t: string }).t;
+    const prefs = this.readLeaguePrefs().leagues;
+    const hiddenLeague = (r: { competition: string | null; country: string | null }) =>
+      !opts.includeHiddenLeagues && prefs[leagueIdentity(r.competition, r.country).key]?.hidden === true;
 
-    return rows.map((r) => {
+    const out = rows.map((r) => {
       let targetLine: number | null = null;
       let overLine: number | null = null;
       let overOdds: number | null = null;
@@ -2129,8 +2139,11 @@ export class EngineDb {
         takenOdds: manual?.odds ?? null,
         exchangeOdds: typeof r.exchange_odds === "number" && r.exchange_odds > 1 ? r.exchange_odds : null,
         sim: r.sent_at === null && manual === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
+        hiddenLeague: hiddenLeague(r),
       };
     });
+    // A hidden league's pick leaves the figures unless real money was staked on it.
+    return out.filter((r) => !(r.hiddenLeague && (r.placement === "sim" || r.placement === "notPlaced"))).map(({ hiddenLeague: _h, ...r }) => r);
   }
 
   // ---- Bets placed by hand, and results to review -------------------------------------------------
@@ -2515,6 +2528,19 @@ export class EngineDb {
    */
   changeCount(): number {
     return (this.db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n;
+  }
+
+  /**
+   * The SQLite connection, for modules that keep their own tables in the same file (the Members platform, see
+   * src/members/store.ts), so they are backed up with everything else. Call `changed()` after writing.
+   */
+  get sqlite(): Database.Database {
+    return this.db;
+  }
+
+  /** Tells the backup scheduler something was written (for modules writing through `sqlite`). */
+  changed(): void {
+    this.onChange();
   }
 
   getSetting(key: string): string | null {

@@ -605,7 +605,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
 const SIM_SINCE_KEY = "sim_recording_since";
 
 /** The price the alert printed for the bet it describes, read from the parsed alert (see alertOddsOf). */
-function alertOddsOfPick(p: LivePick): number | null {
+export function alertOddsOfPick(p: LivePick): number | null {
   const d = p.detail;
   if (!d) return null;
   const live = d.odds?.live1x2 ?? null;

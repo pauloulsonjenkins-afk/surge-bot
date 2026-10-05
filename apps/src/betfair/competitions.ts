@@ -279,6 +279,29 @@ export function savedListCoverage(db: EngineDb): { savedAt: string; leagues: Cov
   }
 }
 
+/**
+ * For the Schedule: tells whether a fixture's league (API-Football's league and country) is on Betfair, the same way
+ * the Leagues page checks InPlayGuru's names, with the overrides set there. Null when Betfair's competition list hasn't
+ * been read yet (then nothing can be judged, so nothing should be hidden). Answers are remembered per league.
+ */
+export function fixtureLeagueChecker(db: EngineDb): ((league: string, country: string) => CoverageStatus) | null {
+  const competitions = db.listBetfairCompetitions();
+  if (competitions.length === 0) return null;
+  const overrides = getLeagueOverrides(db);
+  const seen = new Map<string, CoverageStatus>();
+  return (league, country) => {
+    const international = /^(world|europe|international)$/i.test(country.trim());
+    const name = international || norm(league).startsWith(norm(country)) ? league : `${country} ${league}`;
+    const key = norm(name);
+    let status = seen.get(key);
+    if (status === undefined) {
+      status = withOverride(checkLeague(name, competitions, international ? null : country), overrides, competitions).status;
+      seen.set(key, status);
+    }
+    return status;
+  };
+}
+
 /** The leagues your alerts came from, checked, with what Betfair said about their alerts' matches. */
 export function coverageOfAlertLeagues(db: EngineDb): CoverageResult[] {
   const competitions = db.listBetfairCompetitions();

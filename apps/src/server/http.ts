@@ -89,7 +89,7 @@ import { log } from "./log";
 import { listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
-import { checkLeague, coverageOfAlertLeagues, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
+import { checkLeague, coverageOfAlertLeagues, fixtureLeagueChecker, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
 
@@ -353,12 +353,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const date = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today;
       const day = db.getScheduleDay(date);
       const status = readPullStatus(db);
+      // Only games that can be bet: fixtures in leagues not on Betfair (as the Leagues page judges them) are left out.
+      const onBetfair = fixtureLeagueChecker(db);
+      const fixtures = onBetfair ? day.fixtures.filter((f) => onBetfair(f.league, f.country) !== "not") : day.fixtures;
       send(res, 200, {
         date,
         today,
         tomorrow: addDays(today, 1),
         pulledAt: day.pulledAt,
-        fixtures: day.fixtures,
+        fixtures,
+        notOnBetfair: day.fixtures.length - fixtures.length,
+        betfairChecked: onBetfair !== null,
         pull: {
           configured: Boolean(process.env.API_FOOTBALL_KEY),
           lastSuccessAt: status.lastSuccessAt,

@@ -237,6 +237,7 @@ export default function SchedulePage() {
               )}
               <span>
                 {summary.leagues} leagues in {summary.countries} countries
+                {(data.notOnBetfair ?? 0) > 0 && ` · ${data.notOnBetfair} more not on Betfair, not listed`}
                 {updated && ` · updated ${updated}`}
                 {data.pull.lastError && " · the latest refresh failed, showing the last good list"}
               </span>

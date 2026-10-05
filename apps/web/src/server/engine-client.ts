@@ -777,6 +777,10 @@ export interface ScheduleDay {
   tomorrow: string;
   pulledAt: string | null;
   fixtures: ScheduleFixture[];
+  /** Games left out because their league isn't on Betfair (judged as on the Leagues page). */
+  notOnBetfair?: number;
+  /** False until Betfair's competition list has been read (then nothing is left out). */
+  betfairChecked?: boolean;
   pull: { configured: boolean; lastSuccessAt: string | null; lastError: string | null };
 }
 

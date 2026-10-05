@@ -38,7 +38,7 @@ export function picksExportCsv(db: EngineDb): string {
   // Money, priced pick by pick as everywhere else in the app.
   const { price } = pricingInputs(db);
   const money = new Map<number, { placement: Placement; stake: number | null; odds: number | null; source: string | null; profit: number | null; assumed: boolean; note: string | null }>();
-  for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z", { ignoreFreshStart: true })) {
+  for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z", { ignoreFreshStart: true, includeHiddenLeagues: true })) {
     const { priced, odds } = price(r);
     if (priced.kind === "priced") {
       money.set(r.id, { placement: r.placement, stake: priced.stake, odds: priced.odds, source: priced.oddsSource, profit: priced.profit, assumed: priced.oddsSource === "assumed", note: null });
