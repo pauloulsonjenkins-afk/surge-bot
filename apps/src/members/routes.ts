@@ -287,13 +287,17 @@ async function adminRoute(c: MembersRouteCtx, route: string): Promise<void> {
   const ok = (body: Record<string, unknown>) => send(res, 200, body);
   if (method === "GET" && route === "overview") {
     const now = new Date();
-    const members = store.listMembers().map((m) => {
-      const u = db.getAppUserById(m.userId);
+    // Every account, whether or not it has opened the Members platform yet (those show as free, not visited).
+    const rows = new Map(store.listMembers().map((m) => [m.userId, m]));
+    const members = db.listAppUsers().map((u) => {
+      const m = rows.get(u.id) ?? { userId: u.id, tierOverride: null, trialStartedAt: null, trialEndsAt: null, paidUntil: null, paidSource: null, subscriptionStatus: null, liveEnabled: false, automationPaused: false, createdAt: u.createdAt };
       return {
-        userId: m.userId,
-        email: u?.email ?? "(deleted account)",
-        name: u?.name ?? "",
-        active: u?.active ?? false,
+        userId: u.id,
+        email: u.email,
+        name: u.name,
+        active: u.active,
+        visited: rows.has(u.id),
+        lastLoginAt: u.lastLoginAt,
         tier: effectiveTier(m, now),
         tierOverride: m.tierOverride,
         trialStartedAt: m.trialStartedAt,

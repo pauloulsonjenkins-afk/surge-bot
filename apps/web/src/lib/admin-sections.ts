@@ -24,7 +24,6 @@ export const ADMIN_GROUPS = [
   {
     label: "Setup",
     items: [
-      { href: "/more/admin/users", label: "Users", description: "Who can sign in, and which pages they see." },
       { href: "/more/admin/members", label: "Members", description: "Members platform: tiers, trials, rules, live betting and the stop switch." },
       { href: "/more/admin/settings", label: "Settings", description: "Public view, and a fresh start for the stats." },
       { href: "/more/admin/direct", label: "Direct betting", description: "Place bets on Betfair from GoalBrew itself (off until you switch it on)." },

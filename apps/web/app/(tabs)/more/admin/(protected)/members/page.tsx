@@ -16,6 +16,8 @@ interface Overview {
     email: string;
     name: string;
     active: boolean;
+    visited: boolean;
+    lastLoginAt: string | null;
     tier: string;
     tierOverride: string | null;
     trialStartedAt: string | null;
@@ -61,6 +63,14 @@ const FLAG_LABEL: Record<string, string> = {
   advancedAnalytics: "Advanced analytics",
 };
 
+/** Account actions (sign-ups switch, password, disable, delete) go to the site's accounts API. */
+async function account(body: Record<string, unknown>) {
+  const res = await fetch("/api/admin/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error ?? "That didn't work.");
+  return data;
+}
+
 async function post(path: string, body: unknown) {
   const res = await fetch(`/api/admin/members/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -75,6 +85,9 @@ export default function AdminMembersPage() {
   const overview = useQuery({ queryKey: ["admin-members"], queryFn: ({ signal }) => getJson<Overview>("/api/admin/members/overview", "members", signal), refetchInterval: 30_000 });
   const config = useQuery({ queryKey: ["admin-members-config"], queryFn: ({ signal }) => getJson<ConfigResp>("/api/admin/members/config", "members settings", signal) });
   const act = useMutation({ mutationFn: (b: Record<string, unknown>) => post("member", b), onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin-members"] }) });
+  const acct = useMutation({ mutationFn: account, onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin-members"] }) });
+  const signups = useQuery({ queryKey: ["admin-signups"], queryFn: ({ signal }) => getJson<{ signupsOpen: boolean }>("/api/admin/users", "sign-ups", signal) });
+  const setSignups = useMutation({ mutationFn: (open: boolean) => account({ action: "signups", open }), onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin-signups"] }) });
   const stopAll = useMutation({ mutationFn: () => post("stop-all-live", {}), onSuccess: () => void qc.invalidateQueries() });
   const { confirm } = useDialog();
 
@@ -100,6 +113,13 @@ export default function AdminMembersPage() {
       </button>
       {stopAll.isSuccess && <p className="text-sm text-ink">Stopped. {String((stopAll.data as { cancelled?: number }).cancelled ?? 0)} waiting bet(s) cancelled.</p>}
 
+      <Card title="Sign-ups" subtitle="Whether anyone can create an account (and so a Free membership) from the website.">
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={signups.data?.signupsOpen === true} disabled={!signups.data || setSignups.isPending} onChange={(e) => setSignups.mutate(e.target.checked)} />
+          New sign-ups open
+        </label>
+      </Card>
+
       {overview.isLoading || !overview.data ? (
         <Skeleton className="h-64 w-full" />
       ) : (
@@ -107,10 +127,10 @@ export default function AdminMembersPage() {
           <Card title={`Members (${overview.data.members.length})`} subtitle={`Last 30 days: ${overview.data.bets.sim} simulated bets, ${overview.data.bets.live} live. Stripe ${overview.data.stripe.configured ? "set up" : "not set up yet"}.`}>
             <ul className="divide-y divide-line">
               {overview.data.members.map((m) => (
-                <MemberRow key={m.userId} m={m} onAction={(b) => act.mutate({ userId: m.userId, ...b })} />
+                <MemberRow key={m.userId} m={m} onAction={(b) => act.mutate({ userId: m.userId, ...b })} onAccount={(b) => acct.mutate({ id: m.userId, ...b })} confirm={confirm} />
               ))}
             </ul>
-            {act.error && <p className="mt-2 text-sm text-destructive">{act.error.message}</p>}
+            {(act.error || acct.error) && <p className="mt-2 text-sm text-destructive">{(act.error ?? acct.error)?.message}</p>}
           </Card>
 
           <Card title="Funnel (30 days)" subtitle="Product events: how many times, and how many members.">
@@ -164,16 +184,32 @@ export default function AdminMembersPage() {
   );
 }
 
-function MemberRow({ m, onAction }: { m: Overview["members"][number]; onAction: (b: Record<string, unknown>) => void }) {
+function MemberRow({
+  m,
+  onAction,
+  onAccount,
+  confirm,
+}: {
+  m: Overview["members"][number];
+  onAction: (b: Record<string, unknown>) => void;
+  onAccount: (b: Record<string, unknown>) => void;
+  confirm: ReturnType<typeof useDialog>["confirm"];
+}) {
   const [open, setOpen] = useState(false);
   const [until, setUntil] = useState("");
+  const [password, setPassword] = useState("");
   return (
     <li className="py-2">
       <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-start justify-between gap-2 text-left">
         <span className="min-w-0">
-          <span className="block truncate text-sm text-ink">{m.email}</span>
+          <span className="block truncate text-sm text-ink">
+            {m.email}
+            {m.name ? ` · ${m.name}` : ""}
+            {!m.active && <span className="text-destructive"> · disabled</span>}
+          </span>
           <span className="block text-xs text-ink-muted">
-            {m.tier}
+            {m.visited ? m.tier : "free · hasn't opened Members"}
+            {m.lastLoginAt ? ` · last sign-in ${when(m.lastLoginAt)}` : ""}
             {m.trialEndsAt ? ` · trial ${m.trialStartedAt ? when(m.trialStartedAt) : ""} → ${when(m.trialEndsAt)} (${m.trialStrategies.join(", ")})` : ""}
             {m.paidUntil ? ` · paid until ${when(m.paidUntil)} (${m.paidSource ?? ""}${m.subscriptionStatus ? `, ${m.subscriptionStatus}` : ""})` : ""}
             {m.liveEnabled ? " · LIVE on" : ""}
@@ -212,6 +248,34 @@ function MemberRow({ m, onAction }: { m: Overview["members"][number]; onAction: 
               Stop their live betting
             </button>
           )}
+          <span className="basis-full" />
+          <input type="text" aria-label="New password" placeholder="New password (10+ characters)" className={`${input} w-56`} value={password} onChange={(e) => setPassword(e.target.value)} />
+          <button
+            type="button"
+            className={btn}
+            disabled={password.length < 10}
+            onClick={() => {
+              onAccount({ action: "update", password });
+              setPassword("");
+            }}
+          >
+            Set password
+          </button>
+          <button type="button" className={btn} onClick={() => onAccount({ action: "update", signOutEverywhere: true })}>
+            Sign out everywhere
+          </button>
+          <button type="button" className={btn} onClick={() => onAccount({ action: "update", active: !m.active })}>
+            {m.active ? "Disable account" : "Enable account"}
+          </button>
+          <button
+            type="button"
+            className={btn}
+            onClick={async () => {
+              if (await confirm({ title: `Delete ${m.email}?`, body: "The account is deleted and can't sign in. This can't be undone.", confirmLabel: "Delete account", tone: "danger" })) onAccount({ action: "delete" });
+            }}
+          >
+            Delete account
+          </button>
         </div>
       )}
     </li>

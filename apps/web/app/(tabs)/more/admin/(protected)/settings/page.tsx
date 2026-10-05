@@ -141,7 +141,7 @@ function PublicViewCard() {
       <p className={`mt-3 text-xs ${publicView ? "text-ink" : "text-ink-muted"}`}>
         {publicView
           ? "On. Anyone with your site's address can see picks, results and hit rates."
-          : "Off. Those pages ask visitors to sign in. Signed-in users only see the pages you have given them on the Users page, and you can see everything."}
+          : "Off. Those pages ask visitors to sign in. Members use the Members area; you can see everything."}
       </p>
       <p className="mt-2 text-xs text-ink-muted">
         Admin pages (everything under Admin on the More page) always need the admin sign-in, whatever this is set to.
