@@ -34,6 +34,7 @@ import { handleVerifiedPick } from "../inplayguru/receiver";
 import { isRealAlert, parseAlert } from "../inplayguru/parse-alert";
 import { recordSimBets } from "../inplayguru/bet-feed";
 import { requestExchangeCheck } from "../betfair/exchange";
+import { wakeMembers } from "../members/runner";
 import { log } from "../server/log";
 
 const SYNC_EVERY_MS = 2 * 60 * 1000;
@@ -156,6 +157,7 @@ function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boo
     status.lastAlertAt = new Date().toISOString();
     // Find the match on Betfair now, so the bet feed can send Betfair's own event name.
     requestExchangeCheck();
+    wakeMembers();
     // Record the simulated bet straight away, so it uses the stake and limits in force when the alert arrived.
     try {
       recordSimBets(db);

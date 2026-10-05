@@ -17,7 +17,9 @@ import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 import { recordSimBets } from "../inplayguru/bet-feed";
 import { startDailySummary } from "./daily-summary";
-import { startDirectBetting } from "../betfair/direct";
+import { BetfairTrader, startDirectBetting } from "../betfair/direct";
+import { readCredentials } from "../betfair/exchange";
+import { startMembers } from "../members/runner";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -82,6 +84,12 @@ async function main(): Promise<void> {
   // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
   startDailySummary(db);
   startDirectBetting(db);
+
+  // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
+  // real bets on the house Betfair account for admin members. See src/members/runner.ts and live.ts.
+  const memberCreds = readCredentials();
+  const memberTrader = memberCreds ? new BetfairTrader(memberCreds) : null;
+  startMembers(db, memberTrader ? { trading: memberTrader, account: () => memberTrader.account() } : null);
 
   const server = createEngineHttpServer(env, db, backups);
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));

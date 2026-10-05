@@ -381,7 +381,7 @@ export function spreadPct(back: number, lay: number | null): number | null {
   return lay === null ? null : Math.round(((lay - back) / back) * 1000) / 10;
 }
 
-const FRIENDLY: Record<string, string> = {
+export const FRIENDLY: Record<string, string> = {
   INSUFFICIENT_FUNDS: "Not enough money in the Betfair account.",
   INVALID_BET_SIZE: "Betfair won't take this stake size.",
   INVALID_ODDS: "The price isn't one Betfair accepts.",
@@ -394,7 +394,7 @@ const FRIENDLY: Record<string, string> = {
   BET_ACTION_ERROR: "Betfair refused the bet.",
 };
 /** Refusals worth trying again while the pick is still fresh: the market was suspended (a goal, a card) or the price went. */
-const RETRY = new Set(["MARKET_SUSPENDED", "BET_TAKEN_OR_LAPSED", "BET_LAPSED_PRICE_IMPROVEMENT_TOO_LARGE", "ERROR_IN_MATCHER", "SERVICE_UNAVAILABLE", "TIMEOUT"]);
+export const RETRY = new Set(["MARKET_SUSPENDED", "BET_TAKEN_OR_LAPSED", "BET_LAPSED_PRICE_IMPROVEMENT_TOO_LARGE", "ERROR_IN_MATCHER", "SERVICE_UNAVAILABLE", "TIMEOUT"]);
 
 function money(n: number): string {
   return `£${n.toFixed(2)}`;
