@@ -65,7 +65,16 @@ export async function createCheckout(db: EngineDb, ctx: MemberContext, env = pro
   };
   if (ctx.member.stripeCustomerId) params.customer = ctx.member.stripeCustomerId;
   else params.customer_email = ctx.user.email;
-  const s = await stripePost("checkout/sessions", params, env);
+  let s: Record<string, unknown>;
+  try {
+    s = await stripePost("checkout/sessions", params, env);
+  } catch (err) {
+    // Stripe's own wording is for the admin (audit log and engine log), not the member.
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[members/stripe] checkout for member ${ctx.user.id} failed: ${detail}`);
+    membersStore(db).audit({ at: new Date().toISOString(), userId: ctx.user.id, actor: "system", action: "upgrade_checkout", object: null, result: "error", detail: detail.slice(0, 500) });
+    throw new Error("Payments aren't working right now, so you haven't been charged. Please try again later.");
+  }
   membersStore(db).event(ctx.user.id, "upgrade_checkout_started", null, new Date().toISOString());
   if (typeof s.url !== "string") throw new Error("Stripe didn't return a checkout page.");
   return s.url;
@@ -75,7 +84,13 @@ export async function createCheckout(db: EngineDb, ctx: MemberContext, env = pro
 export async function createPortal(ctx: MemberContext, env = process.env): Promise<string> {
   if (!env.STRIPE_SECRET_KEY) throw new Error("Payments aren't set up yet.");
   if (!ctx.member.stripeCustomerId) throw new Error("There's no subscription on this account.");
-  const s = await stripePost("billing_portal/sessions", { customer: ctx.member.stripeCustomerId, return_url: `${siteUrl(env)}/members/settings` }, env);
+  let s: Record<string, unknown>;
+  try {
+    s = await stripePost("billing_portal/sessions", { customer: ctx.member.stripeCustomerId, return_url: `${siteUrl(env)}/members/settings` }, env);
+  } catch (err) {
+    console.error(`[members/stripe] billing page for member ${ctx.user.id} failed: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error("The billing page isn't available right now. Please try again later.");
+  }
   if (typeof s.url !== "string") throw new Error("Stripe didn't return a billing page.");
   return s.url;
 }

@@ -56,7 +56,7 @@ export const TIER_LABEL: Record<Tier, string> = { free: "Free", trial: "Premium 
 export function TierBadge({ tier }: { tier: Tier }) {
   const premium = tier === "paid" || tier === "admin" || tier === "trial";
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${premium ? "bg-accent text-accent-ink" : "bg-surface-2 text-ink-muted"}`}>
+    <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${premium ? "bg-accent text-accent-ink" : "bg-surface-2 text-ink-muted"}`}>
       {premium && <Crown size={12} aria-hidden />}
       {TIER_LABEL[tier]}
     </span>

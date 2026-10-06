@@ -16,7 +16,7 @@ import { TierBadge } from "./ui";
 
 export default function MembersShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { data: me } = useMembersMe();
+  const { data: me, isPending } = useMembersMe();
   const signOut = useSignOut();
   const [more, setMore] = useState(false);
   const isActive = (href: string) => (href === "/members" ? pathname === "/members" : pathname === href || pathname.startsWith(`${href}/`));
@@ -26,13 +26,14 @@ export default function MembersShell({ children }: { children: React.ReactNode }
     <div className="flex min-h-dvh flex-col bg-app text-ink">
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-          <Link href="/members" className="flex items-center gap-2">
+          <Link href="/members" className="flex min-w-0 items-center gap-2">
             <Image unoptimized priority src="/brand/goalbrew-logo-dark.svg" alt="GoalBrew" width={120} height={20} className="h-5 w-auto [[data-theme=light]_&]:hidden" />
             <Image unoptimized src="/brand/goalbrew-logo-light.svg" alt="GoalBrew" width={120} height={20} className="hidden h-5 w-auto [[data-theme=light]_&]:block" />
-            <span className="text-sm font-semibold text-ink">Members</span>
-            <span className="rounded-full border border-accent/50 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-accent">Beta</span>
+            {/* On phones the logo, membership badge, bell and sign-out fill the bar, so the words wait for wider screens. */}
+            <span className="hidden text-sm font-semibold text-ink sm:inline">Members</span>
+            <span className="hidden rounded-full border border-accent/50 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-accent sm:inline">Beta</span>
           </Link>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {me && <TierBadge tier={me.tier} />}
             {me && (
               <Link href="/members/notifications" aria-label={`Notifications${me.unread ? `, ${me.unread} unread` : ""}`} className="relative rounded-md p-1.5 text-ink-muted hover:text-ink">
@@ -48,9 +49,12 @@ export default function MembersShell({ children }: { children: React.ReactNode }
                 <LogOut size={18} />
               </button>
             ) : (
-              <Link href="/login?next=/members" className="text-xs font-medium text-accent">
-                Sign in
-              </Link>
+              // Only once we know nobody is signed in (not while the page is still loading).
+              !isPending && (
+                <Link href="/login?next=/members" className="text-xs font-medium text-accent">
+                  Sign in
+                </Link>
+              )
             )}
           </div>
         </div>
