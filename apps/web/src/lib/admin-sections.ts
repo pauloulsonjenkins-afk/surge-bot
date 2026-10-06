@@ -34,7 +34,10 @@ export const ADMIN_GROUPS = [
   },
   {
     label: "Horses",
-    items: [{ href: "/more/admin/horses", label: "Horses", description: "Your daily NAP and choices: results, returns and patterns." }],
+    items: [
+      { href: "/more/admin/horses", label: "Today's bets", description: "Enter your daily NAP and choices, and mark the results." },
+      { href: "/more/admin/horse-stats", label: "How it's going", description: "Profit over time, which choice is paying, courses and patterns." },
+    ],
   },
 ] as const;
 

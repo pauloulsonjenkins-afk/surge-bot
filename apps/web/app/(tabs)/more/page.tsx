@@ -16,6 +16,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: n
   "/more/admin/results": PencilLine,
   "/more/admin/reconcile": Scale,
   "/more/admin/horses": HorseHeadIcon,
+  "/more/admin/horse-stats": TrendingUp,
   "/more/admin/members": Crown,
   "/more/admin/settings": Settings,
 };

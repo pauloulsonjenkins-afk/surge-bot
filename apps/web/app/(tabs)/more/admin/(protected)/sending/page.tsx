@@ -199,12 +199,7 @@ export default function SendingPage() {
         </div>
       </section>
 
-      {direct.data && (
-        <>
-          <ModeCard data={direct.data} />
-          <Readiness data={direct.data} />
-        </>
-      )}
+      {direct.data && <ModeCard data={direct.data} />}
 
       {/* Sent picks with no bet on Betfair 3 minutes on: only shown when there are some. */}
       <NotPlacedCard />
@@ -276,6 +271,7 @@ export default function SendingPage() {
       {direct.data && (
         <>
           <Activity bets={direct.data.bets} />
+          <Readiness data={direct.data} />
           <Limits data={direct.data} />
         </>
       )}

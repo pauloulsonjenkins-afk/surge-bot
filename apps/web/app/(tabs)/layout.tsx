@@ -24,7 +24,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
 
   // Pages full of charts get more room on wide screens; lists and forms read best at a narrower width. Both start at the
   // same left edge, so moving between pages doesn't make the content jump sideways.
-  const wide = pathname.startsWith("/dashboard") || pathname.startsWith("/more/admin/winloss") || pathname.startsWith("/more/admin/horses");
+  const wide = pathname.startsWith("/dashboard") || pathname.startsWith("/more/admin/winloss") || pathname.startsWith("/more/admin/horses") || pathname.startsWith("/more/admin/horse-stats");
 
   // The admin sign-in stands on its own: the site's tabs mean nothing until you're in.
   if (pathname === "/more/admin/login") {

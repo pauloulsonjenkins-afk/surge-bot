@@ -392,11 +392,16 @@ const STATE: Record<DirectBetRow["state"], { label: string; tone: ChipTone }> = 
   failed: { label: "Failed", tone: "warn" },
 };
 
+const RECENT_SHOWN = 10;
+
 export function Activity({ bets }: { bets: DirectBetRow[] }) {
+  // The last 10 at first; the rest of the latest 50 on request.
+  const [all, setAll] = useState(false);
+  const shown = all ? bets : bets.slice(0, RECENT_SHOWN);
   return (
     <Card
       title="Recent"
-      subtitle="The latest 50 picks direct betting has looked at, newest first. In Shadow, any other bet seen on Betfair for the same pick is shown alongside. The download has every one."
+      subtitle="The picks direct betting has looked at, newest first. The download has every one."
       actions={
         <a
           href="/api/admin/direct/export"
@@ -411,8 +416,9 @@ export function Activity({ bets }: { bets: DirectBetRow[] }) {
       {bets.length === 0 ? (
         <p className="text-xs text-ink-muted">Nothing yet. Picks show here once direct betting is in Shadow or Live and the feed sends one.</p>
       ) : (
+        <>
         <ul className="divide-y divide-line">
-          {bets.map((b) => {
+          {shown.map((b) => {
             const st = STATE[b.state];
             return (
               <li key={b.pickId} className="py-2.5">
@@ -446,6 +452,12 @@ export function Activity({ bets }: { bets: DirectBetRow[] }) {
             );
           })}
         </ul>
+        {bets.length > RECENT_SHOWN && (
+          <button type="button" onClick={() => setAll((v) => !v)} className="mt-2 text-xs font-medium text-accent">
+            {all ? `Show the latest ${RECENT_SHOWN} only` : `Show ${bets.length - RECENT_SHOWN} more`}
+          </button>
+        )}
+        </>
       )}
     </Card>
   );
