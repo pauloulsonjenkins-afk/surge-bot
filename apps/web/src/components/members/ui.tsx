@@ -160,7 +160,7 @@ export function StatusPill({ status }: { status: BetStatus }) {
 export function Tile({ label, value, sub, tone = "ink" }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "ink" | "hit" | "loss" | "muted" }) {
   const colour = { ink: "text-ink", hit: "text-hit", loss: "text-loss", muted: "text-ink-muted" }[tone];
   return (
-    <div className="min-w-0 rounded-xl border border-line bg-surface px-3 py-3">
+    <div className={`min-w-0 rounded-xl px-3 py-3 ${tone === "hit" ? "kpi-glow kpi-glow-hit" : tone === "loss" ? "kpi-glow kpi-glow-loss" : "border border-line bg-surface"}`}>
       <p className="text-xs text-ink-muted">{label}</p>
       <p className={`mt-1 truncate font-display text-xl font-bold tabular-nums [font-stretch:112%] ${colour}`}>{value}</p>
       {sub && <p className="mt-0.5 truncate text-xs text-ink-muted">{sub}</p>}

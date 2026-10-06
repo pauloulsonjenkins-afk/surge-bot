@@ -131,7 +131,7 @@ export function HeroRow({
 /** The one number to read first. */
 function Hero({ label, value, tone, sub }: { label: string; value: React.ReactNode; tone: keyof typeof TONE; sub?: React.ReactNode }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 rounded-xl p-4 ${tone === "hit" ? "kpi-glow kpi-glow-hit" : tone === "loss" ? "kpi-glow kpi-glow-loss" : "border border-line bg-surface"}`}>
       <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label}</p>
       <p className={`mt-1 font-display text-hero font-bold tabular-nums [font-stretch:112%] ${TONE[tone]}`}>{value}</p>
       {sub && <p className="mt-1.5 text-sm text-ink-muted">{sub}</p>}
@@ -205,7 +205,7 @@ function StatusStrip({ pending }: { pending: number }) {
   return (
     <nav aria-label="Status" className="flex flex-wrap gap-2">
       <Link href="/more/admin/sending" className={`${pill} ${on ? "border-line text-ink" : "border-warn/40 bg-warn/10 text-warn"}`}>
-        <span aria-hidden className={`h-2 w-2 rounded-full ${on ? "bg-hit" : "bg-warn"}`} />
+        <span aria-hidden className={`h-2 w-2 rounded-full ${on ? "pulse-dot bg-hit" : "bg-warn"}`} />
         Sending {on ? "on" : "off"}
       </Link>
       <Link href="/more/admin/sending" className={`${pill} border-line text-ink`} title="Strategies whose picks are sent to bet">

@@ -45,7 +45,7 @@ function LeagueCard({
   const hasOverride = row.countryOverride !== null || row.tierOverride !== null;
 
   return (
-    <li className={`rounded-xl border border-line bg-surface p-3 ${row.hidden ? "opacity-70" : ""}`}>
+    <li className={`card-hover rounded-xl border border-line p-3 transition-colors ${open ? "card-open" : "bg-surface"} ${row.hidden ? "opacity-70" : ""}`}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-start justify-between gap-3 text-left">
         <div className="flex min-w-0 items-start gap-2">
           <span className={`mt-0.5 shrink-0 text-xs text-ink-muted transition-transform ${open ? "rotate-90" : ""}`} aria-hidden>

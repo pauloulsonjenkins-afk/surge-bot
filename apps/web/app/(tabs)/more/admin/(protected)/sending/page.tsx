@@ -180,7 +180,10 @@ export default function SendingPage() {
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">{settings.enabled ? "Betting is ON" : "Betting is OFF"}</p>
+            <p className="flex items-center gap-2 text-sm font-medium text-ink">
+              <span aria-hidden className={`h-2 w-2 rounded-full ${settings.enabled ? "pulse-dot bg-hit" : "bg-ink-muted/50"}`} />
+              {settings.enabled ? "Betting is ON" : "Betting is OFF"}
+            </p>
             <p className="mt-0.5 text-xs text-ink-muted">
               {settings.enabled ? `${onCount} of ${data.strategies.length} strategies Live` : "Nothing is bet while this is off, so every strategy runs as Sim."}
               {stoppedCount > 0 && <span className="text-warn"> · {stoppedCount} stopped by stop loss today</span>}

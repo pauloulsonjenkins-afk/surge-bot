@@ -1,6 +1,6 @@
 "use client";
 
-import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { gbp } from "@/lib/format";
 
 export interface LineSeries {
@@ -47,11 +47,22 @@ function LinesTooltip({
 
 /** Straight-line cumulative profit/loss chart, with a zero line and a small colour key. */
 export function WinLossLines({ data, series }: { data: Array<Record<string, number | string>>; series: LineSeries[] }) {
+  // One line gets a soft fade beneath it (the line's colour at the top, nothing at the bottom); several lines would
+  // just smear over each other, so they stay plain.
+  const filled = series.length === 1;
   return (
     <>
       <div className="h-56 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+          <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+            {filled && (
+              <defs>
+                <linearGradient id="winloss-fade" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={series[0]!.color} stopOpacity={0.32} />
+                  <stop offset="100%" stopColor={series[0]!.color} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+            )}
             <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="label"
@@ -70,6 +81,9 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
             />
             <ReferenceLine y={0} stroke="var(--ink-muted)" strokeOpacity={0.5} />
             <Tooltip cursor={{ stroke: "var(--line)" }} content={(p) => <LinesTooltip active={p.active} label={p.label} payload={p.payload} series={series} />} />
+            {filled && (
+              <Area type="linear" dataKey={series[0]!.key} baseValue={0} stroke="none" fill="url(#winloss-fade)" isAnimationActive={false} activeDot={false} legendType="none" tooltipType="none" />
+            )}
             {series.map((s) => (
               <Line
                 key={s.key}
@@ -82,7 +96,7 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
                 isAnimationActive={false}
               />
             ))}
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">

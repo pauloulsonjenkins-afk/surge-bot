@@ -289,7 +289,7 @@ function StrategyCard({
   const thin = (money?.counted ?? 0) < SAMPLE;
 
   return (
-    <li className={`overflow-hidden rounded-xl border bg-surface ${selected ? "border-accent" : "border-line"}`}>
+    <li className={`card-hover overflow-hidden rounded-xl border transition-colors ${open ? "card-open" : "bg-surface"} ${selected ? "border-accent" : "border-line"}`}>
       {/* The row to compare by: name, record and hit rate against break-even on the left, the headline figure on the right. */}
       <div className="flex items-center gap-3 px-3.5 py-3">
         {selecting && (
