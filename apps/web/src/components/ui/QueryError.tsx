@@ -13,7 +13,7 @@ export function QueryError({ error, next }: { error: Error; next: string }) {
       <p className="text-sm text-ink-muted">
         Sign in to see this page.{" "}
         <Link
-          href={adminPage ? `/more/admin/login?next=${encodeURIComponent(next)}` : `/login?next=${encodeURIComponent(next)}`}
+          href={adminPage ? `/more/admin/login?next=${encodeURIComponent(next)}` : `/members/login?next=${encodeURIComponent(next)}`}
           className="text-accent underline"
         >
           Sign in
@@ -22,7 +22,7 @@ export function QueryError({ error, next }: { error: Error; next: string }) {
           <>
             {" "}
             or{" "}
-            <Link href="/signup" className="text-accent underline">
+            <Link href="/members/join" className="text-accent underline">
               create an account
             </Link>
           </>

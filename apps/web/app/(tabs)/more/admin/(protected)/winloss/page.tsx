@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { StrategyName } from "@/components/ui/StrategyName";
 
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -301,7 +302,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
                       ▸
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-ink">{strategyNames.full(s.label)}</span>
+                      <span className="block truncate text-sm text-ink"><StrategyName label={s.label} /></span>
                       <span className="block truncate text-xs text-ink-muted">
                         {marketName(s.market) ?? "No market set"} · {summary}
                       </span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { OctagonX } from "lucide-react";
 import { Card, PageHeader } from "@/components/ui/Card";
@@ -101,7 +102,16 @@ export default function AdminMembersPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader as="h2" title="Members" subtitle="The Members platform (beta) at /members: accounts, memberships, the members' rules and live betting." />
+      <PageHeader
+        as="h2"
+        title="Members"
+        subtitle="The Members platform (beta): accounts, memberships, the members' rules and live betting."
+        actions={
+          <Link href="/members" className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2">
+            Open the members area
+          </Link>
+        }
+      />
 
       {me.data?.publicView && (
         <p className="rounded-lg border border-warn bg-warn/10 px-3 py-2 text-sm text-ink">

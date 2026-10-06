@@ -50,10 +50,10 @@ export default function AccountCard() {
     <section className="rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium text-ink">Not signed in</p>
       <div className="mt-2 flex gap-2">
-        <Link href="/login?next=/members" className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink">
+        <Link href="/members/login" className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink">
           Sign in
         </Link>
-        <Link href="/signup" className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink">
+        <Link href="/members/join" className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink">
           Create account
         </Link>
       </div>

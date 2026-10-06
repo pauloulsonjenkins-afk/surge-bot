@@ -1,24 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
+import { publicViewOn } from "@/server/access";
 
-// Coarse guard: bounces obviously-unauthenticated requests to the protected
-// admin routes before they render. This is a UX shortcut, not the source of
-// truth — the (protected) layout re-verifies the same token server-side on
-// every request, so a request that somehow skips the proxy still can't
-// reach an admin subpage without a valid session.
+/**
+ * Who sees which part of the site, decided before a page renders:
+ *  - the admin sees everything (the main site's Dashboard, Live, Trade Log, Schedule, More and the admin pages);
+ *  - everyone else (signed out, or a member) has the Members area at /members as their whole site. The main site's
+ *    pages send them there, unless the admin has switched Public view on (Admin > Settings);
+ *  - the admin pages need the admin sign-in, as before.
+ * Sign-in, sign-up and the admin sign-in page are always open. This is the coarse guard: the pages' data routes and
+ * the (protected) admin layout check again on every request, so skipping it reveals nothing.
+ */
 export const config = {
-  matcher: ["/more/admin/:path((?!login).*)"],
+  matcher: ["/", "/dashboard/:path*", "/live/:path*", "/trade-log/:path*", "/schedule/:path*", "/more", "/more/admin/:path((?!login).*)"],
 };
 
 export async function proxy(req: NextRequest) {
-  const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
-  const valid = await verifySessionToken(token);
+  const path = req.nextUrl.pathname;
+  const admin = await verifySessionToken(req.cookies.get(ADMIN_COOKIE_NAME)?.value);
 
-  if (!valid) {
+  if (path.startsWith("/more/admin")) {
+    if (admin) return NextResponse.next();
     const loginUrl = new URL("/more/admin/login", req.url);
-    loginUrl.searchParams.set("next", req.nextUrl.pathname);
+    loginUrl.searchParams.set("next", path);
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  if (admin) return path === "/" ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next();
+
+  const open = await publicViewOn();
+  if (path === "/") return NextResponse.redirect(new URL(open ? "/dashboard" : "/members", req.url));
+  return open ? NextResponse.next() : NextResponse.redirect(new URL("/members", req.url));
 }

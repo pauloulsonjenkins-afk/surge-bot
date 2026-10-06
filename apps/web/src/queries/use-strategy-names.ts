@@ -75,6 +75,12 @@ export function useStrategyNames() {
         const original = titleIfLower(strategyLabel(raw));
         return shown.toLowerCase() === original.toLowerCase() ? shown : `${shown} (${original})`;
       },
+      /** The two halves of `full`, for showing the original name smaller (null when it's the same name). */
+      parts: (raw: string) => {
+        const shown = names?.[strategyKey(raw)]?.name ?? strategyLabel(raw);
+        const original = titleIfLower(strategyLabel(raw));
+        return { name: shown, original: shown.toLowerCase() === original.toLowerCase() ? null : original };
+      },
       info: (raw: string) => names?.[strategyKey(raw)],
       names,
     }),

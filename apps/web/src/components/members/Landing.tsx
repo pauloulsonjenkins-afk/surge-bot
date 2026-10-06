@@ -19,7 +19,7 @@ export default function Landing() {
           <Link href="/members/join" className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-ink">
             Create free account
           </Link>
-          <Link href="/login?next=/members" className="rounded-md border border-line px-5 py-2.5 text-sm font-medium text-ink">
+          <Link href="/members/login" className="rounded-md border border-line px-5 py-2.5 text-sm font-medium text-ink">
             Sign in
           </Link>
         </div>
@@ -62,6 +62,11 @@ export default function Landing() {
       </section>
 
       <SaferGambling />
+      <p className="pb-2 text-center text-xs">
+        <Link href="/more/admin/login" className="text-ink-muted hover:text-ink">
+          Admin sign in
+        </Link>
+      </p>
     </div>
   );
 }

@@ -37,7 +37,7 @@ export function useMe() {
 }
 
 /** Signs the website user out and forgets everything that was loaded while they were signed in. */
-export function useSignOut() {
+export function useSignOut(to = "/members") {
   const qc = useQueryClient();
   const router = useRouter();
   return useMutation({
@@ -46,7 +46,7 @@ export function useSignOut() {
     },
     onSettled: () => {
       qc.clear();
-      router.replace("/more");
+      router.replace(to);
       router.refresh();
     },
   });

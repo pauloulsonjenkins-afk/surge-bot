@@ -16,6 +16,7 @@ import { EquityCurve } from "@/components/admin/EquityCurve";
 import { strategyKey, useSaveStrategyName, useStrategyNames } from "@/queries/use-strategy-names";
 import { ChevronDown } from "lucide-react";
 import { BreakevenBar } from "@/components/ui/BreakevenBar";
+import { StrategyName } from "@/components/ui/StrategyName";
 import { ukMidnightIso } from "@/lib/uk-time";
 import { useSending, type SendingSettings } from "@/queries/use-sending";
 import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
@@ -306,7 +307,9 @@ function StrategyCard({
         <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
-              <span className="min-w-0 break-words">{names.full(row.label)}</span>
+              <span className="min-w-0 break-words">
+                <StrategyName label={row.label} />
+              </span>
               {!bet && <ModeBadge mode={modeOf(row)} />}
               {bet?.enabled && bet.stopLoss?.stopped && <span className="rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>}
             </span>

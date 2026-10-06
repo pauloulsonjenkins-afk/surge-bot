@@ -61,7 +61,7 @@ export default function JoinPage() {
       </form>
       <p className="text-sm text-ink-muted">
         Already a member?{" "}
-        <Link href="/login?next=/members" className="text-accent underline">
+        <Link href="/members/login" className="text-accent underline">
           Sign in
         </Link>
       </p>

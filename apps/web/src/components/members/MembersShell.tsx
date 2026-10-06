@@ -11,13 +11,14 @@ import { useState } from "react";
 import { ArrowLeft, Bell, MoreHorizontal, LogOut, X } from "lucide-react";
 import { MEMBERS_NAV } from "@/lib/members/nav";
 import { useMembersMe } from "@/queries/use-members";
-import { useSignOut } from "@/queries/use-me";
+import { useMe, useSignOut } from "@/queries/use-me";
 import { TierBadge } from "./ui";
 
 export default function MembersShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data: me, isPending } = useMembersMe();
   const signOut = useSignOut();
+  const siteAdmin = useMe().data?.admin === true;
   const [more, setMore] = useState(false);
   const isActive = (href: string) => (href === "/members" ? pathname === "/members" : pathname === href || pathname.startsWith(`${href}/`));
   const signedIn = Boolean(me);
@@ -41,17 +42,19 @@ export default function MembersShell({ children }: { children: React.ReactNode }
                 {me.unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-loss px-1 text-center text-[0.65rem] font-bold text-white">{me.unread > 9 ? "9+" : me.unread}</span>}
               </Link>
             )}
-            <Link href="/dashboard" className="hidden items-center gap-1 text-xs text-ink-muted hover:text-ink sm:flex">
-              <ArrowLeft size={14} /> Main site
-            </Link>
+            {siteAdmin && (
+              <Link href="/dashboard" className="hidden items-center gap-1 text-xs text-ink-muted hover:text-ink sm:flex">
+                <ArrowLeft size={14} /> Admin site
+              </Link>
+            )}
             {signedIn ? (
               <button type="button" onClick={() => signOut.mutate()} className="rounded-md p-1.5 text-ink-muted hover:text-ink" aria-label="Sign out">
                 <LogOut size={18} />
               </button>
             ) : (
               // Only once we know nobody is signed in (not while the page is still loading).
-              !isPending && (
-                <Link href="/login?next=/members" className="text-xs font-medium text-accent">
+              !isPending && pathname !== "/members/login" && (
+                <Link href="/members/login" className="text-xs font-medium text-accent">
                   Sign in
                 </Link>
               )
@@ -77,9 +80,11 @@ export default function MembersShell({ children }: { children: React.ReactNode }
                 </li>
               ))}
             </ul>
-            <Link href="/dashboard" className="mt-6 flex items-center gap-2 px-3 text-xs text-ink-muted hover:text-ink">
-              <ArrowLeft size={14} /> Back to GoalBrew
-            </Link>
+            {siteAdmin && (
+              <Link href="/dashboard" className="mt-6 flex items-center gap-2 px-3 text-xs text-ink-muted hover:text-ink">
+                <ArrowLeft size={14} /> Back to the admin site
+              </Link>
+            )}
           </nav>
         )}
         <main className="min-w-0 flex-1 px-4 py-5 pb-[calc(80px+env(safe-area-inset-bottom,0px))] lg:px-8 lg:pb-10">{children}</main>
@@ -124,11 +129,13 @@ export default function MembersShell({ children }: { children: React.ReactNode }
                   </Link>
                 </li>
               ))}
-              <li className="col-span-2">
-                <Link href="/dashboard" className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-ink-muted">
-                  <ArrowLeft size={16} /> Back to GoalBrew
-                </Link>
-              </li>
+              {siteAdmin && (
+                <li className="col-span-2">
+                  <Link href="/dashboard" className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-ink-muted">
+                    <ArrowLeft size={16} /> Back to the admin site
+                  </Link>
+                </li>
+              )}
             </ul>
           </div>
         </div>

@@ -9,6 +9,7 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { NotPlacedCard } from "@/components/admin/NotPlacedCard";
 import { NotificationsCard } from "@/components/admin/NotificationsCard";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { StrategyName } from "@/components/ui/StrategyName";
 import Link from "next/link";
 import { useDirect } from "@/queries/use-direct";
 import { Activity, Limits, ModeCard, Readiness } from "@/components/admin/DirectBetting";
@@ -226,7 +227,7 @@ export default function SendingPage() {
               .filter((s) => s.enabled)
               .map((s) => (
                 <li key={s.label} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-ink">{strategyNames.full(s.label)}</span>
+                  <span className="min-w-0 truncate text-ink"><StrategyName label={s.label} /></span>
                   <span className="shrink-0 text-xs text-ink-muted">
                     {s.stopLoss?.stopped ? <span className="text-warn">Stopped today · </span> : null}Live · £{s.stake?.toFixed(2) ?? "–"}
                   </span>
