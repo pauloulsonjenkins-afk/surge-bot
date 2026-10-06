@@ -85,3 +85,14 @@ test("league review flags: keep and 'removed from the filter' are saved; leagues
   const fr = rows.find((l) => l.league === "Ligue 1")!;
   assert.deepEqual([fr.noSend, fr.hidden, fr.ipgDone, fr.keep], [false, false, false, true]);
 });
+
+test("a league stopped or hidden on the Leagues page leaves the Schedule even if Betfair lists it", () => {
+  const { db, add } = setup();
+  const pick = add("France Ligue 1", 1);
+  db.saveBetfairCompetitions([{ id: "9", name: "French Ligue 1", region: "FRA", marketCount: 30 }], new Date().toISOString());
+  assert.notEqual(fixtureLeagueChecker(db)!("Ligue 1", "France"), "not");
+  db.updateLeague(pick.leagueKey, { noSend: true, hidden: true });
+  assert.equal(fixtureLeagueChecker(db)!("Ligue 1", "France"), "not");
+  db.updateLeague(pick.leagueKey, { noSend: false, hidden: false });
+  assert.notEqual(fixtureLeagueChecker(db)!("Ligue 1", "France"), "not");
+});

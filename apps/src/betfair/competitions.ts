@@ -281,18 +281,26 @@ export function savedListCoverage(db: EngineDb): { savedAt: string; leagues: Cov
 
 /**
  * For the Schedule: tells whether a fixture's league (API-Football's league and country) is on Betfair, the same way
- * the Leagues page checks InPlayGuru's names, with the overrides set there. Null when Betfair's competition list hasn't
+ * the Leagues page checks InPlayGuru's names, with the overrides set there, and never for a league stopped or hidden there. Null when Betfair's competition list hasn't
  * been read yet (then nothing can be judged, so nothing should be hidden). Answers are remembered per league.
  */
 export function fixtureLeagueChecker(db: EngineDb): ((league: string, country: string) => CoverageStatus) | null {
   const competitions = db.listBetfairCompetitions();
   if (competitions.length === 0) return null;
   const overrides = getLeagueOverrides(db);
+  // Leagues stopped or hidden on the Leagues page never show, however Betfair's list reads.
+  const stopped = new Set(
+    db
+      .listLeaguesForAdmin()
+      .filter((l) => l.noSend || l.hidden)
+      .map((l) => norm(l.country && !norm(l.league).startsWith(norm(l.country)) ? `${l.country} ${l.league}` : l.league)),
+  );
   const seen = new Map<string, CoverageStatus>();
   return (league, country) => {
     const international = /^(world|europe|international)$/i.test(country.trim());
     const name = international || norm(league).startsWith(norm(country)) ? league : `${country} ${league}`;
     const key = norm(name);
+    if (stopped.has(key)) return "not";
     let status = seen.get(key);
     if (status === undefined) {
       status = withOverride(checkLeague(name, competitions, international ? null : country), overrides, competitions).status;
