@@ -26,9 +26,9 @@ export default function StrategyPage({ params }: { params: Promise<{ key: string
       <PageHeader title={s.name} subtitle={s.type === "pre-match" ? "Pre-match strategy" : "In-play strategy"} actions={<FollowControl s={s} />} />
 
       <div className="grid grid-cols-3 gap-2">
-        <Tile label="Today" value={<WinLossText wl={s.results.today} />} />
-        <Tile label="This week" value={<WinLossText wl={s.results.week} />} />
-        <Tile label="30 days" value={<WinLossText wl={s.results.last30} />} sub={`about ${s.results.perWeek} a week`} />
+        <Tile label="Today" value={pct(s.results.today.hitRate)} sub={`${s.results.today.wins}W / ${s.results.today.losses}L`} />
+        <Tile label="This week" value={pct(s.results.week.hitRate)} sub={`${s.results.week.wins}W / ${s.results.week.losses}L`} />
+        <Tile label="30 days" value={pct(s.results.last30.hitRate)} sub={`${s.results.last30.wins}W / ${s.results.last30.losses}L · about ${s.results.perWeek} a week`} />
       </div>
 
       <Card title="Last 30 days" subtitle="Settled alerts per day: wins (green) and losses (red).">

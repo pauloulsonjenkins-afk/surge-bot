@@ -40,7 +40,7 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
   const s = sim.summary;
   return (
     <div className="space-y-6">
-      <PageHeader title={`Hello${me.user.name ? `, ${me.user.name.split(" ")[0]}` : ""}`} subtitle="Your Members dashboard" actions={<ModeBadge mode="sim" large />} />
+      <PageHeader title={`Hello${me.user.name ? `, ${me.user.name.split(" ")[0]}` : ""}`} subtitle="Your Members dashboard" />
       {upgraded && <p className="rounded-lg border border-hit/40 bg-hit/10 px-3 py-2 text-sm text-ink">Thank you. Your membership is being confirmed by Stripe and will show here in a moment.</p>}
       <TrialCountdown me={me} />
       <TrialEnded me={me} />
@@ -100,16 +100,15 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
           )}
         </Card>
 
-        <Card title="House performance" subtitle="Official strategies. Separate from your own results." actions={<Link href="/members/strategies" className="text-xs text-accent">All</Link>}>
+        <Card title="House performance" subtitle="Official strategies, last 30 days. Separate from your own results." actions={<Link href="/members/strategies" className="text-xs text-accent">All</Link>}>
           <ul className="divide-y divide-line">
-            {data.house.slice(0, 8).map((h) => (
+            {data.house.map((h) => (
               <li key={h.key} className="flex items-center justify-between gap-2 py-2 text-sm">
                 <Link href={`/members/strategies/${encodeURIComponent(h.key)}`} className="min-w-0 truncate text-ink">
                   {h.name}
                 </Link>
                 <span className="shrink-0 text-xs">
-                  <span className="text-ink-muted">Today </span>
-                  <WinLossText wl={h.today} />
+                  <WinLossText wl={h.last30} />
                 </span>
               </li>
             ))}
@@ -118,9 +117,13 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
 
         <Card title="Recent bets" actions={<Link href="/members/history" className="text-xs text-accent">History</Link>}>
           {data.recent.length === 0 ? (
-            <p className="text-sm text-ink-muted">
-              No bets yet. <Link href="/members/strategies" className="text-accent underline">Follow a strategy</Link> to start simulating.
-            </p>
+            data.automation.following > 0 ? (
+              <p className="text-sm text-ink-muted">No bets yet. They appear here when the strategies you follow next send an alert.</p>
+            ) : (
+              <p className="text-sm text-ink-muted">
+                No bets yet. <Link href="/members/strategies" className="text-accent underline">Follow a strategy</Link> to start simulating.
+              </p>
+            )
           ) : (
             <ul className="divide-y divide-line">
               {data.recent.map((b) => (
@@ -146,7 +149,7 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
             Following <strong>{data.automation.following}</strong> strateg{data.automation.following === 1 ? "y" : "ies"}: {data.automation.sim} in simulation
             {data.automation.live > 0 ? `, ${data.automation.live} live` : ""}.
           </p>
-          <p className="mt-1 text-xs text-ink-muted">Live betting: {data.automation.liveBlockedReason ?? "on"}</p>
+          <p className="mt-1 text-xs text-ink-muted">{data.automation.liveBlockedReason ?? "Live betting is on."}</p>
         </Card>
       </div>
 

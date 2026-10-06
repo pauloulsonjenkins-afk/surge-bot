@@ -153,7 +153,7 @@ export interface Dashboard {
   sim: { summary: PerformanceSummary; bank: Performance["bank"]; curve: Performance["curve"] };
   live: PerformanceSummary | null;
   recent: BetView[];
-  house: Array<{ key: string; name: string; locked: boolean; today: WinLoss; week: WinLoss; following: { mode: BetMode; auto: boolean } | null }>;
+  house: Array<{ key: string; name: string; locked: boolean; today: WinLoss; week: WinLoss; last30: WinLoss; following: { mode: BetMode; auto: boolean } | null }>;
   upcoming: { open: Upcoming["open"]; openCount: number; locked: Upcoming["locked"] };
   automation: Upcoming["automation"];
 }

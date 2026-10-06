@@ -97,8 +97,9 @@ export default function DashboardPage() {
               <span className="lg:hidden">
                 <ThemeToggle />
               </span>
-              {/* Signed out: the way into the admin area. Once signed in as admin, phones get it here too; wide screens list the admin pages in the sidebar. */}
-              {me && (
+              {/* Signed out: the way into the admin area. Once signed in as admin, phones get it here too; wide screens list the admin pages in the sidebar.
+                  Members don't need it. */}
+              {me && !me.user && (
                 <Link
                   href={me.admin ? "/more/admin/sending" : "/more/admin/login"}
                   className={`flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink ${me.admin ? "lg:hidden" : ""}`}

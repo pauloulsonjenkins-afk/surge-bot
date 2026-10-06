@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMe, useSignOut } from "@/queries/use-me";
-import { USER_PAGE_LABEL } from "@/lib/user-pages";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 /** Top of the More page: who you're signed in as, or how to sign in. */
@@ -30,11 +29,10 @@ export default function AccountCard() {
             {signOut.isPending ? "Signing out…" : "Sign out"}
           </button>
         </div>
-        <p className="mt-2 text-xs text-ink-muted">
-          {me.user.pages.length === 0
-            ? "Waiting for an admin to give you access to pages."
-            : `You can see: ${me.user.pages.map((p) => USER_PAGE_LABEL[p].title).join(", ")}.`}
-        </p>
+        <p className="mt-2 text-xs text-ink-muted">Your strategies, results, simulation and membership are in Members.</p>
+        <Link href="/members" className="mt-3 inline-block rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink">
+          Open Members
+        </Link>
       </section>
     );
   }
@@ -52,7 +50,7 @@ export default function AccountCard() {
     <section className="rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium text-ink">Not signed in</p>
       <div className="mt-2 flex gap-2">
-        <Link href="/login" className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink">
+        <Link href="/login?next=/members" className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink">
           Sign in
         </Link>
         <Link href="/signup" className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink">

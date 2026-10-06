@@ -299,7 +299,7 @@ export function dashboardView(db: EngineDb, ctx: MemberContext, deps: LiveDeps |
     sim: { summary: sim.summary, bank: sim.bank, curve: sim.curve },
     live: hasLive ? performanceView(db, ctx, "live", "all").summary : null,
     recent: historyView(db, ctx, {}).rows.slice(0, 8),
-    house: strategiesView(db, ctx).map((s) => ({ key: s.key, name: s.name, locked: s.locked, today: s.results.today, week: s.results.week, following: s.following })),
+    house: strategiesView(db, ctx).map((s) => ({ key: s.key, name: s.name, locked: s.locked, today: s.results.today, week: s.results.week, last30: s.results.last30, following: s.following })),
     upcoming: { open: upcoming.open.slice(0, 5), openCount: upcoming.open.length, locked: upcoming.locked },
     automation: upcoming.automation,
   };
