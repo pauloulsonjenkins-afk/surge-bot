@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Card, PageHeader } from "@/components/ui/Card";
@@ -9,7 +10,6 @@ import { QueryError } from "@/components/ui/QueryError";
 import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLines";
 import { DailyPnlChart } from "@/components/admin/DailyPnlChart";
 import { marketName } from "@/lib/markets";
-import { useSaveSending } from "@/queries/use-sending";
 import { useSaveWinLoss, useWinLoss, type WinLossState } from "@/queries/use-winloss";
 import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import type { PickMode } from "@/server/engine-client";
@@ -92,12 +92,9 @@ const MODE_NOTE: Record<PickMode, string> = {
 };
 
 function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
-  const qc = useQueryClient();
   const strategyNames = useStrategyNames();
-  const saveSending = useSaveSending();
   const saveWinLoss = useSaveWinLoss(mode);
   const [period, setPeriod] = useState<PeriodKey>("mtd");
-  const [stakeDraft, setStakeDraft] = useState<Record<string, string>>({});
   const [oddsDraft, setOddsDraft] = useState<Record<string, string>>({});
   const [commission, setCommission] = useState(String(state.settings.commission));
   const [monthly, setMonthly] = useState(String(state.settings.expenditure.monthly));
@@ -146,33 +143,6 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
     return row;
   });
 
-  function refresh() {
-    qc.invalidateQueries({ queryKey: ["winloss"] });
-    qc.invalidateQueries({ queryKey: ["sending"] });
-  }
-
-  function setStake(key: string) {
-    const n = Number((stakeDraft[key] ?? "").replace(/^\u00a3/, ""));
-    if (!Number.isFinite(n) || n <= 0 || n > 500) {
-      setMessage("Enter a stake above zero, for example 2 or 2.50.");
-      return;
-    }
-    setMessage(null);
-    saveSending.mutate(
-      { stakes: { [key]: n } },
-      {
-        onSuccess: () => {
-          setStakeDraft((d) => {
-            const c = { ...d };
-            delete c[key];
-            return c;
-          });
-          refresh();
-        },
-      },
-    );
-  }
-
   function setOdds(key: string) {
     const n = Number(oddsDraft[key] ?? "");
     if (!Number.isFinite(n) || n < 1.01 || n > 1000) {
@@ -215,8 +185,8 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
       </div>
 
       {message && <p className="text-sm text-destructive">{message}</p>}
-      {(saveSending.error || saveWinLoss.error) && (
-        <p className="text-sm text-destructive">{(saveSending.error ?? saveWinLoss.error)?.message}</p>
+      {saveWinLoss.error && (
+        <p className="text-sm text-destructive">{saveWinLoss.error.message}</p>
       )}
 
       {/* ---- figures ---- */}
@@ -304,15 +274,13 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
       {/* ---- inputs ---- */}
       <Card
         title="Strategies"
-        subtitle="Tap a strategy to set the stake and, where an alert carries no odds, the odds to assume. Rows needing attention are marked."
+        subtitle="Tap a strategy to set the odds to assume where an alert carries none. Stakes are set on Strategies. Rows needing attention are marked."
       >
         {strategies.length === 0 ? (
           <p className="text-xs text-ink-muted">Strategies appear here once they have settled picks this year.</p>
         ) : (
           <ul className="divide-y divide-line">
             {strategies.map((s) => {
-              const stakeShown = stakeDraft[s.key] ?? (s.stake !== null ? s.stake.toFixed(2) : "");
-              const stakeDirty = stakeDraft[s.key] !== undefined && stakeDraft[s.key]!.trim() !== (s.stake !== null ? s.stake.toFixed(2) : "");
               const oddsShown = oddsDraft[s.key] ?? (s.assumedOdds !== null ? s.assumedOdds.toFixed(2) : "");
               const oddsDirty = oddsDraft[s.key] !== undefined && oddsDraft[s.key]!.trim() !== (s.assumedOdds !== null ? s.assumedOdds.toFixed(2) : "");
               const needsOdds = s.market !== "NEXT_GOAL" || s.noOdds > 0 || s.assumedOdds !== null;
@@ -333,7 +301,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
                       ▸
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-ink">{strategyNames.name(s.label)}</span>
+                      <span className="block truncate text-sm text-ink">{strategyNames.full(s.label)}</span>
                       <span className="block truncate text-xs text-ink-muted">
                         {marketName(s.market) ?? "No market set"} · {summary}
                       </span>
@@ -346,21 +314,13 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
                   {isOpen && (
                   <div className="pl-5">
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <label className="flex items-center gap-2 text-xs text-ink-muted">
-                      <span className="whitespace-nowrap">Stake £</span>
-                      <input
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        className="w-20 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm text-ink"
-                        value={stakeShown}
-                        onChange={(e) => setStakeDraft((d) => ({ ...d, [s.key]: e.target.value }))}
-                      />
-                      {stakeDirty && (
-                        <button type="button" onClick={() => setStake(s.key)} className="rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-accent-ink">
-                          Set
-                        </button>
-                      )}
-                    </label>
+                    {/* The stake is set with the strategy's other bet settings, on Strategies. */}
+                    <p className="text-xs text-ink-muted">
+                      Stake {s.stake !== null ? <span className="text-ink">£{s.stake.toFixed(2)}</span> : <span className="text-warn">not set</span>} ·{" "}
+                      <Link href="/more/admin/strategies" className="text-accent underline">
+                        change on Strategies
+                      </Link>
+                    </p>
 
                     {needsOdds && (
                       <label className="flex items-center gap-2 text-xs text-ink-muted">

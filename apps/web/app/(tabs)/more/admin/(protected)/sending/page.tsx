@@ -4,16 +4,14 @@ import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
-import { marketName } from "@/lib/markets";
-import { StopLossControls } from "@/components/admin/StopLossControls";
-import { useSaveSending, useSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
-import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
+import { useSaveSending, useSending, type SendingSettings } from "@/queries/use-sending";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { NotPlacedCard } from "@/components/admin/NotPlacedCard";
 import { NotificationsCard } from "@/components/admin/NotificationsCard";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import Link from "next/link";
 import { useDirect } from "@/queries/use-direct";
+import { Activity, Limits, ModeCard, Readiness } from "@/components/admin/DirectBetting";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -72,12 +70,11 @@ function toForm(s: SendingSettings): Form {
 
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink";
 
-type SettingsTab = "limits" | "names" | "wording" | "feed";
+type SettingsTab = "limits" | "names" | "wording";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "limits", label: "Safety limits" },
   { id: "names", label: "Match names" },
   { id: "wording", label: "Bet wording" },
-  { id: "feed", label: "Feed" },
 ];
 
 const SENDABLE = new Set(["OVER_1_5", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS"]);
@@ -85,19 +82,12 @@ const SENDABLE = new Set(["OVER_1_5", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDER
 export default function SendingPage() {
   const { data, isLoading, error } = useSending();
   const save = useSaveSending();
-  const remove = useDeleteStrategyFlow();
   const dialog = useDialog();
   const strategyNames = useStrategyNames();
+  const direct = useDirect();
   const [form, setForm] = useState<Form | null>(null);
   const [saved, setSaved] = useState(false);
-  // What has been typed into each strategy's stake box but not saved yet, keyed by lower-case name.
-  const [stakeDraft, setStakeDraft] = useState<Record<string, string>>({});
-  const [stakeError, setStakeError] = useState<string | null>(null);
-  // The same for each strategy's minimum odds box.
-  const [minDraft, setMinDraft] = useState<Record<string, string>>({});
-  const [minError, setMinError] = useState<string | null>(null);
-  // Which strategy rows are opened up to edit, and which settings tab is showing.
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  // Which settings tab is showing.
   const [tab, setTab] = useState<SettingsTab>("limits");
 
   // Fill the form once. Later refreshes must not overwrite what is being typed.
@@ -123,104 +113,20 @@ export default function SendingPage() {
       const live = data!.strategies.filter((x) => x.enabled);
       const perDay = live.reduce((most, x) => Math.max(most, x.stake ?? 0), 0) * settings.dailyCap;
       const ok = await dialog.confirm({
-        title: "Turn sending on?",
+        title: "Turn betting on?",
         tone: "money",
-        confirmLabel: live.length === 0 ? "Turn sending on" : `Start sending ${live.length} Live strateg${live.length === 1 ? "y" : "ies"}`,
+        confirmLabel: live.length === 0 ? "Turn betting on" : `Start betting ${live.length} Live strateg${live.length === 1 ? "y" : "ies"}`,
         details: [
           { label: "Live strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${strategyNames.name(x.label)} £${x.stake?.toFixed(2) ?? "–"}`).join(", ") },
           { label: "Daily limit", value: `${settings.dailyCap} new bets` },
           { label: "Most staked in a day", value: perDay > 0 ? `up to £${perDay.toFixed(2)}` : "–" },
           { label: "Highest stake allowed", value: `£${settings.maxStake.toFixed(2)}` },
         ],
-        body: <p>New picks from Live strategies are added to the feed your betting software reads, at each strategy’s own stake.</p>,
+        body: <p>New picks from Live strategies are bet on Betfair, at each strategy’s own stake.</p>,
       });
       if (!ok) return;
     }
     save.mutate({ enabled: turningOn });
-  }
-
-  /** The money summary shown before a strategy goes Live: what each bet costs and what stops it. */
-  function confirmLive(s: SendingState["strategies"][number]): Promise<boolean> {
-    const stake = s.stake ?? 0;
-    const stop = s.stopLoss;
-    const hasStop = stop !== null && (stop.dailyLoss !== null || stop.lossRun !== null);
-    return dialog.confirm({
-      title: `Put ${strategyNames.name(s.label)} Live?`,
-      tone: "money",
-      confirmLabel: `Put Live at £${stake.toFixed(2)}`,
-      details: [
-        { label: "Stake per bet", value: `£${stake.toFixed(2)}` },
-        { label: "Minimum odds", value: s.minOdds !== null ? s.minOdds.toFixed(2) : "None" },
-        { label: "Daily limit (all strategies)", value: `${settings.dailyCap} bets, up to £${(stake * settings.dailyCap).toFixed(2)}` },
-        {
-          label: "Stop loss",
-          value: hasStop ? (
-            [stop.dailyLoss !== null ? `down £${stop.dailyLoss.toFixed(2)}` : null, stop.lossRun !== null ? `${stop.lossRun} losses in a row` : null]
-              .filter(Boolean)
-              .join(" or ")
-          ) : (
-            <span className="text-warn">None set</span>
-          ),
-        },
-      ],
-      body: (
-        <>
-          <p>Its new picks will be sent to your betting software{settings.enabled ? "" : " once the master switch above is on"}.</p>
-          {!hasStop && (
-            <p>
-              <strong>No stop loss is set.</strong> Open this strategy and set one first if it should stop after a bad day.
-            </p>
-          )}
-        </>
-      ),
-    });
-  }
-
-  function saveStake(key: string) {
-    const raw = (stakeDraft[key] ?? "").trim().replace(/^£/, "");
-    const n = Number(raw);
-    if (!raw || !Number.isFinite(n) || n <= 0) {
-      setStakeError("Enter a stake above zero, for example 2 or 2.50.");
-      return;
-    }
-    if (n > settings.maxStake) {
-      setStakeError(`That is above your highest stake allowed (£${settings.maxStake}). Raise that limit first if you really mean it.`);
-      return;
-    }
-    setStakeError(null);
-    save.mutate(
-      { stakes: { [key]: n } },
-      {
-        onSuccess: () =>
-          setStakeDraft((d) => {
-            const next = { ...d };
-            delete next[key];
-            return next;
-          }),
-      },
-    );
-  }
-
-  function saveMinOdds(key: string) {
-    const raw = (minDraft[key] ?? "").trim();
-    const clear = () =>
-      setMinDraft((d) => {
-        const next = { ...d };
-        delete next[key];
-        return next;
-      });
-    if (raw === "") {
-      setMinError(null);
-      save.mutate({ minOdds: { [key]: null } }, { onSuccess: clear });
-      return;
-    }
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < 1.01 || n > 1000) {
-      setMinError("Enter minimum odds between 1.01 and 1000, for example 1.85. Leave the box empty for no minimum.");
-      return;
-    }
-    setMinError(null);
-    save.mutate({ minOdds: { [key]: n } }, { onSuccess: clear });
   }
 
   function saveLimits() {
@@ -257,27 +163,14 @@ export default function SendingPage() {
   }
 
   const settingsDirty = JSON.stringify(form) !== JSON.stringify(toForm(settings));
-  // Switched-on strategies first (they are the ones sending money), then ready-to-switch-on ones, then the rest.
-  const rank = (s: (typeof data.strategies)[number]) =>
-    s.enabled ? 0 : s.market !== null && SENDABLE.has(s.market) && s.stake !== null ? 1 : s.market !== null && SENDABLE.has(s.market) ? 2 : 3;
-  const sortedStrategies = data.strategies.map((s, i) => ({ s, i })).sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i).map((x) => x.s);
   const onCount = data.strategies.filter((s) => s.enabled).length;
   const stoppedCount = data.strategies.filter((s) => s.stopLoss?.stopped).length;
-  const toggleOpen = (key: string) =>
-    setOpen((o) => {
-      const next = new Set(o);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
 
   return (
     <div className="space-y-3">
-      <PageHeader as="h2" title="Sending" subtitle="Controls which picks are handed to your betting software." />
-      <DirectNotice />
+      <PageHeader as="h2" title="Sending" subtitle="Betting on or off, how bets are placed on Betfair, and the limits and wording that apply to every strategy." />
 
       {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
-      {remove.error && <p className="text-sm text-destructive">{remove.error.message}</p>}
 
       {/* 1. Status: the one thing that matters most, always at the top. */}
       <section
@@ -286,17 +179,10 @@ export default function SendingPage() {
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">{settings.enabled ? "Sending is ON" : "Sending is OFF"}</p>
+            <p className="text-sm font-medium text-ink">{settings.enabled ? "Betting is ON" : "Betting is OFF"}</p>
             <p className="mt-0.5 text-xs text-ink-muted">
-              {settings.enabled ? `${onCount} of ${data.strategies.length} strategies Live` : "Nothing is handed over while this is off, so every strategy runs as Sim."}
+              {settings.enabled ? `${onCount} of ${data.strategies.length} strategies Live` : "Nothing is bet while this is off, so every strategy runs as Sim."}
               {stoppedCount > 0 && <span className="text-warn"> · {stoppedCount} stopped by stop loss today</span>}
-            </p>
-            <p className="mt-0.5 text-xs text-ink-muted">
-              {!data.feedTokenConfigured ? (
-                <span className="text-warn">No feed link set up: see the Feed tab below.</span>
-              ) : (
-                <>Betting software last checked: {data.lastFeedFetchAt ? whenFmt.format(new Date(data.lastFeedFetchAt)) : "not yet"}</>
-              )}
             </p>
           </div>
           <button
@@ -312,212 +198,49 @@ export default function SendingPage() {
         </div>
       </section>
 
+      {direct.data && (
+        <>
+          <ModeCard data={direct.data} />
+          <Readiness data={direct.data} />
+        </>
+      )}
+
       {/* Sent picks with no bet on Betfair 3 minutes on: only shown when there are some. */}
       <NotPlacedCard />
 
-      {/* 2. Strategies: one compact row each; open a row to change its stake, minimum odds or stop loss. */}
-      <Card title="Strategies" subtitle="Every strategy starts in Sim: its picks are recorded, settled and priced as if bet, but never sent. Switch one to Live to send its new picks. Tap a strategy to set its stake, minimum odds and stop loss.">
-        {stakeError && <p className="mb-2 text-xs text-destructive">{stakeError}</p>}
-        {minError && <p className="mb-2 text-xs text-destructive">{minError}</p>}
+      {/* 2. Each strategy's Live / Sim switch, stake, minimum odds and stop loss are on Strategies. */}
+      <Card
+        title="Strategies"
+        subtitle="Each strategy's Live / Sim switch, stake, minimum odds and stop loss sit with its results on the Strategies page."
+        actions={
+          <Link href="/more/admin/strategies" className="text-xs font-medium text-accent">
+            Open Strategies
+          </Link>
+        }
+      >
         {data.strategies.length === 0 ? (
-          <p className="text-xs text-ink-muted">Strategies appear here as picks arrive.</p>
+          <p className="text-xs text-ink-muted">Strategies appear as picks arrive.</p>
         ) : (
-          <ul className="divide-y divide-line">
-            {sortedStrategies.map((s, idx) => {
-              const key = s.label.toLowerCase();
-              // First Half Corner Race can be sent once its Betfair market code is set under Bet wording.
-              const supported =
-                s.market !== null &&
-                (SENDABLE.has(s.market) ||
-                  (s.market === "FIRST_HALF_CORNERS" && !!settings.firstHalfCornersMarketType) ||
-                  (s.market === "FAVOURITE_TO_SCORE" && !!settings.favouriteScoresHomeMarketType && !!settings.favouriteScoresAwayMarketType));
-              const firstOff = !s.enabled && (idx === 0 || sortedStrategies[idx - 1]!.enabled) && onCount > 0;
-              const note = !s.market ? "No market set" : !supported ? "Can't be sent yet" : marketName(s.market);
-              const draft = stakeDraft[key];
-              const shown = draft ?? (s.stake !== null ? s.stake.toFixed(2) : "");
-              const dirty = draft !== undefined && draft.trim() !== (s.stake !== null ? s.stake.toFixed(2) : "");
-              const minDraftValue = minDraft[key];
-              const minSaved = s.minOdds !== null ? s.minOdds.toFixed(2) : "";
-              const minShown = minDraftValue ?? minSaved;
-              const minDirty = minDraftValue !== undefined && minDraftValue.trim() !== minSaved;
-              const canSwitch = supported && s.stake !== null && !dirty && !save.isPending;
-              const isOpen = open.has(key);
-              const hasStopLoss = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
-              const summary = !supported
-                ? null
-                : [
-                    s.stake !== null ? `£${s.stake.toFixed(2)}` : "No stake yet",
-                    s.minOdds !== null ? `min odds ${s.minOdds.toFixed(2)}` : null,
-                    hasStopLoss ? "stop loss set" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
-              return (
-                <li key={s.label} className="py-2.5">
-                  {idx === 0 && onCount > 0 && <p className="-mt-1 mb-1.5 text-xs font-medium text-ink-muted">Live · sent to your betting software</p>}
-                  {firstOff && <p className="mb-1.5 text-xs font-medium text-ink-muted">Sim · recorded and settled, never sent</p>}
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleOpen(key)}
-                      aria-expanded={isOpen}
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    >
-                      <span className={`shrink-0 text-xs text-ink-muted transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden>
-                        ▸
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm text-ink">{strategyNames.full(s.label)}</span>
-                        <span className={`block truncate text-xs ${supported ? "text-ink-muted" : "text-warn"}`}>
-                          {note}
-                          {summary && <span className={s.stake === null ? "text-warn" : ""}> · {summary}</span>}
-                        </span>
-                      </span>
-                    </button>
-                    {s.enabled && s.stopLoss?.stopped && (
-                      <span className="shrink-0 rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>
-                    )}
-                    {!s.enabled && s.simStopLoss?.stopped && (
-                      <span
-                        title={s.simStopLoss.reason ?? undefined}
-                        className="shrink-0 rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn"
-                      >
-                        Would have stopped
-                      </span>
-                    )}
-                    {/* Live sends new picks to the betting software; Sim only records them. Sim is the default. */}
-                    <div
-                      role="radiogroup"
-                      aria-label={`${s.label}: live or simulation`}
-                      title={!supported ? "This strategy can't be sent yet, so it stays in Sim" : s.stake === null ? "Set a stake before going Live" : undefined}
-                      className="inline-flex shrink-0 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5"
-                    >
-                      {([false, true] as const).map((live) => {
-                        const selected = s.enabled === live;
-                        return (
-                          <button
-                            key={String(live)}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            disabled={selected || (live && !canSwitch) || save.isPending}
-                            onClick={async () => {
-                              if (live && !(await confirmLive(s))) return;
-                              save.mutate({ strategies: { [key]: live } });
-                            }}
-                            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-default ${
-                              selected ? (live ? "bg-accent text-accent-ink" : "bg-surface text-ink shadow-sm") : "text-ink-muted hover:text-ink disabled:opacity-40"
-                            }`}
-                          >
-                            {live ? "Live" : "Sim"}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {isOpen && (
-                    <div className="mt-2 space-y-3 pl-5">
-                      {/* The stake is asked for every strategy: Sim profit is priced at it even where the market can't be sent. */}
-                      <div className="grid grid-cols-2 gap-3">
-                          <label className="text-xs text-ink-muted">
-                            Stake (£)
-                            <div className="mt-1 flex gap-1.5">
-                              <input
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                className="w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink"
-                                value={shown}
-                                onChange={(e) => setStakeDraft((d) => ({ ...d, [key]: e.target.value }))}
-                              />
-                              {dirty && (
-                                <button
-                                  type="button"
-                                  onClick={() => saveStake(key)}
-                                  disabled={save.isPending}
-                                  className="rounded-md bg-accent px-2.5 text-xs font-medium text-accent-ink disabled:opacity-50"
-                                >
-                                  Set
-                                </button>
-                              )}
-                            </div>
-                            {!dirty && s.stake === null && <span className="mt-1 block text-warn">Needed to go Live, and for Sim profit</span>}
-                          </label>
-                          {supported && (
-                            <>
-                          <label className="text-xs text-ink-muted">
-                            Minimum odds
-                            <div className="mt-1 flex gap-1.5">
-                              <input
-                                inputMode="decimal"
-                                placeholder="none"
-                                className="w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink"
-                                value={minShown}
-                                onChange={(e) => setMinDraft((d) => ({ ...d, [key]: e.target.value }))}
-                              />
-                              {minDirty && (
-                                <button
-                                  type="button"
-                                  onClick={() => saveMinOdds(key)}
-                                  disabled={save.isPending}
-                                  className="rounded-md bg-accent px-2.5 text-xs font-medium text-accent-ink disabled:opacity-50"
-                                >
-                                  {minDraft[key]!.trim() === "" ? "Clear" : "Set"}
-                                </button>
-                              )}
-                            </div>
-                          </label>
-                          <p className="col-span-2 -mt-1 text-xs text-ink-muted">
-                            {s.minOdds !== null
-                              ? `Your betting software waits for odds of ${s.minOdds.toFixed(2)} or better before it places the bet. Applies to new picks only.`
-                              : "Minimum odds are optional: your betting software waits for at least this price before it places the bet."}
-                          </p>
-                            </>
-                          )}
-                      </div>
-                      {supported && (
-                        <StopLossControls
-                          status={s.stopLoss}
-                          busy={save.isPending}
-                          onSave={(patch) => save.mutate({ stopLoss: { [key]: patch } })}
-                        />
-                      )}
-                      {/* In Sim, the same limits run on the simulated bets, so they can be tuned before going Live. */}
-                      {!s.enabled && s.simStopLoss && (
-                        <p className={`rounded-md bg-surface-2 px-2.5 py-1.5 text-xs ${s.simStopLoss.stopped ? "text-warn" : "text-ink-muted"}`}>
-                          In Sim today: {s.simStopLoss.todayNet < 0 ? "−" : ""}£{Math.abs(s.simStopLoss.todayNet).toFixed(2)} from{" "}
-                          {s.simStopLoss.settledToday} bet{s.simStopLoss.settledToday === 1 ? "" : "s"}
-                          {s.simStopLoss.todayRun > 0 && `, ${s.simStopLoss.todayRun} loss${s.simStopLoss.todayRun === 1 ? "" : "es"} in a row`}.{" "}
-                          {s.simStopLoss.stopped
-                            ? `If it were Live it would have stopped: ${s.simStopLoss.reason} Its later picks today are recorded as not placed.`
-                            : "It hasn't reached either limit."}
-                        </p>
-                      )}
-                      {!s.enabled ? (
-                        <button
-                          type="button"
-                          onClick={() => void remove.run(s.label, { alerts: s.alerts, sent: s.sent })}
-                          disabled={remove.isPending}
-                          className="text-xs text-destructive underline disabled:opacity-50"
-                        >
-                          Remove this strategy
-                        </button>
-                      ) : (
-                        <p className="text-xs text-ink-muted">To remove this strategy, put it back to Sim first.</p>
-                      )}
-                    </div>
-                  )}
+          <ul className="space-y-1 text-sm">
+            {data.strategies
+              .filter((s) => s.enabled)
+              .map((s) => (
+                <li key={s.label} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-ink">{strategyNames.full(s.label)}</span>
+                  <span className="shrink-0 text-xs text-ink-muted">
+                    {s.stopLoss?.stopped ? <span className="text-warn">Stopped today · </span> : null}Live · £{s.stake?.toFixed(2) ?? "–"}
+                  </span>
                 </li>
-              );
-            })}
+              ))}
+            {onCount === 0 && <li className="text-xs text-ink-muted">No strategy is Live: every one runs in Sim.</li>}
           </ul>
         )}
       </Card>
 
       {/* 3. What is happening right now. */}
       <Card
-        title="What would be handed over now"
-        subtitle={settings.enabled ? "Picks in the feed at this moment." : "Sending is off, so the feed is empty. This shows what the checks would do."}
+        title="What would be bet now"
+        subtitle={settings.enabled ? "Picks waiting to be bet at this moment." : "Betting is off, so nothing is waiting. This shows what the checks would do."}
       >
         {data.preview.rows.length === 0 ? (
           <p className="text-xs text-ink-muted">Nothing right now.</p>
@@ -528,7 +251,7 @@ export default function SendingPage() {
                 <p className="font-medium text-ink">{r.eventName}</p>
                 <p className="text-ink-muted">
                   {strategyNames.name(r.provider)}
-                  {strategyNames.name(r.provider) !== r.provider && <> (sent as “{r.provider}”)</>} · {r.selectionName} · £{r.stake.toFixed(2)}
+                  {strategyNames.name(r.provider) !== r.provider && <> ({r.provider})</>} · {r.selectionName} · £{r.stake.toFixed(2)}
                   {r.minPrice !== null ? ` · min odds ${r.minPrice.toFixed(2)}` : ""} · <span className="font-mono">{r.marketType}</span>
                 </p>
               </li>
@@ -549,6 +272,13 @@ export default function SendingPage() {
         )}
       </Card>
 
+      {direct.data && (
+        <>
+          <Activity bets={direct.data.bets} />
+          <Limits data={direct.data} />
+        </>
+      )}
+
       {/* Push notifications for picks not placed, per device. */}
       <NotificationsCard />
 
@@ -557,7 +287,7 @@ export default function SendingPage() {
         <h2 className="text-sm font-medium text-ink">Sending settings</h2>
         <p className="mt-0.5 text-xs text-ink-muted">Settings that apply to every strategy. You rarely need to change these.</p>
 
-        <div role="tablist" aria-label="Sending settings" className="mt-3 grid grid-cols-4 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
+        <div role="tablist" aria-label="Sending settings" className="mt-3 grid grid-cols-3 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
           {SETTINGS_TABS.map((t) => (
             <button
               key={t.id}
@@ -594,7 +324,7 @@ export default function SendingPage() {
                   value={form.maxAgeMinutes}
                   onChange={(e) => setForm({ ...form, maxAgeMinutes: e.target.value })}
                 />
-                <span className="mt-1 block">Pre-match picks (First Half Goal) stay in the feed until kick-off instead.</span>
+                <span className="mt-1 block">Pre-match picks (First Half Goal) can be bet until kick-off instead.</span>
               </label>
               <label className="text-xs text-ink-muted">
                 Most new picks per day
@@ -736,33 +466,9 @@ export default function SendingPage() {
             </div>
           )}
 
-          {tab === "feed" && (
-            <div className="space-y-2">
-              {data.feedTokenConfigured ? (
-                <p className="text-xs text-ink-muted">
-                  The link is set up. Its address is your site&rsquo;s web address followed by{" "}
-                  <span className="break-all font-mono text-ink">/feeds/bets/YOUR-TOKEN.csv</span>.
-                </p>
-              ) : (
-                <p className="text-xs text-warn">
-                  No link exists yet. On the engine component, add a variable named <span className="font-mono">BET_FEED_TOKEN</span> with a long
-                  random value (letters and numbers only), then redeploy the engine.
-                </p>
-              )}
-              <p className="text-xs text-ink-muted">
-                Last checked by your betting software:{" "}
-                <span className="text-ink">{data.lastFeedFetchAt ? whenFmt.format(new Date(data.lastFeedFetchAt)) : "not yet"}</span>
-                {data.lastFeedFetcher && (
-                  <span className="block truncate text-xs text-ink-muted" title={data.lastFeedFetcher}>
-                    by {data.lastFeedFetcher}
-                  </span>
-                )}
-              </p>
-            </div>
-          )}
         </div>
 
-        {tab !== "feed" && (
+        {(
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -793,18 +499,3 @@ export default function SendingPage() {
 }
 
 /** When direct betting is on, say so here: in Live the betting software is handed nothing new. */
-function DirectNotice() {
-  const { data } = useDirect();
-  if (!data || data.effectiveMode === "off") return null;
-  const live = data.effectiveMode === "live";
-  return (
-    <p className={`rounded-lg border px-3 py-2 text-sm ${live ? "border-warn/40 bg-warn/10 text-ink" : "border-line text-ink-muted"}`}>
-      {live
-        ? "Direct betting is Live: GoalBrew places these picks on Betfair itself, and the feed gives your betting software nothing new. "
-        : "Direct betting is in Shadow: your betting software still places these picks; GoalBrew notes what it would have bet. "}
-      <Link href="/more/admin/direct" className="font-medium text-accent underline">
-        Direct betting
-      </Link>
-    </p>
-  );
-}

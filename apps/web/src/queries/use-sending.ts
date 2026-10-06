@@ -57,6 +57,10 @@ export function useSaveSending() {
       }
       return (await res.json()) as SendingState;
     },
-    onSuccess: (data) => qc.setQueryData(KEY, data),
+    onSuccess: (data) => {
+      qc.setQueryData(KEY, data);
+      // The Strategies page groups strategies by Live / Sim and shows their stakes.
+      void qc.invalidateQueries({ queryKey: ["admin-strategies"] });
+    },
   });
 }

@@ -1,7 +1,7 @@
 /**
  * The admin pages, grouped by job, in the order they appear in the desktop sidebar, the phone admin menu and
  * the More page:
- * - Betting: how picks reach Betfair, and checking what really happened there.
+ * - Betting: each strategy (results and its bet settings), how bets reach Betfair, and what really happened there.
  * - Results: how the alerts are doing, and the data behind those figures.
  * - Members and site: who can use the site and what they get.
  * - Horses: the separate horse racing log.
@@ -12,8 +12,8 @@ export const ADMIN_GROUPS = [
   {
     label: "Betting",
     items: [
-      { href: "/more/admin/sending", label: "Sending", description: "Which strategies are Live or Sim, stakes, minimum odds and stop losses." },
-      { href: "/more/admin/direct", label: "Direct betting", description: "Place bets on Betfair from GoalBrew itself (off until you switch it on)." },
+      { href: "/more/admin/strategies", label: "Strategies", description: "Each strategy's results, Live / Sim, stake, minimum odds and stop loss." },
+      { href: "/more/admin/sending", label: "Sending", description: "Betting on or off, placing bets on Betfair, safety limits and bet wording." },
       { href: "/more/admin/reconcile", label: "Reconcile", description: "Real Betfair results against the app's estimates." },
     ],
   },
@@ -21,7 +21,6 @@ export const ADMIN_GROUPS = [
     label: "Results",
     items: [
       { href: "/more/admin/winloss", label: "Win/Loss", description: "Profit and loss by day and strategy, and running costs." },
-      { href: "/more/admin/strategies", label: "Strategies", description: "Return and hit rate for each strategy; rename, merge or delete." },
       { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier." },
       { href: "/more/admin/results", label: "Amend results", description: "Correct a hit or miss, or remove a pick." },
     ],
@@ -30,7 +29,7 @@ export const ADMIN_GROUPS = [
     label: "Members and site",
     items: [
       { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, memberships, trials and the members' rules." },
-      { href: "/more/admin/settings", label: "Settings", description: "Public view, Telegram, download every pick, fresh start." },
+      { href: "/more/admin/settings", label: "Settings", description: "Public view, Telegram and webhook alerts, download every pick, fresh start." },
     ],
   },
   {

@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bot, ChevronRight, Crown, Lock, PencilLine, Scale, Send, Settings, TrendingUp, Trophy, Zap } from "lucide-react";
+import { Bot, ChevronRight, Crown, Lock, PencilLine, Scale, Send, Settings, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
@@ -10,7 +10,6 @@ import { useMe } from "@/queries/use-me";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
   "/more/admin/sending": Send,
-  "/more/admin/direct": Zap,
   "/more/admin/strategies": Bot,
   "/more/admin/leagues": Trophy,
   "/more/admin/winloss": TrendingUp,

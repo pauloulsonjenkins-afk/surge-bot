@@ -17,6 +17,9 @@ import { strategyKey, useSaveStrategyName, useStrategyNames } from "@/queries/us
 import { ChevronDown } from "lucide-react";
 import { BreakevenBar } from "@/components/ui/BreakevenBar";
 import { ukMidnightIso } from "@/lib/uk-time";
+import { useSending, type SendingSettings } from "@/queries/use-sending";
+import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
+import Link from "next/link";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -25,7 +28,7 @@ function record(hits: number, misses: number) {
   return { hits, misses, settled, hitRate: settled > 0 ? Math.round((hits / settled) * 1000) / 10 : null };
 }
 
-/** Live when its picks are being sent to the betting software; Sim when they are only recorded. */
+/** Live when its picks are bet with real money; Sim when they are only recorded. */
 function modeOf(row: AdminStrategy): "live" | "sim" {
   // An engine that isn't updated yet doesn't send `mode`; its switch is then the best guide.
   return row.mode ?? (row.sendingOn ? "live" : "sim");
@@ -229,7 +232,12 @@ function StrategyCard({
   onToggle,
   onMerge,
   onDelete,
+  bet,
+  settings,
 }: {
+  /** Its betting controls (from Sending); missing while they load. */
+  bet: SendingStrategy | undefined;
+  settings: SendingSettings | undefined;
   row: AdminStrategy;
   all: AdminStrategy[];
   sortBy: SortBy;
@@ -290,7 +298,7 @@ function StrategyCard({
             disabled={row.sendingOn || busy}
             onChange={onToggle}
             aria-label={`Select ${shownName}`}
-            title={row.sendingOn ? "Switch sending off for this strategy first (Sending page)" : undefined}
+            title={row.sendingOn ? "Put this strategy back to Sim first" : undefined}
             style={{ accentColor: "var(--accent)" }}
             className="h-4 w-4 shrink-0 disabled:opacity-40"
           />
@@ -299,7 +307,8 @@ function StrategyCard({
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
               <span className="min-w-0 break-words">{names.full(row.label)}</span>
-              <ModeBadge mode={modeOf(row)} />
+              {!bet && <ModeBadge mode={modeOf(row)} />}
+              {bet?.enabled && bet.stopLoss?.stopped && <span className="rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>}
             </span>
             <span className={`mt-0.5 block truncate text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>
               {[marketName(row.market) ?? "No market set", settled > 0 ? `${hits}–${misses}` : "no results yet", hitRate !== null ? `${hitRate}%` : null]
@@ -317,12 +326,18 @@ function StrategyCard({
           </span>
           <ChevronDown size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
+        {bet && settings && !selecting && <LiveSimSwitch s={bet} settings={settings} />}
       </div>
+      {bet && settings && (() => {
+        const b = betSummary(bet, settings);
+        return <p className={`-mt-1.5 px-3.5 pb-2 text-xs ${b.warn ? "text-warn" : "text-ink-muted"}`}>Bet: {b.text}</p>;
+      })()}
       {hint && <p className={`-mt-1 px-3.5 pb-3 text-xs ${hint.tone === "good" ? "text-hit" : "text-warn"}`}>{hint.text}</p>}
 
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
           {info?.description && <p className="text-xs text-ink">{info.description}</p>}
+          {bet && settings && <BetSettings s={bet} settings={settings} />}
           <p className="text-xs text-ink-muted">
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
             {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
@@ -358,14 +373,6 @@ function StrategyCard({
           <div className="flex flex-wrap gap-1.5 text-xs">
             {row.mergedInto && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Counted under “{names.name(row.mergedInto)}”</span>}
             {includes.length > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">Also counts: {includes.map(names.name).join(", ")}</span>}
-            {row.stake !== null && (
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">
-                {modeOf(row) === "live" ? "Betting" : "Simulating at"} £{row.stake.toFixed(2)}
-              </span>
-            )}
-            {modeOf(row) === "sim" && row.stake === null && (
-              <span className="rounded-full bg-warn/15 px-2 py-0.5 text-warn">No stake: sim profit can’t be worked out</span>
-            )}
             {row.sent > 0 && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">{row.sent} sent to bet</span>}
           </div>
           {money && money.counted > 0 && (
@@ -415,7 +422,7 @@ function StrategyCard({
                 </button>
               )
             )}
-            {/* A Live strategy can't be deleted (switch it off on Sending first), so the button only shows when it can be used. */}
+            {/* A Live strategy can't be deleted (put it back to Sim first), so the button only shows when it can be used. */}
             {!row.sendingOn && (
               <button
                 type="button"
@@ -477,6 +484,12 @@ export default function StrategiesPage() {
   const { data, isLoading, error, isPlaceholderData } = useAdminStrategies(since);
   const merge = useMergeStrategy();
   const remove = useDeleteStrategyFlow();
+  const sending = useSending();
+  const betOf = useMemo(() => {
+    const map = new Map<string, SendingStrategy>();
+    for (const s of sending.data?.strategies ?? []) map.set(s.label.toLowerCase(), s);
+    return (label: string) => map.get(label.toLowerCase());
+  }, [sending.data]);
   const ignore = useIgnoreStrategy();
   const removeMany = useDeleteStrategy();
   const dialog = useDialog();
@@ -540,7 +553,7 @@ export default function StrategiesPage() {
               the last 2 hours).
             </p>
           )}
-          <p>Nothing changes in your betting software. If one of these names ever arrives again, it will reappear.</p>
+          <p>If one of these names ever arrives again, it will reappear.</p>
         </>
       ),
     });
@@ -605,7 +618,16 @@ export default function StrategiesPage() {
       <PageHeader
         as="h2"
         title="Strategies"
-        subtitle="Ranked by the return on each £1 staked: a high hit rate at short odds can still lose money. Tap one for its details, equity curve, rename, merge and delete."
+        subtitle={
+          <>
+            Every strategy in one place: its results, its Live / Sim switch, and (tap it) its stake, minimum odds, stop loss, rename, merge and delete.
+            Ranked by the return on each £1 staked. Betting on or off for everything, and the safety limits, are on{" "}
+            <Link href="/more/admin/sending" className="text-accent underline">
+              Sending
+            </Link>
+            .
+          </>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -720,8 +742,8 @@ export default function StrategiesPage() {
                   </h3>
                   <p className="text-xs text-ink-muted">
                     {m === "live"
-                      ? "New picks are sent to your betting software."
-                      : "New picks are recorded and settled, but never sent. Switch one to Live on the Sending page."}
+                      ? "New picks are bet with real money, at each strategy's stake."
+                      : "New picks are recorded and settled as if bet, but no money is placed. Switch one to Live with its Sim / Live switch."}
                   </p>
                 </div>
                 <ul className="space-y-2">
@@ -738,6 +760,8 @@ export default function StrategiesPage() {
                       onToggle={() => toggle(r.label)}
                       onMerge={(into) => merge.mutate({ from: r.label, into })}
                       onDelete={() => deleteStrategy(r)}
+                      bet={betOf(r.label)}
+                      settings={sending.data?.settings}
                     />
                   ))}
                 </ul>
