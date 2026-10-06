@@ -8,6 +8,7 @@ export interface EngineUser {
   id: number;
   email: string;
   name: string;
+  username: string | null;
   pages: UserPage[];
   active: boolean;
   sessionVersion: number;
@@ -51,7 +52,7 @@ async function usersRequest<T>(method: "GET" | "POST", path: string, body?: unkn
   }
 }
 
-export const engineSignUp = (input: { email: string; name: string; password: string }) =>
+export const engineSignUp = (input: { email: string; name: string; username: string; password: string }) =>
   usersRequest<{ ok?: true; error?: string }>("POST", "/internal/users/signup", input);
 
 export const engineLogIn = (input: { email: string; password: string }) =>

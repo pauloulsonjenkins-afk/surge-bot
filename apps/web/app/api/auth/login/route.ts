@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
   if (typeof body.email !== "string" || typeof body.password !== "string" || !body.email || !body.password) {
-    return NextResponse.json({ error: "Enter your email and password." }, { status: 400 });
+    return NextResponse.json({ error: "Enter your email or username, and your password." }, { status: 400 });
   }
   const email = body.email.trim().toLowerCase().slice(0, 254);
 
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     if (r.data.error === "disabled") {
       return NextResponse.json({ error: "This account has been disabled." }, { status: 403 });
     }
-    return NextResponse.json({ error: "Email or password is wrong." }, { status: 401 });
+    return NextResponse.json({ error: "Email, username or password is wrong." }, { status: 401 });
   } catch (err) {
     console.error("[auth/login]", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Couldn't reach the service. Try again in a moment." }, { status: 502 });

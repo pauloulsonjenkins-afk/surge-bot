@@ -31,6 +31,7 @@ export interface PublicUser {
   id: number;
   email: string;
   name: string;
+  username: string | null;
   pages: UserPage[];
   active: boolean;
   sessionVersion: number;
@@ -83,6 +84,16 @@ function cleanName(input: unknown): string {
   return typeof input === "string" ? input.replace(/\s+/g, " ").trim().slice(0, 60) : "";
 }
 
+/** Usernames: 3 to 20 letters, digits and underscores, kept as typed (compared without regard to case). */
+export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
+const RESERVED_USERNAMES = new Set(["admin", "administrator", "goalbrew", "support", "staff", "moderator", "system", "root", "official", "help"]);
+
+export function normaliseUsername(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const u = input.trim();
+  return USERNAME_RE.test(u) && !RESERVED_USERNAMES.has(u.toLowerCase()) ? u : null;
+}
+
 export function parsePages(raw: unknown): UserPage[] {
   let list: unknown = raw;
   if (typeof raw === "string") {
@@ -101,6 +112,7 @@ export function toPublicUser(row: AppUserRow): PublicUser {
     id: row.id,
     email: row.email,
     name: row.name,
+    username: row.username,
     pages: parsePages(row.pages),
     active: row.active,
     sessionVersion: row.sessionVersion,
@@ -123,28 +135,40 @@ export function setSignupsOpen(db: EngineDb, open: boolean): void {
   db.setSetting(SIGNUPS_KEY, JSON.stringify({ open }));
 }
 
-export type SignUpResult = { ok: true } | { ok: false; error: "signups_closed" | "invalid_email" | "weak_password" };
+export type SignUpResult =
+  | { ok: true }
+  | { ok: false; error: "signups_closed" | "invalid_email" | "weak_password" | "name_required" | "invalid_username" | "username_taken" };
 
 /**
  * Creates an account with no page access. An email that is already registered gets the same
  * "ok" answer, so the form can't be used to find out who has an account.
  */
-export async function signUp(db: EngineDb, input: { email: unknown; name: unknown; password: unknown }): Promise<SignUpResult> {
+export async function signUp(db: EngineDb, input: { email: unknown; name: unknown; username?: unknown; password: unknown }): Promise<SignUpResult> {
   if (!getSignupsOpen(db)) return { ok: false, error: "signups_closed" };
+  const name = cleanName(input.name);
+  if (name.length < 2) return { ok: false, error: "name_required" };
+  const username = normaliseUsername(input.username);
+  if (!username) return { ok: false, error: "invalid_username" };
   const email = normaliseEmail(input.email);
   if (!email) return { ok: false, error: "invalid_email" };
   if (passwordProblem(input.password) !== null) return { ok: false, error: "weak_password" };
+  // A taken username is said so (it has to be, to pick another); a taken email still looks like success.
+  if (db.getAppUserByUsername(username)) return { ok: false, error: "username_taken" };
   const hash = await hashPassword(input.password as string);
-  db.createAppUser(email, cleanName(input.name), hash);
+  const made = db.createAppUser(email, name, hash, username);
+  if (made === null && db.getAppUserByUsername(username) && !db.getAppUserByEmail(email)) return { ok: false, error: "username_taken" };
   return { ok: true };
 }
 
 export type LogInResult = { ok: true; user: PublicUser } | { ok: false; error: "invalid_credentials" | "disabled" };
 
+/** Signs in with an email address or a username (anything without an @ is read as a username). */
 export async function logIn(db: EngineDb, input: { email: unknown; password: unknown }): Promise<LogInResult> {
-  const email = normaliseEmail(input.email);
+  const who = typeof input.email === "string" ? input.email.trim() : "";
+  const email = who.includes("@") ? normaliseEmail(who) : null;
+  const username = who.includes("@") ? null : normaliseUsername(who);
   const password = typeof input.password === "string" && input.password.length <= MAX_PASSWORD ? input.password : "";
-  const row = email ? db.getAppUserByEmail(email) : null;
+  const row = email ? db.getAppUserByEmail(email) : username ? db.getAppUserByUsername(username) : null;
   const good = await verifyPassword(password, row ? row.passwordHash : await getDummyHash());
   if (!row || !good) return { ok: false, error: "invalid_credentials" };
   if (!row.active) return { ok: false, error: "disabled" };

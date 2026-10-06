@@ -17,6 +17,7 @@ interface Overview {
     userId: number;
     email: string;
     name: string;
+    username: string | null;
     active: boolean;
     visited: boolean;
     lastLoginAt: string | null;
@@ -256,6 +257,7 @@ function MemberRow({
           <span className="block truncate text-sm text-ink">
             {m.email}
             {m.name ? ` · ${m.name}` : ""}
+            {m.username ? ` · @${m.username}` : ""}
             {!m.active && <span className="text-destructive"> · disabled</span>}
           </span>
           <span className="block text-xs text-ink-muted">

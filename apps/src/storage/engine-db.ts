@@ -535,6 +535,8 @@ export interface AppUserRow {
   id: number;
   email: string;
   name: string;
+  /** Chosen at sign-up; null for accounts made before usernames existed. */
+  username: string | null;
   passwordHash: string;
   pages: string;
   active: boolean;
@@ -705,6 +707,11 @@ export class EngineDb {
       );
 
     `);
+
+    // Usernames arrived after the first accounts: those have none and sign in with their email.
+    const userCols = this.db.prepare(`PRAGMA table_info(app_users)`).all() as Array<{ name: string }>;
+    if (!userCols.some((c) => c.name === "username")) this.db.exec(`ALTER TABLE app_users ADD COLUMN username TEXT`);
+    this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS app_users_username ON app_users (username COLLATE NOCASE) WHERE username IS NOT NULL`);
 
     // Databases created before the bet feed existed don't have sent_at yet.
     const liveCols = this.db.prepare(`PRAGMA table_info(live_picks)`).all() as Array<{ name: string }>;
@@ -2460,6 +2467,7 @@ export class EngineDb {
       id: Number(r.id),
       email: String(r.email),
       name: String(r.name ?? ""),
+      username: r.username === null || r.username === undefined ? null : String(r.username),
       passwordHash: String(r.password_hash),
       pages: String(r.pages ?? "[]"),
       active: Number(r.active) === 1,
@@ -2469,12 +2477,12 @@ export class EngineDb {
     };
   }
 
-  /** Adds a user with no page access yet. Returns null when that email is already registered. */
-  createAppUser(email: string, name: string, passwordHash: string): AppUserRow | null {
+  /** Adds a user with no page access yet. Returns null when that email or username is already taken. */
+  createAppUser(email: string, name: string, passwordHash: string, username: string | null = null): AppUserRow | null {
     try {
       const info = this.db
-        .prepare(`INSERT INTO app_users (email, name, password_hash, created_at) VALUES (?, ?, ?, ?)`)
-        .run(email, name, passwordHash, new Date().toISOString());
+        .prepare(`INSERT INTO app_users (email, name, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`)
+        .run(email, name, username, passwordHash, new Date().toISOString());
       this.onChange();
       return this.getAppUserById(Number(info.lastInsertRowid));
     } catch (err) {
@@ -2485,6 +2493,11 @@ export class EngineDb {
 
   getAppUserByEmail(email: string): AppUserRow | null {
     const r = this.db.prepare(`SELECT * FROM app_users WHERE email = ?`).get(email) as Record<string, unknown> | undefined;
+    return r ? this.toAppUser(r) : null;
+  }
+
+  getAppUserByUsername(username: string): AppUserRow | null {
+    const r = this.db.prepare(`SELECT * FROM app_users WHERE username = ? COLLATE NOCASE`).get(username) as Record<string, unknown> | undefined;
     return r ? this.toAppUser(r) : null;
   }
 

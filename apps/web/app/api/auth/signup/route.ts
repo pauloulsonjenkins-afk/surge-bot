@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many sign-ups from here. Try again later." }, { status: 429 });
   }
 
-  let body: { email?: unknown; name?: unknown; password?: unknown };
+  let body: { email?: unknown; name?: unknown; username?: unknown; password?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -23,10 +23,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Enter an email and a password." }, { status: 400 });
   }
 
+  if (typeof body.name !== "string" || body.name.trim().length < 2) {
+    return NextResponse.json({ error: "Enter your name." }, { status: 400 });
+  }
+  if (typeof body.username !== "string" || !/^[A-Za-z0-9_]{3,20}$/.test(body.username.trim())) {
+    return NextResponse.json({ error: "Choose a username of 3 to 20 letters, numbers or underscores." }, { status: 400 });
+  }
+
   try {
     const r = await engineSignUp({
       email: body.email,
-      name: typeof body.name === "string" ? body.name : "",
+      name: body.name,
+      username: body.username.trim(),
       password: body.password,
     });
     if (r.status === 200) return NextResponse.json({ ok: true });
@@ -37,7 +45,13 @@ export async function POST(req: Request) {
           ? "That doesn't look like an email address."
           : r.data.error === "weak_password"
             ? "Use a password of at least 10 characters."
-            : "Couldn't create the account.";
+            : r.data.error === "name_required"
+              ? "Enter your name."
+              : r.data.error === "invalid_username"
+                ? "That username isn't allowed. Use 3 to 20 letters, numbers or underscores, and not a word like admin."
+                : r.data.error === "username_taken"
+                  ? "That username is taken. Try another."
+                  : "Couldn't create the account.";
     return NextResponse.json({ error: message }, { status: r.data.error === "signups_closed" ? 403 : 400 });
   } catch (err) {
     console.error("[auth/signup]", err instanceof Error ? err.message : err);

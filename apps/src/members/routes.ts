@@ -295,6 +295,7 @@ async function adminRoute(c: MembersRouteCtx, route: string): Promise<void> {
         userId: u.id,
         email: u.email,
         name: u.name,
+        username: u.username,
         active: u.active,
         visited: rows.has(u.id),
         lastLoginAt: u.lastLoginAt,

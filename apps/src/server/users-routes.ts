@@ -35,7 +35,7 @@ export async function handleUsersRoute(c: Ctx): Promise<boolean> {
 
   if (method === "POST" && path === "/internal/users/signup") {
     const body = await c.readJsonBody();
-    const r = await signUp(db, { email: body.email, name: body.name, password: body.password });
+    const r = await signUp(db, { email: body.email, name: body.name, username: body.username, password: body.password });
     if (!r.ok) send(res, 400, { error: r.error });
     else send(res, 200, { ok: true });
     return true;

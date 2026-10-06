@@ -45,16 +45,19 @@ function LoginForm() {
     <div className="flex min-h-full flex-col items-center justify-center px-6 py-10">
       <div className="w-full max-w-xs">
         <h1 className="mb-1 font-display text-2xl font-bold text-ink [font-stretch:115%]">Sign in</h1>
-        <p className="mb-6 text-sm text-ink-muted">Use the email and password you signed up with.</p>
+        <p className="mb-6 text-sm text-ink-muted">Use your email or username, and your password.</p>
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
-            type="email"
+            type="text"
             autoFocus
-            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
+            placeholder="Email or username"
+            aria-label="Email or username"
             className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           />
           <input
