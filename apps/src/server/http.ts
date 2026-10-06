@@ -435,12 +435,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 400, { error: "key_required" });
         return;
       }
-      const patch: { hidden?: boolean; reset?: boolean; country?: string | null; tier?: number | null; noSend?: boolean } = {};
+      const patch: { hidden?: boolean; reset?: boolean; country?: string | null; tier?: number | null; noSend?: boolean; keep?: boolean; ipgDone?: boolean } = {};
       if (typeof body.hidden === "boolean") patch.hidden = body.hidden;
       if (typeof body.reset === "boolean") patch.reset = body.reset;
       if (typeof body.country === "string" || body.country === null) patch.country = body.country;
       if (typeof body.tier === "number" || body.tier === null) patch.tier = body.tier;
       if (typeof body.noSend === "boolean") patch.noSend = body.noSend;
+      if (typeof body.keep === "boolean") patch.keep = body.keep;
+      if (typeof body.ipgDone === "boolean") patch.ipgDone = body.ipgDone;
       db.updateLeague(key, patch);
       log.info(`League "${key}" updated from the admin Leagues page (${Object.keys(patch).join(", ") || "no changes"}).`);
       send(res, 200, { ok: true });

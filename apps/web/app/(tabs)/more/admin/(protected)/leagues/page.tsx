@@ -8,6 +8,7 @@ import { LEAGUE_CATALOGUE, TIER_LABEL } from "@/domain/performance";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { BetfairCoverage } from "@/components/admin/BetfairCoverage";
+import { LeagueReview } from "@/components/admin/LeagueReview";
 
 type Filter = "all" | "shown" | "hidden";
 
@@ -210,88 +211,6 @@ function LeagueCard({
   );
 }
 
-const offFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-
-/** Looked up on Betfair at least 3 times and never found there (not even with a team spelt differently). */
-function neverOnBetfair(r: AdminLeagueRow): boolean {
-  const ex = r.exchange;
-  return !!ex && ex.off >= 3 && ex.on === 0 && ex.nameDiffers === 0;
-}
-
-/**
- * Leagues whose alerts' matches weren't on Betfair when they arrived (looked up by the engine; see betfair/exchange.ts),
- * worst first. "Don't send" keeps recording their alerts but never hands them to the betting software, and Live tags
- * new ones "Not on exchange".
- */
-function NotOnBetfair({ rows, busy, onChange }: { rows: AdminLeagueRow[]; busy: boolean; onChange: (key: string, noSend: boolean) => void }) {
-  const list = rows
-    .filter((r) => (r.exchange?.off ?? 0) > 0 || r.noSend)
-    .sort((a, b) => (b.exchange?.off ?? 0) - (a.exchange?.off ?? 0) || a.league.localeCompare(b.league));
-  const anyChecked = rows.some((r) => (r.exchange?.checked ?? 0) > 0);
-  // Suggested: looked up at least 3 times and never once found on Betfair, still being sent.
-  const suggested = list.filter((r) => !r.noSend && neverOnBetfair(r));
-  if (rows.length > 0 && rows[0]!.exchange === undefined) return null; // older engine
-  return (
-    <section className="space-y-2 rounded-xl border border-line bg-surface p-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-ink">Not on Betfair ({list.length})</h3>
-          <p className="mt-0.5 text-xs text-ink-muted">
-            {anyChecked
-              ? "Leagues whose matches weren’t on the exchange when the alert arrived. A match that isn’t on Betfair is never sent anyway; “Don’t send” also stops the league’s other alerts. Suggested: never found on Betfair in 3 or more alerts."
-              : "Each new alert’s match is looked up on Betfair once the live check is connected (see Reconcile). Leagues whose matches aren’t there will list here."}
-          </p>
-        </div>
-        {suggested.length > 0 && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => suggested.forEach((r) => onChange(r.key, true))}
-            className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
-          >
-            Don’t send {suggested.length} suggested
-          </button>
-        )}
-      </div>
-      {list.length > 0 && (
-        <ul className="divide-y divide-line">
-          {list.map((r) => {
-            const ex = r.exchange ?? { checked: 0, on: 0, nameDiffers: 0, off: 0, lastOffAt: null };
-            return (
-              <li key={r.key} className="flex items-start justify-between gap-3 py-2">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm text-ink">
-                    {r.league}
-                    {!r.noSend && neverOnBetfair(r) && <span className="ml-1.5 rounded-full bg-warn/15 px-1.5 py-0.5 text-xs text-warn">Suggested</span>}
-                  </span>
-                  <span className="block text-xs text-ink-muted">
-                    {[r.country, `${ex.off} of ${ex.checked} alert${ex.checked === 1 ? "" : "s"} not on Betfair`, ex.on > 0 && `${ex.on} were`, ex.lastOffAt && `last ${offFmt.format(new Date(ex.lastOffAt))}`]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={r.noSend === true}
-                  aria-label={`Don't send ${r.league}`}
-                  disabled={busy}
-                  onClick={() => onChange(r.key, !r.noSend)}
-                  className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
-                    r.noSend ? "bg-loss/15 text-loss" : "border border-line text-ink hover:bg-surface-2"
-                  }`}
-                >
-                  {r.noSend ? "Not sending · undo" : "Don’t send"}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 export default function LeaguesPage() {
   const { data, isLoading, error } = useAdminLeagues();
   const update = useUpdateLeague();
@@ -309,14 +228,14 @@ export default function LeaguesPage() {
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (data ?? []).filter((r) => {
-      if (filter === "shown" && r.hidden) return false;
-      if (filter === "hidden" && !r.hidden) return false;
+      if (filter === "shown" && (r.hidden || r.noSend)) return false;
+      if (filter === "hidden" && !(r.hidden || r.noSend)) return false;
       if (!q) return true;
       return r.league.toLowerCase().includes(q) || effective(r).country.toLowerCase().includes(q);
     });
   }, [data, filter, search]);
 
-  const hiddenCount = (data ?? []).filter((r) => r.hidden).length;
+  const hiddenCount = (data ?? []).filter((r) => r.hidden || r.noSend).length;
 
   return (
     <div className="space-y-4">
@@ -325,9 +244,9 @@ export default function LeaguesPage() {
         title="Leagues"
         subtitle={
           <>
-          Every league the Dashboard has seen. Tap a league to hide it, reset its stats or set its country and tier. Nothing is
-          deleted, so all of it can be undone. A hidden league leaves every stats page (Dashboard, Win/Loss, Strategies), except
-          bets with real money on them, which always count.
+          Every league the Dashboard has seen. The top of the page is for leagues whose matches aren’t on Betfair: stop them, then remove them
+          from your InPlayGuru league filter. Tap a league below to hide it, reset its stats or set its country and tier. Nothing is deleted, so
+          all of it can be undone. A hidden league leaves every stats page, except bets with real money on them, which always count.
           </>
         }
       />
@@ -336,8 +255,15 @@ export default function LeaguesPage() {
         <QueryError error={error} next="/more/admin/leagues" />
       ) : (
         <>
-          {data && <NotOnBetfair rows={data} busy={update.isPending} onChange={(key, noSend) => update.mutate({ key, patch: { noSend } })} />}
-          <BetfairCoverage />
+          {data && <LeagueReview rows={data} busy={update.isPending} onChange={(key, patch) => update.mutate({ key, patch })} />}
+          <details className="rounded-xl border border-line bg-surface">
+            <summary className="cursor-pointer px-3.5 py-3 text-sm font-medium text-ink">
+              Check leagues against Betfair <span className="text-xs font-normal text-ink-muted">· your alert leagues, or paste a list</span>
+            </summary>
+            <div className="px-1 pb-1">
+              <BetfairCoverage />
+            </div>
+          </details>
           <div className="space-y-2">
             <input
               value={search}
@@ -350,7 +276,7 @@ export default function LeaguesPage() {
                 [
                   ["all", `All (${data?.length ?? 0})`],
                   ["shown", `Shown (${(data?.length ?? 0) - hiddenCount})`],
-                  ["hidden", `Hidden (${hiddenCount})`],
+                  ["hidden", `Hidden and stopped (${hiddenCount})`],
                 ] as Array<[Filter, string]>
               ).map(([value, label]) => (
                 <button

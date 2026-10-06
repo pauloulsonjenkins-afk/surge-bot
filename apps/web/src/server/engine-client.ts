@@ -700,6 +700,10 @@ export interface AdminLeagueRow {
   exchange?: { checked: number; on: number; nameDiffers: number; off: number; lastOffAt: string | null };
   /** Marked "don't send": alerts are recorded but never sent to the betting software. */
   noSend?: boolean;
+  /** Reviewed and kept, so it isn't flagged for review. */
+  keep?: boolean;
+  /** Already switched off in the alerts provider's league filter. */
+  ipgDone?: boolean;
 }
 
 /** What can be changed on one league. Mirrors LeaguePatch in the engine's engine-db.ts. */
@@ -709,6 +713,8 @@ export interface LeaguePatch {
   country?: string | null;
   tier?: number | null;
   noSend?: boolean;
+  keep?: boolean;
+  ipgDone?: boolean;
 }
 
 export async function fetchAdminLeagues(): Promise<AdminLeagueRow[]> {

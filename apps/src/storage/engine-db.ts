@@ -216,6 +216,10 @@ export interface LeaguePref {
   tierOverride?: number;
   /** Its matches aren't on Betfair: new alerts are recorded but never sent to the betting software. */
   noSend?: boolean;
+  /** Reviewed after many matches weren't on Betfair, and kept: it stops being flagged for review. */
+  keep?: boolean;
+  /** Switched off in the alerts provider's own league filter, so no more of its alerts arrive. */
+  ipgDone?: boolean;
 }
 interface LeaguePrefs {
   leagues: Record<string, LeaguePref>;
@@ -232,6 +236,10 @@ export interface LeaguePatch {
   tier?: number | null;
   /** true = never send this league's alerts (its matches aren't on Betfair); false = send them again. */
   noSend?: boolean;
+  /** true = reviewed and kept (stops being flagged); false = flag it again. */
+  keep?: boolean;
+  /** true = already switched off in the provider's league filter; false = still to do. */
+  ipgDone?: boolean;
 }
 
 /** One league as the admin Leagues page shows it. */
@@ -254,6 +262,8 @@ export interface AdminLeagueRow {
   exchange: { checked: number; on: number; nameDiffers: number; off: number; lastOffAt: string | null };
   /** Set on the Leagues page: alerts are recorded but never sent. */
   noSend: boolean;
+  keep: boolean;
+  ipgDone: boolean;
 }
 
 function leagueKeyPart(s: string): string {
@@ -1603,6 +1613,8 @@ export class EngineDb {
           tierOverride: pref?.tierOverride ?? null,
           exchange: { checked: 0, on: 0, nameDiffers: 0, off: 0, lastOffAt: null },
           noSend: pref?.noSend === true,
+          keep: pref?.keep === true,
+          ipgDone: pref?.ipgDone === true,
         };
       if (r.exchange === "on" || r.exchange === "nameDiffers" || r.exchange === "off") {
         row.exchange.checked++;
@@ -1674,6 +1686,18 @@ export class EngineDb {
     this.onChange();
   }
 
+  /**
+   * Once only: leagues already not being sent when the "removed from the provider's filter" flag was introduced were
+   * switched off there by hand at the time, so they aren't listed as still to do.
+   */
+  markExistingNoSendLeaguesDone(): void {
+    if (this.getSetting("league_ipg_baseline")) return;
+    const prefs = this.readLeaguePrefs();
+    for (const p of Object.values(prefs.leagues)) if (p.noSend) p.ipgDone = true;
+    this.setSetting(LEAGUE_PREFS_KEY, JSON.stringify(prefs));
+    this.setSetting("league_ipg_baseline", new Date().toISOString());
+  }
+
   /** Saves a change made on the admin Leagues page. Never deletes any picks. */
   updateLeague(key: string, patch: LeaguePatch): void {
     const prefs = this.readLeaguePrefs();
@@ -1696,6 +1720,14 @@ export class EngineDb {
     if (patch.noSend !== undefined) {
       if (patch.noSend) cur.noSend = true;
       else delete cur.noSend;
+    }
+    if (patch.keep !== undefined) {
+      if (patch.keep) cur.keep = true;
+      else delete cur.keep;
+    }
+    if (patch.ipgDone !== undefined) {
+      if (patch.ipgDone) cur.ipgDone = true;
+      else delete cur.ipgDone;
     }
     if (Object.keys(cur).length === 0) delete prefs.leagues[key];
     else prefs.leagues[key] = cur;

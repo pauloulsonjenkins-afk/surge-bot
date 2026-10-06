@@ -86,6 +86,7 @@ async function main(): Promise<void> {
   startDailySummary(db);
   // A push notification when Telegram alerts stop arriving, and when they're back.
   startTelegramWatchdog(db);
+  db.markExistingNoSendLeaguesDone();
   startDirectBetting(db);
 
   // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)

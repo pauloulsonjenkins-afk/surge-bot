@@ -33,6 +33,8 @@ export async function POST(request: Request) {
   if (typeof body.country === "string" || body.country === null) patch.country = body.country;
   if (typeof body.tier === "number" || body.tier === null) patch.tier = body.tier;
   if (typeof body.noSend === "boolean") patch.noSend = body.noSend;
+  if (typeof body.keep === "boolean") patch.keep = body.keep;
+  if (typeof body.ipgDone === "boolean") patch.ipgDone = body.ipgDone;
 
   try {
     await updateAdminLeague(key, patch);

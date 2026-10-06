@@ -29,7 +29,7 @@ function setup() {
 
 test("a hidden league's simulation picks leave the money figures; picks with real money stay", () => {
   const { db, add } = setup();
-  const kept = add("France Ligue 1", 1);
+  const kept = add("Ligue 1", 1);
   const hiddenSim = add("France National 3", 2);
   const hiddenReal = add("France National 3", 3);
   db.setManualBet(hiddenReal.id, { stake: 2, odds: 3 });
@@ -63,4 +63,25 @@ test("the Schedule's checker leaves out leagues Betfair doesn't have, and follow
   // Marked "not on Betfair" by hand on the Leagues page.
   setLeagueOverride(db, "Spain La Liga", "none");
   assert.equal(fixtureLeagueChecker(db)!("La Liga", "Spain"), "not");
+});
+
+test("league review flags: keep and 'removed from the filter' are saved; leagues already stopped count as done once", () => {
+  const { db, add } = setup();
+  add("France Ligue 1", 1);
+  add("Spain Segunda", 2);
+  const key = (name: string) => db.listLeaguesForAdmin().find((l) => l.league === name)!.key;
+  // One league was stopped before the flag existed.
+  db.updateLeague(key("Ligue 1"), { noSend: true, hidden: true });
+  db.markExistingNoSendLeaguesDone();
+  db.updateLeague(key("Spain Segunda"), { noSend: true, hidden: true }); // stopped after: still to do
+  db.markExistingNoSendLeaguesDone(); // runs once only
+  let rows = db.listLeaguesForAdmin();
+  assert.equal(rows.find((l) => l.league === "Ligue 1")!.ipgDone, true);
+  assert.equal(rows.find((l) => l.league === "Spain Segunda")!.ipgDone, false);
+  db.updateLeague(key("Spain Segunda"), { ipgDone: true });
+  db.updateLeague(key("Ligue 1"), { noSend: false, hidden: false, ipgDone: false, keep: true });
+  rows = db.listLeaguesForAdmin();
+  assert.equal(rows.find((l) => l.league === "Spain Segunda")!.ipgDone, true);
+  const fr = rows.find((l) => l.league === "Ligue 1")!;
+  assert.deepEqual([fr.noSend, fr.hidden, fr.ipgDone, fr.keep], [false, false, false, true]);
 });
