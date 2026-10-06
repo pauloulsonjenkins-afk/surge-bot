@@ -367,7 +367,7 @@ export default function SendingPage() {
                         ▸
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-sm text-ink">{strategyNames.name(s.label)}</span>
+                        <span className="block truncate text-sm text-ink">{strategyNames.full(s.label)}</span>
                         <span className={`block truncate text-xs ${supported ? "text-ink-muted" : "text-warn"}`}>
                           {note}
                           {summary && <span className={s.stake === null ? "text-warn" : ""}> · {summary}</span>}

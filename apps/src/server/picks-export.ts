@@ -91,7 +91,7 @@ export function picksExportCsv(db: EngineDb): string {
     const direct = db.getDirectBet(p.id);
     const goalbrew = pickBets.some((b) => b.betId === direct?.betId && b.matched > 0);
     const others = pickBets.some((b) => b.betId !== direct?.betId && b.matched > 0);
-    const placedBy = goalbrew && others ? "Both" : goalbrew ? "GoalBrew" : others ? "BF Bot Manager" : p.manualBet ? "By hand" : "";
+    const placedBy = goalbrew && others ? "Both" : goalbrew ? "GoalBrew" : others ? "Bet feed" : p.manualBet ? "By hand" : "";
     const ftGoals = goalsOf(p.ftScore);
     const goalsAtAlert = p.goalsHome !== null && p.goalsAway !== null ? p.goalsHome + p.goalsAway : null;
     const pre = d?.odds.preMatch1x2 ?? null;

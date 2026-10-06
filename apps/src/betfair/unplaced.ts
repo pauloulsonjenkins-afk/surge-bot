@@ -84,10 +84,10 @@ function reasonFor(exchange: string | null, check: string | null, detail: string
   if (exchange === "nameDiffers") return "Betfair spells a team differently: add it under Sending → Match names.";
   if (check === "noMarket" || check === "noSelection") return detail ?? "The market sent isn't on Betfair for this match.";
   if (check === "ok" && price !== null && minPrice !== null && price < minPrice) {
-    return `Betfair's price was ${price.toFixed(2)}, below this strategy's minimum odds of ${minPrice.toFixed(2)}, so BF Bot Manager wouldn't take it.`;
+    return `Betfair's price was ${price.toFixed(2)}, below this strategy's minimum odds of ${minPrice.toFixed(2)}, so it wasn't taken.`;
   }
-  if (check === "ok") return "The bet is on Betfair as sent, so BF Bot Manager turned it down: check that strategy's market types, Time to bet and price rules, and that it's started.";
-  return "Not checked on Betfair. Check BF Bot Manager's log for this match.";
+  if (check === "ok") return "The bet is on Betfair as sent, so your betting software turned it down: check that strategy's market types, timing and price rules, and that it's running.";
+  return "Not checked on Betfair. Check your betting software's log for this match.";
 }
 
 /**

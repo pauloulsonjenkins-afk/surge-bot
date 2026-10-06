@@ -99,7 +99,7 @@ function placementChip(p: Placement): { label: string; tone: ChipTone; title: st
       return {
         label: "Not placed",
         tone: "warn",
-        title: "No bet on Betfair 3 minutes after the pick was sent. BF Bot Manager may be off, or turned it down (market types, Time to bet, minimum odds).",
+        title: "No bet on Betfair 3 minutes after the pick was sent. Your betting software may be off, or turned it down (market types, timing, minimum odds).",
       };
     case "manual":
       return {

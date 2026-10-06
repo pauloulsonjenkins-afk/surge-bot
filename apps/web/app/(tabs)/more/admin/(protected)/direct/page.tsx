@@ -21,10 +21,10 @@ const MODES: ReadonlyArray<{ value: DirectMode; label: string }> = [
 ];
 
 const MODE_TEXT: Record<DirectMode, string> = {
-  off: "Nothing happens. BF Bot Manager places your bets from the feed, as now.",
+  off: "Nothing happens. GoalBrew places no bets itself; Sending only hands picks to the bet feed.",
   shadow:
-    "BF Bot Manager still places your bets. For each pick it's sent, GoalBrew works out what it would bet itself (market, price, checks) and lists it below, without placing anything. Compare the two before going Live.",
-  live: "GoalBrew places your bets on Betfair itself. The feed gives BF Bot Manager nothing new, so stop its strategies (or the VPS) once you're happy.",
+    "For each pick Sending hands over, GoalBrew works out what it would bet itself (market, price, checks) and lists it below, without placing anything. Check it before going Live.",
+  live: "GoalBrew places your bets on Betfair itself. The bet feed hands out nothing new, so a pick can't be bet twice.",
 };
 
 export default function DirectBettingPage() {
@@ -35,7 +35,7 @@ export default function DirectBettingPage() {
       <PageHeader
         as="h2"
         title="Direct betting"
-        subtitle="Place bets on Betfair straight from GoalBrew, without BF Bot Manager or the VPS. Off until you switch it on."
+        subtitle="Place bets on Betfair straight from GoalBrew, with no other betting software. Off until you switch it on."
       />
       {isLoading || !data ? (
         <Skeleton className="h-64 w-full" />
@@ -68,10 +68,9 @@ function ModeCard({ data }: { data: DirectStatus }) {
           <>
             <p>From now on GoalBrew places each new pick on Betfair with real money, using your stakes, minimum odds, stop losses and daily limit from Sending.</p>
             <p>
-              BF Bot Manager gets nothing new from the feed. Up to <strong>{money(s.dailyStakeLimit)}</strong> a day can be staked here; unmatched stake is
+              The bet feed hands out nothing new. Up to <strong>{money(s.dailyStakeLimit)}</strong> a day can be staked here; unmatched stake is
               cancelled after {s.cancelUnmatchedSeconds} seconds.
             </p>
-            <p>Picks already sent to BF Bot Manager are left to it.</p>
           </>
         ),
       });
@@ -80,7 +79,7 @@ function ModeCard({ data }: { data: DirectStatus }) {
       const ok = await dialog.confirm({
         title: mode === "off" ? "Stop direct betting?" : "Back to Shadow?",
         confirmLabel: mode === "off" ? "Switch off" : "Back to Shadow",
-        body: <p>No more bets are placed from GoalBrew; the feed goes back to BF Bot Manager straight away. Bets already placed stay on Betfair.</p>,
+        body: <p>No more bets are placed from GoalBrew; new picks go back to the bet feed straight away. Bets already placed stay on Betfair.</p>,
       });
       if (!ok) return;
     }
@@ -254,7 +253,7 @@ function Limits({ data }: { data: DirectStatus }) {
   return (
     <Card
       title="Checks before each bet"
-      subtitle="The same checks BF Bot Manager runs. A pick that fails one waits and is checked again until it's too old to bet. Stakes, minimum odds and stop losses come from Sending."
+      subtitle="Checked before every bet. A pick that fails one waits and is checked again until it's too old to bet. Stakes, minimum odds and stop losses come from Sending."
     >
       <div className="flex flex-wrap gap-4">
         <NumberField label="Back/lay gap at most" value={form.maxSpreadPct} onChange={(v) => set({ maxSpreadPct: v })} suffix="%" />
@@ -419,7 +418,7 @@ function Activity({ bets }: { bets: DirectBetRow[] }) {
   return (
     <Card
       title="Recent"
-      subtitle="The latest 50 picks direct betting has looked at, newest first. In Shadow, compare with what BF Bot Manager got. The download has every one."
+      subtitle="The latest 50 picks direct betting has looked at, newest first. In Shadow, any other bet seen on Betfair for the same pick is shown alongside. The download has every one."
       actions={
         <a
           href="/api/admin/direct/export"
@@ -462,7 +461,7 @@ function Activity({ bets }: { bets: DirectBetRow[] }) {
                 </p>
                 {b.mode === "shadow" && (
                   <p className="mt-0.5 text-xs text-ink">
-                    BF Bot Manager: {b.feedMatched ? `matched ${money(b.feedMatched)}${b.feedOdds ? ` at ${b.feedOdds.toFixed(2)}` : ""}` : "no matched bet seen yet"}.
+                    Other bet on Betfair: {b.feedMatched ? `matched ${money(b.feedMatched)}${b.feedOdds ? ` at ${b.feedOdds.toFixed(2)}` : ""}` : "none seen"}.
                   </p>
                 )}
               </li>

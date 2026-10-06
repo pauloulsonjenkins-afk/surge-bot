@@ -166,7 +166,7 @@ function AboutStrategy({ label }: { label: string }) {
             </div>
           )}
           <div>
-            <dt className="text-ink-muted">InPlayGuru name</dt>
+            <dt className="text-ink-muted">Original name</dt>
             <dd className="text-ink">{label}</dd>
           </div>
         </dl>
@@ -192,7 +192,7 @@ function AboutStrategy({ label }: { label: string }) {
         />
       </label>
       {save.error && <p className="text-destructive">{save.error.message}</p>}
-      <p className="text-ink-muted">Only what the app shows changes. Sending, stakes, results and BF Bot Manager keep using the InPlayGuru name.</p>
+      <p className="text-ink-muted">Only the name shown in the app changes. Sending, stakes and results keep using the original name.</p>
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
@@ -298,7 +298,7 @@ function StrategyCard({
         <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
-              <span className="min-w-0 break-words">{shownName}</span>
+              <span className="min-w-0 break-words">{names.full(row.label)}</span>
               <ModeBadge mode={modeOf(row)} />
             </span>
             <span className={`mt-0.5 block truncate text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>
@@ -322,12 +322,7 @@ function StrategyCard({
 
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
-          {(info?.description || shownName !== row.label) && (
-            <div className="text-xs">
-              {info?.description && <p className="text-ink">{info.description}</p>}
-              {shownName !== row.label && <p className="mt-0.5 text-ink-muted">InPlayGuru: {row.label}</p>}
-            </div>
-          )}
+          {info?.description && <p className="text-xs text-ink">{info.description}</p>}
           <p className="text-xs text-ink-muted">
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
             {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}

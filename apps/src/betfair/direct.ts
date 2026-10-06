@@ -702,7 +702,7 @@ function placedBy(b: { betId: string | null; sizeMatched: number | null; feedMat
   const bfbm = (b.feedMatched ?? 0) > 0;
   if (goalbrew && bfbm) return "Both";
   if (goalbrew) return "GoalBrew";
-  if (bfbm) return "BF Bot Manager";
+  if (bfbm) return "Bet feed";
   return b.betId !== null ? "Neither (GoalBrew bet not matched)" : "Neither";
 }
 
@@ -715,7 +715,7 @@ export function directExportCsv(db: EngineDb): string {
     "Time (UK)", "Pick", "Mode", "Outcome", "Bet placed by", "Strategy", "Match", "League", "Minute", "Score", "Market", "Selection",
     "Stake", "Min odds", "Price shown", "Lay shown", "Gap %", "Overround %", "Price asked",
     "Bet id", "Matched", "Avg price matched", "Not matched", "Betfair status", "Profit", "Reason",
-    "BF Bot Manager matched", "BF Bot Manager odds", "BF Bot Manager profit", "Pick result", "Last update (UK)",
+    "Feed bet matched", "Feed bet odds", "Feed bet profit", "Pick result", "Last update (UK)",
   ];
   const rows = db.listDirectBetsForExport().map((b) => [
     excelTime(b.createdAt),

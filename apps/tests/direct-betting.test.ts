@@ -321,5 +321,5 @@ test("the download says who placed each bet: BF Bot Manager's bet on a Shadow pi
   db.linkBetfairBets([{ betId: "BFBM1", pickId: id }]);
   const [header, row] = directExportCsv(db).slice(1).trim().split("\r\n");
   const cols = header!.split(",");
-  assert.equal(row!.split(",")[cols.indexOf("Bet placed by")], "BF Bot Manager");
+  assert.equal(row!.split(",")[cols.indexOf("Bet placed by")], "Bet feed");
 });

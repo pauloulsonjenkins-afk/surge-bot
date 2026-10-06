@@ -132,7 +132,7 @@ function ImportCard({ report }: { report: ReconcileReport | undefined }) {
   }
 
   return (
-    <Card title="Import bet history" subtitle="Export settled bets from BF Bot Manager (or Betfair’s bet history) as CSV and upload it here.">
+    <Card title="Import bet history" subtitle="Export your settled bets from Betfair’s bet history as CSV and upload it here.">
       <div className="flex flex-wrap items-center gap-2">
         <input
           ref={input}
@@ -183,38 +183,6 @@ function ImportCard({ report }: { report: ReconcileReport | undefined }) {
         Importing the same file again is safe: bets are recognised by their bet id, so nothing is counted twice, and a bet that has settled
         since is updated.
       </p>
-    </Card>
-  );
-}
-
-function AutomaticCard({ configured }: { configured: boolean }) {
-  const site = typeof window === "undefined" ? "https://your-site" : window.location.origin;
-  return (
-    <Card title="Automatic import" subtitle="Run a small script on the PC that runs BF Bot Manager, so new exports are sent here on their own.">
-      <ol className="list-decimal space-y-2 pl-5 text-xs text-ink-muted">
-        <li>
-          {configured ? (
-            <span className="text-hit">BETFAIR_IMPORT_TOKEN is set on the engine.</span>
-          ) : (
-            <>
-              <span className="text-warn">Not set up yet.</span> In DigitalOcean, add <code className="text-ink">BETFAIR_IMPORT_TOKEN</code> to the
-              engine component: a random string of at least 32 letters and digits, kept secret like the bet feed token.
-            </>
-          )}
-        </li>
-        <li>
-          In BF Bot Manager, set the bet history export (or its automatic bet log) to save CSV files into one folder, for example{" "}
-          <code className="text-ink">C:\BFBotManager\Exports</code>.
-        </li>
-        <li>
-          Copy <code className="text-ink">tools/bf-import.ps1</code> from the repository onto that PC and schedule it every 15 minutes with Windows
-          Task Scheduler:
-          <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-surface-2 p-2 text-ink">
-            {`powershell -ExecutionPolicy Bypass -File bf-import.ps1 -Folder "C:\\BFBotManager\\Exports" -Url "${site}/imports/betfair/<BETFAIR_IMPORT_TOKEN>"`}
-          </pre>
-        </li>
-      </ol>
-      <p className="mt-2 text-xs text-ink-muted">The script only sends files that have changed since it last ran, and the figures on this page update after each one.</p>
     </Card>
   );
 }
@@ -474,7 +442,6 @@ export default function ReconcilePage() {
         </>
       )}
 
-      {data && <AutomaticCard configured={data.importTokenConfigured} />}
     </div>
   );
 }

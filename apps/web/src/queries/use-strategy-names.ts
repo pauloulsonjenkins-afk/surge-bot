@@ -25,6 +25,11 @@ export function strategyKey(raw: string): string {
   return strategyLabel(raw).toLowerCase();
 }
 
+/** "blistering momentum" -> "Blistering Momentum"; names that already have capitals are left alone. */
+function titleIfLower(s: string): string {
+  return s === s.toLowerCase() ? s.replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : s;
+}
+
 function remembered(): Names | undefined {
   try {
     const raw = localStorage.getItem(STORE);
@@ -64,6 +69,12 @@ export function useStrategyNames() {
   return useMemo(
     () => ({
       name: (raw: string) => names?.[strategyKey(raw)]?.name ?? strategyLabel(raw),
+      /** "Boiling Point (Blistering Momentum)": the app's name with the original one in brackets, when they differ. */
+      full: (raw: string) => {
+        const shown = names?.[strategyKey(raw)]?.name ?? strategyLabel(raw);
+        const original = titleIfLower(strategyLabel(raw));
+        return shown.toLowerCase() === original.toLowerCase() ? shown : `${shown} (${original})`;
+      },
       info: (raw: string) => names?.[strategyKey(raw)],
       names,
     }),

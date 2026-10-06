@@ -41,7 +41,7 @@ export function NotPlacedCard() {
   return (
     <Card
       title={<span className="text-warn">Not placed · {data.picks.length}</span>}
-      subtitle={`Sent to your betting software but no bet on Betfair ${data.afterMinutes} minutes later, last 24 hours. Fix the cause in BF Bot Manager, or tick “Placed it yourself?” on Live if you bet it elsewhere. Clear each one once you've looked at it.`}
+      subtitle={`Sent to your betting software but no bet on Betfair ${data.afterMinutes} minutes later, last 24 hours. Fix the cause in your betting software, or tick “Placed it yourself?” on Live if you bet it elsewhere. Clear each one once you've looked at it.`}
       actions={
         <button type="button" onClick={() => void clearAll()} disabled={clear.isPending} className="text-xs font-medium text-accent disabled:opacity-50">
           Clear all
