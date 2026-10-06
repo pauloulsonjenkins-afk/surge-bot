@@ -80,6 +80,7 @@ import { directExportCsv, directIsLive, directReadiness, effectiveMode, getDirec
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
+import { telegramHealth } from "./telegram-watchdog";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { addMatchName, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, recordSimBets, saveSendingSettings, toCsv } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
@@ -209,6 +210,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const rawUrl = req.url ?? "/";
     const path = rawUrl.split("?")[0] ?? "/";
+
+    // For an outside uptime monitor: 503 while Telegram alerts aren't arriving (see telegram-watchdog.ts). Not used as
+    // DigitalOcean's health check, which must stay on /health.
+    if (req.method === "GET" && path === "/health/telegram") {
+      const h = telegramHealth(db);
+      send(res, h.ok ? 200 : 503, h);
+      return;
+    }
 
     if (req.method === "GET" && path === "/health") {
       // Stays 200 even if backups are failing: a failed health check makes

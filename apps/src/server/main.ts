@@ -17,6 +17,7 @@ import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 import { recordSimBets } from "../inplayguru/bet-feed";
 import { startDailySummary } from "./daily-summary";
+import { startTelegramWatchdog } from "./telegram-watchdog";
 import { BetfairTrader, startDirectBetting } from "../betfair/direct";
 import { readCredentials } from "../betfair/exchange";
 import { startMembers } from "../members/runner";
@@ -83,6 +84,8 @@ async function main(): Promise<void> {
 
   // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
   startDailySummary(db);
+  // A push notification when Telegram alerts stop arriving, and when they're back.
+  startTelegramWatchdog(db);
   startDirectBetting(db);
 
   // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
