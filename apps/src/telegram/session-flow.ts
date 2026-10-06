@@ -25,9 +25,12 @@ class LoginFlowState {
   status: LoginStatus = "idle";
   error: string | null = null;
   sessionString: string | null = null;
+  /** When the current attempt began (ms), so one that has hung can be replaced. */
+  startedAt = 0;
   private pending: PendingResolvers = {};
 
   reset(): void {
+    this.startedAt = Date.now();
     this.status = "idle";
     this.error = null;
     this.sessionString = null;

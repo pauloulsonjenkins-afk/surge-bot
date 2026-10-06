@@ -1410,7 +1410,12 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 400, { error: "phoneNumber is required." });
         return;
       }
-      if (loginFlow.status === "connecting" || loginFlow.status === "awaiting_code" || loginFlow.status === "awaiting_password") {
+      // One attempt at a time, but one that has hung for 3 minutes (no code typed, or Telegram never answered) is replaced.
+      const inProgress = loginFlow.status === "connecting" || loginFlow.status === "awaiting_code" || loginFlow.status === "awaiting_password";
+      if (inProgress && Date.now() - loginFlow.startedAt > 3 * 60_000) {
+        void activeTelegramClient?.disconnect().catch(() => {});
+        activeTelegramClient = null;
+      } else if (inProgress) {
         send(res, 409, { error: "A login is already in progress.", status: loginFlow.status });
         return;
       }
@@ -1434,7 +1439,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             phoneNumber: async () => phoneNumber,
             phoneCode: async () => loginFlow.waitForCode(),
             password: async () => loginFlow.waitForPassword(),
-            onError: (err) => log.error(`Telegram login error: ${err.message}`),
+            // GramJS calls this on every refusal and, unless told to stop, quietly tries again, which left the admin page
+            // on "Connecting..." for ever. A wrong code or password may be typed again; anything else ends the attempt
+            // and its reason is shown on the page.
+            onError: async (err) => {
+              log.error(`Telegram login error: ${err.message}`);
+              const retry = /PHONE_CODE_INVALID|PASSWORD_HASH_INVALID/.test(err.message);
+              loginFlow.error = telegramLoginError(err.message);
+              if (retry) return false;
+              loginFlow.fail(telegramLoginError(err.message));
+              return true;
+            },
           })
           .then(() => {
             const sessionString = client.session.save() as unknown as string;
@@ -1442,8 +1457,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             log.info("Telegram login succeeded; session string ready to save as TELEGRAM_SESSION.");
           })
           .catch((err) => {
-            loginFlow.fail(err instanceof Error ? err.message : String(err));
+            // Keep the reason onError already gave (the catch then only sees GramJS's "AUTH_USER_CANCEL").
+            if (loginFlow.status !== "error") loginFlow.fail(telegramLoginError(err instanceof Error ? err.message : String(err)));
             activeTelegramClient = null;
+            void client.disconnect().catch(() => {});
           });
       });
       return;
@@ -1537,4 +1554,19 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     send(res, 404, { error: "not_found" });
   }
+}
+
+/** Telegram's login refusals in plain English (the raw code is kept in brackets for searching). */
+function telegramLoginError(raw: string): string {
+  const wait = /FLOOD_WAIT_(\d+)|wait of (\d+) seconds/i.exec(raw);
+  if (wait) {
+    const secs = Number(wait[1] ?? wait[2]);
+    const mins = Math.ceil(secs / 60);
+    return `Telegram says too many login attempts: wait ${mins >= 60 ? `${Math.ceil(mins / 60)} hour(s)` : `${mins} minute(s)`} and try again. (${raw})`;
+  }
+  if (/PHONE_NUMBER_INVALID/.test(raw)) return `Telegram doesn't recognise that phone number. Use the international format, e.g. +447700900123. (${raw})`;
+  if (/PHONE_CODE_INVALID/.test(raw)) return `That code isn't right. Type the latest code Telegram sent. (${raw})`;
+  if (/PHONE_CODE_EXPIRED/.test(raw)) return `That code has expired. Start again to get a new one. (${raw})`;
+  if (/PASSWORD_HASH_INVALID/.test(raw)) return `That two-step verification password isn't right. Try again. (${raw})`;
+  return raw;
 }
