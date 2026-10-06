@@ -225,7 +225,7 @@ export function adminUpdateMember(db: EngineDb, userId: number, a: AdminMemberAc
     }
     case "grant_paid": {
       if (a.until !== null && !Number.isFinite(Date.parse(a.until))) throw new Error("Give a valid date.");
-      store.updateMember(userId, { paidUntil: a.until, paidSource: a.until ? "admin" : before.paidSource }, at);
+      store.updateMember(userId, { paidUntil: a.until, paidSource: a.until ? "admin" : before.paidSource === "admin" ? null : before.paidSource }, at);
       audit("membership_change", `Paid until ${a.until ?? "none"} (was ${before.paidUntil ?? "none"}).`);
       if (a.until && Date.parse(a.until) > now.getTime()) store.event(userId, "paid_subscription_started", { source: "admin" }, at);
       break;

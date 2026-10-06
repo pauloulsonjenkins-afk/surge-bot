@@ -4,7 +4,7 @@ The Members platform lives at **/members**. It has its own layout and navigation
 
 - Engine code: `apps/src/members/`.
 - Website code: `apps/web/app/members/`, `apps/web/src/components/members/` and `apps/web/src/lib/members/`.
-- Admin page: More > Admin > Setup > **Members**.
+- Admin page: More > Admin > Members and site > **Members**.
 
 ## 1. How it fits together
 - **Accounts:** members are the site's existing accounts (`app_users`, the same sign-in). A row in `members` is created the first time someone opens /members, and they start on **Free**.
@@ -137,6 +137,6 @@ Stripe webhook endpoint: `https://<site>/engine/webhooks/stripe`. Events to send
 
 ## 12. Important
 - **Turn Public view OFF** (Admin > Settings). While it is on, anyone can see every alert in full on the main site's Live and Trade Log, which is what Members pay for.
-- Don't give members the old per-page access (Admin > Users) unless you mean to.
+- The old per-page access (Admin > Users) has gone. Accounts, sign-ups, passwords and disabling are on the admin Members page.
 - **Upcoming:** most strategies fire in-play, so there is no long schedule in advance. Upcoming shows what can be bet right now (in-play alerts for a few minutes, pre-match ones until kick-off).
 - **Tests:** `apps/tests/members.test.ts` covers tiers, what Free can see, the trial and its 3-strategy limit, expiry, simulation, voids, risk limits, duplicates, live safety, the kill switches, Stripe and community ownership.

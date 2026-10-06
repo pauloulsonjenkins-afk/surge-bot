@@ -36,7 +36,7 @@ Tests: `apps/tests/members.test.ts` (17 tests). All 228 engine tests pass.
 ## Status (5 Oct 2026)
 **Built:**
 - the engine (`0c9c322`);
-- the website: `/members` pages, API proxy routes `app/api/members/[...path]` and `app/api/admin/members/[...path]`, the Members tab in the main navigation, and More > Admin > Setup > Members;
+- the website: `/members` pages, API proxy routes `app/api/members/[...path]` and `app/api/admin/members/[...path]`, the Members tab in the main navigation, and More > Admin > Members and site > Members;
 - the docs: `MEMBERS_PLATFORM.md`.
 
 **Checks:** web typecheck, lint and `next build` pass; the engine has 228 tests passing. **Not yet tried in a browser against the live engine.**

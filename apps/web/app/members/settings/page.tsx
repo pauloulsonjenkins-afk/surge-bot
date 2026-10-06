@@ -36,7 +36,7 @@ export default function SettingsPage() {
       <SimCard s={data} />
       <Card title="Membership">
         <p className="text-sm text-ink">
-          {me.data.tier === "paid" ? `Member${me.data.paid.until ? ` until ${when(me.data.paid.until)} (renews automatically while subscribed)` : ""}` : me.data.tier === "trial" ? `Premium Trial, ends ${when(me.data.trial.endsAt)}` : me.data.tier === "admin" ? "Administrator" : "Free"}
+          {me.data.tier === "paid" ? `Member${me.data.paid.until ? ` until ${when(me.data.paid.until)} (renews automatically while subscribed)` : ""}` : me.data.tier === "trial" ? `Premium Trial, ends ${when(me.data.trial.endsAt)}` : me.data.tier === "admin" ? "Administrator" : me.data.tier === "suspended" ? "Suspended" : me.data.tier === "expired" ? "Free (your trial or membership has ended)" : "Free"}
         </p>
         {me.data.paid.canManage && <BillingButton />}
       </Card>

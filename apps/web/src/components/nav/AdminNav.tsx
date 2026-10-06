@@ -21,7 +21,7 @@ export default function AdminNav() {
     <nav ref={navRef} aria-label="Admin" className="relative flex items-center gap-1 overflow-x-auto border-b border-line px-3 py-2 lg:hidden">
       {ADMIN_GROUPS.map((g, gi) => (
         <div key={g.label} className="flex shrink-0 items-center gap-1">
-          {/* A thin divider between the Operate, Review and Setup groups. */}
+          {/* A thin divider between the groups. */}
           {gi > 0 && <span aria-hidden className="mx-1 h-5 w-px bg-line" />}
           {g.items.map((s) => {
             const active = pathname === s.href || pathname.startsWith(`${s.href}/`);

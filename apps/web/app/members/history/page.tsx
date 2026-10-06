@@ -93,7 +93,7 @@ export default function HistoryPage() {
                 </div>
                 <p className="mt-1 text-xs text-ink-muted">
                   {b.pick?.market ? `${b.pick.market}${b.pick.selection ? ` · ${b.pick.selection}` : ""} · ` : ""}
-                  {gbp(b.stake, false)} at {odds(b.odds)} · {b.execution === "auto" ? "Automated" : "Manual"}
+                  {gbp(b.mode === "live" ? (b.matchedStake ?? 0) : b.stake, false)} at {odds(b.odds)} · {b.execution === "auto" ? "Automated" : "Manual"}
                 </p>
                 <div className="mt-1 flex items-center justify-between">
                   <ModeBadge mode={b.mode} />

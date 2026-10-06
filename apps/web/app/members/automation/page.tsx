@@ -29,7 +29,6 @@ export default function AutomationPage() {
 
   return (
     <div className="space-y-5">
-
       <PageHeader title="Betfair Automation" subtitle="Run strategies automatically: in simulation for everyone, and live on Betfair where it's available." />
 
       {(data.live.enabled || data.follows.some((f) => f.mode === "live")) && (
@@ -44,6 +43,7 @@ export default function AutomationPage() {
           <OctagonX size={18} /> STOP ALL LIVE BETTING
         </button>
       )}
+      {stop.error && <p className="text-sm text-destructive">{stop.error.message}</p>}
 
       <Card title="Betfair connection">
         <p className="text-sm text-ink">
@@ -65,12 +65,19 @@ export default function AutomationPage() {
             </button>
           )}
           {c.kind !== "none" && (
-            <button type="button" className={btn} onClick={() => disconnect.mutate({})}>
+            <button
+              type="button"
+              className={btn}
+              disabled={disconnect.isPending}
+              onClick={async () => {
+                if (await confirm({ title: "Disconnect Betfair?", body: "Live betting stops and your strategies carry on in simulation.", confirmLabel: "Disconnect" })) disconnect.mutate({});
+              }}
+            >
               Disconnect
             </button>
           )}
         </div>
-        {connect.error && <p className="mt-2 text-sm text-destructive">{connect.error.message}</p>}
+        {(connect.error || disconnect.error) && <p className="mt-2 text-sm text-destructive">{(connect.error ?? disconnect.error)?.message}</p>}
         <p className="mt-3 text-xs text-ink-muted">{c.options.vendor.reason}</p>
         {!c.options.house.available && c.options.house.reason && me.data.tier === "admin" && <p className="mt-1 text-xs text-ink-muted">{c.options.house.reason}</p>}
       </Card>

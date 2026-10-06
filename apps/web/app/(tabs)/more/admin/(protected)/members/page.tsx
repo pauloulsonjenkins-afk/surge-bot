@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { OctagonX } from "lucide-react";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { QueryError } from "@/components/ui/QueryError";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { getJson } from "@/queries/fetch-json";
 import { useMe } from "@/queries/use-me";
@@ -78,7 +79,8 @@ async function post(path: string, body: unknown) {
   return data;
 }
 
-/** The admin's view of the Members platform: members, commercial rules, live betting and its STOP switch. */
+
+/** The admin's view of the Members platform: accounts, commercial rules, live betting and its STOP switch, activity. */
 export default function AdminMembersPage() {
   const qc = useQueryClient();
   const me = useMe();
@@ -90,10 +92,16 @@ export default function AdminMembersPage() {
   const setSignups = useMutation({ mutationFn: (open: boolean) => account({ action: "signups", open }), onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin-signups"] }) });
   const stopAll = useMutation({ mutationFn: () => post("stop-all-live", {}), onSuccess: () => void qc.invalidateQueries() });
   const { confirm } = useDialog();
+  const [search, setSearch] = useState("");
+
+  const members = overview.data?.members ?? [];
+  const q = search.trim().toLowerCase();
+  const shown = q ? members.filter((m) => m.email.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) || m.tier.includes(q)) : members;
+  const liveOn = config.data?.config.flags.liveBetting === true || members.some((m) => m.liveEnabled);
 
   return (
     <div className="space-y-6">
-      <PageHeader as="h2" title="Members" subtitle="The Members platform (beta) at /members: who is on which membership, the commercial rules, and live betting." />
+      <PageHeader as="h2" title="Members" subtitle="The Members platform (beta) at /members: accounts, memberships, the members' rules and live betting." />
 
       {me.data?.publicView && (
         <p className="rounded-lg border border-warn bg-warn/10 px-3 py-2 text-sm text-ink">
@@ -101,38 +109,63 @@ export default function AdminMembersPage() {
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={async () => {
-          if (await confirm({ title: "Stop ALL members' live betting?", body: "Live betting switches off for every member, waiting live bets are cancelled and all live follows go back to simulation.", confirmLabel: "Stop all live betting", tone: "danger" }))
-            stopAll.mutate();
-        }}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-loss px-4 py-3 text-sm font-bold text-white"
-      >
-        <OctagonX size={18} /> STOP ALL MEMBERS&apos; LIVE BETTING
-      </button>
-      {stopAll.isSuccess && <p className="text-sm text-ink">Stopped. {String((stopAll.data as { cancelled?: number }).cancelled ?? 0)} waiting bet(s) cancelled.</p>}
+      {/* While any live betting could happen, the stop button sits at the top where it can't be missed. */}
+      {liveOn && <StopAllButton stopAll={stopAll} confirm={confirm} />}
 
-      <Card title="Sign-ups" subtitle="Whether anyone can create an account (and so a Free membership) from the website.">
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={signups.data?.signupsOpen === true} disabled={!signups.data || setSignups.isPending} onChange={(e) => setSignups.mutate(e.target.checked)} />
-          New sign-ups open
-        </label>
-      </Card>
-
-      {overview.isLoading || !overview.data ? (
+      {overview.error ? (
+        <QueryError error={overview.error} next="/more/admin/members" />
+      ) : overview.isLoading || !overview.data ? (
         <Skeleton className="h-64 w-full" />
       ) : (
-        <>
-          <Card title={`Members (${overview.data.members.length})`} subtitle={`Last 30 days: ${overview.data.bets.sim} simulated bets, ${overview.data.bets.live} live. Stripe ${overview.data.stripe.configured ? "set up" : "not set up yet"}.`}>
-            <ul className="divide-y divide-line">
-              {overview.data.members.map((m) => (
-                <MemberRow key={m.userId} m={m} onAction={(b) => act.mutate({ userId: m.userId, ...b })} onAccount={(b) => acct.mutate({ id: m.userId, ...b })} confirm={confirm} />
+        <Card
+          title={`Accounts (${members.length})`}
+          subtitle={`Everyone with a sign-in. Last 30 days: ${overview.data.bets.sim} simulated bets, ${overview.data.bets.live} live. Stripe ${overview.data.stripe.configured ? "set up" : "not set up yet"}.`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={signups.data?.signupsOpen === true} disabled={!signups.data || setSignups.isPending} onChange={(e) => setSignups.mutate(e.target.checked)} />
+              New sign-ups open
+            </label>
+            {members.length > 8 && <input className={`${input} sm:w-64`} placeholder="Search email, name or membership" value={search} onChange={(e) => setSearch(e.target.value)} />}
+          </div>
+          {(setSignups.error || signups.error) && <p className="mt-2 text-sm text-destructive">{(setSignups.error ?? signups.error)?.message}</p>}
+          <ul className="mt-2 divide-y divide-line">
+            {shown.map((m) => (
+              <MemberRow key={m.userId} m={m} onAction={(b) => act.mutate({ userId: m.userId, ...b })} onAccount={(b) => acct.mutate({ id: m.userId, ...b })} confirm={confirm} />
+            ))}
+            {shown.length === 0 && <li className="py-2 text-sm text-ink-muted">{q ? "No account matches." : "No accounts yet."}</li>}
+          </ul>
+          {(act.error || acct.error) && <p className="mt-2 text-sm text-destructive">{(act.error ?? acct.error)?.message}</p>}
+        </Card>
+      )}
+
+      {config.error ? (
+        <QueryError error={config.error} next="/more/admin/members" />
+      ) : (
+        config.data && <ConfigCard key={JSON.stringify(config.data.config)} data={config.data} onSaved={() => void qc.invalidateQueries({ queryKey: ["admin-members-config"] })} />
+      )}
+
+      <Card title="Live betting" subtitle="Real-money member bets. Off unless the switch in the rules above and the engine setting MEMBERS_LIVE_BETTING = allow are both on; today only admin members on the GoalBrew Betfair account.">
+        {!liveOn && <StopAllButton stopAll={stopAll} confirm={confirm} />}
+        {liveOn && <p className="text-sm text-ink">The stop button is at the top of this page.</p>}
+        {overview.data && overview.data.bets.failedLive.length > 0 ? (
+          <>
+            <p className="mt-3 text-sm font-medium text-ink">Not placed (30 days)</p>
+            <ul className="mt-1 space-y-1 text-xs">
+              {overview.data.bets.failedLive.map((b) => (
+                <li key={b.id} className="text-ink-muted">
+                  {when(b.createdAt)} · {members.find((m) => m.userId === b.userId)?.email ?? `member ${b.userId}`}: {b.reason}
+                </li>
               ))}
             </ul>
-            {(act.error || acct.error) && <p className="mt-2 text-sm text-destructive">{(act.error ?? acct.error)?.message}</p>}
-          </Card>
+          </>
+        ) : (
+          <p className="mt-3 text-xs text-ink-muted">No live bets refused or failed in the last 30 days.</p>
+        )}
+      </Card>
 
+      {overview.data && (
+        <>
           <Card title="Funnel (30 days)" subtitle="Product events: how many times, and how many members.">
             {overview.data.funnel.length === 0 ? (
               <p className="text-sm text-ink-muted">No events yet.</p>
@@ -150,36 +183,44 @@ export default function AdminMembersPage() {
             )}
           </Card>
 
-          {overview.data.bets.failedLive.length > 0 && (
-            <Card title="Live bets not placed (30 days)">
-              <ul className="space-y-1 text-xs">
-                {overview.data.bets.failedLive.map((b) => (
-                  <li key={b.id} className="text-ink-muted">
-                    {when(b.createdAt)} · member {b.userId}: {b.reason}
+          <Card title="Audit log" subtitle="The latest 100 important actions.">
+            {overview.data.audit.length === 0 ? (
+              <p className="text-sm text-ink-muted">Nothing yet.</p>
+            ) : (
+              <ul className="max-h-96 space-y-1 overflow-y-auto text-xs">
+                {overview.data.audit.map((a) => (
+                  <li key={a.id} className={a.result === "ok" ? "text-ink-muted" : "text-warn"}>
+                    {when(a.at)} · {a.actor}
+                    {a.userId !== null ? ` (${members.find((m) => m.userId === a.userId)?.email ?? `member ${a.userId}`})` : ""} · {a.action.replace(/_/g, " ")}
+                    {a.object ? ` · ${a.object}` : ""} · {a.result}
+                    {a.detail ? ` · ${a.detail}` : ""}
                   </li>
                 ))}
               </ul>
-            </Card>
-          )}
+            )}
+          </Card>
         </>
       )}
+    </div>
+  );
+}
 
-      {config.data && <ConfigCard key={JSON.stringify(config.data.config)} data={config.data} onSaved={() => void qc.invalidateQueries({ queryKey: ["admin-members-config"] })} />}
-
-      {overview.data && (
-        <Card title="Audit log" subtitle="The latest 100 important actions.">
-          <ul className="max-h-96 space-y-1 overflow-y-auto text-xs">
-            {overview.data.audit.map((a) => (
-              <li key={a.id} className={a.result === "ok" ? "text-ink-muted" : "text-warn"}>
-                {when(a.at)} · {a.actor}
-                {a.userId !== null ? ` (member ${a.userId})` : ""} · {a.action.replace(/_/g, " ")}
-                {a.object ? ` · ${a.object}` : ""} · {a.result}
-                {a.detail ? ` · ${a.detail}` : ""}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+function StopAllButton({ stopAll, confirm }: { stopAll: UseMutationResult<{ error?: string }, Error, void>; confirm: ReturnType<typeof useDialog>["confirm"] }) {
+  return (
+    <div>
+      <button
+        type="button"
+        disabled={stopAll.isPending}
+        onClick={async () => {
+          if (await confirm({ title: "Stop ALL members' live betting?", body: "Live betting switches off for every member, waiting live bets are cancelled and all live follows go back to simulation.", confirmLabel: "Stop all live betting", tone: "danger" }))
+            stopAll.mutate();
+        }}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-loss px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+      >
+        <OctagonX size={18} /> STOP ALL MEMBERS&apos; LIVE BETTING
+      </button>
+      {stopAll.isSuccess && <p className="mt-2 text-sm text-ink">Stopped. {String((stopAll.data as { cancelled?: number }).cancelled ?? 0)} waiting bet(s) cancelled.</p>}
+      {stopAll.error && <p className="mt-2 text-sm text-destructive">{stopAll.error.message}</p>}
     </div>
   );
 }
@@ -220,13 +261,27 @@ function MemberRow({
       </button>
       {open && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button type="button" className={btn} onClick={() => onAction({ action: "set_override", value: m.tierOverride === "admin" ? null : "admin" })}>
+          <button
+            type="button"
+            className={btn}
+            onClick={async () => {
+              if (m.tierOverride === "admin") return onAction({ action: "set_override", value: null });
+              if (await confirm({ title: `Make ${m.email} an admin member?`, body: "Admin members get everything on /members, including live betting on the GoalBrew Betfair account when it is switched on.", confirmLabel: "Make admin" }))
+                onAction({ action: "set_override", value: "admin" });
+            }}
+          >
             {m.tierOverride === "admin" ? "Remove admin" : "Make admin"}
           </button>
           <button type="button" className={btn} onClick={() => onAction({ action: "set_override", value: m.tierOverride === "suspended" ? null : "suspended" })}>
             {m.tierOverride === "suspended" ? "Unsuspend" : "Suspend"}
           </button>
-          <button type="button" className={btn} onClick={() => onAction({ action: "reset_trial" })}>
+          <button
+            type="button"
+            className={btn}
+            onClick={async () => {
+              if (await confirm({ title: `Reset ${m.email}'s trial?`, body: "Their trial and its 3 strategies are cleared, and they can start one more trial.", confirmLabel: "Reset trial" })) onAction({ action: "reset_trial" });
+            }}
+          >
             Reset trial
           </button>
           {m.trialEndsAt && (
@@ -282,16 +337,21 @@ function MemberRow({
   );
 }
 
+const NUM_KEYS = ["trialDays", "trialStrategyLimit", "freeHistoryDays", "defaultSimBank", "commissionPct", "simSlippagePct"] as const;
+type NumKey = (typeof NUM_KEYS)[number];
+
 function ConfigCard({ data, onSaved }: { data: ConfigResp; onSaved: () => void }) {
   const [c, setC] = useState(data.config);
-  const save = useMutation({ mutationFn: () => post("config", c), onSuccess: onSaved });
-  const num = (k: keyof ConfigResp["config"]) => (
-    <input className={`${input} mt-1`} inputMode="decimal" value={String(c[k])} onChange={(e) => setC((x) => ({ ...x, [k]: Number(e.target.value) }))} />
+  const [nums, setNums] = useState<Record<NumKey, string>>(() => Object.fromEntries(NUM_KEYS.map((k) => [k, String(data.config[k])])) as Record<NumKey, string>);
+  const bad = NUM_KEYS.filter((k) => nums[k].trim() === "" || !Number.isFinite(Number(nums[k])));
+  const save = useMutation({ mutationFn: () => post("config", { ...c, ...Object.fromEntries(NUM_KEYS.map((k) => [k, Number(nums[k])])) }), onSuccess: onSaved });
+  const num = (k: NumKey) => (
+    <input className={`${input} mt-1 ${bad.includes(k) ? "border-destructive" : ""}`} inputMode="decimal" value={nums[k]} onChange={(e) => setNums((x) => ({ ...x, [k]: e.target.value }))} />
   );
   const toggleList = (k: "publishedStrategies" | "liveApprovedStrategies", key: string) =>
     setC((x) => ({ ...x, [k]: x[k].includes(key) ? x[k].filter((s) => s !== key) : [...x[k], key] }));
   return (
-    <Card title="Commercial rules" subtitle="Change what each membership gets without a rebuild.">
+    <Card title="Members' rules" subtitle="What each membership gets, the trial, the simulation and the price wording. Changes apply straight away.">
       <div className="space-y-4">
         <div className="grid gap-2 sm:grid-cols-2">
           {Object.keys(FLAG_LABEL).map((f) => (
@@ -301,7 +361,6 @@ function ConfigCard({ data, onSaved }: { data: ConfigResp; onSaved: () => void }
             </label>
           ))}
         </div>
-        <p className="text-xs text-ink-muted">Live member betting also needs the engine setting MEMBERS_LIVE_BETTING = allow, and today only works for admin members on the GoalBrew Betfair account.</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <label className="text-xs text-ink-muted">Trial days{num("trialDays")}</label>
           <label className="text-xs text-ink-muted">Trial strategies{num("trialStrategyLimit")}</label>
@@ -337,7 +396,7 @@ function ConfigCard({ data, onSaved }: { data: ConfigResp; onSaved: () => void }
             ))}
           </div>
         </div>
-        <button type="button" className={btnPrimary} disabled={save.isPending} onClick={() => save.mutate()}>
+        <button type="button" className={btnPrimary} disabled={save.isPending || bad.length > 0} onClick={() => save.mutate()}>
           Save rules
         </button>
         {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
