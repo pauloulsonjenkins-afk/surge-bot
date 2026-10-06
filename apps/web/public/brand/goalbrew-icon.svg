@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="gb-icon-title">
   <title id="gb-icon-title">GoalBrew</title>
   
-  <rect width="64" height="64" rx="14" fill="#0E1116"></rect>
+  <rect width="64" height="64" rx="14" fill="#17120E"></rect>
   <g id="mark">
     
-    <path d="M46.52 27.12H52.49A3.9 3.9 0 0 1 56.39 31.02V32.98A3.9 3.9 0 0 1 52.49 36.88H46.52" fill="none" stroke="#E7E9EC" stroke-width="4.39" stroke-linejoin="round"></path>
-    <circle cx="28.11" cy="32" r="19.5" fill="#0E1116" stroke="#E7E9EC" stroke-width="4.39"></circle>
+    <path d="M46.52 27.12H52.49A3.9 3.9 0 0 1 56.39 31.02V32.98A3.9 3.9 0 0 1 52.49 36.88H46.52" fill="none" stroke="#F1E9DF" stroke-width="4.39" stroke-linejoin="round"></path>
+    <circle cx="28.11" cy="32" r="19.5" fill="#17120E" stroke="#F1E9DF" stroke-width="4.39"></circle>
     
-    <circle cx="28.11" cy="32" r="15.11" fill="#E8A33D"></circle>
+    <circle cx="28.11" cy="32" r="15.11" fill="#D9A05B"></circle>
     
-    <g fill="#0E1116">
-      <path d="M28.11 25.95L33.86 30.13L31.67 36.89L24.56 36.89L22.36 30.13Z" stroke="#0E1116" stroke-width="0.76" stroke-linejoin="round"></path>
-      <path d="M28.11 25.95L28.11 20.82M33.86 30.13L38.75 28.54M31.67 36.89L34.69 41.05M24.56 36.89L21.54 41.05M22.36 30.13L17.48 28.54" fill="none" stroke="#0E1116" stroke-width="1.81" stroke-linecap="round"></path>
+    <g fill="#17120E">
+      <path d="M28.11 25.95L33.86 30.13L31.67 36.89L24.56 36.89L22.36 30.13Z" stroke="#17120E" stroke-width="0.76" stroke-linejoin="round"></path>
+      <path d="M28.11 25.95L28.11 20.82M33.86 30.13L38.75 28.54M31.67 36.89L34.69 41.05M24.56 36.89L21.54 41.05M22.36 30.13L17.48 28.54" fill="none" stroke="#17120E" stroke-width="1.81" stroke-linecap="round"></path>
       <circle cx="28.11" cy="20.82" r="2.27"></circle>
       <circle cx="38.75" cy="28.54" r="2.27"></circle>
       <circle cx="34.69" cy="41.05" r="2.27"></circle>

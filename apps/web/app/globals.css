@@ -5,9 +5,9 @@
 /*
  * GoalBrew brand colours (the GoalBrew design system's tokens.json: dark default, light "day").
  *
- * Tokens grounded in the subject: a live odds/trading shell. The accent is
- * an amber, closer to a dot-matrix sportsbook board than a generic
- * acid-green "AI dashboard" glow. Numerals use tabular-nums throughout so
+ * "Espresso": warm coffee-brown surfaces, cream text and a caramel accent. (Until Oct 2026 the shell was near-black
+ * with a bright amber accent and a two-colour wordmark, which looked too much like another well-known site.)
+ * Numerals use tabular-nums throughout so
  * scores and prices don't jitter as digits change.
  *
  * Colour roles — each colour has one job:
@@ -24,20 +24,20 @@
  * Cards sit a small step above the page; their 1px line border, not a shadow, sets them apart.
  */
 :root {
-  --app: #0e1116;
-  --surface: #12161d;
-  --surface-2: #171c25;
-  --line: #242a33;
-  --ink: #e7e9ec;
-  --ink-muted: #8b93a1;
-  --accent: #e8a33d;
-  --accent-hover: #f2b65c;
-  --accent-ink: #17110a;
-  --hit: #3fbf8f;
-  --loss: #e8613d;
+  --app: #17120e;
+  --surface: #1e1813;
+  --surface-2: #272019;
+  --line: #3a2f25;
+  --ink: #f1e9df;
+  --ink-muted: #a8998a;
+  --accent: #d9a05b;
+  --accent-hover: #e6b678;
+  --accent-ink: #1a120a;
+  --hit: #5cc48f;
+  --loss: #e86b55;
   --warn: #e6cf4f;
   --warn-ink: #1a1605;
-  --destructive: #e8613d;
+  --destructive: #e86b55;
   --danger-ink: #1c0a05;
   --chart: #7aa7f5;
   --series-1: #3987e5;
@@ -49,20 +49,20 @@
 
 /*
  * Light theme ("day"): warm paper for the page, clean off-white cards, the
- * same amber as the accent but deepened so it stays readable on light
+ * same caramel as the accent but deepened so it stays readable on light
  * backgrounds (4.7:1 as text on a card), and deeper colours for every role.
  * Every text colour here passes 4.5:1 on the surface it is used on,
  * apart from muted text on the page background, which sits at 4.7:1.
  */
 :root[data-theme="light"] {
-  --app: #f3f0e8;
-  --surface: #fffefb;
-  --surface-2: #efeadf;
-  --line: #ded8ca;
-  --ink: #1c1f26;
-  --ink-muted: #61666f;
-  --accent: #985800;
-  --accent-hover: #7f4800;
+  --app: #f5efe6;
+  --surface: #fffcf7;
+  --surface-2: #efe7da;
+  --line: #e0d5c4;
+  --ink: #241c15;
+  --ink-muted: #685b4e;
+  --accent: #8a5320;
+  --accent-hover: #70421a;
   --accent-ink: #fffdf8;
   --hit: #0c6f4d;
   --loss: #b83a17;

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useUiStore } from "@/state/ui.store";
 
-const BROWSER_BAR = { dark: "#0E1116", light: "#F3F0E8" } as const;
+const BROWSER_BAR = { dark: "#17120E", light: "#F5EFE6" } as const;
 
 /** Keeps the page's theme (and the phone's browser bar colour) in step with the saved choice. */
 export default function ThemeSync() {
