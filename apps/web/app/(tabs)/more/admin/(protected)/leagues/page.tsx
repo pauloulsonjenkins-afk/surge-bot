@@ -93,6 +93,17 @@ function LeagueCard({
           {row.hidden ? "Show in stats" : "Hide from stats"}
         </button>
 
+        {!row.noSend && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onChange({ noSend: true, hidden: true })}
+            className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-loss hover:bg-surface-2 disabled:opacity-50"
+          >
+            Stop: not on Betfair
+          </button>
+        )}
+
         {!confirming ? (
           <button
             type="button"
