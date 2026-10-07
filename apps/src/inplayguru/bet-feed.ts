@@ -62,6 +62,8 @@ export interface SendingSettings {
   maxAgeMinutes: number;
   /** Most NEW picks handed over per UK day. */
   dailyCap: number;
+  /** Most money (£) staked in total on any one match, across strategies, so correlated bets (e.g. several Next goal strategies) can't stack. 0 = no limit. */
+  matchCap: number;
   /** Market code and selection name used for Both Teams to Score. */
   bttsMarketType: string;
   bttsSelection: string;
@@ -103,6 +105,7 @@ export const DEFAULT_SENDING: SendingSettings = {
   maxStake: 5,
   maxAgeMinutes: 10,
   dailyCap: 30,
+  matchCap: 0,
   bttsMarketType: "BOTH_TEAMS_TO_SCORE",
   bttsSelection: "Yes",
   underdogMarketType: "DOUBLE_CHANCE",
@@ -208,6 +211,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     maxStake: clampInt(raw.maxStake, 1, 500, DEFAULT_SENDING.maxStake),
     maxAgeMinutes: clampInt(raw.maxAgeMinutes, 1, 60, DEFAULT_SENDING.maxAgeMinutes),
     dailyCap: clampInt(raw.dailyCap, 0, 1000, DEFAULT_SENDING.dailyCap),
+    matchCap: clampInt(raw.matchCap, 0, 5000, DEFAULT_SENDING.matchCap),
     bttsMarketType: cleanCode(raw.bttsMarketType, DEFAULT_SENDING.bttsMarketType),
     bttsSelection: cleanCode(raw.bttsSelection, DEFAULT_SENDING.bttsSelection),
     underdogMarketType: cleanCode(raw.underdogMarketType, DEFAULT_SENDING.underdogMarketType),
@@ -279,6 +283,7 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
   }
   if (patch.maxAgeMinutes !== undefined) next.maxAgeMinutes = clampInt(patch.maxAgeMinutes, 1, 60, current.maxAgeMinutes);
   if (patch.dailyCap !== undefined) next.dailyCap = clampInt(patch.dailyCap, 0, 1000, current.dailyCap);
+  if (patch.matchCap !== undefined) next.matchCap = clampInt(patch.matchCap, 0, 5000, current.matchCap);
   if (patch.bttsMarketType !== undefined) next.bttsMarketType = cleanCode(patch.bttsMarketType, current.bttsMarketType);
   if (patch.bttsSelection !== undefined) next.bttsSelection = cleanCode(patch.bttsSelection, current.bttsSelection);
   if (patch.underdogMarketType !== undefined) next.underdogMarketType = cleanCode(patch.underdogMarketType, current.underdogMarketType);
@@ -511,6 +516,17 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
   const skipped: FeedSkip[] = [];
   const toMark: Array<{ id: number; rowJson: string }> = [];
 
+  // Money already out on each match (picks handed over earlier), so a new pick can be held back by the match limit.
+  const onMatch = new Map<string, number>();
+  const matchOf = (p: LivePick) => `${p.leagueKey}|${(p.home ?? "").toLowerCase()}|${(p.away ?? "").toLowerCase()}`;
+  if (settings.matchCap > 0) {
+    for (const p of recent) {
+      if (p.sentAt === null || p.excluded) continue;
+      const frozen = parseFrozenRow(p);
+      if (frozen) onMatch.set(matchOf(p), (onMatch.get(matchOf(p)) ?? 0) + frozen.stake);
+    }
+  }
+
   for (const p of recent) {
     const label = strategyLabel(p.strategy);
 
@@ -606,6 +622,14 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       if (sentToday >= settings.dailyCap) {
         skipped.push(skip(p, "Daily limit reached."));
         continue;
+      }
+      if (settings.matchCap > 0) {
+        const out = onMatch.get(matchOf(p)) ?? 0;
+        if (out + stake > settings.matchCap) {
+          skipped.push(skip(p, `Match limit: £${out.toFixed(2)} is already on this match and the limit is £${settings.matchCap}.`));
+          continue;
+        }
+        onMatch.set(matchOf(p), out + stake);
       }
       sentToday++;
     }

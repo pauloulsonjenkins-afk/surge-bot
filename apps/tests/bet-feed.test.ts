@@ -145,3 +145,26 @@ test("minimum odds: bad values are ignored and null clears one", () => {
   assert.deepEqual(getSendingSettings(db).minOdds, { e: 2.35 });
   assert.ok(toCsv([], true).includes("MinPrice"));
 });
+
+test("the match limit holds back a bet that would take the total on one match over it", () => {
+  const { db, add } = setup();
+  saveSendingSettings(db, { stakes: { "time to fight": 2 }, strategies: { "time to fight": true }, matchCap: 3 });
+  add(alert("Lens", "Lille"), minutesAgo(1));
+  add(alert("Lens", "Lille").replace("Blistering Momentum", "Time to fight"), minutesAgo(1));
+  add(alert("Nice", "Brest"), minutesAgo(1));
+  const feed = buildFeed(db, { markSent: true, now: NOW });
+  // £2 on Lens v Lille goes out, the second £2 on it would make £4 (over £3) and is held; Nice v Brest is a different match.
+  assert.equal(feed.rows.length, 2);
+  assert.ok(feed.skipped.some((s) => s.reason.startsWith("Match limit")));
+  // Repeating the feed keeps the same rows: the money already out still counts, so nothing new slips through.
+  const again = buildFeed(db, { markSent: true, now: NOW });
+  assert.equal(again.rows.length, 2);
+});
+
+test("with no match limit set, nothing is held back for it", () => {
+  const { db, add } = setup();
+  saveSendingSettings(db, { stakes: { "time to fight": 2 }, strategies: { "time to fight": true } });
+  add(alert("Lens", "Lille"), minutesAgo(1));
+  add(alert("Lens", "Lille").replace("Blistering Momentum", "Time to fight"), minutesAgo(1));
+  assert.equal(buildFeed(db, { markSent: true, now: NOW }).rows.length, 2);
+});

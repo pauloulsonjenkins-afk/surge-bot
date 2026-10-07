@@ -35,6 +35,13 @@ function modeOf(row: AdminStrategy): "live" | "sim" {
   return row.mode ?? (row.sendingOn ? "live" : "sim");
 }
 
+/** True once a strategy has a settled pick in this mode and period; the rest are tucked under "No data yet". */
+function hasPicks(row: AdminStrategy, m: "live" | "sim"): boolean {
+  const hits = m === "live" ? (row.liveHits ?? 0) : (row.simHits ?? 0);
+  const misses = m === "live" ? (row.liveMisses ?? 0) : (row.simMisses ?? 0);
+  return hits + misses > 0 || (row.returns?.[m]?.counted ?? 0) > 0;
+}
+
 /** Below this many priced picks a return is too noisy to act on. */
 const SAMPLE = 50;
 
@@ -100,6 +107,15 @@ function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | 
   }
   if (modeOf(row) === "live" && r.live.counted >= SAMPLE && r.live.roi !== null && r.live.roi < 0) {
     return { tone: "warn", text: `Losing money over ${r.live.counted} live bets: consider putting it back to Sim.` };
+  }
+  // A proven winner: enough bets, a clear return and a hit rate above what its odds need. Raising the stake is the
+  // biggest profit lever, so say so. A nudge only; the stake itself is changed in Bet settings.
+  const live = r.live as StrategyReturn;
+  if (modeOf(row) === "live" && live.counted >= SAMPLE && live.roi !== null && live.roi >= 0.05) {
+    const hit = record(row.liveHits ?? 0, row.liveMisses ?? 0).hitRate;
+    if (hit !== null && typeof live.breakeven === "number" && hit > live.breakeven) {
+      return { tone: "good", text: `Clear edge over ${live.counted} live bets: the best place to raise the stake.` };
+    }
   }
   return null;
 }
@@ -739,6 +755,24 @@ export default function StrategiesPage() {
               .filter((r) => modeOf(r) === m)
               .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
+            const renderCard = (r: AdminStrategy) => (
+              <StrategyCard
+                key={r.label}
+                row={r}
+                all={strategies}
+                sortBy={sortBy}
+                includes={includesOf.get(r.label.toLowerCase()) ?? []}
+                busy={busy}
+                selecting={selecting}
+                selected={picked.has(r.label)}
+                onToggle={() => toggle(r.label)}
+                onMerge={(into) => merge.mutate({ from: r.label, into })}
+                onDelete={() => deleteStrategy(r)}
+                bet={betOf(r.label)}
+                settings={sending.data?.settings}
+                bank={sending.data?.bank}
+              />
+            );
             return (
               <section key={m} className="space-y-3">
                 <div>
@@ -752,26 +786,16 @@ export default function StrategiesPage() {
                       : "New picks are recorded and settled as if bet, but no money is placed. Switch one to Live with its Sim / Live switch."}
                   </p>
                 </div>
-                <ul className="space-y-2">
-                  {group.map((r) => (
-                    <StrategyCard
-                      key={r.label}
-                      row={r}
-                      all={strategies}
-                      sortBy={sortBy}
-                      includes={includesOf.get(r.label.toLowerCase()) ?? []}
-                      busy={busy}
-                      selecting={selecting}
-                      selected={picked.has(r.label)}
-                      onToggle={() => toggle(r.label)}
-                      onMerge={(into) => merge.mutate({ from: r.label, into })}
-                      onDelete={() => deleteStrategy(r)}
-                      bet={betOf(r.label)}
-                      settings={sending.data?.settings}
-                      bank={sending.data?.bank}
-                    />
-                  ))}
-                </ul>
+                <ul className="space-y-2">{group.filter((r) => hasPicks(r, m)).map(renderCard)}</ul>
+                {group.some((r) => !hasPicks(r, m)) && (
+                  <details className="rounded-xl border border-line bg-surface p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-ink">
+                      No data yet <span className="font-normal text-ink-muted">· {group.filter((r) => !hasPicks(r, m)).length}</span>
+                    </summary>
+                    <p className="mt-1 text-xs text-ink-muted">Nothing settled in this period, so there is no return to rank.</p>
+                    <ul className="mt-2 space-y-2">{group.filter((r) => !hasPicks(r, m)).map(renderCard)}</ul>
+                  </details>
+                )}
               </section>
             );
           })}

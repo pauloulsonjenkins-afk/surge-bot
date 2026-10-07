@@ -342,6 +342,8 @@ export interface SendingSettings {
   maxStake: number;
   maxAgeMinutes: number;
   dailyCap: number;
+  /** Most £ staked in total on one match, across strategies. 0 = no limit. Missing on an older engine. */
+  matchCap?: number;
   bttsMarketType: string;
   bttsSelection: string;
   underdogMarketType: string;

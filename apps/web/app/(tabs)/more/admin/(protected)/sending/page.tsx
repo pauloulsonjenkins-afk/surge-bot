@@ -27,6 +27,7 @@ interface Form {
   maxStake: string;
   maxAgeMinutes: string;
   dailyCap: string;
+  matchCap: string;
   bttsMarketType: string;
   bttsSelection: string;
   underdogMarketType: string;
@@ -50,6 +51,7 @@ function toForm(s: SendingSettings): Form {
     maxStake: String(s.maxStake),
     maxAgeMinutes: String(s.maxAgeMinutes),
     dailyCap: String(s.dailyCap),
+    matchCap: String(s.matchCap ?? 0),
     bttsMarketType: s.bttsMarketType,
     bttsSelection: s.bttsSelection,
     underdogMarketType: s.underdogMarketType,
@@ -137,6 +139,7 @@ export default function SendingPage() {
         maxStake: Number(form!.maxStake),
         maxAgeMinutes: Number(form!.maxAgeMinutes),
         dailyCap: Number(form!.dailyCap),
+        matchCap: Number(form!.matchCap),
         bttsMarketType: form!.bttsMarketType,
         bttsSelection: form!.bttsSelection,
         underdogMarketType: form!.underdogMarketType,
@@ -335,6 +338,19 @@ export default function SendingPage() {
                   value={form.dailyCap}
                   onChange={(e) => setForm({ ...form, dailyCap: e.target.value })}
                 />
+              </label>
+              <label className="text-xs text-ink-muted">
+                Most £ on any one match (0 = no limit)
+                <input
+                  inputMode="numeric"
+                  className={`${inputCls} mt-1`}
+                  value={form.matchCap}
+                  onChange={(e) => setForm({ ...form, matchCap: e.target.value })}
+                />
+                <span className="mt-1 block">
+                  Counts every strategy together, so several Next goal strategies firing on the same game can&apos;t stack up. A pick that would go over is held back and
+                  shows under Skipped.
+                </span>
               </label>
             </div>
           )}

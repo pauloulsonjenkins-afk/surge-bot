@@ -94,3 +94,36 @@ export function useIgnoreStrategy() {
     onSuccess: () => refreshEverything(qc),
   });
 }
+export type Light = "good" | "bad" | "ok" | "few";
+
+/** Below this many priced picks a return is too noisy to colour. */
+const LIGHT_SAMPLE = 20;
+
+/**
+ * A traffic light per strategy for the dashboard's breakdown, from its all-time return per £1: green when it makes
+ * money, red when it loses it, amber when it is about level, grey when there are too few picks. Admin only (the
+ * figures come from the admin strategies route), so nothing loads for anyone else.
+ */
+export function useStrategyLights(enabled: boolean, mode: PickMode) {
+  return useQuery({
+    queryKey: [...KEY, "lights"],
+    enabled,
+    staleTime: 60_000,
+    queryFn: ({ signal }) => getJson<AdminStrategies>("/api/admin/strategies", "the strategies", signal),
+    select: (d): Map<string, { light: Light; roi: number | null; counted: number }> => {
+      const out = new Map<string, { light: Light; roi: number | null; counted: number }>();
+      for (const s of d.strategies) {
+        const r = s.returns;
+        if (!r) continue;
+        const pick = mode === "all" ? (r.all ?? null) : r[mode];
+        const staked = pick ? pick.staked : r.live.staked + r.sim.staked;
+        const profit = pick ? pick.profit : r.live.profit + r.sim.profit;
+        const counted = pick ? pick.counted : r.live.counted + r.sim.counted;
+        const roi = staked > 0 ? profit / staked : null;
+        const light: Light = roi === null || counted < LIGHT_SAMPLE ? "few" : roi > 0.03 ? "good" : roi < -0.03 ? "bad" : "ok";
+        out.set(s.label.toLowerCase(), { light, roi, counted });
+      }
+      return out;
+    },
+  });
+}

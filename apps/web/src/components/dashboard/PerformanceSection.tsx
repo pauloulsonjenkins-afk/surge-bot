@@ -5,6 +5,9 @@ import { Card, Segmented, ToggleChip } from "@/components/ui/Card";
 import { Grouping, LeagueFilter, MINUTE_BUCKETS, OTHER_COUNTRY, ResolvedCell, TIER_LABEL, TOP_LEAGUES } from "@/domain/performance";
 import { Agg, aggregate, groupLeagues, matchesLeague } from "@/lib/performance/derive";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { useStrategyLights, type Light } from "@/queries/use-strategies";
+import { useMe } from "@/queries/use-me";
+import { usePickMode } from "@/components/ui/ModeToggle";
 
 const TINT = "color-mix(in srgb, var(--accent) 14%, transparent)";
 
@@ -37,6 +40,13 @@ function filterLabel(f: LeagueFilter, cells: ResolvedCell[]): string {
   }
 }
 
+const LIGHT_STYLE: Record<Light, { dot: string; label: string }> = {
+  good: { dot: "bg-hit", label: "Making money" },
+  bad: { dot: "bg-loss", label: "Losing money" },
+  ok: { dot: "bg-warn", label: "About level" },
+  few: { dot: "bg-ink-muted/40", label: "Too few picks to call" },
+};
+
 function LowSample() {
   return <span className="ml-1 text-xs text-ink-muted">small sample</span>;
 }
@@ -60,6 +70,8 @@ export function PerformanceSection({
   const [topOnly, setTopOnly] = useState(true);
   const [tab, setTab] = useState<"strategy" | "minute" | "league">("strategy");
   const strategyNames = useStrategyNames();
+  const { data: me } = useMe();
+  const lights = useStrategyLights(!!me?.admin, usePickMode()).data;
 
   const byStrategy = useMemo(() => (strategy ? cells.filter((a) => a.strategy === strategy) : cells), [cells, strategy]);
   const byLeague = useMemo(() => cells.filter((a) => matchesLeague(a, leagueFilter)), [cells, leagueFilter]);
@@ -152,7 +164,7 @@ export function PerformanceSection({
         title="Breakdown"
         subtitle={
           tab === "strategy"
-            ? "Tap a strategy to filter the whole dashboard to it"
+            ? lights ? "Tap a strategy to filter the whole dashboard to it. The dot is its all-time return: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
             : tab === "minute"
               ? "Hit rate by the match minute the alert fired"
               : "Tap a country, tier or league to filter this section"
@@ -184,7 +196,15 @@ export function PerformanceSection({
                     }`}
                   >
                     <span className="min-w-0">
-                      <span className="block text-sm text-ink">{strategyNames.name(r.name)}</span>
+                      <span className="flex items-center gap-2 text-sm text-ink">
+                        {(() => {
+                          const l = lights?.get(r.name.toLowerCase());
+                          if (!l) return null;
+                          const roi = l.roi === null ? "" : ` (${l.roi >= 0 ? "+" : ""}${(l.roi * 100).toFixed(1)}p per £1, ${l.counted} priced)`;
+                          return <span role="img" aria-label={LIGHT_STYLE[l.light].label + roi} title={LIGHT_STYLE[l.light].label + roi} className={`h-2.5 w-2.5 shrink-0 rounded-full ${LIGHT_STYLE[l.light].dot}`} />;
+                        })()}
+                        {strategyNames.name(r.name)}
+                      </span>
                       <span className="text-xs text-ink-muted">
                         {r.agg.alerts} alerts
                         {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}
