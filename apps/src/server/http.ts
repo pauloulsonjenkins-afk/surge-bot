@@ -82,6 +82,7 @@ import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { telegramHealth } from "./telegram-watchdog";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
+import { currentStake, getBank } from "../inplayguru/stake";
 import { addMatchName, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, recordSimBets, saveSendingSettings, toCsv } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
@@ -1068,7 +1069,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           sendingOn: settings.strategies[x.label.toLowerCase()] === true,
           // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
           mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
-          stake: settings.stakes[x.label.toLowerCase()] ?? null,
+          stake: currentStake(db, settings, x.label.toLowerCase()),
         })),
       });
       return;
@@ -1177,7 +1178,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       db.forgetStrategyMerges(label);
       forgetStopLoss(db, label);
       const key = label.toLowerCase();
-      saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null }, minOdds: { [key]: null } });
+      saveSendingSettings(db, { strategies: { [key]: false }, stakes: { [key]: null }, stakePct: { [key]: null }, minOdds: { [key]: null } });
       log.info(
         `Strategy "${label}" removed from the admin page: ${result.removed} pick(s) deleted, ` +
           `${result.keptBecauseSent - sentRecordsDeleted} sent pick(s) kept (${hiddenFromResults} taken out of results), ` +
@@ -1300,6 +1301,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           market: string | null;
           enabled: boolean;
           stake: number | null;
+          stakePct: number | null;
+          stakeNow: number | null;
           minOdds: number | null;
           alerts: number;
           sent: number;
@@ -1315,6 +1318,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           market: st.market,
           enabled: settings.strategies[key] === true,
           stake: settings.stakes[key] ?? null,
+          stakePct: settings.stakePct[key] ?? null,
+          // What a percentage stake comes to now, in pounds (null for a flat stake, or while the balance is unknown).
+          stakeNow: settings.stakePct[key] === undefined ? null : currentStake(db, settings, key),
           minOdds: settings.minOdds[key] ?? null,
           alerts: counts.get(key)?.alerts ?? 0,
           sent: counts.get(key)?.sent ?? 0,
@@ -1328,6 +1334,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         feedTokenConfigured: Boolean(process.env.BET_FEED_TOKEN),
         lastFeedFetchAt: getLastFeedFetchAt(),
         lastFeedFetcher: getLastFeedFetcher(),
+        // The Betfair balance percentage stakes work from (null until it has been read).
+        bank: getBank(db),
         preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), csv: preview.csv, blockedReason: preview.blockedReason },
       });
       return;

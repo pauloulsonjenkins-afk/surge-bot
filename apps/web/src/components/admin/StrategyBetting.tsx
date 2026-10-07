@@ -26,13 +26,21 @@ export function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
   );
 }
 
+/** "£2.00", or "2% of balance (£5.00 now)" for a percentage stake. */
+export function stakeText(s: SendingStrategy): string | null {
+  if (s.stakePct != null) return s.stakeNow != null ? `${s.stakePct}% of balance (£${s.stakeNow.toFixed(2)} now)` : `${s.stakePct}% of balance`;
+  return s.stake !== null ? `£${s.stake.toFixed(2)}` : null;
+}
+
+const hasStake = (s: SendingStrategy) => s.stake !== null || s.stakePct != null;
+
 /** "Next goal · £2.00 · min odds 1.50 · stop loss set", or why it can't be bet. */
 export function betSummary(s: SendingStrategy, settings: SendingSettings): { text: string; warn: boolean } {
   if (!s.market) return { text: "No market set", warn: true };
   if (!canBet(s, settings)) return { text: "Can't be bet yet: set its market under Sending → Bet wording", warn: true };
   const hasStop = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
-  const parts = [marketName(s.market), s.stake !== null ? `£${s.stake.toFixed(2)}` : "No stake yet", s.minOdds !== null ? `min odds ${s.minOdds.toFixed(2)}` : null, hasStop ? "stop loss set" : null];
-  return { text: parts.filter(Boolean).join(" · "), warn: s.stake === null };
+  const parts = [marketName(s.market), stakeText(s) ?? "No stake yet", s.minOdds !== null ? `min odds ${s.minOdds.toFixed(2)}` : null, hasStop ? "stop loss set" : null];
+  return { text: parts.filter(Boolean).join(" · "), warn: !hasStake(s) };
 }
 
 export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: SendingSettings }) {
@@ -41,18 +49,18 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
   const names = useStrategyNames();
   const key = s.label.toLowerCase();
   const supported = canBet(s, settings);
-  const canGoLive = supported && s.stake !== null && !save.isPending;
+  const canGoLive = supported && hasStake(s) && !save.isPending;
 
   function confirmLive(): Promise<boolean> {
-    const stake = s.stake ?? 0;
+    const stake = s.stakeNow ?? s.stake ?? 0;
     const stop = s.stopLoss;
     const hasStop = stop !== null && (stop.dailyLoss !== null || stop.lossRun !== null);
     return dialog.confirm({
       title: `Put ${names.name(s.label)} Live?`,
       tone: "money",
-      confirmLabel: `Put Live at £${stake.toFixed(2)}`,
+      confirmLabel: s.stakePct != null ? `Put Live at ${s.stakePct}% of balance` : `Put Live at £${stake.toFixed(2)}`,
       details: [
-        { label: "Stake per bet", value: `£${stake.toFixed(2)}` },
+        { label: "Stake per bet", value: stakeText(s) ?? `£${stake.toFixed(2)}` },
         { label: "Minimum odds", value: s.minOdds !== null ? s.minOdds.toFixed(2) : "None" },
         { label: "Daily limit (all strategies)", value: `${settings.dailyCap} bets, up to £${(stake * settings.dailyCap).toFixed(2)}` },
         {
@@ -82,7 +90,7 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
       <div
         role="radiogroup"
         aria-label={`${names.name(s.label)}: live or simulation`}
-        title={!supported ? "This strategy can't be bet yet, so it stays in Sim" : s.stake === null ? "Set a stake before going Live" : undefined}
+        title={!supported ? "This strategy can't be bet yet, so it stays in Sim" : !hasStake(s) ? "Set a stake before going Live" : undefined}
         className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5"
       >
         {([false, true] as const).map((live) => {
@@ -115,11 +123,17 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink";
 
 /** Stake, minimum odds and stop loss for one strategy. */
-export function BetSettings({ s, settings }: { s: SendingStrategy; settings: SendingSettings }) {
+export function BetSettings({ s, settings, bank }: { s: SendingStrategy; settings: SendingSettings; bank?: SendingState["bank"] }) {
   const save = useSaveSending();
   const key = s.label.toLowerCase();
   const supported = canBet(s, settings);
-  const savedStake = s.stake !== null ? s.stake.toFixed(2) : "";
+  // A flat £ stake or a percentage of the Betfair balance; saving one replaces the other.
+  const [mode, setMode] = useState<"flat" | "pct">(s.stakePct != null ? "pct" : "flat");
+  const [pct, setPct] = useState<string | undefined>();
+  const savedPct = s.stakePct != null ? String(s.stakePct) : "";
+  const pctShown = pct ?? savedPct;
+  const pctDirty = pct !== undefined && pct.trim() !== savedPct;
+  const savedStake = s.stakePct == null && s.stake !== null ? s.stake.toFixed(2) : "";
   const savedMin = s.minOdds !== null ? s.minOdds.toFixed(2) : "";
   const [stake, setStake] = useState<string | undefined>();
   const [min, setMin] = useState<string | undefined>();
@@ -136,6 +150,13 @@ export function BetSettings({ s, settings }: { s: SendingStrategy; settings: Sen
     if (n > settings.maxStake) return setError(`That is above your highest stake allowed (£${settings.maxStake}). Raise that limit on Sending first if you really mean it.`);
     setError(null);
     save.mutate({ stakes: { [key]: n } }, { onSuccess: () => setStake(undefined) });
+  }
+
+  function savePct() {
+    const n = Number((pct ?? "").trim().replace(/%$/, ""));
+    if (!Number.isFinite(n) || n < 0.1 || n > 25) return setError("Enter a percentage between 0.1 and 25, for example 1 or 2.5.");
+    setError(null);
+    save.mutate({ stakePct: { [key]: n } }, { onSuccess: () => setPct(undefined) });
   }
 
   function saveMin() {
@@ -159,18 +180,64 @@ export function BetSettings({ s, settings }: { s: SendingStrategy; settings: Sen
       {!supported && <p className="text-xs text-warn">{betSummary(s, settings).text}. It stays in Sim until then.</p>}
       <div className="grid grid-cols-2 gap-3">
         {/* The stake is asked for every strategy: Sim profit is priced at it even where the market can't be bet. */}
-        <label className="text-xs text-ink-muted">
-          Stake (£)
-          <div className="mt-1 flex gap-1.5">
-            <input inputMode="decimal" placeholder="0.00" className={inputCls} value={stakeShown} onChange={(e) => setStake(e.target.value)} />
-            {stakeDirty && (
-              <button type="button" onClick={saveStake} disabled={save.isPending} className="rounded-md bg-accent px-2.5 text-xs font-medium text-accent-ink disabled:opacity-50">
-                Set
-              </button>
-            )}
+        <div className="text-xs text-ink-muted">
+          <div className="flex items-center justify-between gap-2">
+            <span>Stake</span>
+            <div role="group" aria-label="Stake type" className="inline-flex gap-0.5 rounded-md border border-line bg-surface p-0.5">
+              {(["flat", "pct"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={mode === m}
+                  onClick={() => setMode(m)}
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${mode === m ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"}`}
+                >
+                  {m === "flat" ? "£" : "% of balance"}
+                </button>
+              ))}
+            </div>
           </div>
-          {!stakeDirty && s.stake === null && <span className="mt-1 block text-warn">Needed to go Live, and for Sim profit</span>}
-        </label>
+          {mode === "flat" ? (
+            <>
+              <div className="mt-1 flex gap-1.5">
+                <input aria-label="Stake in pounds" inputMode="decimal" placeholder="0.00" className={inputCls} value={stakeShown} onChange={(e) => setStake(e.target.value)} />
+                {stakeDirty && (
+                  <button type="button" onClick={saveStake} disabled={save.isPending} className="rounded-md bg-accent px-2.5 text-xs font-medium text-accent-ink disabled:opacity-50">
+                    Set
+                  </button>
+                )}
+              </div>
+              {s.stakePct != null && !stakeDirty && <span className="mt-1 block">Currently {s.stakePct}% of balance. Setting a £ amount replaces it.</span>}
+              {!stakeDirty && !hasStake(s) && <span className="mt-1 block text-warn">Needed to go Live, and for Sim profit</span>}
+            </>
+          ) : (
+            <>
+              <div className="mt-1 flex items-center gap-1.5">
+                <input aria-label="Stake as a percentage of the balance" inputMode="decimal" placeholder="e.g. 1" className={inputCls} value={pctShown} onChange={(e) => setPct(e.target.value)} />
+                <span className="text-sm text-ink-muted">%</span>
+                {pctDirty && (
+                  <button type="button" onClick={savePct} disabled={save.isPending} className="rounded-md bg-accent px-2.5 text-xs font-medium text-accent-ink disabled:opacity-50">
+                    Set
+                  </button>
+                )}
+              </div>
+              <span className="mt-1 block">
+                {bank?.total != null
+                  ? `Balance £${bank.total.toFixed(2)}${bank.at ? `, read ${new Date(bank.at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}` : ""}.`
+                  : "Betfair balance not read yet."}
+                {(() => {
+                  const n = Number(pctShown);
+                  if (!bank?.total || !Number.isFinite(n) || n <= 0) return null;
+                  const raw = Math.round(((bank.total * n) / 100) * 100) / 100;
+                  const capped = raw > settings.maxStake;
+                  return <span className="text-ink"> {n}% = £{(capped ? settings.maxStake : raw).toFixed(2)}{capped ? ` (held to your £${settings.maxStake} limit)` : ""}{raw < 1 ? ", below Betfair's £1 minimum" : ""} per bet now.</span>;
+                })()}
+              </span>
+              {s.stakePct == null && !pctDirty && s.stake !== null && <span className="mt-1 block">Currently a flat £{s.stake.toFixed(2)}. Setting a percentage replaces it.</span>}
+              <span className="mt-1 block">Worked out when each bet is placed from the balance then; bets already placed keep their stake. Your highest-stake limit still applies.</span>
+            </>
+          )}
+        </div>
         {supported && (
           <label className="text-xs text-ink-muted">
             Minimum odds

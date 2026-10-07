@@ -33,6 +33,7 @@ import type { CurrentOrder } from "./exchange";
 import { findRunner, getBetfairLinkStatus, post, readCredentials } from "./exchange";
 import type { DirectBet, EngineDb, LivePick } from "../storage/engine-db";
 import { betableUntil, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, strategyLabel, type FeedRow } from "../inplayguru/bet-feed";
+import { saveBank } from "../inplayguru/stake";
 import { ukDateOf, ukDayBounds } from "../server/uk-time";
 import { log } from "../server/log";
 import { excelTime, toExcelCsv } from "../server/excel";
@@ -404,11 +405,29 @@ let running = false;
 let again = false;
 let trader: Trading | null = null;
 
+/** The Betfair balance behind percentage stakes (stake.ts): read at most every 2 minutes, only when a strategy uses one. */
+let lastBankRead = 0;
+const BANK_EVERY_MS = 2 * 60_000;
+async function refreshBank(db: EngineDb, trading: Trading, now: Date): Promise<void> {
+  if (!(trading instanceof BetfairTrader)) return;
+  const s = getSendingSettings(db);
+  if (Object.keys(s.stakePct).length === 0) return;
+  if (now.getTime() - lastBankRead < BANK_EVERY_MS) return;
+  lastBankRead = now.getTime();
+  try {
+    const a = await trading.account();
+    saveBank(db, { available: a.available, exposure: a.exposure }, now);
+  } catch (err) {
+    log.warn(`Betfair balance not read: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 /**
  * One pass: in Live, run the feed rules to hand over new picks (to this module instead of BF Bot Manager); take new
  * picks; then work on every open record. Returns once done. Safe to call often: passes never overlap.
  */
 export async function runDirect(db: EngineDb, trading: Trading, now = new Date(), env = process.env): Promise<void> {
+  await refreshBank(db, trading, now);
   const settings = getDirectSettings(db);
   const mode = effectiveMode(settings, env);
 
@@ -621,6 +640,8 @@ export function startDirectBetting(db: EngineDb): () => void {
     try {
       do {
         again = false;
+        // Percentage stakes (stake.ts) need the balance even while direct betting is off (for simulation).
+        await refreshBank(db, trader!, new Date());
         if (getDirectSettings(db).mode === "off" && db.listOpenDirectBets().length === 0) break;
         await runDirect(db, trader!).catch((err: unknown) => log.warn(`Direct betting pass failed: ${err instanceof Error ? err.message : String(err)}`));
       } while (again);

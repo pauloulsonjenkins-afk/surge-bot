@@ -335,6 +335,8 @@ export interface SendingSettings {
   strategies: Record<string, boolean>;
   /** Stake in pounds per strategy (lower-case name). Send null to clear one. */
   stakes: Record<string, number | null>;
+  /** Or a stake as a percentage of the Betfair balance per strategy (lower-case name). Send null to clear one. Setting one replaces the other. */
+  stakePct: Record<string, number | null>;
   /** Minimum back odds per strategy (lower-case name), sent to the betting software as MinPrice. Send null to clear one. */
   minOdds: Record<string, number | null>;
   maxStake: number;
@@ -382,7 +384,9 @@ export interface StopLossPatch {
 
 export interface SendingState {
   settings: SendingSettings;
-  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; minOdds: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null; /** The same limits run on its simulated bets (missing on an older engine). */ simStopLoss?: StopLossStatus | null }>;
+  /** The Betfair balance percentage stakes work from (null total until it has been read). */
+  bank?: { total: number | null; available: number | null; exposure: number | null; at: string | null };
+  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; /** A percentage stake, if this strategy uses one. */ stakePct?: number | null; /** What that percentage comes to now in pounds. */ stakeNow?: number | null; minOdds: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null; /** The same limits run on its simulated bets (missing on an older engine). */ simStopLoss?: StopLossStatus | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
   /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */

@@ -112,13 +112,14 @@ export default function SendingPage() {
     const turningOn = !settings.enabled;
     if (turningOn) {
       const live = data!.strategies.filter((x) => x.enabled);
-      const perDay = live.reduce((most, x) => Math.max(most, x.stake ?? 0), 0) * settings.dailyCap;
+      // A percentage stake is held to the highest-stake limit, so that is the most it can be.
+      const perDay = live.reduce((most, x) => Math.max(most, x.stakePct != null ? settings.maxStake : (x.stake ?? 0)), 0) * settings.dailyCap;
       const ok = await dialog.confirm({
         title: "Turn betting on?",
         tone: "money",
         confirmLabel: live.length === 0 ? "Turn betting on" : `Start betting ${live.length} Live strateg${live.length === 1 ? "y" : "ies"}`,
         details: [
-          { label: "Live strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${strategyNames.name(x.label)} £${x.stake?.toFixed(2) ?? "–"}`).join(", ") },
+          { label: "Live strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${strategyNames.name(x.label)} ${x.stakePct != null ? `${x.stakePct}% of balance` : `£${x.stake?.toFixed(2) ?? "–"}`}`).join(", ") },
           { label: "Daily limit", value: `${settings.dailyCap} new bets` },
           { label: "Most staked in a day", value: perDay > 0 ? `up to £${perDay.toFixed(2)}` : "–" },
           { label: "Highest stake allowed", value: `£${settings.maxStake.toFixed(2)}` },
@@ -227,7 +228,7 @@ export default function SendingPage() {
                 <li key={s.label} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-ink"><StrategyName label={s.label} /></span>
                   <span className="shrink-0 text-xs text-ink-muted">
-                    {s.stopLoss?.stopped ? <span className="text-warn">Stopped today · </span> : null}Live · £{s.stake?.toFixed(2) ?? "–"}
+                    {s.stopLoss?.stopped ? <span className="text-warn">Stopped today · </span> : null}Live · {s.stakePct != null ? `${s.stakePct}% of balance` : `£${s.stake?.toFixed(2) ?? "–"}`}
                   </span>
                 </li>
               ))}

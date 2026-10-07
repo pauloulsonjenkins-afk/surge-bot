@@ -43,14 +43,17 @@ import type { EngineDb, LivePick } from "../storage/engine-db";
 import { kickoffMinutes } from "./parse-alert";
 import { computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
+import { cleanPct, getBank, resolveStake } from "./stake";
 
 export interface SendingSettings {
   /** Master switch. */
   enabled: boolean;
   /** Per-strategy switches, keyed by lower-case strategy name. Missing = off. */
   strategies: Record<string, boolean>;
-  /** Stake in pounds per strategy, keyed by lower-case strategy name. Missing = cannot be sent. */
+  /** Stake in pounds per strategy, keyed by lower-case strategy name. Missing (and no percentage) = cannot be sent. */
   stakes: Record<string, number>;
+  /** Or a stake as a percentage of the Betfair balance (see stake.ts). A strategy has a flat stake or a percentage, not both. */
+  stakePct: Record<string, number>;
   /** Minimum back odds per strategy, keyed by lower-case strategy name. Missing = no minimum. Sent as the MinPrice column. */
   minOdds: Record<string, number>;
   /** Hard ceiling. A stake above this is never sent, whatever is saved. */
@@ -95,6 +98,7 @@ export const DEFAULT_SENDING: SendingSettings = {
   enabled: false,
   strategies: {},
   stakes: {},
+  stakePct: {},
   minOdds: {},
   maxStake: 5,
   maxAgeMinutes: 10,
@@ -181,6 +185,13 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
       if (st !== null) stakes[k.toLowerCase()] = st;
     }
   }
+  const stakePct: Record<string, number> = {};
+  if (raw.stakePct && typeof raw.stakePct === "object") {
+    for (const [k, v] of Object.entries(raw.stakePct)) {
+      const p = cleanPct(v);
+      if (p !== null && stakes[k.toLowerCase()] === undefined) stakePct[k.toLowerCase()] = p;
+    }
+  }
   const minOdds: Record<string, number> = {};
   if (raw.minOdds && typeof raw.minOdds === "object") {
     for (const [k, v] of Object.entries(raw.minOdds)) {
@@ -192,6 +203,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     enabled: raw.enabled === true,
     strategies,
     stakes,
+    stakePct,
     minOdds,
     maxStake: clampInt(raw.maxStake, 1, 500, DEFAULT_SENDING.maxStake),
     maxAgeMinutes: clampInt(raw.maxAgeMinutes, 1, 60, DEFAULT_SENDING.maxAgeMinutes),
@@ -219,7 +231,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
 /** Applies a partial update from the admin page and saves the merged, validated result. */
 export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>): SendingSettings {
   const current = getSendingSettings(db);
-  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, stakes: { ...current.stakes }, minOdds: { ...current.minOdds } };
+  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds } };
 
   if (typeof patch.enabled === "boolean") next.enabled = patch.enabled;
   // Stakes first, so a request can set a stake and switch the strategy on together.
@@ -229,7 +241,23 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
       if (v === null) delete next.stakes[key];
       else {
         const st = cleanStake(v);
-        if (st !== null) next.stakes[key] = st;
+        if (st !== null) {
+          next.stakes[key] = st;
+          delete next.stakePct[key]; // a flat stake replaces a percentage
+        }
+      }
+    }
+  }
+  if (patch.stakePct && typeof patch.stakePct === "object") {
+    for (const [k, v] of Object.entries(patch.stakePct as Record<string, unknown>)) {
+      const key = k.toLowerCase();
+      if (v === null) delete next.stakePct[key];
+      else {
+        const p = cleanPct(v);
+        if (p !== null) {
+          next.stakePct[key] = p;
+          delete next.stakes[key]; // a percentage replaces a flat stake
+        }
       }
     }
   }
@@ -270,7 +298,7 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
 
   // A strategy can't be on without a stake.
   for (const k of Object.keys(next.strategies)) {
-    if (next.strategies[k] && next.stakes[k] === undefined) next.strategies[k] = false;
+    if (next.strategies[k] && next.stakes[k] === undefined && next.stakePct[k] === undefined) next.strategies[k] = false;
   }
 
   db.setSetting(SETTINGS_KEY, JSON.stringify(next));
@@ -451,6 +479,7 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
 export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; holdForExchangeMs?: number }): FeedResult {
   const now = opts.now ?? new Date();
   const settings = getSendingSettings(db);
+  const bank = getBank(db);
   const empty = (blockedReason: string | null): FeedResult => ({
     rows: [],
     skipped: [],
@@ -554,11 +583,13 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       continue;
     }
 
-    const stake = settings.stakes[label.toLowerCase()];
-    if (stake === undefined) {
-      skipped.push(skip(p, "No stake set for this strategy."));
+    // A flat stake, or a percentage of the Betfair balance turned into pounds now (kept with the row, so it never changes).
+    const staked = resolveStake(settings, label.toLowerCase(), bank, { now, live: true });
+    if (staked.stake === null) {
+      skipped.push(skip(p, staked.reason ?? "No stake set for this strategy."));
       continue;
     }
+    const stake = staked.stake;
     // Betfair's price below the strategy's minimum odds: the betting software would turn it down. Held, and the price
     // is read again each Betfair poll (betfair/exchange.ts repriceHeld); it goes out once the price reaches the minimum.
     const minPrice = settings.minOdds[label.toLowerCase()] ?? null;
@@ -648,6 +679,7 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
   if (candidates.length === 0) return 0;
 
   const settings = getSendingSettings(db);
+  const bank = getBank(db);
   const today = ukDay.format(now);
   const stops = computeStopLoss(db, now, "sim");
   const noSend = db.noSendLeagues();
@@ -660,14 +692,15 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     const liveNow = settings.enabled && settings.strategies[key] === true;
     if (liveNow && fresh) continue; // the bet feed decides this one
 
-    const stake = settings.stakes[key] ?? null;
+    const staked = resolveStake(settings, key, bank, { now, live: false });
+    const stake = staked.stake;
     const minPrice = settings.minOdds[key] ?? null;
     const odds = alertOddsOfPick(p);
     let skipped: string | null = null;
     if (noSend.has(p.leagueKey)) skipped = "This league is marked as not on Betfair.";
     else if (liveNow) skipped = "Not sent by the bet feed in time.";
     else if (!fresh) skipped = "The alert arrived too late to bet.";
-    else if (stake === null) skipped = "No stake set for this strategy.";
+    else if (stake === null) skipped = staked.reason ?? "No stake set for this strategy.";
     else if (stake > settings.maxStake) skipped = `Stake £${stake.toFixed(2)} is above the highest allowed (£${settings.maxStake}).`;
     else if (minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
     else if (stops.get(key)?.stopped) skipped = `Stopped: ${stops.get(key)!.reason}`;

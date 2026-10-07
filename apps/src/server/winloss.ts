@@ -28,6 +28,7 @@
  */
 import { inPickMode, isLivePlacement, type EngineDb, type PickMode, type Placement } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
+import { currentStake } from "../inplayguru/stake";
 import { breakevenHitRate, hitRateRange, oddsFor, priceResult } from "./pricing";
 
 export interface WinLossSettings {
@@ -231,7 +232,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
         label,
         key,
         market: r.market,
-        stake: sending.stakes[key] ?? null,
+        stake: currentStake(db, sending, key),
         assumedOdds: settings.assumedOdds[key] ?? null,
         settled: 0,
         counted: 0,
@@ -246,7 +247,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     t.settled++;
     inMode.add(key);
 
-    const out = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: settings.assumedOdds[key] ?? null, commission });
+    const out = priceResult(r, { strategyStake: currentStake(db, sending, key), assumedOdds: settings.assumedOdds[key] ?? null, commission });
     if (out.kind === "noStake") {
       t.noStake++;
       continue;
@@ -498,7 +499,7 @@ export function pricingInputs(db: EngineDb) {
     price: (r: ResultRow, opts: { estimate?: boolean } = {}) => {
       const key = strategyLabel(r.strategy).toLowerCase();
       const assumed = settings.assumedOdds[key] ?? null;
-      const priced = priceResult(r, { strategyStake: sending.stakes[key] ?? null, assumedOdds: assumed, commission, estimate: opts.estimate });
+      const priced = priceResult(r, { strategyStake: currentStake(db, sending, key), assumedOdds: assumed, commission, estimate: opts.estimate });
       // The odds it is judged at: the price it was actually priced at, else the best price known for it.
       return { key, priced, odds: priced.kind === "priced" ? priced.odds : oddsFor(r, assumed) };
     },

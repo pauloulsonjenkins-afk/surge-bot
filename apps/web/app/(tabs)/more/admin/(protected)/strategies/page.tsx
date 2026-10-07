@@ -18,7 +18,7 @@ import { ChevronDown } from "lucide-react";
 import { BreakevenBar } from "@/components/ui/BreakevenBar";
 import { StrategyName } from "@/components/ui/StrategyName";
 import { ukMidnightIso } from "@/lib/uk-time";
-import { useSending, type SendingSettings } from "@/queries/use-sending";
+import { useSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
 import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
 import Link from "next/link";
 
@@ -235,10 +235,13 @@ function StrategyCard({
   onDelete,
   bet,
   settings,
+  bank,
 }: {
   /** Its betting controls (from Sending); missing while they load. */
   bet: SendingStrategy | undefined;
   settings: SendingSettings | undefined;
+  /** The Betfair balance percentage stakes work from. */
+  bank?: SendingState["bank"];
   row: AdminStrategy;
   all: AdminStrategy[];
   sortBy: SortBy;
@@ -340,7 +343,7 @@ function StrategyCard({
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
           {info?.description && <p className="text-xs text-ink">{info.description}</p>}
-          {bet && settings && <BetSettings s={bet} settings={settings} />}
+          {bet && settings && <BetSettings s={bet} settings={settings} bank={bank} />}
           <p className="text-xs text-ink-muted">
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
             {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
@@ -765,6 +768,7 @@ export default function StrategiesPage() {
                       onDelete={() => deleteStrategy(r)}
                       bet={betOf(r.label)}
                       settings={sending.data?.settings}
+                      bank={sending.data?.bank}
                     />
                   ))}
                 </ul>
