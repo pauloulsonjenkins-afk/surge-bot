@@ -22,6 +22,7 @@ export const ADMIN_GROUPS = [
     items: [
       { href: "/more/admin/winloss", label: "Win/Loss", description: "Profit and loss by day and strategy, and running costs." },
       { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier." },
+      { href: "/more/admin/history", label: "League history", description: "How each league plays, and strategies tested on past seasons." },
       { href: "/more/admin/results", label: "Amend results", description: "Correct a hit or miss, or remove a pick." },
     ],
   },

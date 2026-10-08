@@ -1505,3 +1505,60 @@ export async function fetchPicksExport(): Promise<string> {
     clearTimeout(timeout);
   }
 }
+
+// ---- League history (mirrors history/football-data.ts in the engine) ----
+
+export interface HistoryStatus {
+  state: "idle" | "loading" | "ready" | "failed";
+  done: number;
+  total: number;
+  matches: number;
+  loadedAt: string | null;
+  errors: string[];
+}
+
+export interface LeagueProfile {
+  code: string;
+  name: string;
+  country: string;
+  matches: number;
+  seasons: number;
+  homePct: number;
+  drawPct: number;
+  awayPct: number;
+  homeEdge: number;
+  avgGoals: number;
+  over25Pct: number;
+  bttsPct: number;
+  firstHalfGoalPct: number | null;
+  avgCorners: number | null;
+}
+
+export interface LayTestRow {
+  bets: number;
+  won: number;
+  profit: number;
+  roi: number;
+  avgOdds: number;
+}
+
+export interface LayTestResult {
+  status: HistoryStatus;
+  options: { minOdds: number; maxOdds: number; commission: number; spread: number; seasons: number; divisions: string[] };
+  total: LayTestRow;
+  byLeague: Array<LayTestRow & { code: string; name: string; country: string; oddsSource: string }>;
+  bySeason: Array<LayTestRow & { season: number }>;
+  noPrice: number;
+}
+
+export function fetchHistory(seasons: number): Promise<{ status: HistoryStatus; seasons: number; maxSeasons: number; profiles: LeagueProfile[] }> {
+  return engineCall(`/internal/history?seasons=${seasons}`, "the league history");
+}
+
+export function fetchAwayLayTest(query: string): Promise<LayTestResult> {
+  return engineCall(`/internal/history/away-lay?${query}`, "the Away Win Lay test", { timeoutMs: 20_000 });
+}
+
+export function refreshHistory(): Promise<{ status: HistoryStatus }> {
+  return engineCall("/internal/history/refresh", "refreshing the league history", { method: "POST", body: {} });
+}

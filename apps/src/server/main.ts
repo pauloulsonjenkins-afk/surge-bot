@@ -21,6 +21,7 @@ import { startTelegramWatchdog } from "./telegram-watchdog";
 import { BetfairTrader, startDirectBetting } from "../betfair/direct";
 import { readCredentials } from "../betfair/exchange";
 import { startMembers } from "../members/runner";
+import { startHistoryRefresh } from "../history/football-data";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -88,6 +89,8 @@ async function main(): Promise<void> {
   startTelegramWatchdog(db);
   db.markExistingNoSendLeaguesDone();
   startDirectBetting(db);
+  // Past results for the League history page: downloaded a few minutes after start, refreshed daily.
+  startHistoryRefresh();
 
   // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
   // real bets on the house Betfair account for admin members. See src/members/runner.ts and live.ts.

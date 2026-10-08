@@ -88,6 +88,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
+import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
@@ -773,6 +774,50 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (!body.acknowledged) matchBets(db);
       log.info(`Reconcile: ${changed} unlinked bet(s) ${body.acknowledged ? "acknowledged" : "restored"} from the admin page.`);
       send(res, 200, { changed });
+      return;
+    }
+
+    // Past results and prices (football-data.co.uk): league profiles, and testing Away Win Lay on past seasons.
+    if (path.startsWith("/internal/history")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const url = new URL(rawUrl, "http://internal");
+      const st = historyStatus();
+      // The first visit starts the download; the page shows progress until it's ready.
+      if (st.state === "idle") void loadHistory().catch(() => {});
+      if (req.method === "GET" && path === "/internal/history") {
+        const seasons = Math.min(SEASONS, Math.max(1, Number(url.searchParams.get("seasons")) || SEASONS));
+        send(res, 200, { status: historyStatus(), seasons, maxSeasons: SEASONS, profiles: leagueProfiles(undefined, seasons) });
+        return;
+      }
+      if (req.method === "GET" && path === "/internal/history/away-lay") {
+        const n = (k: string, lo: number, hi: number, d: number) => {
+          const v = Number(url.searchParams.get(k));
+          return url.searchParams.has(k) && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
+        };
+        const result = testAwayLay({
+          minOdds: n("min", 1.01, 100, 2.5),
+          maxOdds: n("max", 1.01, 1000, 6),
+          commission: n("commission", 0, 0.2, 0.02),
+          spread: n("spread", 0, 0.2, 0.02),
+          seasons: Math.round(n("seasons", 1, SEASONS, SEASONS)),
+          divisions: (url.searchParams.get("divs") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+        });
+        send(res, 200, { status: historyStatus(), ...result });
+        return;
+      }
+      if (req.method === "POST" && path === "/internal/history/refresh") {
+        void loadHistory({ force: true }).catch(() => {});
+        send(res, 200, { status: historyStatus() });
+        return;
+      }
+      send(res, 404, { error: "not_found" });
       return;
     }
 
