@@ -1212,8 +1212,48 @@ export interface HorseEntryInput {
   ewPlaces: string;
 }
 
+/** A pick fetched from a tipster site by the daily importer: a suggestion that fills the form, never a bet. */
+export interface HorseSuggestion {
+  day: string;
+  rank: number;
+  horse: string;
+  course: string | null;
+  raceTime: string | null;
+  oddsText: string | null;
+  betType: "win" | "ew";
+  ewPlaces: number | null;
+  points: string | null;
+  source: string | null;
+  importedAt: string;
+}
+
+export interface HorseImportStatus {
+  at: string;
+  ok: boolean;
+  message: string;
+  day: string | null;
+  count: number;
+}
+
+/** Stores a day's imported picks as suggestions (the daily importer, via /api/horses/import). */
+export function putHorseSuggestions(day: string, picks: unknown[], source: string | null): Promise<{ stored: number }> {
+  return engineCall("/internal/horses/suggestions", "storing the imported picks", { method: "PUT", body: { day, picks, source } });
+}
+
+/** Tells the engine the importer failed, so the admin gets a notification and the Horses page says so. */
+export function reportHorseImportFailed(message: string): Promise<{ ok: true }> {
+  return engineCall("/internal/horses/import-failed", "reporting the failed import", { method: "POST", body: { message } });
+}
+
 /** courses: racecourses used so far, most used first; knownCourses: UK and Irish courses, for suggestions. */
-export function fetchHorseBets(): Promise<{ bets: HorseBet[]; days?: HorseDay[]; courses?: string[]; knownCourses?: string[] }> {
+export function fetchHorseBets(): Promise<{
+  bets: HorseBet[];
+  days?: HorseDay[];
+  courses?: string[];
+  knownCourses?: string[];
+  suggestions?: HorseSuggestion[];
+  importStatus?: HorseImportStatus | null;
+}> {
   return engineCall("/internal/horses", "the horse bets");
 }
 

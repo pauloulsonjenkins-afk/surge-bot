@@ -7,3 +7,10 @@ dist/
 # Local environment files can hold secrets.
 .env
 .env.*
+!.env.example
+
+# The horse importer's own logs, saved pages and last-run note.
+tools/horse-import/debug/
+tools/horse-import/*.log
+tools/horse-import/last_run.json
+__pycache__/

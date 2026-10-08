@@ -28,7 +28,7 @@ import { dirname } from "node:path";
 import { leagueCountryFromText, type ParsedAlert } from "../inplayguru/parse-alert";
 import type { ScheduleFixture } from "../fixtures/api-football";
 import type { SimRecord } from "../server/pricing";
-import type { HorseBet, HorseDay } from "../server/horses";
+import type { HorseBet, HorseDay, HorseSuggestion } from "../server/horses";
 import type { BetfairCompetition } from "../betfair/competitions";
 
 export interface CapturedWebhook {
@@ -671,6 +671,23 @@ export class EngineDb {
       CREATE TABLE IF NOT EXISTS horse_days (
         day           TEXT PRIMARY KEY,
         yankee_stake  REAL
+      );
+
+      -- Picks fetched from a tipster site by tools/horse-import. Only suggestions: they fill the Horses page's form for the
+      -- admin to check and change; the bet itself (stake, odds) is saved by hand into horse_bets. One per day and choice.
+      CREATE TABLE IF NOT EXISTS horse_suggestions (
+        day         TEXT NOT NULL,
+        rank        INTEGER NOT NULL,
+        horse       TEXT NOT NULL,
+        course      TEXT,
+        race_time   TEXT,
+        odds_text   TEXT,
+        bet_type    TEXT,
+        ew_places   INTEGER,
+        points      TEXT,
+        source      TEXT,
+        imported_at TEXT NOT NULL,
+        PRIMARY KEY (day, rank)
       );
 
       -- Devices (browsers, or the installed app) that get the admin's push notifications (server/push.ts).
@@ -2309,6 +2326,38 @@ export class EngineDb {
     return this.db
       .prepare(`SELECT course, COUNT(*) AS bets FROM horse_bets WHERE course IS NOT NULL AND course <> '' GROUP BY lower(course) ORDER BY bets DESC, MAX(day) DESC`)
       .all() as Array<{ course: string; bets: number }>;
+  }
+
+  /** Replaces a day's suggested picks (an import is always the whole day, so a re-run corrects an earlier one). */
+  replaceHorseSuggestions(day: string, picks: HorseSuggestion[], at: string): void {
+    const ins = this.db.prepare(
+      `INSERT INTO horse_suggestions (day, rank, horse, course, race_time, odds_text, bet_type, ew_places, points, source, imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM horse_suggestions WHERE day = ?`).run(day);
+      for (const p of picks) ins.run(day, p.rank, p.horse, p.course, p.raceTime, p.oddsText, p.betType, p.ewPlaces, p.points, p.source, at);
+      // Old suggestions are of no use after a few days.
+      this.db.prepare(`DELETE FROM horse_suggestions WHERE day < date(?, '-7 days')`).run(day);
+    })();
+    this.onChange();
+  }
+
+  /** Suggested picks from the last few days, oldest first. */
+  listHorseSuggestions(): Array<HorseSuggestion & { day: string; importedAt: string }> {
+    const rows = this.db.prepare(`SELECT * FROM horse_suggestions ORDER BY day, rank`).all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      day: String(r.day),
+      rank: Number(r.rank) as HorseSuggestion["rank"],
+      horse: String(r.horse),
+      course: (r.course as string | null) ?? null,
+      raceTime: (r.race_time as string | null) ?? null,
+      oddsText: (r.odds_text as string | null) ?? null,
+      betType: r.bet_type === "ew" ? "ew" : "win",
+      ewPlaces: r.ew_places === null || r.ew_places === undefined ? null : Number(r.ew_places),
+      points: (r.points as string | null) ?? null,
+      source: (r.source as string | null) ?? null,
+      importedAt: String(r.imported_at),
+    }));
   }
 
   setHorseResult(id: number, result: HorseBet["result"]): boolean {

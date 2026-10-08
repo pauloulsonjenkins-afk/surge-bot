@@ -88,7 +88,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
-import { listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, setHorseResult } from "./horses";
+import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
 import { checkLeague, coverageOfAlertLeagues, fixtureLeagueChecker, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
@@ -787,7 +787,30 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       try {
         if (req.method === "GET" && path === "/internal/horses") {
-          send(res, 200, { bets: listHorseBets(db), days: listHorseDays(db), courses: listHorseCourses(db), knownCourses: RACECOURSES });
+          send(res, 200, {
+            bets: listHorseBets(db),
+            days: listHorseDays(db),
+            courses: listHorseCourses(db),
+            knownCourses: RACECOURSES,
+            suggestions: db.listHorseSuggestions(),
+            importStatus: getHorseImportStatus(db),
+          });
+          return;
+        }
+        // The daily importer (tools/horse-import) reports through the website: the picks it read, or why it couldn't.
+        if (req.method === "PUT" && path === "/internal/horses/suggestions") {
+          const body = await readJsonBody(req);
+          const stored = saveHorseSuggestions(db, body.day, body.picks, body.source ?? null);
+          setHorseImportStatus(db, { at: new Date().toISOString(), ok: true, message: `${stored.length} picks fetched`, day: String(body.day), count: stored.length });
+          send(res, 200, { stored: stored.length });
+          return;
+        }
+        if (req.method === "POST" && path === "/internal/horses/import-failed") {
+          const body = await readJsonBody(req);
+          const message = typeof body.message === "string" ? body.message.slice(0, 300) : "The horse import failed.";
+          setHorseImportStatus(db, { at: new Date().toISOString(), ok: false, message, day: null, count: 0 });
+          await sendPush(db, { title: "Horse picks not fetched", body: message, url: "/more/admin/horses", tag: "horse-import" });
+          send(res, 200, { ok: true });
           return;
         }
         if (req.method === "PUT" && path === "/internal/horses/day") {

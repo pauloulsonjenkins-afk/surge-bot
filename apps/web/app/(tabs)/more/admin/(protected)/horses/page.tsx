@@ -12,6 +12,7 @@ import {
   useSetHorseResult,
   type HorseBet,
   type HorseDay,
+  type HorseSuggestion,
   type HorseEntryInput,
 } from "@/queries/use-horses";
 import {
@@ -93,6 +94,7 @@ function EntryCard({
   setDay,
   courses,
   knownCourses,
+  suggestions,
 }: {
   bets: HorseBet[];
   days: HorseDay[];
@@ -102,6 +104,8 @@ function EntryCard({
   courses: string[];
   /** UK and Irish courses, suggested after your own. */
   knownCourses: string[];
+  /** Picks the daily importer fetched for this day, to copy into the form. */
+  suggestions: HorseSuggestion[];
 }) {
   const save = useSaveHorseDay();
   const [rows, setRows] = useState<Record<number, Row> & { carriedFrom?: string }>(() => rowsFor(bets, day));
@@ -119,6 +123,30 @@ function EntryCard({
     setYankee(y);
     setYankeeOn(y !== "");
   }, [bets, days, day]);
+
+  // Copies the fetched horses, courses and the tipster's odds into the form. The amounts and everything else stay as they
+  // are, and nothing is saved until Save is pressed, so each row can still be changed first.
+  function fillFromSuggestions() {
+    setSaved(false);
+    setRows((r) => {
+      const next = { ...r };
+      for (const s of suggestions) {
+        const cur = next[s.rank];
+        if (cur) {
+          next[s.rank] = {
+            ...cur,
+            horse: s.horse,
+            course: s.course ?? "",
+            odds: s.oddsText ?? cur.odds,
+            betType: s.betType,
+            ewPlaces: s.betType === "ew" && s.ewPlaces ? String(s.ewPlaces) : cur.ewPlaces,
+          };
+        }
+      }
+      delete next.carriedFrom;
+      return next;
+    });
+  }
 
   const set = (rank: number, patch: Partial<Row>) => {
     setSaved(false);
@@ -167,6 +195,32 @@ function EntryCard({
             className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm text-ink"
           />
         </label>
+
+        {suggestions.length > 0 && (
+          <div className="rounded-md border border-accent/40 bg-accent/10 p-3">
+            <p className="text-sm font-medium text-ink">Today&rsquo;s picks have been fetched</p>
+            <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
+              {suggestions.map((s) => (
+                <li key={s.rank}>
+                  {s.rank}. <span className="text-ink">{s.horse}</span>
+                  {s.course ? ` · ${s.course}` : ""}
+                  {s.raceTime ? ` ${s.raceTime}` : ""}
+                  {s.oddsText ? ` · ${s.oddsText}` : ""}
+                  {s.betType === "ew" ? ` · each-way${s.ewPlaces ? `, ${s.ewPlaces} places` : ""}` : ""}
+                  {s.points ? ` · tipster stakes ${s.points} pt${s.points === "1" ? "" : "s"}` : ""}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={fillFromSuggestions}
+              className="mt-2 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:opacity-90"
+            >
+              Fill the form with these
+            </button>
+            <p className="mt-1 text-xs text-ink-muted">Nothing is saved or bet until you press Save. Check the odds you can actually get, and set your amounts.</p>
+          </div>
+        )}
 
         {rows.carriedFrom && (
           <p className="rounded-md bg-surface-2 px-2.5 py-1.5 text-xs text-ink-muted">
@@ -419,8 +473,13 @@ export default function HorsesPage() {
       <PageHeader
         as="h2"
         title="Today’s bets"
-        subtitle="Your daily NAP and choices, and their results. Entered by hand; nothing here is bet automatically."
+        subtitle="Your daily NAP and choices, and their results. The day's picks can be fetched for you, but amounts and odds are always yours to set; nothing here is bet automatically."
       />
+      {data?.importStatus && (
+        <p className={`text-xs ${data.importStatus.ok ? "text-ink-muted" : "text-destructive"}`}>
+          Daily fetch: {data.importStatus.ok ? "ok" : "failed"} · {data.importStatus.message} · {new Date(data.importStatus.at).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+        </p>
+      )}
 
       {error ? (
         <QueryError error={error} next="/more/admin/horses" />
@@ -432,7 +491,15 @@ export default function HorsesPage() {
       ) : (
         <>
           <div ref={entryRef}>
-            <EntryCard bets={bets} days={days} day={day} setDay={setDay} courses={data.courses} knownCourses={data.knownCourses} />
+            <EntryCard
+              bets={bets}
+              days={days}
+              day={day}
+              setDay={setDay}
+              courses={data.courses}
+              knownCourses={data.knownCourses}
+              suggestions={data.suggestions.filter((s) => s.day === day)}
+            />
           </div>
 
           <section className="space-y-2" aria-label="Daily record">

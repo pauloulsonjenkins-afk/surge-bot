@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HorseBet, HorseDay, HorseEntryInput } from "@/server/engine-client";
+import type { HorseBet, HorseDay, HorseEntryInput, HorseImportStatus, HorseSuggestion } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 
-export type { HorseBet, HorseDay, HorseEntryInput };
+export type { HorseBet, HorseDay, HorseEntryInput, HorseImportStatus, HorseSuggestion };
 
 const KEY = ["horses"];
 
@@ -12,8 +12,22 @@ export function useHorseBets() {
   return useQuery({
     queryKey: KEY,
     queryFn: async ({ signal }) => {
-      const data = await getJson<{ bets: HorseBet[]; days?: HorseDay[]; courses?: string[]; knownCourses?: string[] }>("/api/admin/horses", "your horse bets", signal);
-      return { bets: data.bets, days: data.days ?? [], courses: data.courses ?? [], knownCourses: data.knownCourses ?? [] };
+      const data = await getJson<{
+        bets: HorseBet[];
+        days?: HorseDay[];
+        courses?: string[];
+        knownCourses?: string[];
+        suggestions?: HorseSuggestion[];
+        importStatus?: HorseImportStatus | null;
+      }>("/api/admin/horses", "your horse bets", signal);
+      return {
+        bets: data.bets,
+        days: data.days ?? [],
+        courses: data.courses ?? [],
+        knownCourses: data.knownCourses ?? [],
+        suggestions: data.suggestions ?? [],
+        importStatus: data.importStatus ?? null,
+      };
     },
     staleTime: 30_000,
   });

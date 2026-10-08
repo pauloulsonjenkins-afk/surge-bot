@@ -170,6 +170,86 @@ export function saveHorseDay(db: EngineDb, day: unknown, entries: unknown, yanke
   return db.listHorseBets().filter((b) => b.day === day);
 }
 
+/** A pick fetched from a tipster site: a suggestion only, never a bet (see saveHorseSuggestions). */
+export interface HorseSuggestion {
+  rank: HorseRank;
+  horse: string;
+  course: string | null;
+  /** The race time as the site shows it, e.g. "14:35". */
+  raceTime: string | null;
+  /** The tipster's odds as shown, e.g. "5/2"; the admin still types the price they actually get. */
+  oddsText: string | null;
+  /** How the tipster has it: a win bet, or each-way (with how many places). The admin can change it before saving. */
+  betType: HorseBetType;
+  ewPlaces: number | null;
+  /** The tipster's suggested stake in points ("1.5"), for the record; the admin sets the real amount. */
+  points: string | null;
+  source: string | null;
+}
+
+const IMPORT_STATUS_KEY = "horse_import_status";
+
+export interface HorseImportStatus {
+  at: string;
+  ok: boolean;
+  message: string;
+  day: string | null;
+  count: number;
+}
+
+export function getHorseImportStatus(db: EngineDb): HorseImportStatus | null {
+  try {
+    const raw = db.getSetting(IMPORT_STATUS_KEY);
+    return raw ? (JSON.parse(raw) as HorseImportStatus) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setHorseImportStatus(db: EngineDb, s: HorseImportStatus): void {
+  db.setSetting(IMPORT_STATUS_KEY, JSON.stringify(s));
+}
+
+function ewPlacesOf(v: unknown, ew: boolean): number | null {
+  if (!ew) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 10 ? n : null;
+}
+
+/**
+ * Stores a day's picks from the importer as SUGGESTIONS. They show on the Horses page for the admin to check; they
+ * never become a bet (no stake, nothing sent anywhere) until the admin saves the day. Rank follows the order the site
+ * lists them (1 = NAP). Throws a plain-English reason for anything that can't be stored.
+ */
+export function saveHorseSuggestions(db: EngineDb, day: unknown, picks: unknown, source: unknown = null): HorseSuggestion[] {
+  if (!isDay(day)) throw new Error("The date is missing or not YYYY-MM-DD.");
+  if (!Array.isArray(picks) || picks.length === 0) throw new Error("No picks to store.");
+  if (picks.length > 4) throw new Error("More than four picks were sent; the page only has room for four.");
+  const known = db.listHorseCourses().map((c) => c.course);
+  const out: HorseSuggestion[] = [];
+  picks.forEach((raw: Record<string, unknown>, i) => {
+    const horse = typeof raw?.horse === "string" ? raw.horse.replace(/\s+/g, " ").trim().slice(0, 80) : "";
+    if (!horse) throw new Error(`Pick ${i + 1} has no horse name.`);
+    const oddsText = typeof raw.odds === "string" || typeof raw.odds === "number" ? String(raw.odds).trim().slice(0, 20) : "";
+    // The tipster's odds are only shown, but a price that isn't a price is a sign the page was read wrongly.
+    if (oddsText && parseOdds(oddsText) === null) throw new Error(`Pick ${i + 1} (${horse}): "${oddsText}" doesn't look like odds.`);
+    const rt = typeof raw.raceTime === "string" ? raw.raceTime.trim().slice(0, 8) : "";
+    out.push({
+      rank: (i + 1) as HorseRank,
+      horse,
+      course: cleanCourse(raw.course, known),
+      raceTime: rt || null,
+      oddsText: oddsText || null,
+      betType: raw.betType === "ew" ? "ew" : "win",
+      ewPlaces: ewPlacesOf(raw.ewPlaces, raw.betType === "ew"),
+      points: typeof raw.points === "string" || typeof raw.points === "number" ? String(raw.points).trim().slice(0, 8) || null : null,
+      source: typeof source === "string" && source.trim() ? source.trim().slice(0, 40) : null,
+    });
+  });
+  db.replaceHorseSuggestions(day, out, new Date().toISOString());
+  return out;
+}
+
 export function setHorseResult(db: EngineDb, id: unknown, result: unknown): void {
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) throw new Error("No such bet.");
