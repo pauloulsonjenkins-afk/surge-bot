@@ -207,7 +207,6 @@ function EntryCard({
                   {s.raceTime ? ` ${s.raceTime}` : ""}
                   {s.oddsText ? ` · ${s.oddsText}` : ""}
                   {s.betType === "ew" ? ` · each-way${s.ewPlaces ? `, ${s.ewPlaces} places` : ""}` : ""}
-                  {s.points ? ` · tipster stakes ${s.points} pt${s.points === "1" ? "" : "s"}` : ""}
                 </li>
               ))}
             </ul>

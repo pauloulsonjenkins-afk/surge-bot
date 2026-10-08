@@ -690,6 +690,22 @@ export class EngineDb {
         PRIMARY KEY (day, rank)
       );
 
+      -- Every pick the importer has fetched, kept for good (horse_suggestions above is cleared after a week). A re-run for the
+      -- same day replaces that day's rows. The Horses log page shows these beside the bets actually placed.
+      CREATE TABLE IF NOT EXISTS horse_tip_log (
+        day         TEXT NOT NULL,
+        rank        INTEGER NOT NULL,
+        horse       TEXT NOT NULL,
+        course      TEXT,
+        race_time   TEXT,
+        odds_text   TEXT,
+        bet_type    TEXT,
+        ew_places   INTEGER,
+        source      TEXT,
+        imported_at TEXT NOT NULL,
+        PRIMARY KEY (day, rank)
+      );
+
       -- Devices (browsers, or the installed app) that get the admin's push notifications (server/push.ts).
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         endpoint      TEXT PRIMARY KEY,
@@ -2335,11 +2351,34 @@ export class EngineDb {
     );
     this.db.transaction(() => {
       this.db.prepare(`DELETE FROM horse_suggestions WHERE day = ?`).run(day);
-      for (const p of picks) ins.run(day, p.rank, p.horse, p.course, p.raceTime, p.oddsText, p.betType, p.ewPlaces, p.points, p.source, at);
+      this.db.prepare(`DELETE FROM horse_tip_log WHERE day = ?`).run(day);
+      const log = this.db.prepare(
+        `INSERT INTO horse_tip_log (day, rank, horse, course, race_time, odds_text, bet_type, ew_places, source, imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const p of picks) {
+        ins.run(day, p.rank, p.horse, p.course, p.raceTime, p.oddsText, p.betType, p.ewPlaces, p.points, p.source, at);
+        log.run(day, p.rank, p.horse, p.course, p.raceTime, p.oddsText, p.betType, p.ewPlaces, p.source, at);
+      }
       // Old suggestions are of no use after a few days.
       this.db.prepare(`DELETE FROM horse_suggestions WHERE day < date(?, '-7 days')`).run(day);
     })();
     this.onChange();
+  }
+
+  /** Every pick ever fetched, newest day first. */
+  listHorseTipLog(): Array<{ day: string; rank: number; horse: string; course: string | null; raceTime: string | null; oddsText: string | null; betType: "win" | "ew"; ewPlaces: number | null; importedAt: string }> {
+    const rows = this.db.prepare(`SELECT * FROM horse_tip_log ORDER BY day DESC, rank`).all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      day: String(r.day),
+      rank: Number(r.rank),
+      horse: String(r.horse),
+      course: (r.course as string | null) ?? null,
+      raceTime: (r.race_time as string | null) ?? null,
+      oddsText: (r.odds_text as string | null) ?? null,
+      betType: r.bet_type === "ew" ? "ew" : "win",
+      ewPlaces: r.ew_places === null || r.ew_places === undefined ? null : Number(r.ew_places),
+      importedAt: String(r.imported_at),
+    }));
   }
 
   /** Suggested picks from the last few days, oldest first. */

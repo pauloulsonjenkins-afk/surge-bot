@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HorseBet, HorseDay, HorseEntryInput, HorseImportStatus, HorseSuggestion } from "@/server/engine-client";
+import type { HorseBet, HorseDay, HorseEntryInput, HorseImportStatus, HorseSuggestion, HorseTipLogEntry } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 
-export type { HorseBet, HorseDay, HorseEntryInput, HorseImportStatus, HorseSuggestion };
+export type { HorseBet, HorseDay, HorseEntryInput, HorseImportStatus, HorseSuggestion, HorseTipLogEntry };
 
 const KEY = ["horses"];
 
@@ -18,6 +18,7 @@ export function useHorseBets() {
         courses?: string[];
         knownCourses?: string[];
         suggestions?: HorseSuggestion[];
+        tipLog?: HorseTipLogEntry[];
         importStatus?: HorseImportStatus | null;
       }>("/api/admin/horses", "your horse bets", signal);
       return {
@@ -26,6 +27,7 @@ export function useHorseBets() {
         courses: data.courses ?? [],
         knownCourses: data.knownCourses ?? [],
         suggestions: data.suggestions ?? [],
+        tipLog: data.tipLog ?? [],
         importStatus: data.importStatus ?? null,
       };
     },

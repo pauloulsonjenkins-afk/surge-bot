@@ -1227,6 +1227,19 @@ export interface HorseSuggestion {
   importedAt: string;
 }
 
+/** One fetched pick in the permanent log. */
+export interface HorseTipLogEntry {
+  day: string;
+  rank: number;
+  horse: string;
+  course: string | null;
+  raceTime: string | null;
+  oddsText: string | null;
+  betType: "win" | "ew";
+  ewPlaces: number | null;
+  importedAt: string;
+}
+
 export interface HorseImportStatus {
   at: string;
   ok: boolean;
@@ -1252,6 +1265,7 @@ export function fetchHorseBets(): Promise<{
   courses?: string[];
   knownCourses?: string[];
   suggestions?: HorseSuggestion[];
+  tipLog?: HorseTipLogEntry[];
   importStatus?: HorseImportStatus | null;
 }> {
   return engineCall("/internal/horses", "the horse bets");

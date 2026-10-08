@@ -793,6 +793,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             courses: listHorseCourses(db),
             knownCourses: RACECOURSES,
             suggestions: db.listHorseSuggestions(),
+            tipLog: db.listHorseTipLog(),
             importStatus: getHorseImportStatus(db),
           });
           return;
