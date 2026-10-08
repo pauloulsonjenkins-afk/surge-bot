@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { engineLogIn, toClientUser } from "@/server/users-client";
 import { createUserToken, USER_COOKIE_NAME, USER_SESSION_MAX_AGE } from "@/server/user-auth";
+import { ADMIN_COOKIE_NAME, ADMIN_SESSION_MAX_AGE, createSessionToken } from "@/server/auth";
 import { clearLimit, clientIp, overLimit } from "@/server/throttle";
 
 export const runtime = "nodejs";
@@ -36,6 +37,18 @@ export async function POST(req: Request) {
         path: "/",
         maxAge: USER_SESSION_MAX_AGE,
       });
+      // The admin's own account is also the admin sign-in: an email listed in ADMIN_EMAILS gets the admin session too,
+      // so one sign-in does both. Only an existing account that proved its password gets here, and emails are unique.
+      const adminEmails = (process.env.ADMIN_EMAILS ?? "").toLowerCase().split(",").map((e) => e.trim()).filter(Boolean);
+      if (adminEmails.includes(r.data.user.email.toLowerCase())) {
+        res.cookies.set(ADMIN_COOKIE_NAME, await createSessionToken(), {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "strict",
+          path: "/",
+          maxAge: ADMIN_SESSION_MAX_AGE,
+        });
+      }
       return res;
     }
     if (r.data.error === "disabled") {
