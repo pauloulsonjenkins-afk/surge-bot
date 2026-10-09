@@ -310,7 +310,8 @@ function StrategyCard({
   return (
     <li className={`card-hover overflow-hidden rounded-xl border transition-colors ${open ? "card-open" : "bg-surface"} ${selected ? "border-accent" : "border-line"}`}>
       {/* The row to compare by: name, record and hit rate against break-even on the left, the headline figure on the right. */}
-      <div className="flex items-center gap-3 px-3.5 py-3">
+      {/* Wraps on a narrow screen: the Live / Sim switch drops to its own line instead of squeezing the name to one letter wide. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3">
         {selecting && (
           <input
             type="checkbox"
@@ -323,8 +324,8 @@ function StrategyCard({
             className="h-4 w-4 shrink-0 disabled:opacity-40"
           />
         )}
-        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          <span className="min-w-0 flex-1">
+        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-[1_1_100%] flex-wrap items-center gap-x-3 gap-y-1 text-left sm:flex-1">
+          <span className="min-w-[9rem] flex-1">
             <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
               <span className="min-w-0 break-words">
                 <StrategyName label={row.label} />
@@ -348,7 +349,11 @@ function StrategyCard({
           </span>
           <ChevronDown size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
-        {bet && settings && !selecting && <LiveSimSwitch s={bet} settings={settings} />}
+        {bet && settings && !selecting && (
+          <span className="ml-auto shrink-0">
+            <LiveSimSwitch s={bet} settings={settings} />
+          </span>
+        )}
       </div>
       {bet && settings && (() => {
         const b = betSummary(bet, settings);
