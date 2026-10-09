@@ -22,6 +22,7 @@ import { BetfairTrader, startDirectBetting } from "../betfair/direct";
 import { readCredentials } from "../betfair/exchange";
 import { startMembers } from "../members/runner";
 import { startHistoryRefresh } from "../history/football-data";
+import { startDailyTips } from "./daily-tips";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -91,6 +92,8 @@ async function main(): Promise<void> {
   startDirectBetting(db);
   // Past results for the League history page: downloaded a few minutes after start, refreshed daily.
   startHistoryRefresh();
+  // The day's horse tips, fetched at a random time between 10:00 and 14:00 UK (needs the TIPS_* settings).
+  startDailyTips(db);
 
   // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
   // real bets on the house Betfair account for admin members. See src/members/runner.ts and live.ts.
