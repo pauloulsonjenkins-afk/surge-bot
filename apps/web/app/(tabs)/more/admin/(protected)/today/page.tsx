@@ -177,7 +177,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Tile
           label="Betfair balance"
           value={d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`}
-          sub={d.bank.at ? `exposure £${Math.abs(d.bank.exposure ?? 0).toFixed(2)} · read ${ago(d.bank.at)}` : "Read only when a strategy uses a % stake"}
+          sub={d.bank.at ? `exposure £${Math.abs(d.bank.exposure ?? 0).toFixed(2)} · read ${ago(d.bank.at)}` : "Not read yet (needs the Betfair link set up on the engine)"}
           warn={bankAge !== null && bankAge > 30 * 60_000}
         />
         <Tile

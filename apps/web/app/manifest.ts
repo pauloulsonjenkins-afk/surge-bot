@@ -21,5 +21,10 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    // Long-press the installed app's icon: straight to these pages (admin pages ask for the sign-in as usual).
+    shortcuts: [
+      { name: "Today", short_name: "Today", description: "Betting status, today's result and what needs attention", url: "/more/admin/today", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Live", short_name: "Live", url: "/live", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+    ],
   };
 }

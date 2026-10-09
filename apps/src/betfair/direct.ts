@@ -33,7 +33,7 @@ import type { CurrentOrder } from "./exchange";
 import { findRunner, getBetfairLinkStatus, post, readCredentials } from "./exchange";
 import type { DirectBet, EngineDb, LivePick } from "../storage/engine-db";
 import { alertOddsOfPick, betableUntil, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, strategyLabel, type FeedRow } from "../inplayguru/bet-feed";
-import { saveBank } from "../inplayguru/stake";
+import { getBank, saveBank } from "../inplayguru/stake";
 import { ukDateOf, ukDayBounds } from "../server/uk-time";
 import { log } from "../server/log";
 import { excelTime, toExcelCsv } from "../server/excel";
@@ -422,18 +422,24 @@ let running = false;
 let again = false;
 let trader: Trading | null = null;
 
-/** The Betfair balance behind percentage stakes (stake.ts): read at most every 2 minutes, only when a strategy uses one. */
+/**
+ * The Betfair balance: read every 2 minutes whenever the Betfair link is set up, for the Today page and for percentage
+ * stakes (stake.ts). Saved when it changes, and at least every 10 minutes even when it doesn't, so a percentage stake
+ * always has a recent reading (Live needs one under 30 minutes old) without a database save every 2 minutes.
+ */
 let lastBankRead = 0;
 const BANK_EVERY_MS = 2 * 60_000;
+const BANK_SAVE_EVERY_MS = 10 * 60_000;
 async function refreshBank(db: EngineDb, trading: Trading, now: Date): Promise<void> {
   if (!(trading instanceof BetfairTrader)) return;
-  const s = getSendingSettings(db);
-  if (Object.keys(s.stakePct).length === 0) return;
   if (now.getTime() - lastBankRead < BANK_EVERY_MS) return;
   lastBankRead = now.getTime();
   try {
     const a = await trading.account();
-    saveBank(db, { available: a.available, exposure: a.exposure }, now);
+    const prev = getBank(db);
+    const changed = prev.available !== a.available || prev.exposure !== a.exposure;
+    const stale = !prev.at || now.getTime() - Date.parse(prev.at) >= BANK_SAVE_EVERY_MS;
+    if (changed || stale) saveBank(db, { available: a.available, exposure: a.exposure }, now);
   } catch (err) {
     log.warn(`Betfair balance not read: ${err instanceof Error ? err.message : String(err)}`);
   }
