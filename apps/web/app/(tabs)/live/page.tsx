@@ -10,6 +10,7 @@ import { formatCurrency } from "@/lib/format";
 import { QueryError } from "@/components/ui/QueryError";
 import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
+import { UpdatedAgo } from "@/components/ui/UpdatedAgo";
 import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { Chip, WarnIcon, type ChipTone } from "@/components/ui/Chip";
@@ -488,7 +489,7 @@ function MatchGroup({
 
 export default function LivePage() {
   // Enough for a busy day: the waiting list goes back 24 hours.
-  const { data, isLoading, error } = useLivePicks(200);
+  const { data, isLoading, error, dataUpdatedAt } = useLivePicks(200);
   const admin = useMe().data?.admin === true;
   // Admin only: whether each sent pick was actually placed and matched on Betfair.
   const placements = usePlacements(admin).data?.picks ?? {};
@@ -496,7 +497,16 @@ export default function LivePage() {
 
   if (isLoading) return <ListSkeleton />;
 
-  const header = <PageHeader title="Live" subtitle="Matches in play with their alerts, most recent first" />;
+  const header = (
+    <PageHeader
+      title="Live"
+      subtitle={
+        <>
+          Matches in play with their alerts, most recent first. <UpdatedAgo at={dataUpdatedAt || null} />
+        </>
+      }
+    />
+  );
 
   if (error) {
     return (

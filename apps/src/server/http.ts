@@ -89,6 +89,8 @@ import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
+import { notPlacedReport, todaySnapshot } from "./today";
+import { cachedModelReport } from "../model/goal-model";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
@@ -775,6 +777,40 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (!body.acknowledged) matchBets(db);
       log.info(`Reconcile: ${changed} unlinked bet(s) ${body.acknowledged ? "acknowledged" : "restored"} from the admin page.`);
       send(res, 200, { changed });
+      return;
+    }
+
+    // Research: GoalBrew's own goal model, tested against the market on picks it never saw (model/goal-model.ts).
+    if (req.method === "GET" && path === "/internal/goal-model") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const refresh = new URL(rawUrl, "http://internal").searchParams.get("refresh") === "1";
+      send(res, 200, { ...cachedModelReport(db, refresh) });
+      return;
+    }
+
+    // The Today page (server/today.ts), and the not-placed picks grouped by reason.
+    if (req.method === "GET" && (path === "/internal/today" || path === "/internal/not-placed")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (path === "/internal/today") {
+        send(res, 200, { ...todaySnapshot(db) });
+        return;
+      }
+      const days = Math.min(365, Math.max(1, Number(new URL(rawUrl, "http://internal").searchParams.get("days")) || 30));
+      send(res, 200, { ...notPlacedReport(db, days) });
       return;
     }
 

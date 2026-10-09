@@ -41,7 +41,7 @@
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
 import { kickoffMinutes } from "./parse-alert";
-import { computeStopLoss } from "./stop-loss";
+import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
 
@@ -62,6 +62,8 @@ export interface SendingSettings {
   maxAgeMinutes: number;
   /** Most NEW picks handed over per UK day. */
   dailyCap: number;
+  /** Stop all NEW bets for the rest of the UK day once Live is down this much (£) across every strategy. 0 = off. */
+  dailyLossLimit: number;
   /** Most money (£) staked in total on any one match, across strategies, so correlated bets (e.g. several Next goal strategies) can't stack. 0 = no limit. */
   matchCap: number;
   /** Market code and selection name used for Both Teams to Score. */
@@ -106,6 +108,7 @@ export const DEFAULT_SENDING: SendingSettings = {
   maxAgeMinutes: 10,
   dailyCap: 30,
   matchCap: 0,
+  dailyLossLimit: 0,
   bttsMarketType: "BOTH_TEAMS_TO_SCORE",
   bttsSelection: "Yes",
   underdogMarketType: "DOUBLE_CHANCE",
@@ -212,6 +215,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     maxAgeMinutes: clampInt(raw.maxAgeMinutes, 1, 60, DEFAULT_SENDING.maxAgeMinutes),
     dailyCap: clampInt(raw.dailyCap, 0, 1000, DEFAULT_SENDING.dailyCap),
     matchCap: clampInt(raw.matchCap, 0, 5000, DEFAULT_SENDING.matchCap),
+    dailyLossLimit: clampInt(raw.dailyLossLimit, 0, 100000, DEFAULT_SENDING.dailyLossLimit),
     bttsMarketType: cleanCode(raw.bttsMarketType, DEFAULT_SENDING.bttsMarketType),
     bttsSelection: cleanCode(raw.bttsSelection, DEFAULT_SENDING.bttsSelection),
     underdogMarketType: cleanCode(raw.underdogMarketType, DEFAULT_SENDING.underdogMarketType),
@@ -284,6 +288,7 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
   if (patch.maxAgeMinutes !== undefined) next.maxAgeMinutes = clampInt(patch.maxAgeMinutes, 1, 60, current.maxAgeMinutes);
   if (patch.dailyCap !== undefined) next.dailyCap = clampInt(patch.dailyCap, 0, 1000, current.dailyCap);
   if (patch.matchCap !== undefined) next.matchCap = clampInt(patch.matchCap, 0, 5000, current.matchCap);
+  if (patch.dailyLossLimit !== undefined) next.dailyLossLimit = clampInt(patch.dailyLossLimit, 0, 100000, current.dailyLossLimit);
   if (patch.bttsMarketType !== undefined) next.bttsMarketType = cleanCode(patch.bttsMarketType, current.bttsMarketType);
   if (patch.bttsSelection !== undefined) next.bttsSelection = cleanCode(patch.bttsSelection, current.bttsSelection);
   if (patch.underdogMarketType !== undefined) next.underdogMarketType = cleanCode(patch.underdogMarketType, current.underdogMarketType);
@@ -516,6 +521,10 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
   const skipped: FeedSkip[] = [];
   const toMark: Array<{ id: number; rowJson: string }> = [];
 
+  // The whole-account daily loss stop: once Live is down the limit today, no NEW picks go out (ones already handed over
+  // are repeated as before). Worked out once per feed build.
+  const lossStop = settings.dailyLossLimit > 0 ? dailyLossStopReason(db, settings.dailyLossLimit, now) : null;
+
   // Money already out on each match (picks handed over earlier), so a new pick can be held back by the match limit.
   const onMatch = new Map<string, number>();
   const matchOf = (p: LivePick) => `${p.leagueKey}|${(p.home ?? "").toLowerCase()}|${(p.away ?? "").toLowerCase()}`;
@@ -580,6 +589,11 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     // Not on Betfair: the betting software can't find it either, so it isn't sent (and doesn't use up the daily limit).
     if (!alreadySent && p.exchange === "off") {
       skipped.push(skip(p, "Not on Betfair: the match wasn't found there."));
+      continue;
+    }
+
+    if (!alreadySent && lossStop) {
+      skipped.push(skip(p, lossStop));
       continue;
     }
 
@@ -779,6 +793,13 @@ function parseFrozenRow(p: LivePick): FeedRow | null {
     // fall through
   }
   return null;
+}
+
+/** Why the whole-account daily loss stop is on today, or null when it isn't. */
+export function dailyLossStopReason(db: EngineDb, limit: number, now = new Date()): string | null {
+  if (limit <= 0) return null;
+  const { net } = accountToday(db, now, "live");
+  return net <= -limit ? `Daily loss stop: Live is down £${Math.abs(net).toFixed(2)} today (limit £${limit}). No new bets until tomorrow.` : null;
 }
 
 function skip(p: LivePick, reason: string): FeedSkip {

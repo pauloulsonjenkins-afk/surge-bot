@@ -344,6 +344,8 @@ export interface SendingSettings {
   dailyCap: number;
   /** Most £ staked in total on one match, across strategies. 0 = no limit. Missing on an older engine. */
   matchCap?: number;
+  /** Stop all new bets for the day once Live is down this much (£) across every strategy. 0 = off. Missing on an older engine. */
+  dailyLossLimit?: number;
   bttsMarketType: string;
   bttsSelection: string;
   underdogMarketType: string;
@@ -1422,6 +1424,8 @@ export interface DirectSettings {
   cancelUnmatchedSeconds: number;
   dailyStakeLimit: number;
   acceptBelowPct: number;
+  /** Don't bet when the price has shortened more than this % since the alert. 0 = off. Missing on an older engine. */
+  maxShortenPct?: number;
   webhook: "record" | "use";
 }
 export interface DirectBetRow {
@@ -1582,4 +1586,86 @@ export interface PriceCheckReport {
 
 export function fetchPriceCheck(days: number): Promise<PriceCheckReport> {
   return engineCall(`/internal/price-check?days=${days}`, "the price check");
+}
+
+// ---- Today page (mirrors server/today.ts in the engine) ----
+
+export interface SpeedReport {
+  picks: number;
+  postedToReceived: number | null;
+  receivedToSent: number | null;
+  sentToPlaced: number | null;
+  total: number | null;
+  slowShare: number | null;
+}
+
+export interface TodaySnapshot {
+  at: string;
+  betting: {
+    on: boolean;
+    directMode: "off" | "shadow" | "live";
+    liveAllowed: boolean;
+    liveStrategies: number;
+    breaker: { open: boolean; reason: string | null; since: string | null; errorPasses: number };
+    betfair: { configured: boolean; lastOkAt: string | null; lastError: string | null };
+  };
+  bank: { total: number | null; available: number | null; exposure: number | null; at: string | null };
+  limits: { dailyLossLimit: number; lossStop: string | null; matchCap: number; dailyCap: number; maxStake: number };
+  today: { liveNet: number; liveSettled: number; simNet: number; simSettled: number };
+  exposure: { openStake: number; biggestMatch: { match: string; stake: number } | null };
+  alerts: { lastHour: number; telegram: { ok: boolean; problems: string[]; lastAlertAt: string | null } };
+  queue: { waiting: number; placing: number; notPlacedToday: number; sentToday: number };
+  stopped: Array<{ strategy: string; reason: string | null }>;
+  speed: { today: SpeedReport; week: SpeedReport };
+}
+
+export interface NotPlacedReport {
+  days: number;
+  sent: number;
+  placed: number;
+  notPlaced: number;
+  byCategory: Array<{ category: string; fix: string; count: number; share: number; strategies: string[]; example: string }>;
+  byStrategy: Array<{ strategy: string; sent: number; notPlaced: number; top: string | null }>;
+}
+
+export function fetchToday(): Promise<TodaySnapshot> {
+  return engineCall("/internal/today", "today's summary", { timeoutMs: 15_000 });
+}
+
+export function fetchNotPlaced(days: number): Promise<NotPlacedReport> {
+  return engineCall(`/internal/not-placed?days=${days}`, "the not-placed report", { timeoutMs: 15_000 });
+}
+
+// ---- Goal model research (mirrors model/goal-model.ts in the engine) ----
+
+export interface ModelRoi {
+  bets: number;
+  roi: number | null;
+}
+
+export interface GoalModelReport {
+  rows: number;
+  enough: boolean;
+  train: { n: number; from: string | null; to: string | null };
+  test: {
+    n: number;
+    from: string | null;
+    to: string | null;
+    hitRate: number;
+    marketChance: number;
+    logLossMarket: number;
+    logLossModel: number;
+    improvement: number;
+    betEvery: ModelRoi;
+    modelBets: ModelRoi;
+    modelSkips: ModelRoi;
+    calibration: Array<{ band: string; n: number; predicted: number; actual: number }>;
+  } | null;
+  weights: Array<{ feature: string; weight: number }>;
+  trainCheck: { modelBets: ModelRoi; modelSkips: ModelRoi } | null;
+  verdict: string;
+}
+
+export function fetchGoalModel(refresh: boolean): Promise<GoalModelReport> {
+  return engineCall(`/internal/goal-model${refresh ? "?refresh=1" : ""}`, "the goal model", { timeoutMs: 30_000 });
 }

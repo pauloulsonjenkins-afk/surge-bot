@@ -32,11 +32,12 @@
 import type { CurrentOrder } from "./exchange";
 import { findRunner, getBetfairLinkStatus, post, readCredentials } from "./exchange";
 import type { DirectBet, EngineDb, LivePick } from "../storage/engine-db";
-import { betableUntil, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, strategyLabel, type FeedRow } from "../inplayguru/bet-feed";
+import { alertOddsOfPick, betableUntil, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, strategyLabel, type FeedRow } from "../inplayguru/bet-feed";
 import { saveBank } from "../inplayguru/stake";
 import { ukDateOf, ukDayBounds } from "../server/uk-time";
 import { log } from "../server/log";
 import { excelTime, toExcelCsv } from "../server/excel";
+import { breakerReason, guardTick, recordPass } from "./guard";
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -71,6 +72,11 @@ export interface DirectSettings {
    * old (Betfair's delayed app key) don't stop it matching. 0 = ask for exactly the price shown.
    */
   acceptBelowPct: number;
+  /**
+   * Don't bet when Betfair's price has shortened more than this (percent) since the alert: the market has already moved
+   * against the pick, so the value the alert saw has gone. 0 = off.
+   */
+  maxShortenPct: number;
   webhook: WebhookUse;
 }
 
@@ -90,6 +96,7 @@ export const DEFAULT_DIRECT: DirectSettings = {
   cancelUnmatchedSeconds: 120,
   dailyStakeLimit: 50,
   acceptBelowPct: 5,
+  maxShortenPct: 0,
   webhook: "record",
 };
 
@@ -142,6 +149,7 @@ export function getDirectSettings(db: EngineDb): DirectSettings {
     cancelUnmatchedSeconds: num(raw.cancelUnmatchedSeconds, 10, 1800, d.cancelUnmatchedSeconds),
     dailyStakeLimit: num(raw.dailyStakeLimit, 1, 5000, d.dailyStakeLimit),
     acceptBelowPct: num(raw.acceptBelowPct, 0, 20, d.acceptBelowPct),
+    maxShortenPct: num(raw.maxShortenPct, 0, 50, d.maxShortenPct),
     webhook: raw.webhook === "use" ? "use" : "record",
   };
 }
@@ -153,7 +161,7 @@ export function getDirectSettings(db: EngineDb): DirectSettings {
 export function saveDirectSettings(db: EngineDb, body: Record<string, unknown>, now = new Date(), env = process.env): DirectSettings {
   const before = getDirectSettings(db);
   const merged: Record<string, unknown> = { ...before };
-  for (const k of ["mode", "maxSpreadPct", "minOverround", "maxOverround", "strategyLimits", "cancelUnmatchedSeconds", "dailyStakeLimit", "acceptBelowPct", "webhook"] as const) {
+  for (const k of ["mode", "maxSpreadPct", "minOverround", "maxOverround", "strategyLimits", "cancelUnmatchedSeconds", "dailyStakeLimit", "acceptBelowPct", "maxShortenPct", "webhook"] as const) {
     if (body[k] !== undefined) merged[k] = body[k];
   }
   if (body.mode !== undefined && body.mode !== "off" && body.mode !== "shadow" && body.mode !== "live") throw new Error("Mode must be off, shadow or live.");
@@ -188,6 +196,8 @@ export interface BookRunner {
   status: string;
   back: number | null;
   lay: number | null;
+  /** The money on offer to back at the best few prices (Betfair's top three), when known. */
+  backDepth?: Array<{ price: number; size: number }>;
 }
 export interface Book {
   status: string;
@@ -263,7 +273,7 @@ export class BetfairTrader implements Trading {
 
   async book(marketId: string): Promise<Book | null> {
     const books = await this.call<
-      Array<{ status?: string; inplay?: boolean; runners?: Array<{ selectionId: number; status?: string; ex?: { availableToBack?: Array<{ price: number }>; availableToLay?: Array<{ price: number }> } }> }>
+      Array<{ status?: string; inplay?: boolean; runners?: Array<{ selectionId: number; status?: string; ex?: { availableToBack?: Array<{ price: number; size?: number }>; availableToLay?: Array<{ price: number }> } }> }>
     >(BETTING_URL, "listMarketBook", { marketIds: [marketId], priceProjection: { priceData: ["EX_BEST_OFFERS"] } });
     const b = books[0];
     if (!b) return null;
@@ -275,6 +285,7 @@ export class BetfairTrader implements Trading {
         status: r.status ?? "ACTIVE",
         back: r.ex?.availableToBack?.[0]?.price ?? null,
         lay: r.ex?.availableToLay?.[0]?.price ?? null,
+        backDepth: (r.ex?.availableToBack ?? []).map((l) => ({ price: l.price, size: l.size ?? 0 })),
       })),
     };
   }
@@ -377,6 +388,12 @@ export function askPrice(shown: number, minPrice: number | null, acceptBelowPct:
   return Math.min(shown, tickAtOrAbove(floor));
 }
 
+/** Money on offer to back at `ask` or better, from Betfair's top prices; null when the depth isn't known. */
+export function depthAtOrAbove(depth: BookRunner["backDepth"], ask: number): number | null {
+  if (!depth || depth.length === 0) return null;
+  return Math.round(depth.filter((l) => l.price >= ask - 1e-9).reduce((t, l) => t + l.size, 0) * 100) / 100;
+}
+
 /** Gap between best lay and best back, as a percentage of the back price. */
 export function spreadPct(back: number, lay: number | null): number | null {
   return lay === null ? null : Math.round(((lay - back) / back) * 1000) / 10;
@@ -457,16 +474,19 @@ export async function runDirect(db: EngineDb, trading: Trading, now = new Date()
     }
   }
 
+  let hadError = false;
   for (const d of db.listOpenDirectBets()) {
     try {
       await work(db, trading, d, settings, mode, sending.maxAgeMinutes, now);
     } catch (err) {
+      hadError = true;
       const message = err instanceof Error ? err.message : String(err);
       log.warn(`Direct betting, pick ${d.pickId}: ${message}`);
       // A record being placed stays "placing": its outcome is read from Betfair next time, never guessed.
       if (d.state === "waiting") db.updateDirectBet(d.pickId, { reason: message }, now.toISOString());
     }
   }
+  recordPass(hadError);
 }
 
 async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, mode: DirectMode, maxAgeMinutes: number, now: Date): Promise<void> {
@@ -570,8 +590,17 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   if (over === null) return wait("Not every selection has a price, so the overround can't be checked.");
   if (over < s.minOverround || over > maxOver) return wait(`Overround ${over}% is outside ${s.minOverround}% to ${maxOver}%.`);
 
+  // The market has already moved against the pick since the alert: the value it saw has gone.
+  const alertPrice = p.exchangeOdds ?? alertOddsOfPick(p);
+  if (s.maxShortenPct > 0 && alertPrice !== null && me.back < alertPrice * (1 - s.maxShortenPct / 100)) {
+    return wait(`Price has shortened from ${alertPrice.toFixed(2)} at the alert to ${me.back.toFixed(2)} (limit ${s.maxShortenPct}%).`);
+  }
+
   // The price asked for: the lowest accepted. Betfair matches it at the best price on offer, which is at least this.
   const ask = askPrice(me.back, d.minPrice, s.acceptBelowPct);
+  // Not enough money on offer at the prices we'd accept: the bet would only part-match (or not at all).
+  const depth = depthAtOrAbove(me.backDepth, ask);
+  if (depth !== null && depth < d.stake) return wait(`Only ${money(depth)} on offer at ${ask.toFixed(2)} or better (stake ${money(d.stake)}).`);
   const taking = ask < me.back ? ` (taking down to ${ask.toFixed(2)})` : "";
 
   if (d.mode === "shadow") {
@@ -579,7 +608,9 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
     return;
   }
 
-  // Live from here.
+  // Live from here. Paused while Betfair isn't answering properly (guard.ts): the pick waits, and ages out if it lasts.
+  const paused = breakerReason();
+  if (paused) return wait(`Paused: ${paused}`);
   const dayStart = ukDayBounds(ukDateOf(now)).from;
   const staked = db.directStakeSince(dayStart);
   if (staked + d.stake > s.dailyStakeLimit + 1e-9) {
@@ -642,8 +673,13 @@ export function startDirectBetting(db: EngineDb): () => void {
         again = false;
         // Percentage stakes (stake.ts) need the balance even while direct betting is off (for simulation).
         await refreshBank(db, trader!, new Date());
+        // The circuit breaker and the daily loss stop's notification.
+        await guardTick(db).catch((err: unknown) => log.warn(`Betting guard failed: ${err instanceof Error ? err.message : String(err)}`));
         if (getDirectSettings(db).mode === "off" && db.listOpenDirectBets().length === 0) break;
-        await runDirect(db, trader!).catch((err: unknown) => log.warn(`Direct betting pass failed: ${err instanceof Error ? err.message : String(err)}`));
+        await runDirect(db, trader!).catch((err: unknown) => {
+          recordPass(true);
+          log.warn(`Direct betting pass failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
       } while (again);
     } finally {
       running = false;

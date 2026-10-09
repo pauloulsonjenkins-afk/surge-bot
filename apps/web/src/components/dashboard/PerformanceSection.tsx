@@ -164,7 +164,7 @@ export function PerformanceSection({
         title="Breakdown"
         subtitle={
           tab === "strategy"
-            ? lights ? "Tap a strategy to filter the whole dashboard to it. The dot is its all-time return: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
+            ? lights ? "Tap a strategy to filter the whole dashboard to it. The figure is its all-time return per £1 staked (hit rate under it); the dot: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
             : tab === "minute"
               ? "Hit rate by the match minute the alert fired"
               : "Tap a country, tier or league to filter this section"
@@ -210,7 +210,22 @@ export function PerformanceSection({
                         {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}
                       </span>
                     </span>
-                    <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{pct(r.agg)}</span>
+                    {(() => {
+                      // For the admin, the money figure leads (return per £1, all time): a high hit rate at short odds can
+                      // still lose. The hit rate is shown under it.
+                      const l = lights?.get(r.name.toLowerCase());
+                      if (!l || l.roi === null) return <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{pct(r.agg)}</span>;
+                      const v = Math.round(l.roi * 1000) / 10;
+                      return (
+                        <span className="shrink-0 text-right">
+                          <span className={`block text-base font-semibold tabular-nums ${v > 0 ? "text-hit" : v < 0 ? "text-loss" : "text-ink"}`}>
+                            {v > 0 ? "+" : ""}
+                            {v}%
+                          </span>
+                          <span className="block text-xs text-ink-muted">hit {pct(r.agg)}</span>
+                        </span>
+                      );
+                    })()}
                   </button>
                 </li>
               );

@@ -58,8 +58,23 @@ export function PriceCheck() {
       ) : byStrategy.length === 0 ? (
         <p className="mt-2 text-sm text-ink-muted">No checks yet. They start with the next alerts whose matches are on Betfair.</p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[420px] text-left text-sm">
+        <div className="mt-3">
+          {/* Phones: one card per strategy. Wider screens: the table. */}
+          <ul className="space-y-2 md:hidden">
+            {byStrategy.map(([name, k]) => (
+              <li key={name} className="rounded-lg border border-line p-2.5 text-sm">
+                <p className="text-ink">
+                  <StrategyName label={name} />
+                </p>
+                <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
+                  <span>2 min: {cell(k.t2, data.typical.t2, true)}</span>
+                  <span>5 min: {cell(k.t5, data.typical.t5, true)}</span>
+                  <span>Kick-off: {cell(k.ko, undefined, false)}</span>
+                </p>
+              </li>
+            ))}
+          </ul>
+          <table className="hidden w-full text-left text-sm md:table">
             <thead className="text-xs text-ink-muted">
               <tr>
                 <th className="py-1.5 pr-2 font-medium">Strategy</th>

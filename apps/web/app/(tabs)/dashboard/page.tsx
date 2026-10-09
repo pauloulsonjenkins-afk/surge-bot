@@ -6,8 +6,9 @@ import { ukMidnightIso } from "@/lib/uk-time";
 import Image from "next/image";
 import Link from "next/link";
 import { Lock } from "lucide-react";
-import { useHitRateStats, type HitRateStats } from "@/queries/use-stats";
-import { usePerformanceCells } from "@/queries/use-performance";
+import type { HitRateStats } from "@/queries/use-stats";
+import { useDashboard } from "@/queries/use-dashboard";
+import { UpdatedAgo } from "@/components/ui/UpdatedAgo";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { HeroRow } from "@/components/dashboard/SummaryCards";
 import { TIMEFRAMES, TimeframeToggle, type Timeframe } from "@/components/dashboard/TimeframeToggle";
@@ -78,9 +79,11 @@ export default function DashboardPage() {
   const strategyNames = useStrategyNames();
   const mode = usePickMode();
   const { data: me } = useMe();
-  const { data, isLoading, error } = useHitRateStats(days, strategy, mode, since);
-  const performance = usePerformanceCells(days, mode, since);
-  const performanceCells = performance.data ?? [];
+  // Stats and breakdown come in one request every 30 seconds (/api/dashboard).
+  const dash = useDashboard(days, strategy, mode, since);
+  const { isLoading, error, dataUpdatedAt } = dash;
+  const data = dash.data?.stats;
+  const performanceCells = dash.data?.cells ?? [];
 
   return (
     <div className="space-y-8 px-4 py-4">
@@ -101,7 +104,7 @@ export default function DashboardPage() {
                   Members don't need it. */}
               {me && !me.user && (
                 <Link
-                  href={me.admin ? "/more/admin/sending" : "/more/admin/login"}
+                  href={me.admin ? "/more/admin/today" : "/more/admin/login"}
                   className={`flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink ${me.admin ? "lg:hidden" : ""}`}
                 >
                   <Lock size={13} />
@@ -115,6 +118,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <TimeframeToggle value={timeframe} onChange={setTimeframe} />
           <ModeToggle />
+          <UpdatedAgo at={dataUpdatedAt || null} />
           {strategy && (
             <span className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="rounded-full bg-accent/15 px-2.5 py-0.5 font-medium text-ink">{strategyNames.name(strategy)}</span>

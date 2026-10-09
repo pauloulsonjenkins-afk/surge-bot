@@ -22,6 +22,7 @@ import { useSending, type SendingSettings, type SendingState } from "@/queries/u
 import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
 import Link from "next/link";
 import { PriceCheck } from "@/components/admin/PriceCheck";
+import { usePriceCheck } from "@/queries/use-price-check";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -41,6 +42,45 @@ function hasPicks(row: AdminStrategy, m: "live" | "sim"): boolean {
   const hits = m === "live" ? (row.liveHits ?? 0) : (row.simHits ?? 0);
   const misses = m === "live" ? (row.liveMisses ?? 0) : (row.simMisses ?? 0);
   return hits + misses > 0 || (row.returns?.[m]?.counted ?? 0) > 0;
+}
+
+/** A strategy's price check result: how many checks, and how far its alert price beat the later one, against typical. */
+type CheckResult = { picks: number; vsTypical: number; kickOff: boolean };
+
+/**
+ * The written rule for moving a Sim strategy to Live, shown on its card: enough picks, still profitable once pulled
+ * towards zero for luck, beating the market's later price, and a stop loss in place. All four, then £1 Live.
+ */
+function ReadyForLive({ row, check, hasStop }: { row: AdminStrategy; check: CheckResult | undefined; hasStop: boolean }) {
+  const sim = row.returns?.sim;
+  const adj = sim ? adjustedRoi(sim.roi, sim.counted) : null;
+  const items: Array<{ ok: boolean; text: string }> = [
+    { ok: (sim?.counted ?? 0) >= SAMPLE, text: `${SAMPLE}+ priced Sim picks (has ${sim?.counted ?? 0})` },
+    { ok: adj !== null && adj > 0, text: `Adjusted Sim return above zero (${roiText(adj)})` },
+    {
+      ok: !!check && check.picks >= SAMPLE && check.vsTypical > 0,
+      text: check
+        ? `Beats Betfair's later price over ${SAMPLE}+ checks (${check.vsTypical > 0 ? "+" : ""}${check.vsTypical.toFixed(1)}% ${check.kickOff ? "at kick-off" : "vs typical at 5 min"}, ${check.picks} checks)`
+        : `Beats Betfair's later price over ${SAMPLE}+ checks (no checks yet)`,
+    },
+    { ok: hasStop, text: "A stop loss is set" },
+  ];
+  const ready = items.every((i) => i.ok);
+  return (
+    <div className="rounded-md bg-surface-2 p-2.5 text-xs">
+      <p className={`font-medium ${ready ? "text-hit" : "text-ink"}`}>{ready ? "Ready for Live: try it at £1." : "Ready for Live? Not yet."}</p>
+      <ul className="mt-1 space-y-0.5">
+        {items.map((i) => (
+          <li key={i.text} className={i.ok ? "text-ink" : "text-ink-muted"}>
+            <span aria-hidden className={i.ok ? "text-hit" : "text-ink-muted"}>
+              {i.ok ? "✓" : "○"}
+            </span>{" "}
+            {i.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Below this many priced picks a return is too noisy to act on. */
@@ -82,16 +122,29 @@ function periodStart(period: Period): string | null {
   return new Date(Math.floor((Date.now() - days * 86_400_000) / 60_000) * 60_000).toISOString();
 }
 
-type SortBy = "roi" | "profit" | "hitRate";
+type SortBy = "adjusted" | "roi" | "profit" | "hitRate";
 
 const SORTS: { value: SortBy; label: string }[] = [
+  { value: "adjusted", label: "Return % (adjusted)" },
   { value: "roi", label: "Return %" },
   { value: "profit", label: "Profit £" },
   { value: "hitRate", label: "Hit rate %" },
 ];
 
+/**
+ * A return pulled towards zero by how few picks it's from: return x picks / (picks + SAMPLE). 4 picks at +50% becomes
+ * +3.7%; 300 picks at +5% stays +4.3%. Ranking by it stops a lucky handful of picks topping the list.
+ */
+function adjustedRoi(roi: number | null, counted: number): number | null {
+  return roi === null ? null : (roi * counted) / (counted + SAMPLE);
+}
+
 /** The figure a strategy is ranked by within its Live or Sim section; null sorts last. */
 function sortValue(row: AdminStrategy, m: "live" | "sim", by: SortBy): number | null {
+  if (by === "adjusted") {
+    const r = row.returns?.[m];
+    return r ? adjustedRoi(r.roi, r.counted) : null;
+  }
   if (by === "hitRate") return m === "live" ? record(row.liveHits ?? 0, row.liveMisses ?? 0).hitRate : record(row.simHits ?? 0, row.simMisses ?? 0).hitRate;
   const r = row.returns?.[m];
   if (!r) return null;
@@ -253,7 +306,10 @@ function StrategyCard({
   bet,
   settings,
   bank,
+  check,
 }: {
+  /** Its price check result, for the Ready for Live checklist. */
+  check?: CheckResult;
   /** Its betting controls (from Sending); missing while they load. */
   bet: SendingStrategy | undefined;
   settings: SendingSettings | undefined;
@@ -293,8 +349,15 @@ function StrategyCard({
   const ret = money as StrategyReturn | null;
   // The headline is the return on each £1 staked (what decides whether a strategy is worth betting), or the £ total
   // when sorting by it.
+  const adj = money ? adjustedRoi(money.roi, money.counted) : null;
   const headline =
-    sortBy === "profit"
+    sortBy === "adjusted"
+      ? {
+          value: roiText(adj),
+          tone: roiTone(adj),
+          sub: money && money.staked > 0 ? `${roiText(money.roi)} on ${money.counted} priced` : "adjusted return per £1",
+        }
+      : sortBy === "profit"
       ? {
           value: money && money.staked > 0 ? gbp(money.profit) : "–",
           tone: roiTone(money && money.staked > 0 ? money.profit : null),
@@ -365,6 +428,9 @@ function StrategyCard({
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
           {info?.description && <p className="text-xs text-ink">{info.description}</p>}
+          {modeOf(row) === "sim" && (
+            <ReadyForLive row={row} check={check} hasStop={!!bet?.stopLoss && (bet.stopLoss.dailyLoss !== null || bet.stopLoss.lossRun !== null)} />
+          )}
           {bet && settings && <BetSettings s={bet} settings={settings} bank={bank} />}
           <p className="text-xs text-ink-muted">
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
@@ -513,6 +579,18 @@ export default function StrategiesPage() {
   const merge = useMergeStrategy();
   const remove = useDeleteStrategyFlow();
   const sending = useSending();
+  // Price check results by strategy, for each card's Ready for Live checklist (the same figures as the Price check box).
+  const priceCheck = usePriceCheck(30, true);
+  const checks = useMemo(() => {
+    const m = new Map<string, CheckResult>();
+    const typical = priceCheck.data?.typical.t5;
+    for (const r of priceCheck.data?.rows ?? []) {
+      const k = r.strategy.toLowerCase();
+      if (r.kind === "ko") m.set(k, { picks: r.picks, vsTypical: r.edge, kickOff: true });
+      else if (r.kind === "t5" && typical !== undefined) m.set(k, { picks: r.picks, vsTypical: Math.round((r.edge - typical) * 10) / 10, kickOff: false });
+    }
+    return m;
+  }, [priceCheck.data]);
   const betOf = useMemo(() => {
     const map = new Map<string, SendingStrategy>();
     for (const s of sending.data?.strategies ?? []) map.set(s.label.toLowerCase(), s);
@@ -525,7 +603,7 @@ export default function StrategiesPage() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortBy>("roi");
+  const [sortBy, setSortBy] = useState<SortBy>("adjusted");
   const strategies = useMemo(() => data?.strategies ?? [], [data]);
   const ignored = data?.ignored ?? [];
 
@@ -779,6 +857,7 @@ export default function StrategiesPage() {
                 bet={betOf(r.label)}
                 settings={sending.data?.settings}
                 bank={sending.data?.bank}
+                check={checks.get(r.label.toLowerCase())}
               />
             );
             return (

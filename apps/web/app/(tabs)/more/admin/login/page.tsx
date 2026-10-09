@@ -8,7 +8,7 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const params = useSearchParams();
   // Only a page on this site: a link carrying ?next=https://… must not send you elsewhere once signed in.
-  const next = safeNext(params.get("next"), "/more/admin/sending");
+  const next = safeNext(params.get("next"), "/more/admin/today");
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

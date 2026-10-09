@@ -28,6 +28,7 @@ interface Form {
   maxAgeMinutes: string;
   dailyCap: string;
   matchCap: string;
+  dailyLossLimit: string;
   bttsMarketType: string;
   bttsSelection: string;
   underdogMarketType: string;
@@ -52,6 +53,7 @@ function toForm(s: SendingSettings): Form {
     maxAgeMinutes: String(s.maxAgeMinutes),
     dailyCap: String(s.dailyCap),
     matchCap: String(s.matchCap ?? 0),
+    dailyLossLimit: String(s.dailyLossLimit ?? 0),
     bttsMarketType: s.bttsMarketType,
     bttsSelection: s.bttsSelection,
     underdogMarketType: s.underdogMarketType,
@@ -140,6 +142,7 @@ export default function SendingPage() {
         maxAgeMinutes: Number(form!.maxAgeMinutes),
         dailyCap: Number(form!.dailyCap),
         matchCap: Number(form!.matchCap),
+        dailyLossLimit: Number(form!.dailyLossLimit),
         bttsMarketType: form!.bttsMarketType,
         bttsSelection: form!.bttsSelection,
         underdogMarketType: form!.underdogMarketType,
@@ -350,6 +353,19 @@ export default function SendingPage() {
                 <span className="mt-1 block">
                   Counts every strategy together, so several Next goal strategies firing on the same game can&apos;t stack up. A pick that would go over is held back and
                   shows under Skipped.
+                </span>
+              </label>
+              <label className="text-xs text-ink-muted">
+                Stop all betting when Live is down £ today (0 = off)
+                <input
+                  inputMode="numeric"
+                  className={`${inputCls} mt-1`}
+                  value={form.dailyLossLimit}
+                  onChange={(e) => setForm({ ...form, dailyLossLimit: e.target.value })}
+                />
+                <span className="mt-1 block">
+                  Across every strategy together, on top of each strategy&apos;s own stop loss. Once reached, no new bets go out until tomorrow (UK time), and you
+                  get a notification. Bets already placed carry on.
                 </span>
               </label>
             </div>

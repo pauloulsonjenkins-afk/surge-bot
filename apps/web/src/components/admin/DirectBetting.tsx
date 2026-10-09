@@ -175,7 +175,7 @@ function NumberField({ label, value, onChange, suffix, step = 1 }: { label: stri
   );
 }
 
-type Form = { maxSpreadPct: string; minOverround: string; maxOverround: string; cancelUnmatchedSeconds: string; dailyStakeLimit: string; acceptBelowPct: string; limits: Record<string, { spread: string; over: string }> };
+type Form = { maxSpreadPct: string; minOverround: string; maxOverround: string; cancelUnmatchedSeconds: string; dailyStakeLimit: string; acceptBelowPct: string; maxShortenPct: string; limits: Record<string, { spread: string; over: string }> };
 
 function toForm(s: DirectSettings, strategies: string[]): Form {
   const limits: Form["limits"] = {};
@@ -190,6 +190,7 @@ function toForm(s: DirectSettings, strategies: string[]): Form {
     cancelUnmatchedSeconds: String(s.cancelUnmatchedSeconds),
     dailyStakeLimit: String(s.dailyStakeLimit),
     acceptBelowPct: String(s.acceptBelowPct),
+    maxShortenPct: String(s.maxShortenPct ?? 0),
     limits,
   };
 }
@@ -222,6 +223,7 @@ export function Limits({ data }: { data: DirectStatus }) {
         cancelUnmatchedSeconds: Number(form.cancelUnmatchedSeconds),
         dailyStakeLimit: Number(form.dailyStakeLimit),
         acceptBelowPct: Number(form.acceptBelowPct),
+        maxShortenPct: Number(form.maxShortenPct),
         strategyLimits,
       },
       { onSuccess: () => reset() },
@@ -246,6 +248,13 @@ export function Limits({ data }: { data: DirectStatus }) {
       </p>
       <div className="mt-2">
         <NumberField label="Accept down to" value={form.acceptBelowPct} onChange={(v) => set({ acceptBelowPct: v })} suffix="% under the price shown" />
+      </div>
+      <p className="mt-4 text-xs text-ink-muted">
+        Price moved since the alert: skip a bet when Betfair&apos;s price has already shortened this much since the alert, because the market has moved first and the
+        value the alert saw has gone. 0 = off. Before each bet it also checks there&apos;s enough money on offer at the price asked for, and waits if not.
+      </p>
+      <div className="mt-2">
+        <NumberField label="Skip if shortened more than" value={form.maxShortenPct} onChange={(v) => set({ maxShortenPct: v })} suffix="% since the alert" />
       </div>
 
       <details className="mt-4">

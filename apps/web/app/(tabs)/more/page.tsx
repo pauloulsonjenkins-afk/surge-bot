@@ -2,17 +2,19 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bot, ChevronRight, Crown, History, ListChecks, Lock, PencilLine, Scale, Send, Settings, TrendingUp, Trophy } from "lucide-react";
+import { Bot, BrainCircuit, ChevronRight, Crown, Gauge, History, ListChecks, Lock, PencilLine, Scale, Send, Settings, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
 import { useMe } from "@/queries/use-me";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
+  "/more/admin/today": Gauge,
   "/more/admin/sending": Send,
   "/more/admin/strategies": Bot,
   "/more/admin/leagues": Trophy,
   "/more/admin/history": History,
+  "/more/admin/goal-model": BrainCircuit,
   "/more/admin/winloss": TrendingUp,
   "/more/admin/results": PencilLine,
   "/more/admin/reconcile": Scale,

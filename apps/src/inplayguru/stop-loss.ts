@@ -141,6 +141,41 @@ function winLossInputs(db: EngineDb): { commission: number; assumedOdds: Record<
 }
 
 /**
+ * Today's result across every strategy (UK day), counted the same way as each strategy's stop loss: Live counts the
+ * bets really placed (a Betfair bet at its real result), Sim the simulated ones. Used by the whole-account daily loss
+ * stop (Sending: "Stop all betting when down £X today").
+ */
+export function accountToday(db: EngineDb, now = new Date(), mode: "live" | "sim" = "live"): { net: number; settled: number } {
+  const today = ukDay.format(now);
+  const { commission, assumedOdds } = winLossInputs(db);
+  const since = new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString();
+  let net = 0;
+  let settled = 0;
+  for (const r of db.listResultsForWinLoss(since)) {
+    if (ukDay.format(new Date(r.firstSeenAt)) !== today) continue;
+    const stake =
+      mode === "live"
+        ? r.sent
+          ? r.placement === "betfair"
+            ? r.betStake
+            : r.sentStake
+          : null
+        : r.placement === "sim" && r.sim && r.sim.skipped === null
+          ? r.sim.stake
+          : null;
+    if (stake === null) continue;
+    const key = labelOf(r.strategy).toLowerCase();
+    if (mode === "live" && r.placement === "betfair" && r.betProfit !== null) net += r.betProfit > 0 ? r.betProfit * (1 - commission) : r.betProfit;
+    else if (r.result === "hit") {
+      const odds = (mode === "live" ? (r.placement === "betfair" ? r.betOdds : r.takenOdds) : null) ?? alertOddsOf(r) ?? assumedOdds[key] ?? null;
+      net += odds === null ? 0 : stake * (odds - 1) * (1 - commission);
+    } else net -= stake;
+    settled++;
+  }
+  return { net: r2(net), settled };
+}
+
+/**
  * Where every strategy with a limit stands right now. Strategies without a limit aren't included,
  * so an empty map means nothing can be stopped.
  */

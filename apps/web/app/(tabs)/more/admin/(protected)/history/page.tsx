@@ -189,7 +189,26 @@ function Profiles({ profiles }: { profiles: LeagueProfile[] }) {
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto">
+      {/* Phones: one card per league, the sorted figure first. Wider screens: the full table. */}
+      <ul className="space-y-2 md:hidden">
+        {rows.map((p) => (
+          <li key={p.code} className="rounded-lg border border-line p-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0 text-sm text-ink">
+                {p.name} <span className="text-xs text-ink-muted">{p.country}</span>
+              </span>
+              <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                {sort === "homeEdge" ? signed(p.homeEdge) : sort === "avgGoals" ? p.avgGoals.toFixed(2) : sort === "avgCorners" ? cell(p.avgCorners) : cell(p[sort], "%")}
+              </span>
+            </div>
+            <p className="mt-1 text-xs tabular-nums text-ink-muted">
+              H {p.homePct}% · D {p.drawPct}% · A {p.awayPct}% · edge {signed(p.homeEdge)} · goals {p.avgGoals.toFixed(2)} · 1H goal {cell(p.firstHalfGoalPct, "%")} · O2.5 {p.over25Pct}% ·
+              corners {cell(p.avgCorners)} · {p.matches.toLocaleString("en-GB")} matches
+            </p>
+          </li>
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="text-xs text-ink-muted">
             <tr>

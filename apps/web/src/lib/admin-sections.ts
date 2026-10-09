@@ -12,6 +12,7 @@ export const ADMIN_GROUPS = [
   {
     label: "Betting",
     items: [
+      { href: "/more/admin/today", label: "Today", description: "One glance: betting on or off, today's result, money out, limits, alert health, speed and why picks weren't placed." },
       { href: "/more/admin/strategies", label: "Strategies", description: "Each strategy's results, Live / Sim, stake, minimum odds and stop loss." },
       { href: "/more/admin/sending", label: "Sending", description: "Betting on or off, placing bets on Betfair, safety limits and bet wording." },
       { href: "/more/admin/reconcile", label: "Reconcile", description: "Real Betfair results against the app's estimates." },
@@ -22,6 +23,7 @@ export const ADMIN_GROUPS = [
     items: [
       { href: "/more/admin/winloss", label: "Win/Loss", description: "Profit and loss by day and strategy, and running costs." },
       { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier." },
+      { href: "/more/admin/goal-model", label: "Goal model", description: "Research: does our own model of the in-play stats beat the market price?" },
       { href: "/more/admin/history", label: "League history", description: "How each league plays, and strategies tested on past seasons." },
       { href: "/more/admin/results", label: "Amend results", description: "Correct a hit or miss, or remove a pick." },
     ],

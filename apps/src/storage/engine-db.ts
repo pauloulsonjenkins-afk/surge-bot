@@ -2377,6 +2377,38 @@ export class EngineDb {
     this.onChange();
   }
 
+  /**
+   * For each pick handed over to bet since `sinceIso` that has a Betfair bet: when the alert was posted (Telegram's
+   * time), received, handed over, and when the first Betfair bet for it was placed. The Today page's speed figures.
+   */
+  listBetTimings(sinceIso: string): Array<{ id: number; strategy: string; postedAt: string | null; receivedAt: string; sentAt: string | null; placedAt: string | null }> {
+    const rows = this.db
+      .prepare(
+        `SELECT p.id, p.strategy, p.message_at, p.first_seen_at, p.sent_at, MIN(b.placed_at) AS placed_at
+           FROM live_picks p JOIN betfair_bets b ON b.pick_id = p.id
+          WHERE p.first_seen_at >= ? AND p.sent_at IS NOT NULL
+          GROUP BY p.id`,
+      )
+      .all(sinceIso) as Array<{ id: number; strategy: string; message_at: string | null; first_seen_at: string; sent_at: string | null; placed_at: string | null }>;
+    return rows.map((r) => ({ id: r.id, strategy: r.strategy, postedAt: r.message_at, receivedAt: r.first_seen_at, sentAt: r.sent_at, placedAt: r.placed_at }));
+  }
+
+  /** Every settled pick still counted (not excluded), with its parsed alert: the goal model's training data. */
+  listSettledForModel(): Array<{ id: number; at: string; strategy: string; result: string | null; detail: ParsedAlert }> {
+    const rows = this.db
+      .prepare(`SELECT id, COALESCE(message_at, first_seen_at) AS at, strategy, result, parsed_json FROM live_picks WHERE status = 'settled' AND excluded = 0`)
+      .all() as Array<{ id: number; at: string; strategy: string; result: string | null; parsed_json: string }>;
+    const out: Array<{ id: number; at: string; strategy: string; result: string | null; detail: ParsedAlert }> = [];
+    for (const r of rows) {
+      try {
+        out.push({ id: r.id, at: r.at, strategy: r.strategy, result: r.result, detail: JSON.parse(r.parsed_json) as ParsedAlert });
+      } catch {
+        // an unreadable alert is left out
+      }
+    }
+    return out;
+  }
+
   /** Which price checks are already stored for these picks, as "pickId:kind". */
   priceChecksDone(ids: number[]): Set<string> {
     if (ids.length === 0) return new Set();
