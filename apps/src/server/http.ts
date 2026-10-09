@@ -88,6 +88,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
+import { priceCheckReport } from "../betfair/price-check";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
@@ -774,6 +775,21 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (!body.acknowledged) matchBets(db);
       log.info(`Reconcile: ${changed} unlinked bet(s) ${body.acknowledged ? "acknowledged" : "restored"} from the admin page.`);
       send(res, 200, { changed });
+      return;
+    }
+
+    // Price check: whether each strategy's alert price beats Betfair's price a few minutes later (betfair/price-check.ts).
+    if (req.method === "GET" && path === "/internal/price-check") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const days = Math.min(365, Math.max(1, Number(new URL(rawUrl, "http://internal").searchParams.get("days")) || 30));
+      send(res, 200, { ...priceCheckReport(db, days) });
       return;
     }
 

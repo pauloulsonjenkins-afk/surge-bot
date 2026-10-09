@@ -28,6 +28,7 @@ import { couldBeSameMatch, eventScore, matchBets } from "./reconcile";
 import { betableUntil, exchangeNamer, feedMarket, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 import { notifyUnplaced, UNPLACED_AFTER_MS } from "./unplaced";
+import { runPriceChecks } from "./price-check";
 
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
 const API_URL = "https://api.betfair.com/exchange/betting/rest/v1.0/";
@@ -758,6 +759,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
       await lookup();
       // And read again the price of picks waiting for it to reach their minimum odds.
       await repriceHeld(db, reader).catch((err: unknown) => log.warn(`Betfair re-pricing failed: ${err instanceof Error ? err.message : String(err)}`));
+      // And read the price of recent picks' bets again a few minutes later (Strategies: price check).
+      await runPriceChecks(db, reader).catch((err: unknown) => log.warn(`Price check failed: ${err instanceof Error ? err.message : String(err)}`));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Log a new problem once, not every 45 seconds.

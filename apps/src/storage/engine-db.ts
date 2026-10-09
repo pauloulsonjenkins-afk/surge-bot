@@ -706,6 +706,18 @@ export class EngineDb {
         PRIMARY KEY (day, rank)
       );
 
+      -- Price check (betfair/price-check.ts): the price of a pick's bet read again a little later (2 and 5 minutes after
+      -- an in-play alert, or at kick-off for a pre-match one), to see whether the strategy beats the market's later price.
+      CREATE TABLE IF NOT EXISTS pick_price_checks (
+        pick_id   INTEGER NOT NULL,
+        kind      TEXT NOT NULL,
+        strategy  TEXT NOT NULL,
+        entry     REAL NOT NULL,
+        later     REAL,
+        at        TEXT NOT NULL,
+        PRIMARY KEY (pick_id, kind)
+      );
+
       -- Devices (browsers, or the installed app) that get the admin's push notifications (server/push.ts).
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         endpoint      TEXT PRIMARY KEY,
@@ -2363,6 +2375,34 @@ export class EngineDb {
       this.db.prepare(`DELETE FROM horse_suggestions WHERE day < date(?, '-7 days')`).run(day);
     })();
     this.onChange();
+  }
+
+  /** Which price checks are already stored for these picks, as "pickId:kind". */
+  priceChecksDone(ids: number[]): Set<string> {
+    if (ids.length === 0) return new Set();
+    const rows = this.db
+      .prepare(`SELECT pick_id, kind FROM pick_price_checks WHERE pick_id IN (${ids.map(() => "?").join(",")})`)
+      .all(...ids) as Array<{ pick_id: number; kind: string }>;
+    return new Set(rows.map((r) => `${r.pick_id}:${r.kind}`));
+  }
+
+  savePriceCheck(c: { pickId: number; kind: string; strategy: string; entry: number; later: number | null; at: string }): void {
+    this.db
+      .prepare(`INSERT OR IGNORE INTO pick_price_checks (pick_id, kind, strategy, entry, later, at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(c.pickId, c.kind, c.strategy, c.entry, c.later, c.at);
+    this.onChange();
+  }
+
+  listPriceChecks(sinceIso: string): Array<{ pickId: number; kind: "t2" | "t5" | "ko"; strategy: string; entry: number; later: number | null; at: string }> {
+    const rows = this.db.prepare(`SELECT * FROM pick_price_checks WHERE at >= ? ORDER BY at`).all(sinceIso) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      pickId: Number(r.pick_id),
+      kind: String(r.kind) as "t2" | "t5" | "ko",
+      strategy: String(r.strategy),
+      entry: Number(r.entry),
+      later: typeof r.later === "number" ? r.later : null,
+      at: String(r.at),
+    }));
   }
 
   /** Every pick ever fetched, newest day first. */

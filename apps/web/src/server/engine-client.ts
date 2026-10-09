@@ -1562,3 +1562,24 @@ export function fetchAwayLayTest(query: string): Promise<LayTestResult> {
 export function refreshHistory(): Promise<{ status: HistoryStatus }> {
   return engineCall("/internal/history/refresh", "refreshing the league history", { method: "POST", body: {} });
 }
+
+// ---- Price check (mirrors betfair/price-check.ts in the engine) ----
+
+export interface PriceCheckRow {
+  strategy: string;
+  kind: "t2" | "t5" | "ko";
+  picks: number;
+  edge: number;
+  avgEntry: number;
+  avgLater: number;
+}
+
+export interface PriceCheckReport {
+  days: number;
+  rows: PriceCheckRow[];
+  typical: Partial<Record<"t2" | "t5" | "ko", number>>;
+}
+
+export function fetchPriceCheck(days: number): Promise<PriceCheckReport> {
+  return engineCall(`/internal/price-check?days=${days}`, "the price check");
+}

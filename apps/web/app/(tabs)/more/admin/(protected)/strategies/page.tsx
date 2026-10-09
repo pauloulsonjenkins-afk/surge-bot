@@ -21,6 +21,7 @@ import { ukMidnightIso } from "@/lib/uk-time";
 import { useSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
 import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
 import Link from "next/link";
+import { PriceCheck } from "@/components/admin/PriceCheck";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -684,6 +685,8 @@ export default function StrategiesPage() {
           fewer than {SAMPLE} priced picks are faded and get no Live / Sim suggestion; the equity curve is always all time.
         </p>
       )}
+
+      {data && strategies.length > 0 && <PriceCheck />}
 
       {data && strategies.length > 0 && (
         <div className="space-y-2">
