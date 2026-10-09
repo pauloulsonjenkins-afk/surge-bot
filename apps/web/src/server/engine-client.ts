@@ -333,6 +333,8 @@ export async function fetchHitRateStats(days: number | null, strategy: string | 
 export interface SendingSettings {
   enabled: boolean;
   strategies: Record<string, boolean>;
+  /** The goal model filter per strategy (lower-case name): true = on. Send false to turn one off. Missing on an older engine. */
+  modelFilter?: Record<string, boolean>;
   /** Stake in pounds per strategy (lower-case name). Send null to clear one. */
   stakes: Record<string, number | null>;
   /** Or a stake as a percentage of the Betfair balance per strategy (lower-case name). Send null to clear one. Setting one replaces the other. */
@@ -1617,6 +1619,8 @@ export interface TodaySnapshot {
   queue: { waiting: number; placing: number; notPlacedToday: number; sentToday: number };
   stopped: Array<{ strategy: string; reason: string | null }>;
   speed: { today: SpeedReport; week: SpeedReport };
+  /** Suggestions to put a strategy Live or back to Sim (missing on an older engine). */
+  advice?: Array<{ key: string; kind: "try-live" | "back-to-sim"; reason: string }>;
 }
 
 export interface NotPlacedReport {

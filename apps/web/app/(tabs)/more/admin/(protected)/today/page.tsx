@@ -223,6 +223,22 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         />
       </div>
 
+      {d.advice && d.advice.length > 0 && (
+        <Card title="Suggestions" subtitle="From recent results. Nothing changes until you switch it on Strategies; you get one notification per new suggestion.">
+          <ul className="space-y-2 text-sm">
+            {d.advice.map((a) => (
+              <li key={a.key}>
+                <Link href="/more/admin/strategies" className="font-medium text-ink underline decoration-line">
+                  {names.name(a.key)}
+                </Link>{" "}
+                <span className={a.kind === "try-live" ? "text-hit" : "text-warn"}>{a.kind === "try-live" ? "ready to try Live at £1" : "consider putting back to Sim"}</span>
+                <span className="block text-xs text-ink-muted">{a.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {d.stopped.length > 0 && (
         <Card title="Stopped today">
           <ul className="space-y-1 text-sm">

@@ -294,11 +294,16 @@ export function breakEven(price: number): number {
  * Scores one next-goal pick with the active model, or returns null when it can't yet: no model, the alert lacks the
  * features, or Betfair hasn't been checked and the pick is under 2 minutes old (its price is worth waiting for).
  */
-export function scorePick(model: ActiveModel, p: { detail: ParsedAlert | null; exchange: string | null; exchangeOdds: number | null; firstSeenAt: string }, now = new Date()) {
+export function scorePick(
+  model: ActiveModel,
+  p: { detail: ParsedAlert | null; exchange: string | null; exchangeOdds: number | null; firstSeenAt: string },
+  now = new Date(),
+  opts: { noWait?: boolean } = {},
+) {
   if (!p.detail) return null;
   const f = featuresOf(p.detail);
   if (!f) return null;
-  const waited = now.getTime() - Date.parse(p.firstSeenAt) > 2 * 60_000;
+  const waited = opts.noWait === true || now.getTime() - Date.parse(p.firstSeenAt) > 2 * 60_000;
   if (p.exchange === null && !waited) return null;
   const betfair = p.exchange === "on" && p.exchangeOdds !== null && p.exchangeOdds > 1;
   const price = betfair ? p.exchangeOdds! : f.odds;
@@ -320,6 +325,33 @@ export function shadowTick(db: EngineDb, now = new Date()): number {
     scored++;
   }
   return scored;
+}
+
+/**
+ * The MODEL FILTER's answer for one pick of a strategy that has it switched on (Sending: modelFilter): bet or hold
+ * back. Uses the pick's shadow score when it has one, so the filter and the shadow figures always agree; otherwise
+ * scores it now (with whatever price is known) and saves that. Null when the model can't judge it (no model yet, or
+ * the alert lacks the figures): the pick then goes ahead as if the filter were off.
+ */
+export function modelVerdict(
+  db: EngineDb,
+  p: { id: number; market: string | null; detail: ParsedAlert | null; exchange: string | null; exchangeOdds: number | null; firstSeenAt: string },
+  now = new Date(),
+): { bet: boolean; reason: string } | null {
+  if (p.market !== "NEXT_GOAL") return null;
+  let s = db.getModelScore(p.id);
+  if (!s) {
+    const model = getActiveModel(db);
+    if (!model) return null;
+    const fresh = scorePick(model, p, now, { noWait: true });
+    if (!fresh) return null;
+    db.saveModelScore({ pickId: p.id, version: model.version, ...fresh, at: now.toISOString() });
+    s = { version: model.version, ...fresh };
+  }
+  const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
+  return s.edge >= EDGE
+    ? { bet: true, reason: `Model ${pct(s.pModel)} vs ${pct(s.pNeeded)} needed at ${s.price.toFixed(2)}.` }
+    : { bet: false, reason: `Model sees no edge: ${pct(s.pModel)} chance of a goal, ${pct(s.pNeeded)} needed at ${s.price.toFixed(2)} (wants ${Math.round(EDGE * 100)}+ points more).` };
 }
 
 export interface ShadowGroup {
@@ -419,7 +451,7 @@ export async function notifyIfProved(db: EngineDb, now = new Date()): Promise<bo
   }
   if (notified) return false;
   db.setSetting(PROVED_KEY, now.toISOString());
-  const msg = `Picks it would bet: ${r.wouldBet.roi}% per £1 (${r.wouldBet.settled}); ones it would skip: ${r.wouldSkip.roi}% (${r.wouldSkip.settled}). Consider turning its filter on for one strategy at £1.`;
+  const msg = `Picks it would bet: ${r.wouldBet.roi}% per £1 (${r.wouldBet.settled}); ones it would skip: ${r.wouldSkip.roi}% (${r.wouldSkip.settled}). Turn it on for one Live strategy at £1: Strategies, open a next-goal strategy, Goal model filter: On.`;
   log.info(`Goal model proved in shadow. ${msg}`);
   await sendPush(db, { title: "Goal model proved in shadow", body: msg, url: "/more/admin/goal-model", tag: "goal-model" });
   return true;

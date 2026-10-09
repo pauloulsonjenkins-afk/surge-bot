@@ -39,8 +39,78 @@ export function betSummary(s: SendingStrategy, settings: SendingSettings): { tex
   if (!s.market) return { text: "No market set", warn: true };
   if (!canBet(s, settings)) return { text: "Can't be bet yet: set its market under Sending → Bet wording", warn: true };
   const hasStop = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
-  const parts = [marketName(s.market), stakeText(s) ?? "No stake yet", s.minOdds !== null ? `min odds ${s.minOdds.toFixed(2)}` : null, hasStop ? "stop loss set" : null];
+  const parts = [
+    marketName(s.market),
+    stakeText(s) ?? "No stake yet",
+    s.minOdds !== null ? `min odds ${s.minOdds.toFixed(2)}` : null,
+    hasStop ? "stop loss set" : null,
+    settings.modelFilter?.[s.label.toLowerCase()] ? "goal model filter on" : null,
+  ];
   return { text: parts.filter(Boolean).join(" · "), warn: !hasStake(s) };
+}
+
+/**
+ * The goal model filter for a next-goal strategy: when on, a pick only goes ahead if the goal model rates it 3+ points
+ * above what Betfair's price needs (Results > Goal model). Off by default; meant to be turned on once the model has
+ * proved itself in shadow (you get a notification). Works in Sim too, so its effect can be watched first.
+ */
+function ModelFilterSwitch({ s, settings }: { s: SendingStrategy; settings: SendingSettings }) {
+  const save = useSaveSending();
+  const dialog = useDialog();
+  const names = useStrategyNames();
+  const key = s.label.toLowerCase();
+  const on = settings.modelFilter?.[key] === true;
+  async function set(next: boolean) {
+    if (next === on) return;
+    if (next) {
+      const ok = await dialog.confirm({
+        title: `Turn the goal model filter on for ${names.name(s.label)}?`,
+        tone: "money",
+        confirmLabel: "Turn the filter on",
+        body: (
+          <>
+            <p>
+              From now on, this strategy&apos;s next-goal picks only go ahead when the goal model rates them 3+ points above what the price needs. The rest are
+              held back and show why under Skipped (in Sim, as not placed).
+            </p>
+            <p>Only do this once the model has proved itself in shadow: check Results → Goal model, or wait for the notification. You can turn it off any time.</p>
+          </>
+        ),
+      });
+      if (!ok) return;
+    }
+    save.mutate({ modelFilter: { [key]: next } });
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-surface px-2.5 py-2">
+      <span className="text-xs text-ink-muted">
+        <span className="font-medium text-ink">Goal model filter</span> · only bet picks the model rates above the price.{" "}
+        <a href="/more/admin/goal-model" className="text-accent underline">
+          Is it proved?
+        </a>
+      </span>
+      <div className="inline-flex rounded-md border border-line p-0.5" role="radiogroup" aria-label={`Goal model filter for ${names.name(s.label)}`}>
+        {(
+          [
+            [false, "Off"],
+            [true, "On"],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={label}
+            type="button"
+            role="radio"
+            aria-checked={on === v}
+            disabled={save.isPending}
+            onClick={() => void set(v)}
+            className={`rounded px-2.5 py-1 text-xs font-medium ${on === v ? "bg-accent text-accent-ink" : "text-ink hover:bg-surface-2"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: SendingSettings }) {
@@ -258,6 +328,7 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
         </p>
       )}
       {supported && <StopLossControls status={s.stopLoss} busy={save.isPending} onSave={(patch) => save.mutate({ stopLoss: { [key]: patch } })} />}
+      {supported && s.market === "NEXT_GOAL" && <ModelFilterSwitch s={s} settings={settings} />}
       {/* In Sim, the same limits run on the simulated bets, so they can be tuned before going Live. */}
       {!s.enabled && s.simStopLoss && (
         <p className={`rounded-md bg-surface px-2.5 py-1.5 text-xs ${s.simStopLoss.stopped ? "text-warn" : "text-ink-muted"}`}>

@@ -2426,6 +2426,13 @@ export class EngineDb {
     this.onChange();
   }
 
+  getModelScore(pickId: number): { version: string; pModel: number; pNeeded: number; edge: number; price: number; priceFrom: string } | null {
+    const r = this.db.prepare(`SELECT version, p_model, p_needed, edge, price, price_from FROM pick_model_scores WHERE pick_id = ?`).get(pickId) as
+      | { version: string; p_model: number; p_needed: number; edge: number; price: number; price_from: string }
+      | undefined;
+    return r ? { version: r.version, pModel: r.p_model, pNeeded: r.p_needed, edge: r.edge, price: r.price, priceFrom: r.price_from } : null;
+  }
+
   /** Scored picks with how they turned out (result null while unsettled), newest first. */
   listModelScores(limit = 5000): Array<{
     pickId: number;

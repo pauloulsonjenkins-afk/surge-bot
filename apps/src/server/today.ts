@@ -15,6 +15,7 @@ import { getBetfairLinkStatus } from "../betfair/exchange";
 import { reasonFor } from "../betfair/unplaced";
 import { telegramHealth } from "./telegram-watchdog";
 import { ukDateOf, ukDayBounds } from "./uk-time";
+import { strategyAdvice } from "./strategy-advice";
 
 // --------------------------------------------------------------------------- not placed, by reason
 
@@ -217,5 +218,6 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
     queue: { waiting: open.filter((d) => d.state === "waiting").length, placing: open.filter((d) => d.state === "placing").length, notPlacedToday: notPlacedToday.notPlaced, sentToday: notPlacedToday.sent },
     stopped,
     speed: { today: speedReport(db, dayFrom), week: speedReport(db, new Date(now.getTime() - 7 * 86_400_000).toISOString()) },
+    advice: strategyAdvice(db, now),
   };
 }

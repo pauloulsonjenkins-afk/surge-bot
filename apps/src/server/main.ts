@@ -24,6 +24,7 @@ import { startMembers } from "../members/runner";
 import { startHistoryRefresh } from "../history/football-data";
 import { startDailyTips } from "./daily-tips";
 import { notifyIfProved, shadowTick } from "../model/goal-model";
+import { notifyAdvice } from "./strategy-advice";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -96,6 +97,14 @@ async function main(): Promise<void> {
     void notifyIfProved(db).catch((err) => log.warn(`Goal model check failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3_600_000);
   provedCheck.unref();
+  // Once an hour in the daytime (08:00-22:00 UK): any strategy now worth putting Live, or back to Sim? One
+  // notification per new suggestion; they're also listed on the Today page.
+  const adviceCheck = setInterval(() => {
+    const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+    if (hour < 8 || hour >= 22) return;
+    void notifyAdvice(db).catch((err) => log.warn(`Strategy suggestions failed: ${err instanceof Error ? err.message : String(err)}`));
+  }, 3_600_000);
+  adviceCheck.unref();
 
   // Reads your bets from Betfair (read only) so the site knows within a minute whether a sent pick was placed.
   startBetfairPoller(db);

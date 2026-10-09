@@ -44,12 +44,18 @@ import { kickoffMinutes } from "./parse-alert";
 import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
+import { modelVerdict } from "../model/goal-model";
 
 export interface SendingSettings {
   /** Master switch. */
   enabled: boolean;
   /** Per-strategy switches, keyed by lower-case strategy name. Missing = off. */
   strategies: Record<string, boolean>;
+  /**
+   * The goal model filter, per strategy (lower-case name): true = a next-goal pick only goes ahead when the goal model
+   * (model/goal-model.ts) rates it 3+ points above what the price needs. Missing = off. Applies in Live and in Sim.
+   */
+  modelFilter: Record<string, boolean>;
   /** Stake in pounds per strategy, keyed by lower-case strategy name. Missing (and no percentage) = cannot be sent. */
   stakes: Record<string, number>;
   /** Or a stake as a percentage of the Betfair balance (see stake.ts). A strategy has a flat stake or a percentage, not both. */
@@ -101,6 +107,7 @@ export interface SendingSettings {
 export const DEFAULT_SENDING: SendingSettings = {
   enabled: false,
   strategies: {},
+  modelFilter: {},
   stakes: {},
   stakePct: {},
   minOdds: {},
@@ -184,6 +191,10 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   if (raw.strategies && typeof raw.strategies === "object") {
     for (const [k, v] of Object.entries(raw.strategies)) strategies[k.toLowerCase()] = v === true;
   }
+  const modelFilter: Record<string, boolean> = {};
+  if (raw.modelFilter && typeof raw.modelFilter === "object") {
+    for (const [k, v] of Object.entries(raw.modelFilter)) if (v === true) modelFilter[k.toLowerCase()] = true;
+  }
   const stakes: Record<string, number> = {};
   if (raw.stakes && typeof raw.stakes === "object") {
     for (const [k, v] of Object.entries(raw.stakes)) {
@@ -208,6 +219,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   return {
     enabled: raw.enabled === true,
     strategies,
+    modelFilter,
     stakes,
     stakePct,
     minOdds,
@@ -280,6 +292,12 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
     }
   }
   if (patch.maxStake !== undefined) next.maxStake = clampInt(patch.maxStake, 1, 500, current.maxStake);
+  if (patch.modelFilter && typeof patch.modelFilter === "object") {
+    for (const [k, v] of Object.entries(patch.modelFilter as Record<string, unknown>)) {
+      if (v === true) next.modelFilter[k.toLowerCase()] = true;
+      else if (v === false || v === null) delete next.modelFilter[k.toLowerCase()];
+    }
+  }
   if (patch.strategies && typeof patch.strategies === "object") {
     for (const [k, v] of Object.entries(patch.strategies as Record<string, unknown>)) {
       if (typeof v === "boolean") next.strategies[k.toLowerCase()] = v;
@@ -607,6 +625,15 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       }
     }
 
+    // The goal model filter, when this strategy has it on: a next-goal pick the model sees no edge in isn't sent.
+    if (!alreadySent && settings.modelFilter[label.toLowerCase()]) {
+      const verdict = modelVerdict(db, p, now);
+      if (verdict && !verdict.bet) {
+        skipped.push(skip(p, verdict.reason));
+        continue;
+      }
+    }
+
     const market = feedMarket(p, settings, alias);
     if ("error" in market) {
       skipped.push(skip(p, market.error));
@@ -743,6 +770,11 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     else if (minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
     else if (stops.get(key)?.stopped) skipped = `Stopped: ${stops.get(key)!.reason}`;
     else if (betsToday >= settings.dailyCap) skipped = "Daily limit reached.";
+    // The goal model filter runs in Sim too, so a Sim strategy's figures show what the filter would do.
+    if (skipped === null && settings.modelFilter[key]) {
+      const verdict = modelVerdict(db, p, now);
+      if (verdict && !verdict.bet) skipped = verdict.reason;
+    }
 
     if (skipped === null) betsToday++;
     items.push({ id: p.id, rowJson: JSON.stringify({ stake: skipped === null ? stake : null, minPrice, skipped }) });

@@ -35,7 +35,7 @@ export function ModelShadow({ s }: { s: ShadowReport }) {
     >
       <div className={`rounded-md p-2.5 text-xs ${s.ready.met ? "bg-hit/15 text-ink" : "bg-surface-2 text-ink"}`}>
         {s.ready.met ? (
-          <p className="font-medium text-hit">Proved in shadow: consider turning its filter on for one strategy at £1. You were sent a notification.</p>
+          <p className="font-medium text-hit">Proved in shadow. Turn it on for one Live strategy at £1: Strategies, open a next-goal strategy, Goal model filter: On.</p>
         ) : (
           <>
             <p className="font-medium">Not proved yet. You&apos;ll get a notification the moment it is. Still needed:</p>
