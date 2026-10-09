@@ -103,6 +103,12 @@ const DEFAULTS: Record<string, StrategyInfo> = {
     trigger: "75', 0-0, favourite 1.50 or shorter pre-match.",
     bet: "Favourite to score (its goals Over 0.5)",
   },
+  "french press": {
+    name: "French Press",
+    description: "A favourite a goal up and pushing again: backs it to score another.",
+    trigger: "61' to 75', the leading side 1.80 or less pre-match and one goal ahead, its momentum up 48+ in 12 minutes and a shot on target in that time, no red cards.",
+    bet: "Favourite to score again",
+  },
   "pass master 1st half": {
     name: "Filter Coffee",
     description: "The favourite is passing well in the first half: backs it to score again. Sim only, as Betfair doesn't list the market.",
