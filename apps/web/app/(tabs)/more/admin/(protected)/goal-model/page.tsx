@@ -5,6 +5,7 @@ import { Card, PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useGoalModel } from "@/queries/use-goal-model";
+import { ModelShadow } from "@/components/admin/ModelShadow";
 
 const signed = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${n}%`);
 const tone = (n: number | null) => (n === null || n === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
@@ -20,7 +21,7 @@ export default function GoalModelPage() {
       <PageHeader
         as="h2"
         title="Goal model"
-        subtitle="Research. For next-goal alerts, a model of InPlayGuru's stats (minute, score, momentum, attacks, shots) estimates the chance of another goal, starting from the market's own chance. It's trained on older picks and tested on newer ones it never saw. Nothing here bets."
+        subtitle="In shadow. For next-goal alerts, a model of InPlayGuru's stats (minute, score, momentum, attacks, shots) estimates the chance of another goal, starting from the market's own chance. Every new pick is scored live; nothing is bet differently until you turn it on."
         actions={
           <button
             type="button"
@@ -28,7 +29,7 @@ export default function GoalModelPage() {
             onClick={() => setRefreshKey((k) => k + 1)}
             className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
           >
-            {isFetching ? "Training…" : "Train again"}
+            {isFetching ? "Testing…" : "Run the back-test again"}
           </button>
         }
       />
@@ -38,6 +39,9 @@ export default function GoalModelPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
+          {data.shadow && <ModelShadow s={data.shadow} />}
+
+          <h3 className="pt-2 text-base font-semibold text-ink">Back-test on past picks</h3>
           <p className={`rounded-xl border p-3 text-sm text-ink ${data.verdict.startsWith("Promising") ? "border-hit/50 bg-hit/10" : "border-line bg-surface"}`}>{data.verdict}</p>
 
           {data.test && (

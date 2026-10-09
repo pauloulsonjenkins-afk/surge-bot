@@ -23,6 +23,7 @@ import { readCredentials } from "../betfair/exchange";
 import { startMembers } from "../members/runner";
 import { startHistoryRefresh } from "../history/football-data";
 import { startDailyTips } from "./daily-tips";
+import { notifyIfProved, shadowTick } from "../model/goal-model";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -80,6 +81,21 @@ async function main(): Promise<void> {
     }
   }, 60_000);
   simSweep.unref();
+
+  // Goal model in shadow: scores each new next-goal pick (never changes a bet); retrains itself weekly.
+  const modelSweep = setInterval(() => {
+    try {
+      shadowTick(db);
+    } catch (err) {
+      log.warn(`Goal model scoring failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, 20_000);
+  modelSweep.unref();
+  // Once an hour: has the shadow test met the rule for turning the model on? One notification when it first does.
+  const provedCheck = setInterval(() => {
+    void notifyIfProved(db).catch((err) => log.warn(`Goal model check failed: ${err instanceof Error ? err.message : String(err)}`));
+  }, 3_600_000);
+  provedCheck.unref();
 
   // Reads your bets from Betfair (read only) so the site knows within a minute whether a sent pick was placed.
   startBetfairPoller(db);

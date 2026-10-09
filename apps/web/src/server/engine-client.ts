@@ -1664,6 +1664,31 @@ export interface GoalModelReport {
   weights: Array<{ feature: string; weight: number }>;
   trainCheck: { modelBets: ModelRoi; modelSkips: ModelRoi } | null;
   verdict: string;
+  /** Live shadow scoring (missing on an older engine). */
+  shadow?: ShadowReport;
+}
+
+export interface ShadowGroup {
+  picks: number;
+  settled: number;
+  hitRate: number | null;
+  roi: number | null;
+}
+
+export interface ShadowReport {
+  model: { version: string; trainedAt: string; rows: number } | null;
+  since: string | null;
+  scored: number;
+  betfairShare: number | null;
+  wouldBet: ShadowGroup;
+  wouldSkip: ShadowGroup;
+  byStrategy: Array<{ strategy: string; wouldBet: ShadowGroup; wouldSkip: ShadowGroup }>;
+  recent: Array<{ pickId: number; strategy: string; match: string; minute: number | null; pModel: number; pNeeded: number; price: number; priceFrom: string; wouldBet: boolean; result: string | null }>;
+  ready: { met: boolean; reasons: string[] };
+}
+
+export function publishGoalModel(): Promise<{ version: string }> {
+  return engineCall("/internal/goal-model/publish", "training a new model version", { method: "POST", body: {}, timeoutMs: 30_000 });
 }
 
 export function fetchGoalModel(refresh: boolean): Promise<GoalModelReport> {

@@ -14,9 +14,18 @@
  *     against betting every pick and against the picks it would skip.
  * The prices are the alert's (InPlayGuru's), not what Betfair matched, so treat money figures as a guide.
  * Nothing here bets: it's a report (Results > Goal model). Using it to filter bets would be a later, separate step.
+ *
+ * SHADOW (from 2026-10-09): a frozen model version scores every new next-goal pick as it arrives, against Betfair's
+ * price for the bet when the engine has read it (the alert's price otherwise). "Would bet" = the model's chance is 3+
+ * points above the chance that price needs to break even after 2% commission. Picks are only labelled, never held
+ * back or bet differently. Once they settle, the two groups are compared (shadowReport): a fair test, as the model
+ * never saw them. The model is retrained on everything each week and frozen as a new version, so every scored pick
+ * ties to the version that scored it.
  */
 import type { EngineDb } from "../storage/engine-db";
 import type { ParsedAlert } from "../inplayguru/parse-alert";
+import { sendPush } from "../server/push";
+import { log } from "../server/log";
 
 export const FEATURES = [
   "Market's chance (log-odds)",
@@ -244,6 +253,176 @@ export function modelReport(db: EngineDb): ModelReport {
     trainCheck: { modelBets: tb, modelSkips: ts },
     verdict,
   };
+}
+
+// --------------------------------------------------------------------------- shadow: the frozen model, scoring live
+
+const ACTIVE_KEY = "goal_model_active";
+const RETRAIN_EVERY_MS = 7 * 86_400_000;
+
+export interface ActiveModel extends Model {
+  version: string;
+}
+
+export function getActiveModel(db: EngineDb): ActiveModel | null {
+  try {
+    const raw = db.getSetting(ACTIVE_KEY);
+    return raw ? (JSON.parse(raw) as ActiveModel) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Trains on every settled pick and freezes it as the next version. Null when there isn't enough data yet. */
+export function publishModel(db: EngineDb, now = new Date()): ActiveModel | null {
+  const data = dataset(db);
+  if (data.length < MIN_ROWS) return null;
+  const prev = getActiveModel(db);
+  const n = prev ? Number(/^v(\d+)/.exec(prev.version)?.[1] ?? 0) + 1 : 1;
+  const model: ActiveModel = { ...fit(data), trainedAt: now.toISOString(), version: `v${n} (${now.toISOString().slice(0, 10)})` };
+  db.setSetting(ACTIVE_KEY, JSON.stringify(model));
+  cache = null;
+  return model;
+}
+
+/** The chance a price needs to break even after commission: 1 / (1 + (price - 1) x (1 - commission)). */
+export function breakEven(price: number): number {
+  return 1 / (1 + (price - 1) * (1 - COMMISSION));
+}
+
+/**
+ * Scores one next-goal pick with the active model, or returns null when it can't yet: no model, the alert lacks the
+ * features, or Betfair hasn't been checked and the pick is under 2 minutes old (its price is worth waiting for).
+ */
+export function scorePick(model: ActiveModel, p: { detail: ParsedAlert | null; exchange: string | null; exchangeOdds: number | null; firstSeenAt: string }, now = new Date()) {
+  if (!p.detail) return null;
+  const f = featuresOf(p.detail);
+  if (!f) return null;
+  const waited = now.getTime() - Date.parse(p.firstSeenAt) > 2 * 60_000;
+  if (p.exchange === null && !waited) return null;
+  const betfair = p.exchange === "on" && p.exchangeOdds !== null && p.exchangeOdds > 1;
+  const price = betfair ? p.exchangeOdds! : f.odds;
+  const pModel = predict(model, f.x);
+  const pNeeded = breakEven(price);
+  return { pModel, pMarket: f.pMarket, price, priceFrom: betfair ? "betfair" : "alert", pNeeded, edge: pModel - pNeeded };
+}
+
+/** One pass: retrain weekly, then score any new next-goal picks. Returns how many were scored. */
+export function shadowTick(db: EngineDb, now = new Date()): number {
+  let model = getActiveModel(db);
+  if (!model || now.getTime() - Date.parse(model.trainedAt) > RETRAIN_EVERY_MS) model = publishModel(db, now) ?? model;
+  if (!model) return 0;
+  let scored = 0;
+  for (const p of db.unscoredForModel(new Date(now.getTime() - 86_400_000).toISOString())) {
+    const s = scorePick(model, p, now);
+    if (!s) continue;
+    db.saveModelScore({ pickId: p.id, version: model.version, ...s, at: now.toISOString() });
+    scored++;
+  }
+  return scored;
+}
+
+export interface ShadowGroup {
+  picks: number;
+  settled: number;
+  hitRate: number | null;
+  /** Profit per £1 at the price scored (Betfair's when known), less 2% commission. */
+  roi: number | null;
+}
+
+export interface ShadowReport {
+  model: { version: string; trainedAt: string; rows: number } | null;
+  since: string | null;
+  scored: number;
+  /** Share scored against Betfair's price (the rest used the alert's). */
+  betfairShare: number | null;
+  wouldBet: ShadowGroup;
+  wouldSkip: ShadowGroup;
+  byStrategy: Array<{ strategy: string; wouldBet: ShadowGroup; wouldSkip: ShadowGroup }>;
+  recent: Array<{ pickId: number; strategy: string; match: string; minute: number | null; pModel: number; pNeeded: number; price: number; priceFrom: string; wouldBet: boolean; result: string | null }>;
+  /** The written rule for turning the filter on, and whether it's met. */
+  ready: { met: boolean; reasons: string[] };
+}
+
+function group(rows: Array<{ result: string | null; price: number }>): ShadowGroup {
+  const settled = rows.filter((r) => r.result === "hit" || r.result === "miss");
+  const profit = settled.reduce((s, r) => s + (r.result === "hit" ? (r.price - 1) * (1 - COMMISSION) : -1), 0);
+  return {
+    picks: rows.length,
+    settled: settled.length,
+    hitRate: settled.length ? r1((100 * settled.filter((r) => r.result === "hit").length) / settled.length) : null,
+    roi: settled.length ? r1((100 * profit) / settled.length) : null,
+  };
+}
+
+/** How the picks the model would bet compare with the ones it would skip, since shadow scoring began. */
+export function shadowReport(db: EngineDb): ShadowReport {
+  const model = getActiveModel(db);
+  const rows = db.listModelScores().filter((r) => !r.excluded);
+  const bet = rows.filter((r) => r.edge >= EDGE);
+  const skip = rows.filter((r) => r.edge < EDGE);
+  const strategies = [...new Set(rows.map((r) => r.strategy))];
+  const wb = group(bet);
+  const ws = group(skip);
+  const reasons: string[] = [];
+  const minSettled = 300;
+  if (wb.settled + ws.settled < minSettled) reasons.push(`${minSettled}+ settled picks scored (has ${wb.settled + ws.settled})`);
+  if (wb.roi === null || ws.roi === null || wb.roi - ws.roi < 5) reasons.push("'Would bet' beats 'would skip' by 5+ points");
+  if (wb.roi === null || wb.roi <= 0) reasons.push("'Would bet' is profitable at Betfair's prices");
+  // And not a fluke of one spell: the gap has to hold in the older and the newer half of the settled picks.
+  const settled = rows.filter((r) => r.result === "hit" || r.result === "miss").sort((a, b) => a.scoredAt.localeCompare(b.scoredAt));
+  const half = Math.floor(settled.length / 2);
+  const holds = [settled.slice(0, half), settled.slice(half)].every((part) => {
+    const b = group(part.filter((r) => r.edge >= EDGE));
+    const s = group(part.filter((r) => r.edge < EDGE));
+    return b.roi !== null && s.roi !== null && b.roi > s.roi;
+  });
+  if (!holds) reasons.push("The gap holds in both the older and the newer half of the shadow period");
+  return {
+    model: model ? { version: model.version, trainedAt: model.trainedAt, rows: model.n } : null,
+    since: rows.length ? rows.reduce((m, r) => (r.scoredAt < m ? r.scoredAt : m), rows[0]!.scoredAt) : null,
+    scored: rows.length,
+    betfairShare: rows.length ? r1((100 * rows.filter((r) => r.priceFrom === "betfair").length) / rows.length) : null,
+    wouldBet: wb,
+    wouldSkip: ws,
+    byStrategy: strategies
+      .map((s) => ({ strategy: s, wouldBet: group(bet.filter((r) => r.strategy === s)), wouldSkip: group(skip.filter((r) => r.strategy === s)) }))
+      .sort((a, b) => b.wouldBet.picks + b.wouldSkip.picks - (a.wouldBet.picks + a.wouldSkip.picks)),
+    recent: rows.slice(0, 25).map((r) => ({
+      pickId: r.pickId,
+      strategy: r.strategy,
+      match: `${r.home ?? "?"} v ${r.away ?? "?"}`,
+      minute: r.minute,
+      pModel: r1(r.pModel * 100),
+      pNeeded: r1(r.pNeeded * 100),
+      price: r.price,
+      priceFrom: r.priceFrom,
+      wouldBet: r.edge >= EDGE,
+      result: r.status === "settled" ? r.result : null,
+    })),
+    ready: { met: reasons.length === 0, reasons },
+  };
+}
+
+const PROVED_KEY = "goal_model_proved_notified";
+
+/**
+ * Sends ONE phone notification when the shadow results first meet the rule for turning the filter on, and remembers
+ * it. If the results later stop meeting it, the note is cleared, so a later proof notifies again.
+ */
+export async function notifyIfProved(db: EngineDb, now = new Date()): Promise<boolean> {
+  const r = shadowReport(db);
+  const notified = db.getSetting(PROVED_KEY);
+  if (!r.ready.met) {
+    if (notified) db.setSetting(PROVED_KEY, "");
+    return false;
+  }
+  if (notified) return false;
+  db.setSetting(PROVED_KEY, now.toISOString());
+  const msg = `Picks it would bet: ${r.wouldBet.roi}% per £1 (${r.wouldBet.settled}); ones it would skip: ${r.wouldSkip.roi}% (${r.wouldSkip.settled}). Consider turning its filter on for one strategy at £1.`;
+  log.info(`Goal model proved in shadow. ${msg}`);
+  await sendPush(db, { title: "Goal model proved in shadow", body: msg, url: "/more/admin/goal-model", tag: "goal-model" });
+  return true;
 }
 
 let cache: { at: number; report: ModelReport } | null = null;

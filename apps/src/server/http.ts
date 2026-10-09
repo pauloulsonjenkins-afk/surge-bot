@@ -90,7 +90,7 @@ import { computeHitRateContext, computePickProfits, computeStrategyEquity, compu
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
 import { notPlacedReport, todaySnapshot } from "./today";
-import { cachedModelReport } from "../model/goal-model";
+import { cachedModelReport, publishModel, shadowReport } from "../model/goal-model";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
@@ -791,7 +791,21 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const refresh = new URL(rawUrl, "http://internal").searchParams.get("refresh") === "1";
-      send(res, 200, { ...cachedModelReport(db, refresh) });
+      send(res, 200, { ...cachedModelReport(db, refresh), shadow: shadowReport(db) });
+      return;
+    }
+    // Freezes a new model version now (it also happens by itself each week).
+    if (req.method === "POST" && path === "/internal/goal-model/publish") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const m = publishModel(db);
+      send(res, m ? 200 : 400, m ? { version: m.version } : { error: "not_enough_data", message: "Not enough settled next-goal picks to train on yet." });
       return;
     }
 
