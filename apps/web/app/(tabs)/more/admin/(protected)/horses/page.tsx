@@ -198,7 +198,7 @@ function EntryCard({
 
         {suggestions.length > 0 && (
           <div className="rounded-md border border-accent/40 bg-accent/10 p-3">
-            <p className="text-sm font-medium text-ink">Today&rsquo;s picks have been fetched</p>
+            <p className="text-sm font-medium text-ink">Today&rsquo;s tips are in</p>
             <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
               {suggestions.map((s) => (
                 <li key={s.rank}>
@@ -472,11 +472,11 @@ export default function HorsesPage() {
       <PageHeader
         as="h2"
         title="Today’s bets"
-        subtitle="Your daily NAP and choices, and their results. The day's picks can be fetched for you, but amounts and odds are always yours to set; nothing here is bet automatically."
+        subtitle="Your daily NAP and choices, and their results. The day’s tips come in automatically, but amounts and odds are always yours to set; nothing here is bet automatically."
       />
       {data?.importStatus && (
         <p className={`text-xs ${data.importStatus.ok ? "text-ink-muted" : "text-destructive"}`}>
-          Daily fetch: {data.importStatus.ok ? "ok" : "failed"} · {data.importStatus.message} · {new Date(data.importStatus.at).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+          Daily tips: {data.importStatus.ok ? "ok" : "failed"} · {data.importStatus.message} · {new Date(data.importStatus.at).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
         </p>
       )}
 

@@ -53,7 +53,7 @@ export default function HorseLogPage() {
         title="Horse log"
         subtitle={
           <>
-            Every horse the daily fetch has found, kept for good, and what became of each one.{" "}
+            Every tipped horse, day by day, kept for good, and what became of each one.{" "}
             <Link href="/more/admin/horses" className="text-accent underline">
               Today’s bets
             </Link>
@@ -67,7 +67,7 @@ export default function HorseLogPage() {
         <Skeleton className="h-64 w-full" />
       ) : total === 0 ? (
         <p className="text-sm text-ink-muted">
-          Nothing yet. Each day’s horses appear here once the daily fetch has run. {data.importStatus && !data.importStatus.ok ? `The last fetch failed: ${data.importStatus.message}` : ""}
+          Nothing yet. Each day’s tipped horses appear here once they come in. {data.importStatus && !data.importStatus.ok ? `The last update failed: ${data.importStatus.message}` : ""}
         </p>
       ) : (
         <>

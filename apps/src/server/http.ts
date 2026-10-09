@@ -847,7 +847,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         if (req.method === "PUT" && path === "/internal/horses/suggestions") {
           const body = await readJsonBody(req);
           const stored = saveHorseSuggestions(db, body.day, body.picks, body.source ?? null);
-          setHorseImportStatus(db, { at: new Date().toISOString(), ok: true, message: `${stored.length} picks fetched`, day: String(body.day), count: stored.length });
+          setHorseImportStatus(db, { at: new Date().toISOString(), ok: true, message: `${stored.length} tips in`, day: String(body.day), count: stored.length });
           send(res, 200, { stored: stored.length });
           return;
         }

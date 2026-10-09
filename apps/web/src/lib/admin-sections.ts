@@ -37,7 +37,7 @@ export const ADMIN_GROUPS = [
     label: "Horses",
     items: [
       { href: "/more/admin/horses", label: "Today's bets", description: "Enter your daily NAP and choices, and mark the results." },
-      { href: "/more/admin/horse-log", label: "Horse log", description: "Every horse fetched each day, and what you did with it." },
+      { href: "/more/admin/horse-log", label: "Horse log", description: "Every day’s tipped horses, and what you did with each one." },
       { href: "/more/admin/horse-stats", label: "How it's going", description: "Profit over time, which choice is paying, courses and patterns." },
     ],
   },
