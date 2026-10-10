@@ -26,6 +26,7 @@ import { startDailyTips } from "./daily-tips";
 import { notifyIfProved, shadowTick } from "../model/goal-model";
 import { notifyAdvice } from "./strategy-advice";
 import { startEdge } from "../edge/edge";
+import { startProbeOnce } from "../fixtures/probe";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -136,6 +137,8 @@ async function main(): Promise<void> {
   const apiFootballKey = process.env.API_FOOTBALL_KEY?.trim();
   if (apiFootballKey) {
     startDailyFixturePull(db, apiFootballKey);
+    // One-off check of what the plan allows, for Edge Phase 2 (fixtures/probe.ts). Runs once ever, 3 calls.
+    startProbeOnce(db, apiFootballKey);
   } else {
     log.info("API_FOOTBALL_KEY is not set; the Schedule tab's daily fixture pull is off.");
   }

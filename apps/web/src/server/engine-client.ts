@@ -1700,3 +1700,8 @@ export function publishGoalModel(): Promise<{ version: string }> {
 export function fetchGoalModel(refresh: boolean): Promise<GoalModelReport> {
   return engineCall(`/internal/goal-model${refresh ? "?refresh=1" : ""}`, "the goal model", { timeoutMs: 30_000 });
 }
+
+/** The one-off API-Football plan check (fixtures/probe.ts in the engine); null until it has run. */
+export function fetchApiFootballProbe(): Promise<{ probe: unknown }> {
+  return engineCall("/internal/api-football-probe", "the API-Football check");
+}
