@@ -91,6 +91,8 @@ export interface HistoricMatch {
   hthg: number | null;
   htag: number | null;
   corners: number | null;
+  /** Bookings in the match (yellow + red cards, both sides); null when the file doesn't record them. */
+  cards: number | null;
   /** Prices for home, draw and away, best source first (see oddsFrom); null when the file has none. */
   odds: { home: number; draw: number; away: number; source: string } | null;
 }
@@ -184,6 +186,7 @@ export function parseCsv(text: string, div: Division, minSeason: number): Histor
     if (season < minSeason) continue;
     const hc = num(get("HC"));
     const ac = num(get("AC"));
+    const bookings = ["HY", "AY", "HR", "AR"].map((c) => num(get(c)));
     out.push({
       div: div.code,
       season,
@@ -195,6 +198,7 @@ export function parseCsv(text: string, div: Division, minSeason: number): Histor
       hthg: num(get("HTHG")),
       htag: num(get("HTAG")),
       corners: hc !== null && ac !== null ? hc + ac : null,
+      cards: bookings.every((x) => x !== null) ? bookings.reduce((t, x) => t + x!, 0) : null,
       odds: oddsFrom(get),
     });
   }
@@ -257,7 +261,8 @@ export function historyMatches(): HistoricMatch[] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function download(url: string): Promise<string> {
+/** Downloads a football-data.co.uk file (also used for its upcoming-fixtures files by edge/edge.ts). */
+export async function download(url: string): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {

@@ -732,6 +732,14 @@ export class EngineDb {
         scored_at   TEXT NOT NULL
       );
 
+      -- Edge (edge/edge.ts): the pre-match insight card for each upcoming fixture, worked out a few times a day and
+      -- read by the Members Fixtures page. Read-only for betting: nothing here is used to bet.
+      CREATE TABLE IF NOT EXISTS edge_cards (
+        fixture_key TEXT PRIMARY KEY,
+        kickoff     TEXT NOT NULL,
+        card_json   TEXT NOT NULL
+      );
+
       -- Devices (browsers, or the installed app) that get the admin's push notifications (server/push.ts).
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         endpoint      TEXT PRIMARY KEY,
@@ -2483,6 +2491,24 @@ export class EngineDb {
       result: (r.result as string | null) ?? null,
       excluded: r.excluded === 1,
     }));
+  }
+
+  /** Replaces the Edge cards: the given ones are written, and cards for fixtures that kicked off before `dropBefore` go. */
+  replaceEdgeCards(cards: Array<{ key: string; kickoff: string; json: string }>, dropBefore: string): void {
+    const put = this.db.prepare(`INSERT INTO edge_cards (fixture_key, kickoff, card_json) VALUES (?, ?, ?) ON CONFLICT(fixture_key) DO UPDATE SET kickoff = excluded.kickoff, card_json = excluded.card_json`);
+    this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM edge_cards WHERE kickoff < ?`).run(dropBefore);
+      for (const c of cards) put.run(c.key, c.kickoff, c.json);
+    })();
+    this.onChange();
+  }
+
+  listEdgeCards(fromIso: string): Array<{ key: string; kickoff: string; json: string }> {
+    return (this.db.prepare(`SELECT fixture_key AS key, kickoff, card_json AS json FROM edge_cards WHERE kickoff >= ? ORDER BY kickoff`).all(fromIso) as Array<{
+      key: string;
+      kickoff: string;
+      json: string;
+    }>);
   }
 
   /** Every settled pick still counted (not excluded), with its parsed alert: the goal model's training data. */

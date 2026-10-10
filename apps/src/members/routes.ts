@@ -24,6 +24,7 @@ import { can } from "./permissions";
 import { membersStore, type BetMode, type StakingMethod } from "./store";
 import { cleanRisk } from "./staking";
 import { memberSettingsFor, simulateManually, wakeMembers } from "./runner";
+import { edgeCards } from "../edge/edge";
 import { automationView, dashboardView, historyView, meView, performanceView, plansView, settingsView, strategiesView, strategyView, upcomingView, type BetFilters } from "./views";
 import { createCheckout, createPortal, stripeConfigured } from "./stripe";
 import { connectOrTest, disconnect } from "./betfair-connection";
@@ -98,6 +99,11 @@ async function memberRoute(c: MembersRouteCtx, route: string): Promise<void> {
       }
       case "upcoming":
         return ok(upcomingView(db, ctx, c.live));
+      case "edge": {
+        // Pre-match insight cards (edge/edge.ts), for the tiers given "viewEdge". Others learn only how many there are.
+        const cards = edgeCards(db);
+        return can(ctx.access, "viewEdge") ? ok({ locked: false, cards }) : ok({ locked: true, count: cards.length, cards: [] });
+      }
       case "history": {
         const q = url.searchParams;
         const mode = q.get("mode");

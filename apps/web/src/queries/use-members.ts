@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiFetchError, getJson } from "./fetch-json";
 import { useHydrated } from "./use-me";
+import type { EdgeView } from "@/lib/members/edge";
 import type { Automation, Community, Dashboard, MembersMe, MemberSettings, Notification, Performance, Plans, StrategyItem, Upcoming, BetView, PickFull } from "@/lib/members/types";
 
 const ROOT = ["members"] as const;
@@ -51,3 +52,6 @@ export function useMembersAction<B = Record<string, unknown>, R = Record<string,
 export function trackMemberEvent(event: string, props?: Record<string, unknown>): void {
   void fetch("/api/members/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, props }) }).catch(() => {});
 }
+
+/** Edge: pre-match insight cards for upcoming fixtures (locked for tiers without "viewEdge"). Refreshed every 10 minutes. */
+export const useMembersEdge = () => useMembersGet<EdgeView>("edge", { refetchMs: 10 * 60_000 });
