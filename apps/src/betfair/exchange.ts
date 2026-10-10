@@ -645,8 +645,14 @@ async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<void> {
     .filter((p) => {
       if (p.sentAt !== null || p.status !== "captured" || p.excluded || p.exchange !== "on" || !p.exchangeEventId || p.exchangeOdds === null) return false;
       const key = strategyLabel(p.strategy).toLowerCase();
+      if (settings.strategies[key] !== true || now > betableUntil(p, settings.maxAgeMinutes)) return false;
+      // A lay waits for its price to FALL to the maximum lay price; a back bet for its price to RISE to the minimum.
+      if (p.market === "AWAY_WIN_LAY") {
+        const max = settings.maxLayOdds[key];
+        return max !== undefined && p.exchangeOdds > max;
+      }
       const min = settings.minOdds[key];
-      return settings.strategies[key] === true && min !== undefined && p.exchangeOdds < min && now <= betableUntil(p, settings.maxAgeMinutes);
+      return min !== undefined && p.exchangeOdds < min;
     })
     .slice(0, REPRICE_PER_POLL);
   for (const p of held) {

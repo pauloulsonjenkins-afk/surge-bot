@@ -105,7 +105,7 @@ const DEFAULTS: Record<string, StrategyInfo> = {
   },
   "away win lay": {
     name: "Away Win Lay",
-    description: "Lays the away side before kick-off in leagues where home sides do well: wins on a home win or a draw. Sim only.",
+    description: "Lays the away side before kick-off in leagues where home sides do well: wins on a home win or a draw.",
     trigger: "An hour before kick-off, home 2.20 or shorter, away 3.50 to 8.00, in the chosen leagues.",
     bet: "Lay the away side (home or draw); the stake is the liability",
   },

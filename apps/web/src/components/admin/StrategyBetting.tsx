@@ -14,7 +14,10 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
  */
 export type SendingStrategy = SendingState["strategies"][number];
 
-const SENDABLE = new Set(["OVER_1_5", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS"]);
+const SENDABLE = new Set(["OVER_1_5", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY"]);
+
+/** A strategy that LAYS (Away Win Lay): its stake is the liability, and it has a maximum lay price, not minimum odds. */
+const isLay = (s: SendingStrategy) => s.market === "AWAY_WIN_LAY";
 
 /** Whether this strategy's market can be bet (some need a Betfair market code set under Sending > Bet wording first). */
 export function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
@@ -37,8 +40,12 @@ const hasStake = (s: SendingStrategy) => s.stake !== null || s.stakePct != null;
 /** "Next goal · £2.00 · min odds 1.50 · stop loss set", or why it can't be bet. */
 export function betSummary(s: SendingStrategy, settings: SendingSettings): { text: string; warn: boolean } {
   if (!s.market) return { text: "No market set", warn: true };
-  // Lay bets aren't placed yet: the stake is the liability used to work out its Sim results.
-  if (s.market === "AWAY_WIN_LAY") return { text: `${marketName(s.market)} · Sim only · ${stakeText(s) ? `${stakeText(s)} liability` : "set a stake (the liability) to price it"}`, warn: !hasStake(s) };
+  // A lay: the stake is the liability (the most one bet can lose), capped by a maximum lay price.
+  if (isLay(s)) {
+    const hasStop = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
+    const parts = [marketName(s.market), stakeText(s) ? `${stakeText(s)} liability` : "No liability set yet", s.maxLayOdds != null ? `max lay ${s.maxLayOdds.toFixed(2)}` : null, hasStop ? "stop loss set" : null];
+    return { text: parts.filter(Boolean).join(" · "), warn: !hasStake(s) };
+  }
   if (!canBet(s, settings)) return { text: "Can't be bet yet: set its market under Sending → Bet wording", warn: true };
   const hasStop = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
   const parts = [
@@ -115,6 +122,44 @@ function ModelFilterSwitch({ s, settings }: { s: SendingStrategy; settings: Send
   );
 }
 
+/** The highest price a lay strategy lays at: laying high risks a lot to win a little. */
+function MaxLayPrice({ s }: { s: SendingStrategy }) {
+  const save = useSaveSending();
+  const key = s.label.toLowerCase();
+  const saved = s.maxLayOdds != null ? s.maxLayOdds.toFixed(2) : "";
+  const [v, setV] = useState<string | undefined>();
+  const shown = v ?? saved;
+  const dirty = v !== undefined && v.trim() !== saved;
+  const [err, setErr] = useState<string | null>(null);
+  function set() {
+    const raw = (v ?? "").trim();
+    if (raw === "") {
+      setErr(null);
+      save.mutate({ maxLayOdds: { [key]: null } }, { onSuccess: () => setV(undefined) });
+      return;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 1.01 || n > 100) return setErr("Enter a price such as 6.0.");
+    setErr(null);
+    save.mutate({ maxLayOdds: { [key]: n } }, { onSuccess: () => setV(undefined) });
+  }
+  return (
+    <label className="text-xs text-ink-muted">
+      Maximum lay price
+      <div className="mt-1 flex gap-1.5">
+        <input inputMode="decimal" placeholder="none" className={inputCls} value={shown} onChange={(e) => setV(e.target.value)} />
+        {dirty && (
+          <button type="button" onClick={set} disabled={save.isPending} className="rounded-md bg-accent px-2.5 text-xs font-medium text-accent-ink disabled:opacity-50">
+            {v!.trim() === "" ? "Clear" : "Set"}
+          </button>
+        )}
+      </div>
+      {err && <span className="mt-1 block text-destructive">{err}</span>}
+      {!dirty && <span className="mt-1 block">{s.maxLayOdds != null ? `Never lays above ${s.maxLayOdds.toFixed(2)}.` : "Optional, but recommended (e.g. 6.0)."}</span>}
+    </label>
+  );
+}
+
 export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: SendingSettings }) {
   const save = useSaveSending();
   const dialog = useDialog();
@@ -132,8 +177,12 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
       tone: "money",
       confirmLabel: s.stakePct != null ? `Put Live at ${s.stakePct}% of balance` : `Put Live at £${stake.toFixed(2)}`,
       details: [
-        { label: "Stake per bet", value: stakeText(s) ?? `£${stake.toFixed(2)}` },
-        { label: "Minimum odds", value: s.minOdds !== null ? s.minOdds.toFixed(2) : "None" },
+        isLay(s)
+          ? { label: "Liability per bet (most it can lose)", value: stakeText(s) ?? `£${stake.toFixed(2)}` }
+          : { label: "Stake per bet", value: stakeText(s) ?? `£${stake.toFixed(2)}` },
+        isLay(s)
+          ? { label: "Maximum lay price", value: s.maxLayOdds != null ? s.maxLayOdds.toFixed(2) : <span className="text-warn">None set</span> }
+          : { label: "Minimum odds", value: s.minOdds !== null ? s.minOdds.toFixed(2) : "None" },
         { label: "Daily limit (all strategies)", value: `${settings.dailyCap} bets, up to £${(stake * settings.dailyCap).toFixed(2)}` },
         {
           label: "Stop loss",
@@ -147,6 +196,12 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
       body: (
         <>
           <p>Its new picks will be bet with real money{settings.enabled ? "" : " once betting is switched on (Sending)"}.</p>
+          {isLay(s) && (
+            <p>
+              These are LAY bets: each one wins a small amount on a home win or draw, and loses the full liability if the away side wins. They are placed only
+              by GoalBrew&apos;s direct betting, so Sending → Betting on Betfair must be Live.
+            </p>
+          )}
           {!hasStop && (
             <p>
               <strong>No stop loss is set.</strong> Open this strategy and set one first if it should stop after a bad day.
@@ -310,7 +365,8 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
             </>
           )}
         </div>
-        {supported && (
+        {supported && isLay(s) && <MaxLayPrice s={s} />}
+        {supported && !isLay(s) && (
           <label className="text-xs text-ink-muted">
             Minimum odds
             <div className="mt-1 flex gap-1.5">
@@ -324,7 +380,13 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
           </label>
         )}
       </div>
-      {supported && (
+      {supported && isLay(s) && (
+        <p className="text-xs text-ink-muted">
+          The stake is the <strong className="text-ink">liability</strong>: the most one bet can lose (if the away side wins). A win pays about liability ÷ (price −
+          1), e.g. £5 at 4.50 wins £1.43. Betfair needs a lay stake of at least £1, so at 4.50 the liability must be at least £3.50.
+        </p>
+      )}
+      {supported && !isLay(s) && (
         <p className="text-xs text-ink-muted">
           {s.minOdds !== null ? `Only bet at odds of ${s.minOdds.toFixed(2)} or better. Applies to new picks.` : "Minimum odds are optional: no bet is placed below this price."}
         </p>

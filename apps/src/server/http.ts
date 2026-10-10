@@ -1423,7 +1423,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
       }
       const settings = getSendingSettings(db);
-      const preview = buildFeed(db, { markSent: false, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0 });
+      const preview = buildFeed(db, { markSent: false, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0, direct: directIsLive(db) });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
       const stops = computeStopLoss(db);
       // The same limits run on each strategy's simulated bets: "would have stopped" for Sim strategies.
@@ -1439,6 +1439,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           stakePct: number | null;
           stakeNow: number | null;
           minOdds: number | null;
+          maxLayOdds: number | null;
           alerts: number;
           sent: number;
           stopLoss: ReturnType<typeof computeStopLoss> extends Map<string, infer V> ? V | null : never;
@@ -1457,6 +1458,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           // What a percentage stake comes to now, in pounds (null for a flat stake, or while the balance is unknown).
           stakeNow: settings.stakePct[key] === undefined ? null : currentStake(db, settings, key),
           minOdds: settings.minOdds[key] ?? null,
+          maxLayOdds: settings.maxLayOdds[key] ?? null,
           alerts: counts.get(key)?.alerts ?? 0,
           sent: counts.get(key)?.sent ?? 0,
           stopLoss: stops.get(key) ?? null,

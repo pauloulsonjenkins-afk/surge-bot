@@ -62,6 +62,8 @@ export interface SendingSettings {
   stakePct: Record<string, number>;
   /** Minimum back odds per strategy, keyed by lower-case strategy name. Missing = no minimum. Sent as the MinPrice column. */
   minOdds: Record<string, number>;
+  /** Lay strategies (Away Win Lay): the highest price to lay at, per strategy. Missing = no limit. */
+  maxLayOdds: Record<string, number>;
   /** Hard ceiling. A stake above this is never sent, whatever is saved. */
   maxStake: number;
   /** Picks older than this are never sent. */
@@ -111,6 +113,7 @@ export const DEFAULT_SENDING: SendingSettings = {
   stakes: {},
   stakePct: {},
   minOdds: {},
+  maxLayOdds: {},
   maxStake: 5,
   maxAgeMinutes: 10,
   dailyCap: 30,
@@ -216,6 +219,13 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
       if (m !== null) minOdds[k.toLowerCase()] = m;
     }
   }
+  const maxLayOdds: Record<string, number> = {};
+  if (raw.maxLayOdds && typeof raw.maxLayOdds === "object") {
+    for (const [k, v] of Object.entries(raw.maxLayOdds)) {
+      const m = cleanMinOdds(v);
+      if (m !== null) maxLayOdds[k.toLowerCase()] = m;
+    }
+  }
   return {
     enabled: raw.enabled === true,
     strategies,
@@ -223,6 +233,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     stakes,
     stakePct,
     minOdds,
+    maxLayOdds,
     maxStake: clampInt(raw.maxStake, 1, 500, DEFAULT_SENDING.maxStake),
     maxAgeMinutes: clampInt(raw.maxAgeMinutes, 1, 60, DEFAULT_SENDING.maxAgeMinutes),
     dailyCap: clampInt(raw.dailyCap, 0, 1000, DEFAULT_SENDING.dailyCap),
@@ -291,6 +302,16 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
       }
     }
   }
+  if (patch.maxLayOdds && typeof patch.maxLayOdds === "object") {
+    for (const [k, v] of Object.entries(patch.maxLayOdds as Record<string, unknown>)) {
+      const key = k.toLowerCase();
+      if (v === null) delete next.maxLayOdds[key];
+      else {
+        const m = cleanMinOdds(v);
+        if (m !== null) next.maxLayOdds[key] = m;
+      }
+    }
+  }
   if (patch.maxStake !== undefined) next.maxStake = clampInt(patch.maxStake, 1, 500, current.maxStake);
   if (patch.modelFilter && typeof patch.modelFilter === "object") {
     for (const [k, v] of Object.entries(patch.modelFilter as Record<string, unknown>)) {
@@ -341,11 +362,14 @@ export interface FeedRow {
   marketType: string;
   selectionName: string;
   eventName: string;
-  betType: "BACK";
-  /** Stake in pounds, sent in the Size column. */
+  /** BACK for every strategy, except LAY for Away Win Lay (placed only by GoalBrew's own direct betting). */
+  betType: "BACK" | "LAY";
+  /** Stake in pounds, sent in the Size column. For a LAY row it is the LIABILITY: the most the bet can lose. */
   stake: number;
   /** Minimum back odds for this pick, sent in the MinPrice column. Null = none set. */
   minPrice: number | null;
+  /** LAY rows only: the highest price it may be laid at (the strategy's maximum lay price). Null = none set. */
+  maxPrice?: number | null;
 }
 
 export interface FeedSkip {
@@ -496,7 +520,14 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
       selectionName: template.replace(/\{home\}/g, alias(p.home ?? "")).replace(/\{away\}/g, alias(p.away ?? "")),
     };
   }
-  if (p.market === "AWAY_WIN_LAY") return { error: "Lay bets aren't placed yet: Away Win Lay is tracked in Sim only." };
+  if (p.market === "AWAY_WIN_LAY") {
+    // Laid in Match Odds. Betfair's runner is the away team as Betfair names it: taken from Betfair's own event name
+    // ("Raith v Queens Park") when the match was found there, otherwise the alert's name (with Match names).
+    const fromEvent = p.exchange === "on" && p.exchangeEvent ? p.exchangeEvent.split(/ v /i)[1]?.trim() : null;
+    const away = fromEvent || alias(p.away ?? "");
+    if (!away) return { error: "Could not read the away team." };
+    return { marketType: "MATCH_ODDS", selectionName: away };
+  }
   return { error: "This market can't be sent yet." };
 }
 
@@ -505,7 +536,7 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
  * real feed) newly included picks are stamped as sent; with false (the admin
  * preview) nothing is changed.
  */
-export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; holdForExchangeMs?: number }): FeedResult {
+export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; holdForExchangeMs?: number; direct?: boolean }): FeedResult {
   const now = opts.now ?? new Date();
   const settings = getSendingSettings(db);
   const bank = getBank(db);
@@ -640,6 +671,12 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       skipped.push(skip(p, market.error));
       continue;
     }
+    // A lay is only ever placed by GoalBrew's own direct betting, never handed to other betting software.
+    const lay = p.market === "AWAY_WIN_LAY";
+    if (lay && !opts.direct) {
+      skipped.push(skip(p, "Lay bets are placed only by GoalBrew's direct betting (Sending: Betting on Betfair, Live)."));
+      continue;
+    }
 
     // A flat stake, or a percentage of the Betfair balance turned into pounds now (kept with the row, so it never changes).
     const staked = resolveStake(settings, label.toLowerCase(), bank, { now, live: true });
@@ -650,7 +687,13 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     const stake = staked.stake;
     // Betfair's price below the strategy's minimum odds: the betting software would turn it down. Held, and the price
     // is read again each Betfair poll (betfair/exchange.ts repriceHeld); it goes out once the price reaches the minimum.
-    const minPrice = settings.minOdds[label.toLowerCase()] ?? null;
+    const minPrice = lay ? null : (settings.minOdds[label.toLowerCase()] ?? null);
+    // A lay waits while the price is above the strategy's maximum lay price (laying high risks a lot to win a little).
+    const maxPrice = lay ? (settings.maxLayOdds[label.toLowerCase()] ?? null) : null;
+    if (!alreadySent && maxPrice !== null && p.exchangeOdds !== null && p.exchangeOdds > maxPrice) {
+      skipped.push(skip(p, `Betfair price ${p.exchangeOdds.toFixed(2)} is above the maximum lay price ${maxPrice.toFixed(2)}: waiting for it to fall.`));
+      continue;
+    }
     if (!alreadySent && minPrice !== null && p.exchangeOdds !== null && p.exchangeOdds < minPrice) {
       skipped.push(skip(p, `Betfair price ${p.exchangeOdds.toFixed(2)} is below the minimum odds ${minPrice.toFixed(2)}: waiting for it to rise.`));
       continue;
@@ -683,9 +726,10 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       selectionName: market.selectionName,
       // Betfair's exact event name when both teams were found there; otherwise the alert's names (with Match names).
       eventName: p.exchange === "on" && p.exchangeEvent ? p.exchangeEvent : `${alias(p.home)} v ${alias(p.away)}`,
-      betType: "BACK",
+      betType: lay ? "LAY" : "BACK",
       stake,
       minPrice,
+      ...(lay ? { maxPrice } : {}),
     };
     rows.push(row);
     if (!alreadySent) toMark.push({ id: p.id, rowJson: JSON.stringify(row) });
@@ -769,7 +813,9 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     else if (!fresh) skipped = "The alert arrived too late to bet.";
     else if (stake === null) skipped = staked.reason ?? "No stake set for this strategy.";
     else if (stake > settings.maxStake) skipped = `Stake £${stake.toFixed(2)} is above the highest allowed (£${settings.maxStake}).`;
-    else if (minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
+    else if (p.market !== "AWAY_WIN_LAY" && minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
+    else if (p.market === "AWAY_WIN_LAY" && settings.maxLayOdds[key] !== undefined && (p.detail?.odds?.preMatch1x2?.[2] ?? 0) > settings.maxLayOdds[key]!)
+      skipped = `The away price ${p.detail!.odds.preMatch1x2![2].toFixed(2)} was above the maximum lay price ${settings.maxLayOdds[key]!.toFixed(2)}.`;
     else if (stops.get(key)?.stopped) skipped = `Stopped: ${stops.get(key)!.reason}`;
     else if (betsToday >= settings.dailyCap) skipped = "Daily limit reached.";
     // The goal model filter runs in Sim too, so a Sim strategy's figures show what the filter would do.
@@ -787,7 +833,7 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
 
 /** A pre-match pick's estimated kick-off (alert time + "Kickoff: In 1 hour"; an hour if the wording isn't known), else null. */
 export function kickoffAt(p: LivePick): number | null {
-  if (p.market !== "FIRST_HALF_GOALS") return null;
+  if (p.market !== "FIRST_HALF_GOALS" && p.market !== "AWAY_WIN_LAY") return null;
   return alertTime(p) + (kickoffMinutes(p.detail?.kickoffRaw) ?? 60) * 60_000;
 }
 

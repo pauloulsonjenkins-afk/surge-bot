@@ -341,6 +341,8 @@ export interface SendingSettings {
   stakePct: Record<string, number | null>;
   /** Minimum back odds per strategy (lower-case name), sent to the betting software as MinPrice. Send null to clear one. */
   minOdds: Record<string, number | null>;
+  /** Lay strategies: the highest price to lay at, per strategy (lower-case name). Send null to clear one. */
+  maxLayOdds?: Record<string, number | null>;
   maxStake: number;
   maxAgeMinutes: number;
   dailyCap: number;
@@ -392,7 +394,7 @@ export interface SendingState {
   settings: SendingSettings;
   /** The Betfair balance percentage stakes work from (null total until it has been read). */
   bank?: { total: number | null; available: number | null; exposure: number | null; at: string | null };
-  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; /** A percentage stake, if this strategy uses one. */ stakePct?: number | null; /** What that percentage comes to now in pounds. */ stakeNow?: number | null; minOdds: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null; /** The same limits run on its simulated bets (missing on an older engine). */ simStopLoss?: StopLossStatus | null }>;
+  strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; /** A percentage stake, if this strategy uses one. */ stakePct?: number | null; /** What that percentage comes to now in pounds. */ stakeNow?: number | null; minOdds: number | null; /** Lay strategies: the highest price to lay at. */ maxLayOdds?: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null; /** The same limits run on its simulated bets (missing on an older engine). */ simStopLoss?: StopLossStatus | null }>;
   feedTokenConfigured: boolean;
   lastFeedFetchAt: string | null;
   /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */

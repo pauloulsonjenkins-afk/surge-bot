@@ -26,7 +26,7 @@ export type MarketCode =
   | "FAVOURITE_TO_SCORE"
   | "OVER_1_5"
   | "FIRST_HALF_GOALS"
-  /** Lay the away side before kick-off: wins on a home win or a draw. Sim only for now (no lay bets are placed). */
+  /** Lay the away side before kick-off: wins on a home win or a draw. Laid only by GoalBrew's direct betting (Match Odds). */
   | "AWAY_WIN_LAY";
 
 export type PickResult = "hit" | "miss";
@@ -99,7 +99,7 @@ export interface ParsedAlert {
 /** Strategy name (lower case, no bracketed note) -> market. Order matters: first match wins. */
 const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "Away Win Lay" (added 10 Oct 2026): a PRE-MATCH alert ("Kickoff: In 1 hour") laying the away side; InPlayGuru
-  // tracks it as Double Chance 1X. Recorded and settled, and priced as a lay in Sim; not bet (no lay betting yet).
+  // tracks it as Double Chance 1X. Settled from the score, priced as a lay; laid on Betfair only by direct betting.
   { test: /away win lay/, market: "AWAY_WIN_LAY" },
   { test: /both teams to score/, market: "BOTH_TEAMS_TO_SCORE" },
   // "1st Half Corners", "First Half Corner", "1H Corners", "Corners 1st Half" ...

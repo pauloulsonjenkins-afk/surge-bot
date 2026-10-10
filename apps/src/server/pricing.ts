@@ -85,6 +85,14 @@ export function priceResult(
 ): PriceOutcome {
   if (r.placement === "notPlaced") return { kind: "notPlaced", reason: "Sent, but your betting software never placed it." };
   // Real money: what Betfair matched and paid.
+  if (!ctx.estimate && r.placement === "betfair" && r.betStake && r.betOdds && r.betOdds > 1 && r.market === "AWAY_WIN_LAY") {
+    // A matched LAY: Betfair's stake is the backer's, so the money risked is the liability, stake x (price - 1), and
+    // the odds that make the sums work are price / (price - 1).
+    const liability = r.betStake * (r.betOdds - 1);
+    const raw = r.betProfit ?? (r.result === "hit" ? r.betStake : -liability);
+    const profit = raw > 0 ? raw * (1 - ctx.commission) : raw;
+    return { kind: "priced", stake: liability, odds: r.betOdds / (r.betOdds - 1), profit, usedAlertOdds: false, oddsSource: "bet" };
+  }
   if (!ctx.estimate && r.placement === "betfair" && r.betStake && r.betOdds && r.betOdds > 1) {
     const raw = r.betProfit ?? (r.result === "hit" ? r.betStake * (r.betOdds - 1) : -r.betStake);
     const profit = raw > 0 ? raw * (1 - ctx.commission) : raw;

@@ -198,6 +198,8 @@ export interface BookRunner {
   lay: number | null;
   /** The money on offer to back at the best few prices (Betfair's top three), when known. */
   backDepth?: Array<{ price: number; size: number }>;
+  /** The money on offer to LAY into at the best few prices (backers' stakes waiting), when known. */
+  layDepth?: Array<{ price: number; size: number }>;
 }
 export interface Book {
   status: string;
@@ -213,7 +215,7 @@ export interface Trading {
   book(marketId: string): Promise<Book | null>;
   ordersByRef(refs: string[]): Promise<RefOrder[]>;
   ordersById(betIds: string[]): Promise<RefOrder[]>;
-  place(o: { marketId: string; selectionId: number; price: number; size: number; ref: string; attempt: number }): Promise<PlaceResult>;
+  place(o: { marketId: string; selectionId: number; price: number; size: number; ref: string; attempt: number; side?: "BACK" | "LAY" }): Promise<PlaceResult>;
   cancel(marketId: string, betId: string): Promise<number>;
 }
 
@@ -273,7 +275,7 @@ export class BetfairTrader implements Trading {
 
   async book(marketId: string): Promise<Book | null> {
     const books = await this.call<
-      Array<{ status?: string; inplay?: boolean; runners?: Array<{ selectionId: number; status?: string; ex?: { availableToBack?: Array<{ price: number; size?: number }>; availableToLay?: Array<{ price: number }> } }> }>
+      Array<{ status?: string; inplay?: boolean; runners?: Array<{ selectionId: number; status?: string; ex?: { availableToBack?: Array<{ price: number; size?: number }>; availableToLay?: Array<{ price: number; size?: number }> } }> }>
     >(BETTING_URL, "listMarketBook", { marketIds: [marketId], priceProjection: { priceData: ["EX_BEST_OFFERS"] } });
     const b = books[0];
     if (!b) return null;
@@ -286,6 +288,7 @@ export class BetfairTrader implements Trading {
         back: r.ex?.availableToBack?.[0]?.price ?? null,
         lay: r.ex?.availableToLay?.[0]?.price ?? null,
         backDepth: (r.ex?.availableToBack ?? []).map((l) => ({ price: l.price, size: l.size ?? 0 })),
+        layDepth: (r.ex?.availableToLay ?? []).map((l) => ({ price: l.price, size: l.size ?? 0 })),
       })),
     };
   }
@@ -300,7 +303,7 @@ export class BetfairTrader implements Trading {
     return r.currentOrders;
   }
 
-  async place(o: { marketId: string; selectionId: number; price: number; size: number; ref: string; attempt: number }): Promise<PlaceResult> {
+  async place(o: { marketId: string; selectionId: number; price: number; size: number; ref: string; attempt: number; side?: "BACK" | "LAY" }): Promise<PlaceResult> {
     const r = await this.call<{
       status: string;
       errorCode?: string;
@@ -315,7 +318,7 @@ export class BetfairTrader implements Trading {
         {
           selectionId: o.selectionId,
           handicap: 0,
-          side: "BACK",
+          side: o.side ?? "BACK",
           orderType: "LIMIT",
           limitOrder: { size: o.size, price: o.price, persistenceType: "LAPSE" },
           customerOrderRef: o.ref,
@@ -394,6 +397,34 @@ export function depthAtOrAbove(depth: BookRunner["backDepth"], ask: number): num
   return Math.round(depth.filter((l) => l.price >= ask - 1e-9).reduce((t, l) => t + l.size, 0) * 100) / 100;
 }
 
+/** The highest price Betfair accepts that is at most `price` (rounded down to the step below). */
+export function tickAtOrBelow(price: number): number {
+  if (price >= 1000) return 1000;
+  let from = 1;
+  for (const [upTo, step] of LADDER) {
+    if (price <= upTo + 1e-9) {
+      const n = Math.floor((price - from) / step + 1e-9);
+      return Math.max(1.01, Math.round((from + n * step) * 100) / 100);
+    }
+    from = upTo;
+  }
+  return 1000;
+}
+
+/**
+ * The price a LAY asks for: up to `acceptPct` above the best lay price shown (a lay is worse at a higher price), never
+ * above the strategy's maximum lay price, on Betfair's steps, and never below the price shown.
+ */
+export function askLayPrice(shown: number, maxPrice: number | null, acceptPct: number): number {
+  const ceiling = Math.min(maxPrice ?? 1000, shown * (1 + acceptPct / 100));
+  return Math.max(shown, tickAtOrBelow(ceiling));
+}
+
+/** A lay risking `liability` at `price`: the backer's stake Betfair needs (rounded down, so the liability is never exceeded). */
+export function layStake(liability: number, price: number): number {
+  return Math.floor((liability / (price - 1)) * 100) / 100;
+}
+
 /** Gap between best lay and best back, as a percentage of the back price. */
 export function spreadPct(back: number, lay: number | null): number | null {
   return lay === null ? null : Math.round(((lay - back) / back) * 1000) / 10;
@@ -455,7 +486,7 @@ export async function runDirect(db: EngineDb, trading: Trading, now = new Date()
   const mode = effectiveMode(settings, env);
 
   if (mode === "live") {
-    const feed = buildFeed(db, { markSent: true, now, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0 });
+    const feed = buildFeed(db, { markSent: true, now, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0, direct: true });
     if (feed.newlySent > 0) log.info(`Direct betting: ${feed.newlySent} new pick(s) to place.`);
   }
 
@@ -590,6 +621,15 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   const over = overroundOf(book, d.marketType);
   db.updateDirectBet(d.pickId, { price: me.back, bestLay: me.lay, overround: over }, at);
 
+  // A LAY (Away Win Lay): laid at the best lay price, the stake being the liability. Handled here on its own path.
+  let row: Partial<FeedRow> = {};
+  try {
+    row = JSON.parse(p.sentRowJson ?? "{}") as Partial<FeedRow>;
+  } catch {
+    row = {};
+  }
+  if (row.betType === "LAY") return workLay(db, t, d, s, p, me, book, marketId!, selectionId!, row.maxPrice ?? null, now);
+
   if (d.minPrice !== null && me.back < d.minPrice) return wait(`Price ${me.back.toFixed(2)} is below the minimum ${d.minPrice.toFixed(2)}.`);
   if (spread === null) return wait("Nothing on offer to lay, so the price gap can't be checked.");
   if (spread > maxSpread) return wait(`Back ${me.back.toFixed(2)} and lay ${me.lay!.toFixed(2)} are ${spread}% apart (limit ${maxSpread}%).`);
@@ -649,6 +689,96 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   }
   db.updateDirectBet(d.pickId, { state: "failed", reason: FRIENDLY[result.code] ?? `Betfair refused the bet (${result.code}).` }, at);
   log.warn(`Direct betting: pick ${d.pickId} refused by Betfair: ${result.code}.`);
+}
+
+/**
+ * Places (or, in Shadow, records) a LAY: the pick's stake is the liability. The lay is asked at up to "Accept down to"
+ * % above the best lay price shown, never above the strategy's maximum lay price; the backer's stake is worked out so
+ * the liability is never exceeded at the price asked. The same gap, overround, depth, daily-limit and breaker checks
+ * as a back bet.
+ */
+async function workLay(
+  db: EngineDb,
+  t: Trading,
+  d: DirectBet,
+  s: DirectSettings,
+  p: LivePick,
+  me: BookRunner,
+  book: Book,
+  marketId: string,
+  selectionId: number,
+  maxPrice: number | null,
+  now: Date,
+): Promise<void> {
+  const at = now.toISOString();
+  const wait = (reason: string) => db.updateDirectBet(d.pickId, { reason }, at);
+  const fail = (reason: string) => db.updateDirectBet(d.pickId, { state: "failed", reason }, at);
+  if (me.lay === null) return wait("Nothing on offer to lay into yet.");
+  if (maxPrice !== null && me.lay > maxPrice) return wait(`Lay price ${me.lay.toFixed(2)} is above the maximum ${maxPrice.toFixed(2)}.`);
+  const limits = s.strategyLimits[d.strategy.toLowerCase()] ?? {};
+  const maxSpread = limits.maxSpreadPct ?? s.maxSpreadPct;
+  const maxOver = limits.maxOverround ?? s.maxOverround;
+  const spread = me.back === null ? null : spreadPct(me.back, me.lay);
+  const over = overroundOf(book, d.marketType);
+  db.updateDirectBet(d.pickId, { price: me.lay, bestLay: me.lay, overround: over }, at);
+  if (spread === null) return wait("Nothing on offer to back, so the price gap can't be checked.");
+  if (spread > maxSpread) return wait(`Back ${me.back!.toFixed(2)} and lay ${me.lay.toFixed(2)} are ${spread}% apart (limit ${maxSpread}%).`);
+  if (over === null) return wait("Not every selection has a price, so the overround can't be checked.");
+  if (over < s.minOverround || over > maxOver) return wait(`Overround ${over}% is outside ${s.minOverround}% to ${maxOver}%.`);
+  // The market moved against the lay since the alert: the price it would be laid at has risen.
+  const alertPrice = p.exchangeOdds ?? p.detail?.odds?.preMatch1x2?.[2] ?? null;
+  if (s.maxShortenPct > 0 && alertPrice !== null && me.lay > alertPrice * (1 + s.maxShortenPct / 100)) {
+    return wait(`Lay price has risen from ${alertPrice.toFixed(2)} at the alert to ${me.lay.toFixed(2)} (limit ${s.maxShortenPct}%).`);
+  }
+
+  const ask = askLayPrice(me.lay, maxPrice, s.acceptBelowPct);
+  const size = layStake(d.stake, ask);
+  if (size < MIN_STAKE) {
+    return fail(`At ${ask.toFixed(2)} a ${money(d.stake)} liability is a ${money(size)} lay, under Betfair's ${money(MIN_STAKE)} minimum: raise the liability to at least ${money(Math.ceil((ask - 1) * 100) / 100)}.`);
+  }
+  const depth = depthAtOrAbove(me.layDepth?.map((l) => ({ price: -l.price, size: l.size })), -ask);
+  if (depth !== null && depth < size) return wait(`Only ${money(depth)} on offer to lay into at ${ask.toFixed(2)} or better (lay ${money(size)}).`);
+  const taking = ask > me.lay ? ` (taking up to ${ask.toFixed(2)})` : "";
+
+  if (d.mode === "shadow") {
+    db.updateDirectBet(d.pickId, { state: "shadow", askPrice: ask, reason: `Would lay ${money(size)} at ${me.lay.toFixed(2)}${taking}, a ${money(d.stake)} liability.` }, at);
+    return;
+  }
+
+  const paused = breakerReason();
+  if (paused) return wait(`Paused: ${paused}`);
+  const dayStart = ukDayBounds(ukDateOf(now)).from;
+  const staked = db.directStakeSince(dayStart);
+  if (staked + d.stake > s.dailyStakeLimit + 1e-9) {
+    db.updateDirectBet(d.pickId, { state: "skipped", reason: `Daily stake limit reached (${money(staked)} of ${money(s.dailyStakeLimit)} placed today).` }, at);
+    return;
+  }
+  const ref = orderRef(d.pickId);
+  const existing = (await t.ordersByRef([ref]))[0];
+  if (existing) {
+    db.updateDirectBet(d.pickId, { state: "placed", betId: existing.betId, sizeMatched: existing.sizeMatched ?? 0, avgPrice: existing.averagePriceMatched ?? null, reason: null }, at);
+    return;
+  }
+  const attempt = d.attempts + 1;
+  db.updateDirectBet(d.pickId, { state: "placing", attempts: attempt, price: me.lay, askPrice: ask }, at);
+  let result: PlaceResult;
+  try {
+    result = await t.place({ marketId, selectionId, price: ask, size, ref, attempt, side: "LAY" });
+  } catch (err) {
+    db.updateDirectBet(d.pickId, { attempts: 0, reason: `No answer from Betfair (${err instanceof Error ? err.message : String(err)}); checking.` }, at);
+    return;
+  }
+  if (result.ok) {
+    db.updateDirectBet(d.pickId, { state: "placed", betId: result.betId, sizeMatched: result.sizeMatched, avgPrice: result.avgPrice, reason: null }, at);
+    log.info(`Direct betting: pick ${d.pickId} LAID ${money(size)} asking ${ask.toFixed(2)} (shown ${me.lay.toFixed(2)}; liability ${money(d.stake)}; bet ${result.betId}).`);
+    return;
+  }
+  if (RETRY.has(result.code)) {
+    db.updateDirectBet(d.pickId, { state: "waiting", reason: `Betfair said ${result.code}; trying again.` }, at);
+    return;
+  }
+  db.updateDirectBet(d.pickId, { state: "failed", reason: FRIENDLY[result.code] ?? `Betfair refused the lay (${result.code}).` }, at);
+  log.warn(`Direct betting: lay for pick ${d.pickId} refused by Betfair: ${result.code}.`);
 }
 
 // ---------------------------------------------------------------------------
