@@ -41,6 +41,8 @@ export function widgetSummary(d: TodaySnapshot) {
     moneyOut: `£${d.exposure.openStake.toFixed(2)}`,
     alertsHour: String(d.alerts.lastHour),
     notPlaced: `${d.queue.notPlacedToday} of ${d.queue.sentToday}`,
+    // Bets actually placed today: picks handed over, less the ones that were never placed.
+    betsToday: String(Math.max(0, d.queue.sentToday - d.queue.notPlacedToday)),
     waiting: String(d.queue.waiting + d.queue.placing),
     warning,
     warningColor: warning ? AMBER : CREAM,
@@ -60,6 +62,7 @@ export function widgetSummary(d: TodaySnapshot) {
       alertsLastHour: d.alerts.lastHour,
       notPlacedToday: d.queue.notPlacedToday,
       sentToday: d.queue.sentToday,
+      betsToday: Math.max(0, d.queue.sentToday - d.queue.notPlacedToday),
       at: d.at,
     },
   };

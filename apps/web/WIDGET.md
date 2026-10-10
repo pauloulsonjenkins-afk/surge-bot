@@ -66,4 +66,4 @@ $wg(gv(gb), json, ".line2")$
 
 - **How often it updates:** KWGT fetches web data on its own timer, usually every 15–30 minutes, and Android may stretch that when the phone is idle. For up-to-the-minute figures, tap the widget to open Today, which refreshes every 15 seconds.
 - **"Unknown" or blank figures:** check the address in the `gb` global, and that `WIDGET_KEY` is set and the web component has redeployed.
-- **Other fields:** you can also show `simPL`, `exposure`, `waiting`, `suggestions` (how many strategy suggestions there are) and `liveSettled`. Open the address in a browser to see them all.
+- **Other fields:** you can also show `betsToday` (bets placed on Betfair today), `simPL`, `exposure`, `waiting`, `suggestions` (how many strategy suggestions there are) and `liveSettled`. Open the address in a browser to see them all.
