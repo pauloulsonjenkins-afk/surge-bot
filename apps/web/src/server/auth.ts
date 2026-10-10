@@ -73,9 +73,15 @@ async function signedPart(key: CryptoKey, expiryStr: string): Promise<Uint8Array
   return new TextEncoder().encode(`${expiryStr}.${toBase64Url(fingerprint).slice(0, 16)}`);
 }
 
-/** Issues a signed session token: "<expiry>.<signature>". */
-export async function createSessionToken(): Promise<string> {
-  const expiry = String(Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS);
+/** "Remember this device": an admin session that lasts 30 days instead of 8 hours. */
+const REMEMBER_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+/**
+ * Issues a signed session token: "<expiry>.<signature>". `remember` makes it last 30 days on this device; changing
+ * ADMIN_PASSWORD (or Sign out) still ends it, since the signature covers a fingerprint of the password.
+ */
+export async function createSessionToken(remember = false): Promise<string> {
+  const expiry = String(Math.floor(Date.now() / 1000) + (remember ? REMEMBER_TTL_SECONDS : SESSION_TTL_SECONDS));
   const key = await hmacKey(getSecret());
   const sig = await crypto.subtle.sign("HMAC", key, (await signedPart(key, expiry)) as BufferSource);
   return `${expiry}.${toBase64Url(sig)}`;
@@ -122,3 +128,4 @@ export async function checkPassword(candidate: string): Promise<boolean> {
 
 export const ADMIN_COOKIE_NAME = COOKIE_NAME;
 export const ADMIN_SESSION_MAX_AGE = SESSION_TTL_SECONDS;
+export const ADMIN_REMEMBER_MAX_AGE = REMEMBER_TTL_SECONDS;

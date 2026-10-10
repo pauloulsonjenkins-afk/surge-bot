@@ -92,7 +92,6 @@ function Tick({ state }: { state: boolean | null }) {
 
 export function Readiness({ data }: { data: DirectStatus }) {
   const r = data.readiness;
-  const lastWebhook = data.webhooks[0];
   const rows: Array<{ ok: boolean | null; label: string; detail: string }> = [
     {
       ok: r.betfairLinked,
@@ -128,13 +127,6 @@ export function Readiness({ data }: { data: DirectStatus }) {
       ok: r.liveAllowed,
       label: "Engine allows Live",
       detail: r.liveAllowed ? "BF_DIRECT_BETTING is set to allow." : "Live stays locked until BF_DIRECT_BETTING = allow is added to the engine in DigitalOcean. Shadow works without it.",
-    },
-    {
-      ok: lastWebhook ? lastWebhook.understood : null,
-      label: "InPlayGuru webhook arriving",
-      detail: lastWebhook
-        ? `Last one ${timeFmt.format(new Date(lastWebhook.receivedAt))}${lastWebhook.understood ? "" : ", but it didn't read as an alert (see Webhook alerts)"}.`
-        : "None received yet. Optional: alerts still come by Telegram.",
     },
   ];
   return (

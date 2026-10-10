@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   ADMIN_COOKIE_NAME,
+  ADMIN_REMEMBER_MAX_AGE,
   ADMIN_SESSION_MAX_AGE,
   checkPassword,
   createSessionToken,
@@ -61,9 +62,11 @@ export async function POST(req: NextRequest) {
   if (tries > 2) await new Promise((r) => setTimeout(r, Math.min(250 * 2 ** (tries - 3), 5000)));
 
   let password: unknown;
+  let remember = false;
   try {
     const body = await req.json();
     password = body?.password;
+    remember = body?.remember === true;
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
@@ -88,14 +91,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
   }
 
-  const token = await createSessionToken();
+  const token = await createSessionToken(remember);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(ADMIN_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
     path: "/",
-    maxAge: ADMIN_SESSION_MAX_AGE,
+    maxAge: remember ? ADMIN_REMEMBER_MAX_AGE : ADMIN_SESSION_MAX_AGE,
   });
   return res;
 }

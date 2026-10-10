@@ -11,6 +11,8 @@ export default function AdminLoginPage() {
   const next = safeNext(params.get("next"), "/more/admin/today");
 
   const [password, setPassword] = useState("");
+  // On by default: the admin signs in on their own phone or computer. Untick it on a shared one.
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -23,7 +25,7 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/admin/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, remember }),
       });
 
       if (!res.ok) {
@@ -60,6 +62,17 @@ export default function AdminLoginPage() {
             placeholder="Password"
             className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           />
+
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              style={{ accentColor: "var(--accent)" }}
+              className="h-4 w-4"
+            />
+            Remember this device for 30 days
+          </label>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

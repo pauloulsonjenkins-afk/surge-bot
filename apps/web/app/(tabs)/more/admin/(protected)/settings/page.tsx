@@ -5,8 +5,6 @@ import { Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import TelegramConnection from "@/components/admin/TelegramConnection";
-import { Webhooks } from "@/components/admin/DirectBetting";
-import { useDirect } from "@/queries/use-direct";
 import { usePublicView, useSetPublicView } from "@/queries/use-access";
 import { useFreshStart, useSetFreshStart } from "@/queries/use-fresh-start";
 import { useDialog } from "@/components/ui/ConfirmDialog";
@@ -173,11 +171,6 @@ function DownloadCard() {
   );
 }
 
-function WebhookAlerts() {
-  const { data } = useDirect();
-  return data ? <Webhooks data={data} /> : null;
-}
-
 export default function SettingsPage() {
   return (
     <div className="space-y-3">
@@ -188,7 +181,6 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-line bg-surface p-3.5">
         <TelegramConnection />
       </section>
-      <WebhookAlerts />
     </div>
   );
 }
