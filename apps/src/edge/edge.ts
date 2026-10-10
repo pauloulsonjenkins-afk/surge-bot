@@ -36,9 +36,22 @@ export interface UpcomingFixture {
   away: string;
 }
 
+/** The Betfair bet a trend points at, when there is one (runs and cards have none). */
+export interface EdgeBet {
+  market: "OU15" | "OU25" | "OU35" | "BTTS" | "HT05" | "MO" | "DC";
+  pick: "over" | "under" | "yes" | "no" | "home" | "away" | "homeDraw" | "drawAway";
+}
+
 export interface EdgeTrend {
   /** What the line counts, e.g. "goals", "btts", "form", "run", "h2h", "cards", "half". */
   kind: string;
+  /** The Betfair bet this trend backs, if any (edge/edge-prices.ts reads its price). */
+  bet?: EdgeBet;
+  /**
+   * Betfair's price for that bet, read in the 24 hours before kick-off: `needed` is the hit rate the price needs after 2%
+   * commission, and `edge` how far the trend's cautious hit rate (`strength`) is above it. Positive edge = value.
+   */
+  betfair?: { price: number | null; needed: number | null; edge: number | null; at: string; note?: string };
   text: string;
   hits: number;
   sample: number;
@@ -113,16 +126,23 @@ export function strengthOf(hits: number, n: number): number {
   return (centre - spread) / (1 + (z * z) / n);
 }
 
-function trend(kind: string, text: string, hits: number, sample: number): EdgeTrend {
-  return { kind, text, hits, sample, rate: sample ? hits / sample : 0, strength: strengthOf(hits, sample) };
+function trend(kind: string, text: string, hits: number, sample: number, bet?: EdgeBet): EdgeTrend {
+  return { kind, text, hits, sample, rate: sample ? hits / sample : 0, strength: strengthOf(hits, sample), ...(bet ? { bet } : {}) };
 }
 
 /** A yes/no count read whichever way is stronger: "Over 2.5 in 8 of 10", or "Under 2.5 in 8 of 10" if goals are rare. */
-function either(kind: string, list: HistoricMatch[], test: (m: HistoricMatch) => boolean, yes: string, no: string): EdgeTrend | null {
+function either(kind: string, list: HistoricMatch[], test: (m: HistoricMatch) => boolean, yes: string, no: string, bets?: [EdgeBet, EdgeBet]): EdgeTrend | null {
   if (list.length < MIN_SAMPLE) return null;
   const hits = list.filter(test).length;
-  return hits * 2 >= list.length ? trend(kind, yes.replace("{n}", `${hits} of last ${list.length}`), hits, list.length) : trend(kind, no.replace("{n}", `${list.length - hits} of last ${list.length}`), list.length - hits, list.length);
+  return hits * 2 >= list.length
+    ? trend(kind, yes.replace("{n}", `${hits} of last ${list.length}`), hits, list.length, bets?.[0])
+    : trend(kind, no.replace("{n}", `${list.length - hits} of last ${list.length}`), list.length - hits, list.length, bets?.[1]);
 }
+
+const ou = (market: "OU15" | "OU25" | "OU35"): [EdgeBet, EdgeBet] => [
+  { market, pick: "over" },
+  { market, pick: "under" },
+];
 
 /** One side's view of a result: goals for and against. */
 const side = (m: HistoricMatch, team: string) => (m.home === team ? { f: m.fthg, a: m.ftag } : { f: m.ftag, a: m.fthg });
@@ -155,26 +175,36 @@ export function edgeCard(f: UpcomingFixture, history: HistoricMatch[], now = new
   const list: Array<EdgeTrend | null> = [];
 
   // Goals, in the two teams' last games together.
-  list.push(either("goals", both, (m) => goals(m) > 2.5, `Over 2.5 goals in {n} games played by ${teams} (10 each)`, `Under 2.5 goals in {n} games played by ${teams} (10 each)`));
-  list.push(either("goals", both, (m) => goals(m) > 1.5, `Over 1.5 goals in {n} games played by ${teams} (10 each)`, `Under 1.5 goals in {n} games played by ${teams} (10 each)`));
-  list.push(either("goals", both, (m) => goals(m) > 3.5, `Over 3.5 goals in {n} games played by ${teams} (10 each)`, `Under 3.5 goals in {n} games played by ${teams} (10 each)`));
-  list.push(either("btts", both, (m) => m.fthg > 0 && m.ftag > 0, `Both teams scored in {n} games played by ${teams} (10 each)`, `At least one side failed to score in {n} games played by ${teams} (10 each)`));
+  list.push(either("goals", both, (m) => goals(m) > 2.5, `Over 2.5 goals in {n} games played by ${teams} (10 each)`, `Under 2.5 goals in {n} games played by ${teams} (10 each)`, ou("OU25")));
+  list.push(either("goals", both, (m) => goals(m) > 1.5, `Over 1.5 goals in {n} games played by ${teams} (10 each)`, `Under 1.5 goals in {n} games played by ${teams} (10 each)`, ou("OU15")));
+  list.push(either("goals", both, (m) => goals(m) > 3.5, `Over 3.5 goals in {n} games played by ${teams} (10 each)`, `Under 3.5 goals in {n} games played by ${teams} (10 each)`, ou("OU35")));
+  list.push(
+    either("btts", both, (m) => m.fthg > 0 && m.ftag > 0, `Both teams scored in {n} games played by ${teams} (10 each)`, `At least one side failed to score in {n} games played by ${teams} (10 each)`, [
+      { market: "BTTS", pick: "yes" },
+      { market: "BTTS", pick: "no" },
+    ]),
+  );
   const withHt = both.filter((m) => m.hthg !== null && m.htag !== null);
-  list.push(either("half", withHt, (m) => m.hthg! + m.htag! > 0, `A goal before half-time in {n} games played by ${teams} (10 each)`, `0-0 at half-time in {n} games played by ${teams} (10 each)`));
+  list.push(
+    either("half", withHt, (m) => m.hthg! + m.htag! > 0, `A goal before half-time in {n} games played by ${teams} (10 each)`, `0-0 at half-time in {n} games played by ${teams} (10 each)`, [
+      { market: "HT05", pick: "over" },
+      { market: "HT05", pick: "under" },
+    ]),
+  );
 
   // Form: the home side at home, the away side away.
   if (hHome.length >= MIN_SAMPLE) {
     const w = hHome.filter((m) => m.fthg > m.ftag).length;
     const unbeaten = hHome.filter((m) => m.fthg >= m.ftag).length;
-    list.push(trend("form", `${H} won ${w} of their last ${hHome.length} home games`, w, hHome.length));
-    if (unbeaten > w) list.push(trend("form", `${H} unbeaten in ${unbeaten} of their last ${hHome.length} home games`, unbeaten, hHome.length));
+    list.push(trend("form", `${H} won ${w} of their last ${hHome.length} home games`, w, hHome.length, { market: "MO", pick: "home" }));
+    if (unbeaten > w) list.push(trend("form", `${H} unbeaten in ${unbeaten} of their last ${hHome.length} home games`, unbeaten, hHome.length, { market: "DC", pick: "homeDraw" }));
   }
   if (aAway.length >= MIN_SAMPLE) {
     const lost = aAway.filter((m) => m.ftag < m.fthg).length;
     const won = aAway.filter((m) => m.ftag > m.fthg).length;
-    if (lost * 2 >= aAway.length) list.push(trend("form", `${A} lost ${lost} of their last ${aAway.length} away games`, lost, aAway.length));
-    else list.push(trend("form", `${A} avoided defeat in ${aAway.length - lost} of their last ${aAway.length} away games`, aAway.length - lost, aAway.length));
-    if (won * 2 >= aAway.length) list.push(trend("form", `${A} won ${won} of their last ${aAway.length} away games`, won, aAway.length));
+    if (lost * 2 >= aAway.length) list.push(trend("form", `${A} lost ${lost} of their last ${aAway.length} away games`, lost, aAway.length, { market: "MO", pick: "home" }));
+    else list.push(trend("form", `${A} avoided defeat in ${aAway.length - lost} of their last ${aAway.length} away games`, aAway.length - lost, aAway.length, { market: "DC", pick: "drawAway" }));
+    if (won * 2 >= aAway.length) list.push(trend("form", `${A} won ${won} of their last ${aAway.length} away games`, won, aAway.length, { market: "MO", pick: "away" }));
   }
 
   // Current runs (any venue), shown when they are at least five games long.
@@ -196,13 +226,17 @@ export function edgeCard(f: UpcomingFixture, history: HistoricMatch[], now = new
   if (h2h.length >= 3) {
     const meet = `${h2h.length} meetings`;
     const over = h2h.filter((m) => goals(m) > 2.5).length;
-    list.push(over * 2 >= h2h.length ? trend("h2h", `Over 2.5 goals in ${over} of the last ${meet}`, over, h2h.length) : trend("h2h", `Under 2.5 goals in ${h2h.length - over} of the last ${meet}`, h2h.length - over, h2h.length));
+    list.push(
+      over * 2 >= h2h.length
+        ? trend("h2h", `Over 2.5 goals in ${over} of the last ${meet}`, over, h2h.length, { market: "OU25", pick: "over" })
+        : trend("h2h", `Under 2.5 goals in ${h2h.length - over} of the last ${meet}`, h2h.length - over, h2h.length, { market: "OU25", pick: "under" }),
+    );
     const btts = h2h.filter((m) => m.fthg > 0 && m.ftag > 0).length;
-    if (btts * 2 >= h2h.length) list.push(trend("h2h", `Both teams scored in ${btts} of the last ${meet}`, btts, h2h.length));
+    if (btts * 2 >= h2h.length) list.push(trend("h2h", `Both teams scored in ${btts} of the last ${meet}`, btts, h2h.length, { market: "BTTS", pick: "yes" }));
     const hUnbeaten = h2h.filter((m) => side(m, H).f >= side(m, H).a).length;
     const aUnbeaten = h2h.length - h2h.filter((m) => side(m, H).f > side(m, H).a).length;
-    if (hUnbeaten >= aUnbeaten) list.push(trend("h2h", `${H} unbeaten in ${hUnbeaten} of the last ${meet}`, hUnbeaten, h2h.length));
-    else list.push(trend("h2h", `${A} unbeaten in ${aUnbeaten} of the last ${meet}`, aUnbeaten, h2h.length));
+    if (hUnbeaten >= aUnbeaten) list.push(trend("h2h", `${H} unbeaten in ${hUnbeaten} of the last ${meet}`, hUnbeaten, h2h.length, { market: "DC", pick: "homeDraw" }));
+    else list.push(trend("h2h", `${A} unbeaten in ${aUnbeaten} of the last ${meet}`, aUnbeaten, h2h.length, { market: "DC", pick: "drawAway" }));
   }
 
   // Cards, where the files record bookings.
@@ -215,7 +249,7 @@ export function edgeCard(f: UpcomingFixture, history: HistoricMatch[], now = new
 
 // --------------------------------------------------------------------------- the daily job
 
-const KEY = (f: UpcomingFixture) => `${f.div}|${f.kickoff.slice(0, 10)}|${f.home}|${f.away}`;
+export const KEY = (f: UpcomingFixture) => `${f.div}|${f.kickoff.slice(0, 10)}|${f.home}|${f.away}`;
 
 /** Fetches the fixtures, works out every card in the next 48 hours and stores them. Returns how many were stored. */
 export async function runEdge(db: EngineDb, now = new Date()): Promise<number> {
@@ -235,13 +269,13 @@ export async function runEdge(db: EngineDb, now = new Date()): Promise<number> {
   return cards.length;
 }
 
-/** Runs a few minutes after start (once the results have loaded), then every six hours. */
-export function startEdge(db: EngineDb): void {
+/** Runs a few minutes after start (once the results have loaded), then every six hours; `after` runs after each run. */
+export function startEdge(db: EngineDb, after?: () => void): void {
   let last = 0;
   const tick = () => {
     if (Date.now() - last < RUN_EVERY_MS || historyStatus().state !== "ready") return;
     last = Date.now();
-    void runEdge(db).catch((err) => {
+    void runEdge(db).then(() => after?.()).catch((err) => {
       last = 0;
       log.warn(`Edge: ${err instanceof Error ? err.message : String(err)}`);
     });

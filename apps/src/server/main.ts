@@ -26,6 +26,7 @@ import { startDailyTips } from "./daily-tips";
 import { notifyIfProved, shadowTick } from "../model/goal-model";
 import { notifyAdvice } from "./strategy-advice";
 import { startEdge } from "../edge/edge";
+import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startProbeOnce } from "../fixtures/probe";
 
 async function main(): Promise<void> {
@@ -122,7 +123,9 @@ async function main(): Promise<void> {
   // The day's horse tips, fetched at a random time between 10:00 and 14:00 UK (needs the TIPS_* settings).
   startDailyTips(db);
   // Edge: pre-match insight cards for members, worked out from past results a few times a day (read-only for betting).
-  startEdge(db);
+  startEdge(db, () => void priceEdgeNow(db));
+  // ...and the Betfair price of each card's bets in the next 24 hours, every two hours (read-only).
+  startEdgePrices(db);
 
   // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
   // real bets on the house Betfair account for admin members. See src/members/runner.ts and live.ts.

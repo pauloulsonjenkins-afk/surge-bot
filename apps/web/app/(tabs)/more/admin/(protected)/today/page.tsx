@@ -10,6 +10,10 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useNotPlaced, useToday, type SpeedReport, type TodaySnapshot } from "@/queries/use-today";
 import { useSaveSending } from "@/queries/use-sending";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { useQuery } from "@tanstack/react-query";
+import { getJson } from "@/queries/fetch-json";
+import { TopOpportunity } from "@/components/edge/EdgeList";
+import type { EdgeCard } from "@/lib/members/edge";
 
 const gbp = (n: number) => `${n < 0 ? "−" : ""}£${Math.abs(n).toFixed(2)}`;
 const tone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink");
@@ -148,6 +152,28 @@ function NotPlaced() {
   );
 }
 
+/** The top Edge opportunity kicking off in the next few hours (read-only; nothing here bets). */
+function EdgeBox() {
+  const { data, error } = useQuery({
+    queryKey: ["admin-edge"],
+    queryFn: ({ signal }) => getJson<{ cards: EdgeCard[] }>("/api/admin/edge", "the Edge cards", signal),
+    refetchInterval: 10 * 60_000,
+  });
+  return (
+    <Card
+      title="Edge: next few hours"
+      subtitle="The top pre-match opportunity kicking off in the next 6 hours. Check the live price before you bet."
+      actions={
+        <Link href="/more/admin/edge" className="text-xs text-accent underline">
+          All fixtures
+        </Link>
+      }
+    >
+      {error ? <p className="text-sm text-destructive">{error.message}</p> : !data ? <Skeleton className="h-14 w-full" /> : <TopOpportunity cards={data.cards} />}
+    </Card>
+  );
+}
+
 function Tiles({ d }: { d: TodaySnapshot }) {
   const names = useStrategyNames();
   const bankAge = d.bank.at ? Date.parse(d.at) - Date.parse(d.bank.at) : null;
@@ -250,6 +276,8 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           </ul>
         </Card>
       )}
+
+      <EdgeBox />
 
       <Card title="Speed: alert to bet" subtitle="In-play prices move by the second. The slowest step is the one to fix.">
         <div className="space-y-1.5">

@@ -6,6 +6,13 @@ export interface EdgeTrend {
   sample: number;
   rate: number;
   strength: number;
+  /** The Betfair bet the trend points at, if any. */
+  bet?: { market: string; pick: string };
+  /**
+   * Betfair's back price for that bet (read in the 24 hours before kick-off): `needed` = the hit rate it needs after 2%
+   * commission, `edge` = the trend's cautious hit rate minus that. Positive = potential value.
+   */
+  betfair?: { price: number | null; needed: number | null; edge: number | null; at: string; note?: string };
 }
 
 export interface EdgeCard {

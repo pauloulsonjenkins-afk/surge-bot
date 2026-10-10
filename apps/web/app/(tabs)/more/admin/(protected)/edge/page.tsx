@@ -20,7 +20,7 @@ export default function AdminEdgePage() {
       <PageHeader
         as="h2"
         title="Fixtures · Edge"
-        subtitle="The pre-match insight cards members see (paid and trial; change who on Members), for every fixture in the next 48 hours in the 38 football-data leagues. Worked out every 6 hours; read-only, nothing here bets."
+        subtitle="The pre-match insight cards members see, for every fixture in the next 48 hours in the 38 football-data leagues. Worked out every 6 hours; read-only, nothing here bets."
       />
       {error ? <QueryError error={error} next="/more/admin/edge" /> : isLoading || !data ? <Skeleton className="h-96 w-full" /> : <EdgeList cards={data.cards} />}
     </div>

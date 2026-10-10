@@ -682,6 +682,13 @@ export interface BetfairLinkStatus {
 
 const status: BetfairLinkStatus = { configured: false, missing: [], lastOkAt: null, lastErrorAt: null, lastError: null, lastCount: 0 };
 
+let sharedReader: BetfairReader | null = null;
+
+/** The read-only Betfair reader once the poller has started (null when the Betfair link isn't set up). Edge prices use it. */
+export function getExchangeReader(): BetfairReader | null {
+  return sharedReader;
+}
+
 export function getBetfairLinkStatus(): BetfairLinkStatus {
   return { ...status, missing: [...status.missing] };
 }
@@ -707,6 +714,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
     return () => {};
   }
   const reader = new BetfairReader(creds);
+  sharedReader = reader;
   const exchangeCache: MatchCache = new Map();
   let running = false;
   let competitionsAt = 0;
