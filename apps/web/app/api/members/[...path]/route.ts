@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * The Members platform's API for the signed-in member. Only these paths are passed on; the engine decides what the
  * member may see or do. Changes are rate limited per member and per address.
  */
-const GETS = new Set(["me", "plans", "dashboard", "strategies", "strategy", "upcoming", "history", "performance", "settings", "automation", "notifications", "community", "community/strategy"]);
+const GETS = new Set(["me", "plans", "dashboard", "strategies", "strategy", "upcoming", "edge", "history", "performance", "settings", "automation", "notifications", "community", "community/strategy"]);
 const POSTS = new Set([
   "trial/start",
   "follow",
