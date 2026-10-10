@@ -1705,3 +1705,8 @@ export function fetchGoalModel(refresh: boolean): Promise<GoalModelReport> {
 export function fetchApiFootballProbe(): Promise<{ probe: unknown }> {
   return engineCall("/internal/api-football-probe", "the API-Football check");
 }
+
+/** Edge cards for the admin's Fixtures page (edge/edge.ts in the engine). */
+export function fetchAdminEdge(): Promise<{ cards: unknown[] }> {
+  return engineCall("/internal/edge", "the Edge cards");
+}
