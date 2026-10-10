@@ -296,7 +296,7 @@ export class BetfairReader {
    * the price of it now. The betting software finds the bet by these same names, so "noMarket" or "noSelection" means
    * it can't place it: the market code or wording on the Sending page doesn't match Betfair's.
    */
-  async checkBet(eventId: string, marketType: string, selectionName: string): Promise<{ status: MarketCheck; price: number | null; runners: string[] }> {
+  async checkBet(eventId: string, marketType: string, selectionName: string): Promise<{ status: MarketCheck; price: number | null; runners: string[]; marketId?: string; selectionId?: number }> {
     const markets = await this.call<MarketCatalogue[]>("listMarketCatalogue", {
       filter: { eventIds: [eventId], marketTypeCodes: [marketType] },
       marketProjection: ["RUNNER_DESCRIPTION"],
@@ -307,7 +307,19 @@ export class BetfairReader {
     const runners = (market.runners ?? []).map((r) => r.runnerName);
     const runner = market.runners ? findRunner(market.runners, selectionName) : undefined;
     if (!runner) return { status: "noSelection", price: null, runners };
-    return { status: "ok", price: await this.priceOf(market.marketId, runner.selectionId), runners };
+    return { status: "ok", price: await this.priceOf(market.marketId, runner.selectionId), runners, marketId: market.marketId, selectionId: runner.selectionId };
+  }
+
+  /**
+   * How one selection finished once its market has closed: "WINNER", "LOSER", or "REMOVED" (voided). Null while the
+   * market is still open or Betfair no longer has it.
+   */
+  async runnerResult(marketId: string, selectionId: number): Promise<"WINNER" | "LOSER" | "REMOVED" | null> {
+    const books = await this.call<Array<{ status?: string; runners?: Array<{ selectionId: number; status?: string }> }>>("listMarketBook", { marketIds: [marketId] });
+    const book = books[0];
+    if (!book || book.status !== "CLOSED") return null;
+    const s = book.runners?.find((r) => r.selectionId === selectionId)?.status;
+    return s === "WINNER" || s === "LOSER" || s === "REMOVED" ? s : null;
   }
 
   /** The best back price of one selection in one market right now (else its last traded price), or null. */

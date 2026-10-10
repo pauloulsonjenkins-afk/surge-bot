@@ -27,6 +27,7 @@ import { notifyIfProved, shadowTick } from "../model/goal-model";
 import { notifyAdvice } from "./strategy-advice";
 import { startEdge } from "../edge/edge";
 import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
+import { startValueSettling } from "../edge/value-strategy";
 import { startProbeOnce } from "../fixtures/probe";
 
 async function main(): Promise<void> {
@@ -126,6 +127,8 @@ async function main(): Promise<void> {
   startEdge(db, () => void priceEdgeNow(db));
   // ...and the Betfair price of each card's bets in the next 24 hours, every two hours (read-only).
   startEdgePrices(db);
+  // Best Value Cuppa (Sim only): settles its picks from Betfair's results.
+  startValueSettling(db);
 
   // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
   // real bets on the house Betfair account for admin members. See src/members/runner.ts and live.ts.

@@ -180,6 +180,9 @@ function rate(hits: number, misses: number): number | null {
 }
 
 /** "Both Teams to Score (Favorite conceded first)" and "... (Underdog scored first)" are one strategy. */
+/** The chat id Edge value picks (Best Value Cuppa) are stored under: they come from GoalBrew, not a Telegram chat. */
+export const EDGE_CHAT = "edge";
+
 function strategyLabel(raw: string): string {
   return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
 }
@@ -2087,7 +2090,8 @@ export class EngineDb {
     // Every settled pick: those with a full-time score, and those settled at half-time from the alert's own tick
     // (First Half Goal, First Half Corner Race), which never get one.
     const rows = this.db
-      .prepare(`SELECT id, raw_text, result, market, selection, ft_score FROM live_picks WHERE ft_score IS NOT NULL OR result IS NOT NULL`)
+      // Edge picks (Best Value Cuppa) aren't alerts: their text is a note, and Betfair settles them.
+      .prepare(`SELECT id, raw_text, result, market, selection, ft_score FROM live_picks WHERE (ft_score IS NOT NULL OR result IS NOT NULL) AND chat_id <> '${EDGE_CHAT}'`)
       .all() as Array<{ id: number; raw_text: string; result: string | null; market: string | null; selection: string | null; ft_score: string | null }>;
     const upd = this.db.prepare(`UPDATE live_picks SET result = ?, parsed_json = ? WHERE id = ?`);
     // When a rule change moves a strategy to a different bet or line, the stored market and wording follow it.
@@ -2905,12 +2909,62 @@ export class EngineDb {
     this.onChange();
   }
 
+  /**
+   * Adds one Edge value pick (Best Value Cuppa, edge/value-strategy.ts) as a pick of its own, sendable like any alert
+   * (it goes out only when the strategy is Live), with its simulated bet recorded when it is in Sim. The same fixture
+   * and bet is only ever added once. Returns true when added.
+   */
+  addEdgePick(p: {
+    messageId: number;
+    strategy: string;
+    selection: string;
+    competition: string;
+    country: string;
+    home: string;
+    away: string;
+    text: string;
+    detail: ParsedAlert;
+    event: string;
+    eventId: string;
+    odds: number;
+    /** Null when the strategy is Live: the bet feed handles it, and the Sim recording covers it if it isn't sent. */
+    simRowJson: string | null;
+    at: string;
+  }): boolean {
+    const r = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO live_picks (
+           chat_id, message_id, first_seen_at, updated_at, strategy, market, selection, competition, home, away,
+           status, sendable, flags_json, parsed_json, raw_text, message_at, country,
+           exchange, exchange_event, exchange_odds, exchange_event_id, market_check, sim_row, sim_at
+         ) VALUES (?, ?, ?, ?, ?, 'EDGE_VALUE', ?, ?, ?, ?, 'captured', 1, '[]', ?, ?, ?, ?, 'on', ?, ?, ?, 'ok', ?, ?)`,
+      )
+      .run(EDGE_CHAT, p.messageId, p.at, p.at, p.strategy, p.selection, p.competition, p.home, p.away, JSON.stringify(p.detail), p.text, p.at, p.country, p.event, p.odds, p.eventId, p.simRowJson, p.simRowJson === null ? null : p.at);
+    if (r.changes > 0) this.onChange();
+    return r.changes > 0;
+  }
+
+  /** Edge value picks not settled yet (with their stored detail, which holds the Betfair market and selection ids). */
+  listOpenEdgePicks(): Array<{ id: number; firstSeenAt: string; detail: ParsedAlert }> {
+    const rows = this.db
+      .prepare(`SELECT id, first_seen_at, parsed_json FROM live_picks WHERE chat_id = ? AND result IS NULL AND result_override IS NULL AND excluded = 0`)
+      .all(EDGE_CHAT) as Array<{ id: number; first_seen_at: string; parsed_json: string }>;
+    return rows.map((r) => ({ id: r.id, firstSeenAt: r.first_seen_at, detail: JSON.parse(r.parsed_json) as ParsedAlert }));
+  }
+
+  /** Settles an Edge value pick from Betfair's result. */
+  settleEdgePick(id: number, result: "hit" | "miss", at: string): void {
+    this.db.prepare(`UPDATE live_picks SET result = ?, status = 'settled', updated_at = ? WHERE id = ? AND chat_id = ?`).run(result, at, id, EDGE_CHAT);
+    this.onChange();
+  }
+
   /** When simulated bets that would have been placed were recorded, from roughly the last day and a half (for the daily limit). */
   recentSimBetTimes(): string[] {
     const since = new Date(Date.now() - 36 * 3_600_000).toISOString();
     const rows = this.db
-      .prepare(`SELECT sim_at, sim_row FROM live_picks WHERE sim_at IS NOT NULL AND sim_at >= ? AND sent_at IS NULL`)
-      .all(since) as Array<{ sim_at: string; sim_row: string | null }>;
+      // Edge value picks are recorded apart from the alerts' daily limit, so they never crowd out the other Sim strategies.
+      .prepare(`SELECT sim_at, sim_row FROM live_picks WHERE sim_at IS NOT NULL AND sim_at >= ? AND sent_at IS NULL AND chat_id <> ?`)
+      .all(since, EDGE_CHAT) as Array<{ sim_at: string; sim_row: string | null }>;
     return rows.filter((r) => parseSimRow(r.sim_row)?.skipped === null).map((r) => r.sim_at);
   }
 

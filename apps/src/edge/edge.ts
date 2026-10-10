@@ -51,7 +51,7 @@ export interface EdgeTrend {
    * Betfair's price for that bet, read in the 24 hours before kick-off: `needed` is the hit rate the price needs after 2%
    * commission, and `edge` how far the trend's cautious hit rate (`strength`) is above it. Positive edge = value.
    */
-  betfair?: { price: number | null; needed: number | null; edge: number | null; at: string; note?: string };
+  betfair?: { price: number | null; needed: number | null; edge: number | null; at: string; note?: string; marketType?: string; eventId?: string; event?: string; marketId?: string; selectionId?: number; selection?: string };
   text: string;
   hits: number;
   sample: number;

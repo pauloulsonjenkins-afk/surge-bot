@@ -9,6 +9,7 @@ export const MARKET_LABEL: Record<string, string> = {
   OVER_1_5: "Over 1.5 goals",
   FIRST_HALF_GOALS: "1st half goals (pre-match)",
   AWAY_WIN_LAY: "Away win lay (pre-match)",
+  EDGE_VALUE: "Edge value bet (pre-match, market varies)",
 };
 
 export function marketName(market: string | null): string | null {

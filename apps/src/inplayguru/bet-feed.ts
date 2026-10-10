@@ -528,6 +528,13 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
     if (!away) return { error: "Could not read the away team." };
     return { marketType: "MATCH_ODDS", selectionName: away };
   }
+  if (p.market === "EDGE_VALUE") {
+    // Best Value Cuppa (edge/value-strategy.ts): each pick carries its own Betfair market code and selection, as read
+    // when its price was checked, so the bet sent is exactly the one priced.
+    const e = (p.detail as { edge?: { marketType?: string; selectionName?: string } } | null)?.edge;
+    if (!e?.marketType || !e.selectionName) return { error: "This pick has no Betfair market stored." };
+    return { marketType: e.marketType, selectionName: e.selectionName };
+  }
   return { error: "This market can't be sent yet." };
 }
 
@@ -833,6 +840,11 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
 
 /** A pre-match pick's estimated kick-off (alert time + "Kickoff: In 1 hour"; an hour if the wording isn't known), else null. */
 export function kickoffAt(p: LivePick): number | null {
+  // Best Value Cuppa picks know their real kick-off.
+  if (p.market === "EDGE_VALUE") {
+    const ko = Date.parse((p.detail as { edge?: { kickoff?: string } } | null)?.edge?.kickoff ?? "");
+    return Number.isFinite(ko) ? ko : null;
+  }
   if (p.market !== "FIRST_HALF_GOALS" && p.market !== "AWAY_WIN_LAY") return null;
   return alertTime(p) + (kickoffMinutes(p.detail?.kickoffRaw) ?? 60) * 60_000;
 }

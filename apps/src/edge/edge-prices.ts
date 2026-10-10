@@ -14,6 +14,7 @@ import { getExchangeReader, judgeExchange, searchWord, type BetfairReader } from
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { edgeCards, KEY, type EdgeBet, type EdgeCard } from "./edge";
 import { log } from "../server/log";
+import { recordValuePicks } from "./value-strategy";
 
 const AHEAD_MS = 24 * 3_600_000;
 const COMMISSION = 0.02;
@@ -89,7 +90,8 @@ export async function priceEdge(db: EngineDb, reader: BetfairReader, now = new D
         continue;
       }
       const needed = neededFor(r.price);
-      t.betfair = { price: r.price, needed, edge: t.strength - needed, at };
+      // The ids let Best Value Cuppa (edge/value-strategy.ts) settle a pick from Betfair's own result.
+      t.betfair = { price: r.price, needed, edge: t.strength - needed, at, marketType: b.marketType, eventId: ev.id, event: ev.name, marketId: r.marketId, selectionId: r.selectionId, selection: b.selection };
       priced++;
     }
     // The headline is a separate copy of the top trend once saved: point it at the priced one.
@@ -101,6 +103,8 @@ export async function priceEdge(db: EngineDb, reader: BetfairReader, now = new D
       new Date(now.getTime() - 2 * 3_600_000).toISOString(),
     );
   }
+  // Best Value Cuppa: the value bets on matches about to start become Sim picks (edge/value-strategy.ts).
+  recordValuePicks(db, soon, now);
   log.info(`Edge: Betfair prices read for ${priced} trends across ${soon.length} fixtures in the next 24 hours.`);
   return priced;
 }
