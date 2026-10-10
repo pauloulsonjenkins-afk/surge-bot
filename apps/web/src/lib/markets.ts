@@ -8,6 +8,7 @@ export const MARKET_LABEL: Record<string, string> = {
   FAVOURITE_TO_SCORE: "Favourite to score",
   OVER_1_5: "Over 1.5 goals",
   FIRST_HALF_GOALS: "1st half goals (pre-match)",
+  AWAY_WIN_LAY: "Away win lay (pre-match)",
 };
 
 export function marketName(market: string | null): string | null {

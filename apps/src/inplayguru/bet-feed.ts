@@ -496,6 +496,7 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
       selectionName: template.replace(/\{home\}/g, alias(p.home ?? "")).replace(/\{away\}/g, alias(p.away ?? "")),
     };
   }
+  if (p.market === "AWAY_WIN_LAY") return { error: "Lay bets aren't placed yet: Away Win Lay is tracked in Sim only." };
   return { error: "This market can't be sent yet." };
 }
 
@@ -712,6 +713,7 @@ export function alertOddsOfPick(p: LivePick): number | null {
     overLine: d.odds?.overUnderLine ?? null,
     overOdds: d.odds?.over ?? null,
     favouriteOdds: typeof favouriteOdds === "number" ? favouriteOdds : null,
+    layOdds: p.market === "AWAY_WIN_LAY" ? (d.odds?.preMatch1x2?.[2] ?? null) : null,
   });
 }
 

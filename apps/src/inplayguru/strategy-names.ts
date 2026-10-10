@@ -103,6 +103,12 @@ const DEFAULTS: Record<string, StrategyInfo> = {
     trigger: "75', 0-0, favourite 1.50 or shorter pre-match.",
     bet: "Favourite to score (its goals Over 0.5)",
   },
+  "away win lay": {
+    name: "Away Win Lay",
+    description: "Lays the away side before kick-off in leagues where home sides do well: wins on a home win or a draw. Sim only.",
+    trigger: "An hour before kick-off, home 2.20 or shorter, away 3.50 to 8.00, in the chosen leagues.",
+    bet: "Lay the away side (home or draw); the stake is the liability",
+  },
   "french press": {
     name: "French Press",
     description: "A favourite a goal up and pushing again: backs it to score another.",

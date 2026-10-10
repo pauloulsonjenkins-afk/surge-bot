@@ -37,6 +37,8 @@ const hasStake = (s: SendingStrategy) => s.stake !== null || s.stakePct != null;
 /** "Next goal · £2.00 · min odds 1.50 · stop loss set", or why it can't be bet. */
 export function betSummary(s: SendingStrategy, settings: SendingSettings): { text: string; warn: boolean } {
   if (!s.market) return { text: "No market set", warn: true };
+  // Lay bets aren't placed yet: the stake is the liability used to work out its Sim results.
+  if (s.market === "AWAY_WIN_LAY") return { text: `${marketName(s.market)} · Sim only · ${stakeText(s) ? `${stakeText(s)} liability` : "set a stake (the liability) to price it"}`, warn: !hasStake(s) };
   if (!canBet(s, settings)) return { text: "Can't be bet yet: set its market under Sending → Bet wording", warn: true };
   const hasStop = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
   const parts = [

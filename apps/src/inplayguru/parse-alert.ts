@@ -25,7 +25,9 @@ export type MarketCode =
   | "FAVOURITE_TO_WIN"
   | "FAVOURITE_TO_SCORE"
   | "OVER_1_5"
-  | "FIRST_HALF_GOALS";
+  | "FIRST_HALF_GOALS"
+  /** Lay the away side before kick-off: wins on a home win or a draw. Sim only for now (no lay bets are placed). */
+  | "AWAY_WIN_LAY";
 
 export type PickResult = "hit" | "miss";
 
@@ -96,6 +98,9 @@ export interface ParsedAlert {
 
 /** Strategy name (lower case, no bracketed note) -> market. Order matters: first match wins. */
 const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
+  // "Away Win Lay" (added 10 Oct 2026): a PRE-MATCH alert ("Kickoff: In 1 hour") laying the away side; InPlayGuru
+  // tracks it as Double Chance 1X. Recorded and settled, and priced as a lay in Sim; not bet (no lay betting yet).
+  { test: /away win lay/, market: "AWAY_WIN_LAY" },
   { test: /both teams to score/, market: "BOTH_TEAMS_TO_SCORE" },
   // "1st Half Corners", "First Half Corner", "1H Corners", "Corners 1st Half" ...
   { test: /\b(?:first|1st|1h)\b[^/]*\bcorners?\b|\bcorners?\b[^/]*\b(?:first|1st|1h)\b/, market: "FIRST_HALF_CORNERS" },
@@ -317,7 +322,7 @@ export function parseAlert(text: string): ParsedAlert {
     const k = l.replace(DECORATION, "").trim().match(/^Kick-?off:\s*(.+)$/i);
     if (k?.[1]) kickoffRaw = k[1].trim();
   }
-  const preMatchMarket = market === "FIRST_HALF_GOALS";
+  const preMatchMarket = market === "FIRST_HALF_GOALS" || market === "AWAY_WIN_LAY";
   if (minute === null && !preMatchMarket) flags.push("Could not read the match timer.");
 
   // ---- "Label: a - b" stats ----
@@ -461,6 +466,15 @@ export function parseAlert(text: string): ParsedAlert {
         flags.push("A goal has already been scored, so Over 0.5 first-half goals is already decided.");
       }
     }
+  } else if (market === "AWAY_WIN_LAY") {
+    // Lay the away side before kick-off: wins if the home side wins or it's a draw. Priced from the away side's
+    // pre-match win price, which the alert carries.
+    selection = "Lay the away side (home or draw)";
+    if (!odds.preMatch1x2) flags.push("No pre-match 1X2 odds in the alert, so the away side's price is unknown.");
+    if (!settled) {
+      if (!kickoffRaw) flags.push("No Kickoff line in the alert, so it can't be confirmed as a pre-match alert.");
+      if (minute !== null) flags.push("The alert has a match timer, so the match is already under way. This bet is pre-match only.");
+    }
   } else if (market === "FIRST_HALF_CORNERS") {
     // "First Half Corner Race": Over 5.5 first-half corners, a fixed line (InPlayGuru's own definition, checked on its
     // Strategies page on 1 Oct 2026). The alert usually fires on 5 corners, so it needs one more before half-time.
@@ -501,6 +515,8 @@ export function parseAlert(text: string): ParsedAlert {
     else if (market === "FAVOURITE_TO_SCORE" && favourite !== null && targetLine !== null) {
       computed = (favourite === "home" ? a : b) > targetLine ? "hit" : "miss";
     }
+    // Away win lay: hits unless the away side won.
+    else if (market === "AWAY_WIN_LAY") computed = a >= b ? "hit" : "miss";
     // Underdog win or draw: hits unless the underdog lost.
     else if (market === "UNDERDOG_DOUBLE_CHANCE" && underdog !== null) {
       computed = (underdog === "home" ? a >= b : b >= a) ? "hit" : "miss";

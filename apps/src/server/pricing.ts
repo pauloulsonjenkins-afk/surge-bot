@@ -27,6 +27,8 @@ export interface PriceableResult {
   overLine: number | null;
   overOdds: number | null;
   favouriteOdds: number | null;
+  /** For away-win-lay picks: the away side's pre-match win price printed in the alert (the price laid). */
+  layOdds?: number | null;
   sent: boolean;
   sentStake: number | null;
   /** What was recorded for a simulation pick when it arrived, or null for one from before recording existed. */
@@ -63,7 +65,13 @@ export type PriceOutcome =
   | { kind: "notPlaced"; reason: string };
 
 /** The price printed in the alert, but only when it is for the very line that was bet. */
-export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds">): number | null {
+export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "layOdds">): number | null {
+  // A lay at price A, risking the stake as the liability, pays like a back bet at A / (A - 1): win the stake / (A - 1),
+  // lose the stake. So the stake on an away-win-lay strategy is its liability (the most one bet can lose).
+  if (r.market === "AWAY_WIN_LAY") {
+    const a = r.layOdds ?? null;
+    return a !== null && a > 1.01 ? Math.round((a / (a - 1)) * 1000) / 1000 : null;
+  }
   if (r.market === "NEXT_GOAL" || r.market === "OVER_1_5") {
     return r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1 ? r.overOdds : null;
   }

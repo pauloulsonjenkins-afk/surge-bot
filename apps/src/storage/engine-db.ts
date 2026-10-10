@@ -2122,6 +2122,8 @@ export class EngineDb {
     overOdds: number | null;
     /** For favourite-to-win picks: the favourite's live win price printed in the alert. */
     favouriteOdds: number | null;
+    /** For away-win-lay picks: the away side's pre-match win price printed in the alert. */
+    layOdds: number | null;
     /** The price the pick's bet actually matched at on Betfair (stake-weighted), when it has one. */
     betOdds: number | null;
     /** The price taken on a bet placed by hand (logged on Live). */
@@ -2181,8 +2183,11 @@ export class EngineDb {
       let overLine: number | null = null;
       let overOdds: number | null = null;
       let favouriteOdds: number | null = null;
+      let layOdds: number | null = null;
       try {
         const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert>;
+        const pre = p.odds?.preMatch1x2;
+        if (p.market === "AWAY_WIN_LAY" && Array.isArray(pre) && typeof pre[2] === "number" && pre[2] > 1) layOdds = pre[2];
         targetLine = typeof p.targetLine === "number" ? p.targetLine : null;
         overLine = typeof p.odds?.overUnderLine === "number" ? p.odds.overUnderLine : null;
         overOdds = typeof p.odds?.over === "number" ? p.odds.over : null;
@@ -2226,6 +2231,7 @@ export class EngineDb {
         overLine,
         overOdds,
         favouriteOdds,
+        layOdds,
         sentStake,
         sent: isLivePlacement(placement),
         placement,
