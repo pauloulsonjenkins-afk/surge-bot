@@ -125,6 +125,9 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "Super favorite 0-0 at 75'": a 1.50-or-shorter pre-match favourite still 0-0 at 75', backed to score.
   { test: /super favou?rite 0-0/, market: "FAVOURITE_TO_SCORE" },
   { test: /late goal hunter/, market: "NEXT_GOAL" },
+  // "2nd half goals last 10 matches 2" (added 11 Oct 2026, confirmed a next-goal bet by the owner): late second-half
+  // alerts, backed as the next goal.
+  { test: /2nd half goals last 10 matches/, market: "NEXT_GOAL" },
   // "French Press" (added 9 Oct 2026): a 1.80-or-shorter pre-match side leading by one at 61-75' with its momentum rising,
   // backed to score again (InPlayGuru tracks it as "Over 0.5 Favorite Goals Since Picked").
   { test: /french press/, market: "FAVOURITE_TO_SCORE" },
