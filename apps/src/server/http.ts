@@ -92,6 +92,7 @@ import { priceCheckReport } from "../betfair/price-check";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { cachedModelReport, publishModel, shadowReport } from "../model/goal-model";
 import { getProbe } from "../fixtures/probe";
+import { pickDetail } from "./pick-detail";
 import { edgeCards } from "../edge/edge";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
@@ -1239,6 +1240,26 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           stake: currentStake(db, settings, x.label.toLowerCase()),
         })),
       });
+      return;
+    }
+
+    // One pick in detail for the admin's Trade Log: times, goals after the alert, stats at the alert (pick-detail.ts).
+    if (req.method === "GET" && path === "/internal/picks/detail") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const id = Number(new URL(rawUrl, "http://internal").searchParams.get("id"));
+      const d = Number.isInteger(id) && id > 0 ? pickDetail(db, id) : null;
+      if (!d) {
+        send(res, 404, { error: "not_found" });
+        return;
+      }
+      send(res, 200, { detail: d });
       return;
     }
 

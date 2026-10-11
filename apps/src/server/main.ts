@@ -29,6 +29,7 @@ import { startEdge } from "../edge/edge";
 import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startValueSettling } from "../edge/value-strategy";
 import { startProbeOnce } from "../fixtures/probe";
+import { startGoalTimes } from "../fixtures/goal-times";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -145,6 +146,8 @@ async function main(): Promise<void> {
     startDailyFixturePull(db, apiFootballKey);
     // One-off check of what the plan allows, for Edge Phase 2 (fixtures/probe.ts). Runs once ever, 3 calls.
     startProbeOnce(db, apiFootballKey);
+    // Goal times for the admin's Trade Log: at most 30 API-Football calls a day (fixtures/goal-times.ts).
+    startGoalTimes(db, apiFootballKey);
   } else {
     log.info("API_FOOTBALL_KEY is not set; the Schedule tab's daily fixture pull is off.");
   }

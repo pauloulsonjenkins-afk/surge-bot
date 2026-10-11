@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { PencilLine } from "lucide-react";
+import { ChevronDown, PencilLine } from "lucide-react";
+import { PickDetailPanel } from "@/components/admin/PickDetailPanel";
 import { PageHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
@@ -42,8 +43,9 @@ function PickLine({ pick, admin }: { pick: Row; admin: boolean }) {
   const strategyNames = useStrategyNames();
   const money = admin ? priced(pick) : null;
   const mode = modeOf(pick);
-  return (
-    <li className="flex items-start gap-3 px-3 py-2.5">
+  const [open, setOpen] = useState(false);
+  const line = (
+    <div className="flex items-start gap-3 px-3 py-2.5">
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink">
           <span className="min-w-0 truncate">{strategyNames.name(pick.strategy)}</span>
@@ -64,6 +66,17 @@ function PickLine({ pick, admin }: { pick: Row; admin: boolean }) {
           {admin && money?.assumed ? <span className="font-normal text-warn"> · assumed odds</span> : null}
         </p>
       </div>
+      {admin && <ChevronDown size={14} aria-hidden className={`mt-1 shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />}
+    </div>
+  );
+  // Only the admin can open a pick: the stats at each alert hint at the strategy's rules.
+  if (!admin) return <li>{line}</li>;
+  return (
+    <li>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="block w-full text-left hover:bg-surface-2/40">
+        {line}
+      </button>
+      {open && <PickDetailPanel id={pick.id} home={pick.home} away={pick.away} />}
     </li>
   );
 }

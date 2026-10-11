@@ -1725,3 +1725,27 @@ export function fetchApiFootballProbe(): Promise<{ probe: unknown }> {
 export function fetchAdminEdge(): Promise<{ cards: unknown[] }> {
   return engineCall("/internal/edge", "the Edge cards");
 }
+
+/** One pick in detail for the Trade Log (server/pick-detail.ts in the engine). Admin only. */
+export interface PickDetail {
+  id: number;
+  times: {
+    alertAt: string | null;
+    receivedAt: string;
+    sentAt: string | null;
+    bets: Array<{ placedAt: string | null; matched: number | null; odds: number | null; status: string }>;
+    direct: { state: string; placedAt: string | null; price: number | null; matched: number | null; reason: string | null } | null;
+  };
+  minute: number | null;
+  scoreAtAlert: string | null;
+  lastGoalBefore: string | null;
+  goals: Array<{ minute: number; extra: number | null; side: "home" | "away"; kind: "goal" | "penalty" | "own goal"; afterAlert: boolean }> | null;
+  goalsNote: string | null;
+  stats: Array<{ label: string; home: number; away: number }>;
+  compare: Array<{ label: string; pick: number; winners: number | null; losers: number | null }>;
+  summary: string | null;
+}
+
+export function fetchPickDetail(id: number): Promise<{ detail: PickDetail }> {
+  return engineCall(`/internal/picks/detail?id=${id}`, "the pick's detail");
+}
