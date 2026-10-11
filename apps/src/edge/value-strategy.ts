@@ -5,8 +5,10 @@
  * The bet varies pick to pick: a team to win, double chance, both teams to score yes/no, goals over/under (1.5, 2.5,
  * 3.5) or a first-half goal, whichever trend Betfair prices below its history (edge/edge-prices.ts).
  *
- *   picks   each time the prices are read, every value trend (positive edge) on a match kicking off within the next
- *           3 hours, at most two per match, best first. The same match and bet is only added once, at the price read then.
+ *   picks   each time the prices are read, every value trend on a match kicking off within the next 3 hours: at least
+ *           5 points of edge, on at least 10 games, at most two per match (best first) and never two that pull against
+ *           each other (two result bets, or goals over with goals under). The same match and bet is only added once, at
+ *           the price read then.
  *   stake   in Sim, the strategy's stake on Strategies, else £1, so the record reads per £1 until one is set.
  *   settled from Betfair's own result for that market once it closes (won / lost); a voided selection, or one Betfair
  *           still hasn't settled four days on, leaves the figures.
@@ -28,6 +30,16 @@ export const STRATEGY = "Best Value Cuppa";
 const KEY_NAME = STRATEGY.toLowerCase();
 const WINDOW_MS = 3 * 3_600_000;
 const PER_MATCH = 2;
+/** The trend's cautious rate must beat the price's need by at least this much (5 points). */
+const MIN_EDGE = 0.05;
+/** And rest on at least this many games (a handful of head-to-head meetings isn't enough). */
+const MIN_SAMPLE = 10;
+
+/** Which way a bet leans, so one match never gets two bets that work against each other. */
+function family(bet: EdgeBet): "result" | "goalsUp" | "goalsDown" {
+  if (bet.market === "MO" || bet.market === "DC") return "result";
+  return bet.pick === "over" || bet.pick === "yes" ? "goalsUp" : "goalsDown";
+}
 /** A match is over (and its markets settling) about this long after kick-off. */
 const SETTLE_AFTER_MS = 2.5 * 3_600_000;
 const GIVE_UP_MS = 4 * 24 * 3_600_000;
@@ -83,11 +95,18 @@ export function valuePicks(cards: EdgeCard[], now = new Date()): Array<{ card: E
   for (const card of cards) {
     const k = Date.parse(card.fixture.kickoff);
     if (k < now.getTime() || k > now.getTime() + WINDOW_MS) continue;
-    card.trends
-      .filter((t) => t.bet && t.betfair && t.betfair.price !== null && (t.betfair.edge ?? 0) > 0 && t.betfair.marketId && t.betfair.marketType && t.betfair.selection && t.betfair.selectionId !== undefined && t.betfair.eventId)
-      .sort((a, b) => b.betfair!.edge! - a.betfair!.edge!)
-      .slice(0, PER_MATCH)
-      .forEach((trend) => out.push({ card, trend }));
+    const taken = new Set<string>();
+    let n = 0;
+    for (const trend of card.trends
+      .filter((t) => t.bet && t.sample >= MIN_SAMPLE && t.betfair && t.betfair.price !== null && (t.betfair.edge ?? 0) >= MIN_EDGE && t.betfair.marketId && t.betfair.marketType && t.betfair.selection && t.betfair.selectionId !== undefined && t.betfair.eventId)
+      .sort((a, b) => b.betfair!.edge! - a.betfair!.edge!)) {
+      const f = family(trend.bet!);
+      const clash = f === "result" ? taken.has("result") : taken.has(f === "goalsUp" ? "goalsDown" : "goalsUp");
+      if (clash || n >= PER_MATCH) continue;
+      taken.add(f);
+      n++;
+      out.push({ card, trend });
+    }
   }
   return out;
 }

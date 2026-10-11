@@ -45,7 +45,7 @@ test("only value trends on matches in the next 3 hours, best two per match", () 
 
 test("picks are added once as never-sendable Sim picks at the Betfair price, then settled from Betfair's result", async () => {
   const db = new EngineDb(":memory:", () => {});
-  const c = card(1, [trend("BTTS in 16 of last 20", "BTTS", "yes", 1.8, 0.08, 2), trend("Over 2.5 in 15 of 20", "OU25", "over", 2.0, 0.04, 7)]);
+  const c = card(1, [trend("BTTS in 16 of last 20", "BTTS", "yes", 1.8, 0.08, 2), trend("Over 2.5 in 15 of 20", "OU25", "over", 2.0, 0.06, 7)]);
   assert.equal(recordValuePicks(db, [c], now), 2);
   assert.equal(recordValuePicks(db, [c], now), 0, "the same match and bet is only added once");
   const picks = db.listLivePicks(10);
@@ -90,4 +90,20 @@ test("in Sim nothing is sent; switched Live, each pick goes out as its own marke
   assert.equal(live.rows[0]!.stake, 2);
   const afterKickoff = buildFeed(db, { markSent: false, now: new Date(realNow.getTime() + 2 * 3_600_000) });
   assert.equal(afterKickoff.rows.length, 0, "not bet once the match is under way");
+});
+
+test("never two bets that pull against each other, nothing under 5 points of edge or 10 games", () => {
+  const both = card(1, [trend("Liverpool or draw", "DC", "homeDraw", 1.8, 0.09, 1), trend("Man City or draw", "DC", "drawAway", 1.41, 0.07, 2), trend("Under 2.5", "OU25", "under", 2.0, 0.06, 3)]);
+  assert.deepEqual(valuePicks([both], now).map((p) => p.trend.text), ["Liverpool or draw", "Under 2.5"]);
+  const overUnder = card(1, [trend("Over 2.5", "OU25", "over", 1.9, 0.08, 4), trend("Under 3.5", "OU35", "under", 1.5, 0.07, 5)]);
+  assert.deepEqual(valuePicks([overUnder], now).map((p) => p.trend.text), ["Over 2.5"]);
+  const thin = trend("Under 2.5 in 7 of the last 8 meetings", "OU25", "under", 2.0, 0.2, 6);
+  thin.sample = 8;
+  assert.deepEqual(valuePicks([card(1, [thin, trend("small", "BTTS", "yes", 1.8, 0.04, 7)])], now), []);
+});
+
+test("a match Betfair lists the other way round is not priced", async () => {
+  const { sameOrder } = await import("../src/edge/edge-prices");
+  assert.equal(sameOrder("Csikszereda M. Ciuc", "Univ. Craiova", "Universitatea Craiova v Csikszereda"), false);
+  assert.equal(sameOrder("Man United", "Leeds", "Man Utd v Leeds"), true);
 });

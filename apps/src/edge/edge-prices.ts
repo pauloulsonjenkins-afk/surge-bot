@@ -53,6 +53,20 @@ export function betfairBet(bet: EdgeBet, home: string, away: string, dc: { marke
 
 const events = new Map<string, { id: string; name: string } | null>();
 
+const plain = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/**
+ * False when Betfair lists the match the other way round ("Craiova v Csikszereda" for Csikszereda v Craiova): then
+ * Betfair's "Home or Draw" is the other team, so the bet would be the wrong one.
+ */
+export function sameOrder(home: string, away: string, eventName: string): boolean {
+  const [bfHome = "", bfAway = ""] = plain(eventName).split(/ v /);
+  const h = plain(searchWord(home));
+  const a = plain(searchWord(away));
+  const swapped = (bfAway.includes(h) && !bfHome.includes(h)) || (bfHome.includes(a) && !bfAway.includes(a));
+  return !swapped;
+}
+
 async function findEvent(reader: BetfairReader, c: EdgeCard): Promise<{ id: string; name: string } | null> {
   const k = KEY(c.fixture);
   if (events.has(k)) return events.get(k)!;
@@ -60,7 +74,9 @@ async function findEvent(reader: BetfairReader, c: EdgeCard): Promise<{ id: stri
   const { home, away } = c.fixture;
   let judged = judgeExchange(home, away, await reader.searchEvents(searchWord(home), at));
   if (judged.result === "off") judged = judgeExchange(home, away, await reader.searchEvents(searchWord(away), at));
-  const found = judged.result !== "off" && judged.eventId && judged.event ? { id: judged.eventId, name: judged.event } : null;
+  // Only a sure match: both teams found ("on"), in the same order. A near miss ("nameDiffers") once priced Qingdao Youth
+  // Island for Qingdao West Coast.
+  const found = judged.result === "on" && judged.eventId && judged.event && sameOrder(home, away, judged.event) ? { id: judged.eventId, name: judged.event } : null;
   events.set(k, found);
   return found;
 }
