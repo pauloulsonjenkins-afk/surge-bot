@@ -30,6 +30,7 @@ import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startValueSettling } from "../edge/value-strategy";
 import { startProbeOnce } from "../fixtures/probe";
 import { startGoalTimes } from "../fixtures/goal-times";
+import { startTeamGoalsReminder } from "../model/team-goals-test";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -128,6 +129,8 @@ async function main(): Promise<void> {
   startEdge(db, () => void priceEdgeNow(db));
   // ...and the Betfair price of each card's bets in the next 24 hours, every two hours (read-only).
   startEdgePrices(db);
+  // GoalSignal's "lively teams" filter, tested on next-goal picks (Sim only); a push on 18 Oct to review it.
+  startTeamGoalsReminder(db);
   // Best Value Cuppa (Sim only): settles its picks from Betfair's results.
   startValueSettling(db);
 

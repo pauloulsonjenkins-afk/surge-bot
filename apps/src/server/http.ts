@@ -93,6 +93,7 @@ import { notPlacedReport, todaySnapshot } from "./today";
 import { cachedModelReport, publishModel, shadowReport } from "../model/goal-model";
 import { getProbe } from "../fixtures/probe";
 import { pickDetail } from "./pick-detail";
+import { teamGoalsReport } from "../model/team-goals-test";
 import { edgeCards } from "../edge/edge";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
@@ -822,7 +823,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const refresh = new URL(rawUrl, "http://internal").searchParams.get("refresh") === "1";
-      send(res, 200, { ...cachedModelReport(db, refresh), shadow: shadowReport(db) });
+      send(res, 200, { ...cachedModelReport(db, refresh), shadow: shadowReport(db), teamGoals: teamGoalsReport(db) });
       return;
     }
     // Freezes a new model version now (it also happens by itself each week).

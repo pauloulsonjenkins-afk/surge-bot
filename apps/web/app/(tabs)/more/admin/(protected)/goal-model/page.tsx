@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useGoalModel } from "@/queries/use-goal-model";
 import { ModelShadow } from "@/components/admin/ModelShadow";
+import { TeamGoalsTest } from "@/components/admin/TeamGoalsTest";
 
 const signed = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${n}%`);
 const tone = (n: number | null) => (n === null || n === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
@@ -40,6 +41,7 @@ export default function GoalModelPage() {
       ) : (
         <>
           {data.shadow && <ModelShadow s={data.shadow} />}
+          {data.teamGoals && <TeamGoalsTest r={data.teamGoals} />}
 
           <h3 className="pt-2 text-base font-semibold text-ink">Back-test on past picks</h3>
           <p className={`rounded-xl border p-3 text-sm text-ink ${data.verdict.startsWith("Promising") ? "border-hit/50 bg-hit/10" : "border-line bg-surface"}`}>{data.verdict}</p>

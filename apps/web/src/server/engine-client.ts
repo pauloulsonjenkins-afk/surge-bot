@@ -1687,6 +1687,8 @@ export interface GoalModelReport {
   verdict: string;
   /** Live shadow scoring (missing on an older engine). */
   shadow?: ShadowReport;
+  /** The Sim-only test of GoalSignal's "lively teams" filter (model/team-goals-test.ts in the engine). */
+  teamGoals?: TeamGoalsReport;
 }
 
 export interface ShadowGroup {
@@ -1748,4 +1750,23 @@ export interface PickDetail {
 
 export function fetchPickDetail(id: number): Promise<{ detail: PickDetail }> {
   return engineCall(`/internal/picks/detail?id=${id}`, "the pick's detail");
+}
+
+export interface TeamGoalsGroup {
+  picks: number;
+  settled: number;
+  hits: number;
+  hitRate: number | null;
+  roi: number | null;
+}
+
+export interface TeamGoalsReport {
+  start: string;
+  reviewAt: string;
+  rule: string;
+  checked: number;
+  covered: number;
+  sinceStart: { pass: TeamGoalsGroup; fail: TeamGoalsGroup };
+  backfilled: { pass: TeamGoalsGroup; fail: TeamGoalsGroup };
+  byStrategy: Array<{ strategy: string; pass: TeamGoalsGroup; fail: TeamGoalsGroup }>;
 }
