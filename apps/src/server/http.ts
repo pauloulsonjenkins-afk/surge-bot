@@ -86,7 +86,7 @@ import { currentStake, getBank } from "../inplayguru/stake";
 import { addMatchName, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, recordSimBets, saveSendingSettings, toCsv } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
-import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
+import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
 import { notPlacedReport, todaySnapshot } from "./today";
@@ -1225,12 +1225,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
       const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
       const returns = computeStrategyReturns(db, since);
+      const form = computeStrategyForm(db);
       send(res, 200, {
         ignored: Object.values(db.getIgnoredStrategies()).sort(),
         since,
         strategies: db.listStrategiesForAdmin(since).map((x) => ({
           ...x,
           returns: returns[x.label.toLowerCase()] ?? null,
+          form: form[x.label.toLowerCase()] ?? null,
           sendingOn: settings.strategies[x.label.toLowerCase()] === true,
           // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
           mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",

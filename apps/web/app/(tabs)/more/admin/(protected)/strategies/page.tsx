@@ -25,6 +25,58 @@ import { PriceCheck } from "@/components/admin/PriceCheck";
 import { usePriceCheck } from "@/queries/use-price-check";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
+
+type FormKind = "recent" | "week";
+const FORM_OPTIONS: Array<{ value: FormKind; label: string }> = [
+  { value: "recent", label: "Last 20 picks" },
+  { value: "week", label: "Last 7 days" },
+];
+
+const pctOf = (hits: number, n: number) => Math.round((100 * hits) / n);
+const money = (r: StrategyReturn) => `${r.profit >= 0 ? "+" : "−"}£${Math.abs(r.profit).toFixed(2)}${r.roi !== null ? ` (${r.roi >= 0 ? "+" : ""}${Math.round(r.roi * 100)}%)` : ""}`;
+
+/**
+ * A strategy's recent form in words: hit rate against what its odds need, against the window before, the money in
+ * Live and Sim, and its current run. From the engine's computeStrategyForm (counted from a rule change, if any).
+ */
+function FormParagraph({ row, kind }: { row: AdminStrategy; kind: FormKind }) {
+  const w = row.form?.[kind];
+  if (!w || w.all.settled === 0) {
+    return <p className="text-sm text-ink-muted">{kind === "week" ? "No settled picks in the last 7 days." : "No settled picks yet."}</p>;
+  }
+  const a = w.all;
+  const hits = a.hits ?? 0;
+  const rate = pctOf(hits, a.settled);
+  const span = w.from && w.to ? (dayMonth.format(new Date(w.from)) === dayMonth.format(new Date(w.to)) ? dayMonth.format(new Date(w.to)) : `${dayMonth.format(new Date(w.from))} – ${dayMonth.format(new Date(w.to))}`) : "";
+  const parts: string[] = [];
+  parts.push(
+    kind === "recent"
+      ? `Won ${hits} of its last ${a.settled} pick${a.settled === 1 ? "" : "s"} (${rate}%)${span ? `, ${span}` : ""}.`
+      : `In the last 7 days it won ${hits} of ${a.settled} settled pick${a.settled === 1 ? "" : "s"} (${rate}%).`,
+  );
+  if (a.breakeven != null && a.avgOdds != null) {
+    const gap = rate - a.breakeven;
+    const how = gap >= 5 ? "comfortably ahead of" : gap >= 0 ? "just ahead of" : gap > -5 ? "just behind" : "well behind";
+    parts.push(`At average odds of ${a.avgOdds.toFixed(2)} it needs ${Math.round(a.breakeven)}% to break even, so it is ${how} that.`);
+  }
+  if (w.before.settled >= 5) {
+    const prev = pctOf(w.before.hits, w.before.settled);
+    const label = kind === "week" ? "the week before" : `the ${w.before.settled} picks before`;
+    parts.push(prev === rate ? `That matches ${label} (${prev}%).` : `That is ${rate > prev ? "up" : "down"} from ${prev}% ${label}.`);
+  }
+  const m: string[] = [];
+  if (w.live.counted > 0) m.push(`Live: ${money(w.live)} on ${w.live.counted} real bet${w.live.counted === 1 ? "" : "s"}`);
+  if (w.sim.counted > 0) m.push(`Sim: ${money(w.sim)} on ${w.sim.counted} pick${w.sim.counted === 1 ? "" : "s"}`);
+  if (m.length > 0) parts.push(`${m.join("; ")}.`);
+  const run = [
+    (a.longestLosingRun ?? 0) > 1 ? `Longest losing run ${a.longestLosingRun}` : null,
+    w.streak && w.streak.n > 1 ? `${a.longestLosingRun && a.longestLosingRun > 1 ? "; it" : "It"} is on ${w.streak.n} ${w.streak.result === "hit" ? "wins" : "losses"} in a row now` : null,
+  ].filter(Boolean);
+  if (run.length > 0) parts.push(`${run.join("")}.`);
+  if (a.settled < 10) parts.push("Too few picks to read much into yet.");
+  return <p className="text-sm leading-relaxed text-ink">{parts.join(" ")}</p>;
+}
 
 function record(hits: number, misses: number) {
   const settled = hits + misses;
@@ -296,6 +348,7 @@ function StrategyCard({
   row,
   all,
   sortBy,
+  formKind,
   includes,
   busy,
   selecting,
@@ -318,6 +371,8 @@ function StrategyCard({
   row: AdminStrategy;
   all: AdminStrategy[];
   sortBy: SortBy;
+  /** Which form paragraph to show: the last 20 picks or the last 7 days (the page's Form switch). */
+  formKind: FormKind;
   /** Strategies that are reported under this one. */
   includes: string[];
   busy: boolean;
@@ -428,6 +483,10 @@ function StrategyCard({
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
           {info?.description && <p className="text-xs text-ink">{info.description}</p>}
+          <div className="rounded-lg bg-surface-2 p-3">
+            <p className="mb-1 text-xs font-medium text-ink-muted">{formKind === "week" ? "Last 7 days" : "Recent form: last 20 picks"}</p>
+            <FormParagraph row={row} kind={formKind} />
+          </div>
           {modeOf(row) === "sim" && (
             <ReadyForLive row={row} check={check} hasStop={!!bet?.stopLoss && (bet.stopLoss.dailyLoss !== null || bet.stopLoss.lossRun !== null)} />
           )}
@@ -607,6 +666,7 @@ export default function StrategiesPage() {
   const dialog = useDialog();
   const { data: freshAt } = useFreshStart();
   const [selecting, setSelecting] = useState(false);
+  const [formKind, setFormKind] = useState<FormKind>("recent");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("adjusted");
@@ -744,6 +804,7 @@ export default function StrategiesPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />
+        <Segmented label="Form" value={formKind} onChange={setFormKind} options={FORM_OPTIONS} />
         <ModeToggle />
         <div className="flex items-center gap-2 text-xs text-ink-muted">
           Sort by
@@ -853,6 +914,7 @@ export default function StrategiesPage() {
                 row={r}
                 all={strategies}
                 sortBy={sortBy}
+                formKind={formKind}
                 includes={includesOf.get(r.label.toLowerCase()) ?? []}
                 busy={busy}
                 selecting={selecting}

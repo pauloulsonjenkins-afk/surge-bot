@@ -26,7 +26,7 @@
  * it applies to the Month and Year figures only, charged on the 1st of each
  * month from the start month onwards.
  */
-import { inPickMode, isLivePlacement, type EngineDb, type PickMode, type Placement } from "../storage/engine-db";
+import { inPickMode, isLivePlacement, RECORD_FROM, type EngineDb, type PickMode, type Placement } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { currentStake } from "../inplayguru/stake";
 import { breakevenHitRate, hitRateRange, oddsFor, priceResult } from "./pricing";
@@ -612,4 +612,79 @@ export interface PickProfit {
   real: boolean;
   /** Priced at the strategy's assumed odds (a guess), not a real price. */
   assumed: boolean;
+}
+
+/** One window of a strategy's form: its figures overall and split into Live (real money) and Sim. */
+export interface FormWindow {
+  all: StrategyReturn;
+  live: StrategyReturn;
+  sim: StrategyReturn;
+  /** The first and last settled pick in the window. */
+  from: string | null;
+  to: string | null;
+  /** The current run: the last result and how many in a row ended that way. */
+  streak: { result: "hit" | "miss"; n: number } | null;
+  /** The window before this one (the 7 days before, or the 20 picks before), for comparison. */
+  before: { settled: number; hits: number };
+}
+
+export interface StrategyForm {
+  /** The last RECENT_PICKS settled picks. */
+  recent: FormWindow;
+  /** Settled picks from the last 7 days. */
+  week: FormWindow;
+}
+
+export const RECENT_PICKS = 20;
+
+/**
+ * Recent form for every strategy (keyed by lower-case name): its last 20 settled picks, and its last 7 days, each with
+ * the window before for comparison. Priced exactly as computeStrategyReturns. A strategy whose rules changed
+ * (RECORD_FROM) counts only picks from the change.
+ */
+export function computeStrategyForm(db: EngineDb, now = new Date()): Record<string, StrategyForm> {
+  const { commission, price } = pricingInputs(db);
+  const since = new Date(now.getTime() - 60 * 86_400_000).toISOString();
+  const byKey = new Map<string, Array<{ r: ResultRow; priced: ReturnType<typeof priceResult>; odds: number | null }>>();
+  for (const r of db.listResultsForWinLoss(since)) {
+    const p = price(r);
+    const from = RECORD_FROM[p.key];
+    if (from && r.firstSeenAt < from) continue;
+    (byKey.get(p.key) ?? byKey.set(p.key, []).get(p.key)!).push({ r, priced: p.priced, odds: p.odds });
+  }
+  const window = (rows: Array<{ r: ResultRow; priced: ReturnType<typeof priceResult>; odds: number | null }>, before: typeof rows): FormWindow => {
+    const t = { live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) };
+    for (const x of rows) {
+      if (isLivePlacement(x.r.placement)) t.live.add(x.r, x.priced, x.odds);
+      else if (x.r.placement === "sim") t.sim.add(x.r, x.priced, x.odds);
+      t.all.add(x.r, x.priced, x.odds);
+    }
+    let streak: FormWindow["streak"] = null;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const res = rows[i]!.r.result;
+      if (!streak) streak = { result: res, n: 1 };
+      else if (res === streak.result) streak.n++;
+      else break;
+    }
+    return {
+      all: t.all.result(),
+      live: t.live.result(),
+      sim: t.sim.result(),
+      from: rows[0]?.r.firstSeenAt ?? null,
+      to: rows[rows.length - 1]?.r.firstSeenAt ?? null,
+      streak,
+      before: { settled: before.length, hits: before.filter((x) => x.r.result === "hit").length },
+    };
+  };
+  const weekStart = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+  const prevStart = new Date(now.getTime() - 14 * 86_400_000).toISOString();
+  const out: Record<string, StrategyForm> = {};
+  for (const [key, rows] of byKey) {
+    const recent = rows.slice(-RECENT_PICKS);
+    const beforeRecent = rows.slice(-2 * RECENT_PICKS, -RECENT_PICKS);
+    const week = rows.filter((x) => x.r.firstSeenAt >= weekStart);
+    const prevWeek = rows.filter((x) => x.r.firstSeenAt >= prevStart && x.r.firstSeenAt < weekStart);
+    out[key] = { recent: window(recent, beforeRecent), week: window(week, prevWeek) };
+  }
+  return out;
 }
