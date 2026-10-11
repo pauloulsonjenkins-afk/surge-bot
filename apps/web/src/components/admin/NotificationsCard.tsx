@@ -6,22 +6,7 @@ import { Card } from "@/components/ui/Card";
 import type { PushState } from "@/server/engine-client";
 import { getJson } from "@/queries/fetch-json";
 
-/** The browser's form of the server's public key. */
-function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
-  const padded = (base64url + "=".repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(padded);
-  const out = new Uint8Array(new ArrayBuffer(raw.length));
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
-
-/** A name for this device in the list, from the browser's description of itself. */
-function deviceLabel(): string {
-  const ua = navigator.userAgent;
-  const device = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "Device";
-  const browser = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "browser";
-  return `${device} · ${browser}`;
-}
+import { deviceLabel, keyBytes } from "@/lib/push-device";
 
 async function post(body: Record<string, unknown>): Promise<{ ok?: boolean; reached?: number }> {
   const res = await fetch("/api/admin/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

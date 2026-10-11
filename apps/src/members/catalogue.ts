@@ -79,10 +79,9 @@ export interface StrategyCard {
   type: "in-play" | "pre-match";
 }
 
+/** What members see of a strategy. Never its trigger rules: those stay on the admin's Strategies page. */
 export interface StrategyDetail extends StrategyCard {
   description: string;
-  /** The rules in short. */
-  trigger: string;
   bet: string;
   liveApproved: boolean;
 }
@@ -92,7 +91,7 @@ export function toCard(c: CatalogueEntry): StrategyCard {
 }
 
 export function toDetail(c: CatalogueEntry): StrategyDetail {
-  return { ...toCard(c), description: c.description, trigger: c.trigger, bet: c.bet, liveApproved: c.liveApproved };
+  return { ...toCard(c), description: c.description, bet: c.bet, liveApproved: c.liveApproved };
 }
 
 /** A pick in full, for a member allowed its strategy's selections. */

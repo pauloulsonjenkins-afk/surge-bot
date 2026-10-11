@@ -31,6 +31,7 @@ import { connectOrTest, disconnect } from "./betfair-connection";
 import { globalKillSwitch, memberKillSwitch, setMemberLive, type LiveDeps } from "./live";
 import { createStrategy, deleteStrategy, leaderboard, listOwnStrategies, ownStrategyView, updateStrategy } from "./community";
 import { effectiveTier } from "./permissions";
+import { addAlertDevice, alertsView, chooseAlerts, removeAlertDevice, sendAlertTest } from "./alerts";
 
 export interface MembersRouteCtx {
   req: IncomingMessage;
@@ -131,6 +132,8 @@ async function memberRoute(c: MembersRouteCtx, route: string): Promise<void> {
         return ok(automationView(db, ctx, c.live));
       case "notifications":
         return ok({ notifications: store.listNotifications(id, 50), unread: store.unreadCount(id) });
+      case "alerts":
+        return ok({ alerts: alertsView(db, ctx) });
       case "community":
         return ok({ own: can(ctx.access, "createStrategy") ? listOwnStrategies(db, ctx) : [], leaderboard: leaderboard(db, ctx), canCreate: can(ctx.access, "createStrategy") && ctx.config.flags.strategyCreation, catalogue: listCatalogue(db, ctx.config).map((x) => ({ key: x.key, name: x.name })) });
       case "community/strategy":
@@ -172,6 +175,18 @@ async function memberRoute(c: MembersRouteCtx, route: string): Promise<void> {
     case "notifications/read":
       store.markNotificationsRead(id, at());
       return ok({ unread: 0 });
+    // App alerts for up to 2 strategies (alerts.ts): information only, nothing bets.
+    case "alerts/choose":
+      chooseAlerts(db, ctx, body.keys);
+      return ok({ alerts: alertsView(db, ctx) });
+    case "alerts/device":
+      addAlertDevice(db, ctx, body.subscription, body.label);
+      return ok({ alerts: alertsView(db, ctx) });
+    case "alerts/device/remove":
+      removeAlertDevice(db, ctx, body.endpoint);
+      return ok({ alerts: alertsView(db, ctx) });
+    case "alerts/test":
+      return ok({ reached: await sendAlertTest(db, ctx) });
     case "event": {
       const ev = s(body.event, 60);
       if (ev && CLIENT_EVENTS.has(ev)) store.event(id, ev, body.props && typeof body.props === "object" ? (body.props as Record<string, unknown>) : null, at());

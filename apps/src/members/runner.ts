@@ -28,6 +28,7 @@ import { membersStore, type MemberBet, type MemberSettings } from "./store";
 import { getMembersConfig } from "./config";
 import { openExposure, todayTotals } from "./stats";
 import { createLiveBet, executeLiveBets, settleLiveBet, type LiveDeps } from "./live";
+import { runAlertPushes } from "./alerts";
 
 /** How long to wait for a price before a simulated bet is given up (the Betfair price is read about a minute after the alert). */
 const PRICE_WAIT_MS = 10 * 60_000;
@@ -226,6 +227,8 @@ export async function runMembers(db: EngineDb, now = new Date(), live: LiveDeps 
   }
 
   settleSimBets(db, now);
+  // App alerts for the strategies members chose (alerts.ts): notifications only.
+  await runAlertPushes(db, now).catch((err: unknown) => log.warn(`Members app alerts: ${err instanceof Error ? err.message : String(err)}`));
   if (live) await executeLiveBets(db, live, now);
   for (const b of store.listOpenBets()) if (b.mode === "live" && (b.status === "matched" || b.status === "partially_matched")) settleLiveBet(db, b, now);
 }

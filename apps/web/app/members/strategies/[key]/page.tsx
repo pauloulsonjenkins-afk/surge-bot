@@ -49,10 +49,6 @@ export default function StrategyPage({ params }: { params: Promise<{ key: string
           <p className="text-sm text-ink">{s.description}</p>
           <dl className="mt-3 space-y-2 text-sm">
             <div>
-              <dt className="text-xs text-ink-muted">Triggers when</dt>
-              <dd className="text-ink">{s.trigger}</dd>
-            </div>
-            <div>
               <dt className="text-xs text-ink-muted">The bet</dt>
               <dd className="text-ink">{s.bet}</dd>
             </div>

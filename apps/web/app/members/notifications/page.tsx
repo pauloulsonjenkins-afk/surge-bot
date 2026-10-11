@@ -6,6 +6,7 @@ import { PageHeader, Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useMembersAction, useMembersNotifications } from "@/queries/use-members";
 import { when } from "@/components/members/ui";
+import { AppAlertsCard } from "@/components/members/AppAlertsCard";
 
 export default function NotificationsPage() {
   const { data, isLoading } = useMembersNotifications();
@@ -20,6 +21,7 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Notifications" />
+      <AppAlertsCard />
       <Card>
         {data.notifications.length === 0 ? (
           <p className="text-sm text-ink-muted">Nothing yet.</p>

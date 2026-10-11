@@ -78,7 +78,19 @@ export interface PushMessage {
  * many it reached. Never throws: a failed notification mustn't stop the caller.
  */
 export async function sendPush(db: EngineDb, message: PushMessage): Promise<number> {
-  const subs = db.listPushSubscriptions();
+  return deliver(db, db.listPushSubscriptions(), message, (endpoint) => db.deletePushSubscription(endpoint));
+}
+
+/**
+ * Sends to the given devices (a member's, see members/alerts.ts), with the same server key. `gone` is called for each
+ * device the push service says no longer exists. Returns how many it reached; never throws.
+ */
+export async function deliver(
+  db: EngineDb,
+  subs: Array<{ endpoint: string; keys: { p256dh: string; auth: string } }>,
+  message: PushMessage,
+  gone: (endpoint: string) => void,
+): Promise<number> {
   if (subs.length === 0) return 0;
   const keys = vapidKeys(db);
   const options = {
@@ -95,7 +107,7 @@ export async function sendPush(db: EngineDb, message: PushMessage): Promise<numb
     } catch (err) {
       const code = (err as { statusCode?: number }).statusCode;
       if (code === 404 || code === 410) {
-        db.deletePushSubscription(s.endpoint);
+        gone(s.endpoint);
         log.info("Push: removed a device that no longer accepts notifications.");
       } else {
         log.warn(`Push failed (${code ?? "no status"}): ${err instanceof Error ? err.message : String(err)}`);

@@ -56,7 +56,6 @@ export interface StrategyItem {
   type: "in-play" | "pre-match";
   locked: boolean;
   description?: string;
-  trigger?: string;
   bet?: string;
   liveApproved?: boolean;
   results: { today: WinLoss; week: WinLoss; last30: WinLoss; perWeek: number };
@@ -240,4 +239,15 @@ export interface Community {
   leaderboard: { enabled: boolean; rows: Array<{ id: number; name: string; description: string; creator: string; record: CommunityRecord; adjustedRoi: number | null; ranked: boolean; followers: number; verification: string }> };
   canCreate: boolean;
   catalogue: Array<{ key: string; name: string }>;
+}
+
+/** App alerts: the strategies (up to `max`) whose alerts are pushed to this member's devices. */
+export interface AlertsView {
+  locked: boolean;
+  reason: string | null;
+  max: number;
+  chosen: string[];
+  options: Array<{ key: string; name: string }>;
+  devices: Array<{ endpoint: string; label: string | null; createdAt: string }>;
+  publicKey: string;
 }

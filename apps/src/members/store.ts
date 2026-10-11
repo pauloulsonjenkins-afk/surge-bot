@@ -17,6 +17,9 @@
  *   community_strategies        member-created strategies, private to their owner unless shared
  *   community_strategy_versions their rules, one row per version (results stay with the version they came from)
  *   community_followers         who follows a shared strategy
+ *   member_push_devices         devices a member turned app notifications on for (Web Push)
+ *   member_alert_choices        the strategies (at most 2) a member gets an app notification for, per alert
+ *   member_alert_sent           which alerts were already pushed to which member (each once)
  */
 import type Database from "better-sqlite3";
 import type { EngineDb } from "../storage/engine-db";
@@ -346,6 +349,30 @@ const SCHEMA = `
     created_at   TEXT NOT NULL,
     PRIMARY KEY (strategy_id, user_id)
   );
+
+  CREATE TABLE IF NOT EXISTS member_push_devices (
+    endpoint    TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    label       TEXT,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS member_push_devices_user ON member_push_devices (user_id);
+
+  CREATE TABLE IF NOT EXISTS member_alert_choices (
+    user_id       INTEGER NOT NULL,
+    strategy_key  TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    PRIMARY KEY (user_id, strategy_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS member_alert_sent (
+    user_id  INTEGER NOT NULL,
+    pick_id  INTEGER NOT NULL,
+    at       TEXT NOT NULL,
+    PRIMARY KEY (user_id, pick_id)
+  );
 `;
 
 const stores = new WeakMap<EngineDb, MembersStore>();
@@ -575,6 +602,62 @@ export class MembersStore {
       .prepare(`UPDATE member_bets SET status = 'void', profit = 0, reason = 'Simulation reset.', settled_at = ?, updated_at = ? WHERE user_id = ? AND mode = 'sim' AND status IN ('pending', 'matched')`)
       .run(at, at, userId);
     this.changed();
+  }
+
+  // ---- app alert notifications ---------------------------------------------------------------------------------
+
+  listPushDevices(userId: number): Array<{ endpoint: string; keys: { p256dh: string; auth: string }; label: string | null; createdAt: string }> {
+    return (this.sql.prepare(`SELECT * FROM member_push_devices WHERE user_id = ? ORDER BY created_at`).all(userId) as R[]).map((r) => ({
+      endpoint: String(r.endpoint),
+      keys: { p256dh: String(r.p256dh), auth: String(r.auth) },
+      label: str(r.label),
+      createdAt: String(r.created_at),
+    }));
+  }
+
+  /** A device belongs to one member: subscribing it again under another account moves it. */
+  savePushDevice(userId: number, d: { endpoint: string; keys: { p256dh: string; auth: string } }, label: string | null, at: string): void {
+    this.sql
+      .prepare(
+        `INSERT INTO member_push_devices (endpoint, user_id, p256dh, auth, label, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, label = excluded.label`,
+      )
+      .run(d.endpoint, userId, d.keys.p256dh, d.keys.auth, label, at);
+    this.changed();
+  }
+
+  /** Removes a device: the member's own (userId given), or any gone one the push service refused (null). */
+  deletePushDevice(endpoint: string, userId: number | null): void {
+    if (userId === null) this.sql.prepare(`DELETE FROM member_push_devices WHERE endpoint = ?`).run(endpoint);
+    else this.sql.prepare(`DELETE FROM member_push_devices WHERE endpoint = ? AND user_id = ?`).run(endpoint, userId);
+    this.changed();
+  }
+
+  listAlertChoices(userId: number): Array<{ strategyKey: string; createdAt: string }> {
+    return (this.sql.prepare(`SELECT * FROM member_alert_choices WHERE user_id = ? ORDER BY created_at`).all(userId) as R[]).map((r) => ({
+      strategyKey: String(r.strategy_key),
+      createdAt: String(r.created_at),
+    }));
+  }
+
+  /** Every member's choices, for the alert pass. */
+  listAllAlertChoices(): Array<{ userId: number; strategyKey: string; createdAt: string }> {
+    return (this.sql.prepare(`SELECT * FROM member_alert_choices`).all() as R[]).map((r) => ({ userId: Number(r.user_id), strategyKey: String(r.strategy_key), createdAt: String(r.created_at) }));
+  }
+
+  /** Replaces a member's choices; strategies kept keep their start time (so older alerts aren't pushed again). */
+  setAlertChoices(userId: number, keys: string[], at: string): void {
+    this.tx(() => {
+      const keep = new Set(keys);
+      for (const c of this.listAlertChoices(userId)) if (!keep.has(c.strategyKey)) this.sql.prepare(`DELETE FROM member_alert_choices WHERE user_id = ? AND strategy_key = ?`).run(userId, c.strategyKey);
+      for (const k of keys) this.sql.prepare(`INSERT OR IGNORE INTO member_alert_choices (user_id, strategy_key, created_at) VALUES (?, ?, ?)`).run(userId, k, at);
+    });
+    this.changed();
+  }
+
+  /** Marks an alert as pushed to a member. False when it already was (so it is pushed once, ever). */
+  markAlertSent(userId: number, pickId: number, at: string): boolean {
+    return this.sql.prepare(`INSERT OR IGNORE INTO member_alert_sent (user_id, pick_id, at) VALUES (?, ?, ?)`).run(userId, pickId, at).changes > 0;
   }
 
   // ---- follows -------------------------------------------------------------------------------------------------

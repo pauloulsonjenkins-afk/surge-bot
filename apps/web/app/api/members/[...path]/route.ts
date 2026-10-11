@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * The Members platform's API for the signed-in member. Only these paths are passed on; the engine decides what the
  * member may see or do. Changes are rate limited per member and per address.
  */
-const GETS = new Set(["me", "plans", "dashboard", "strategies", "strategy", "upcoming", "edge", "history", "performance", "settings", "automation", "notifications", "community", "community/strategy"]);
+const GETS = new Set(["me", "plans", "dashboard", "strategies", "strategy", "upcoming", "edge", "history", "performance", "settings", "automation", "notifications", "alerts", "community", "community/strategy"]);
 const POSTS = new Set([
   "trial/start",
   "follow",
@@ -18,6 +18,10 @@ const POSTS = new Set([
   "settings/reset-sim",
   "simulate",
   "notifications/read",
+  "alerts/choose",
+  "alerts/device",
+  "alerts/device/remove",
+  "alerts/test",
   "event",
   "billing/checkout",
   "billing/portal",
@@ -54,7 +58,7 @@ export async function POST(req: Request, { params }: Params) {
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: "Sign in to continue." }, { status: 401 });
   // Generous for normal use, tight enough to stop scripted abuse. Trial starts and payments are tighter still.
-  const tight = path === "trial/start" || path.startsWith("billing/") || path.startsWith("betfair/") || path === "live";
+  const tight = path === "trial/start" || path.startsWith("billing/") || path.startsWith("betfair/") || path === "live" || path === "alerts/test";
   if (overLimit(`members:${user.id}:${tight ? "tight" : "all"}`, tight ? 10 : 120, tight ? 10 * 60_000 : 60_000) || overLimit(`members:ip:${clientIp(req)}`, 300, 60_000)) {
     return NextResponse.json({ error: "Too many requests. Wait a minute and try again." }, { status: 429 });
   }

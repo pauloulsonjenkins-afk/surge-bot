@@ -363,3 +363,42 @@ test("permission helpers: a trial's scope covers only its chosen strategies", ()
   assert.equal(strategyAllowed(accessFor("paid", []), "viewSelections", "d"), true);
   assert.equal(strategyAllowed(accessFor("free", []), "viewSelections", "a"), false);
 });
+
+test("members never get a strategy's trigger rules, even with full access", async () => {
+  const { toDetail } = await import("../src/members/catalogue");
+  const d = toDetail({ key: "k", name: "N", description: "d", trigger: "secret rules", bet: "b", type: "in-play", liveApproved: false });
+  assert.equal("trigger" in d, false);
+  assert.ok(!JSON.stringify(d).includes("secret rules"));
+});
+
+test("app alerts: paid and trial only, up to 2 strategies (a trial's own), each new alert once, with the bet and never the rules", async () => {
+  const { alertMessage, alertsView, chooseAlerts, runAlertPushes } = await import("../src/members/alerts");
+  const { listCatalogue } = await import("../src/members/catalogue");
+  const { getMembersConfig } = await import("../src/members/config");
+  const free = user("free@example.com");
+  const freeCtx = memberContext(db, free)!;
+  assert.equal(alertsView(db, freeCtx).locked, true);
+  assert.throws(() => chooseAlerts(db, freeCtx, ["action-packed"]));
+
+  const trial = user("trial@example.com");
+  assert.equal(startTrial(db, memberContext(db, trial)!, ["action-packed", "home pressure", "late goal hunter"]).ok, true);
+  const trialCtx = memberContext(db, trial)!;
+  assert.throws(() => chooseAlerts(db, trialCtx, ["losing team pushing hard"]), /isn't available/);
+  assert.throws(() => chooseAlerts(db, trialCtx, ["action-packed", "home pressure", "late goal hunter"]), /up to 2/);
+  chooseAlerts(db, trialCtx, ["action-packed", "home pressure"]);
+  assert.deepEqual(alertsView(db, trialCtx).chosen.sort(), ["action-packed", "home pressure"]);
+
+  // An alert before choosing isn't pushed; a new one is marked sent once (no devices here, so nothing leaves).
+  const p = addAlert("Action-packed", null, new Date(Date.now() + 1000));
+  await runAlertPushes(db, new Date(Date.now() + 2000));
+  assert.equal(membersStore(db).markAlertSent(trial, p.id, new Date().toISOString()), false, "already handled once");
+  const other = addAlert("Losing team pushing hard", null, new Date(Date.now() + 1000));
+  await runAlertPushes(db, new Date(Date.now() + 2000));
+  assert.equal(membersStore(db).markAlertSent(trial, other.id, new Date().toISOString()), true, "not a chosen strategy: never pushed");
+
+  const entry = listCatalogue(db, getMembersConfig(db)).find((c) => c.key === "action-packed")!;
+  const msg = alertMessage(db.getLivePick(p.id)!, entry, new Date(), 10);
+  assert.match(msg.title, /Home \d+ v Away \d+/);
+  assert.match(msg.body, /@ 1\.40|@ 3\.00|60'/);
+  assert.ok(!JSON.stringify(msg).includes(entry.trigger || "@@none@@"));
+});
