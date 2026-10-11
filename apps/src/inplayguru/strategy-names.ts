@@ -52,7 +52,7 @@ const DEFAULTS: Record<string, StrategyInfo> = {
   "both teams to score": {
     name: "Mixed Blend",
     description: "A strong favourite has conceded first: backs it to hit back so both teams score.",
-    trigger: "First half. Away underdog has scored, favourite hasn't; favourite 1.50 or less pre-match, its momentum 25+, no red cards, next-goal price 1.30+.",
+    trigger: "First half. Away underdog has scored, favourite hasn't; favourite under 1.80 pre-match (loosened from 1.50 on 11 Oct), its momentum 25+, no red cards, next-goal price 1.30+.",
     bet: "Both teams to score: Yes",
   },
   "over 1.5 goals / early goal": {

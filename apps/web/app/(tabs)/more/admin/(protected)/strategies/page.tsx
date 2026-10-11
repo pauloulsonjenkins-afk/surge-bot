@@ -438,8 +438,8 @@ function StrategyCard({
           </p>
           {row.recordFrom && (
             <p className="text-xs text-warn">
-              Its bet changed on {lastSeen.format(new Date(row.recordFrom))}, so the record counts only alerts from then. The money still counts every real bet,
-              including the ones placed on the old bet.
+              It changed on {lastSeen.format(new Date(row.recordFrom))}, so the record counts only alerts from then. The money still counts every real bet,
+              including ones placed before the change.
             </p>
           )}
           {money && money.settled > 0 && <OddsContext hitRate={hitRate} money={money} />}
