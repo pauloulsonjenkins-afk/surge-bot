@@ -841,6 +841,8 @@ export interface AdminStrategy {
   sent: number;
   lastAlertAt: string;
   mergedInto: string | null;
+  /** The record (hits and misses) counts only alerts from here: the strategy's bet changed then. */
+  recordFrom?: string | null;
   sendingOn: boolean;
   /** Live when its switch and the master switch are both on; its new picks are simulated otherwise. */
   mode: "live" | "sim";

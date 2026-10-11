@@ -183,6 +183,17 @@ function rate(hits: number, misses: number): number | null {
 /** The chat id Edge value picks (Best Value Cuppa) are stored under: they come from GoalBrew, not a Telegram chat. */
 export const EDGE_CHAT = "edge";
 
+/**
+ * Strategies whose bet changed: their hit/miss record on the Strategies page counts only alerts from this time, so it
+ * describes the bet made now. Money figures still count every real bet. Keyed by lower-case strategy name.
+ *   Pass Master 1st half: backed the favourite to WIN (Match Odds) until the change to "favourite to score again" went
+ *   live on 1 Oct 2026 (commit 46bc4bf, 19:16 UK); the older alerts were re-marked under the new rule, but the real bets
+ *   on them were Match Odds and lost on draws.
+ */
+export const RECORD_FROM: Record<string, string> = {
+  "pass master 1st half": "2026-10-01T18:30:00.000Z",
+};
+
 function strategyLabel(raw: string): string {
   return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
 }
@@ -410,6 +421,8 @@ export interface AdminStrategyRow {
   misses: number;
   /** Picks already handed to the bet feed. They are kept if the strategy is deleted. */
   sent: number;
+  /** When the hit/miss record starts because the strategy's bet changed (RECORD_FROM), else null. */
+  recordFrom: string | null;
   lastAlertAt: string;
   /** The strategy this one is reported under on the Dashboard, or null if it stands alone. */
   mergedInto: string | null;
@@ -1984,13 +1997,14 @@ export class EngineDb {
           sent: 0,
           lastAlertAt: r.first_seen_at,
           mergedInto: merges[key] ?? null,
+          recordFrom: RECORD_FROM[key] ?? null,
         };
       row.alerts++;
       row.market = r.market ?? row.market;
       if (r.sent_at !== null) row.sent++;
       if (floor === null || r.first_seen_at >= floor) {
         row.alertsSince++;
-        if (r.excluded !== 1) {
+        if (r.excluded !== 1 && (row.recordFrom === null || r.first_seen_at >= row.recordFrom)) {
           // Live = real money staked (see LIVE_SQL); a pick sent but never placed counts in neither.
           if (r.result === "hit") {
             row.hits++;

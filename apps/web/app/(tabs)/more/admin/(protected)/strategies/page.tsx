@@ -436,6 +436,12 @@ function StrategyCard({
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
             {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
           </p>
+          {row.recordFrom && (
+            <p className="text-xs text-warn">
+              Its bet changed on {lastSeen.format(new Date(row.recordFrom))}, so the record counts only alerts from then. The money still counts every real bet,
+              including the ones placed on the old bet.
+            </p>
+          )}
           {money && money.settled > 0 && <OddsContext hitRate={hitRate} money={money} />}
           {/* Live and simulation side by side, so a strategy's real results can be checked against what it does unbet. */}
           {(live.settled > 0 || sim.settled > 0) && (
