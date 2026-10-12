@@ -29,7 +29,10 @@ export async function GET(request: Request) {
   try {
     const stats = await cached(`stats:${since ?? days}:${strategy ?? ""}:${mode}`, 5000, () => fetchHitRateStats(days, strategy, mode, since));
     // Return, profit and stakes are money figures, so only the admin sees them; the odds, break-even and range are for everyone.
-    return NextResponse.json(admin || !stats.context ? stats : { ...stats, context: { ...stats.context, roi: null, profit: null, staked: null } });
+    if (admin || !stats.context) return NextResponse.json(stats);
+    // The odds table's hit rates are for everyone; what each price range made is not.
+    const bands = stats.context.bands?.map((b) => ({ ...b, roi: null, profit: null, staked: null }));
+    return NextResponse.json({ ...stats, context: { ...stats.context, roi: null, profit: null, staked: null, ...(bands ? { bands } : {}) } });
   } catch (err) {
     return engineUnavailable("api/stats", err);
   }

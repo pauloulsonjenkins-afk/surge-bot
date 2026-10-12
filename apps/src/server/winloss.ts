@@ -381,6 +381,13 @@ export interface StrategyReturn {
   avgOdds: number | null;
   /** Hit rate needed to break even at avgOdds after commission, percent. */
   breakeven: number | null;
+  /**
+   * Hit rate needed to break even given what these picks' winners actually paid and what their losers actually cost,
+   * percent: average stake lost per miss / (average winnings per win + average stake lost per miss). Unlike `breakeven`,
+   * it isn't thrown off when the winners were at shorter prices than the losers. Null until there is a win and a loss
+   * among the priced picks.
+   */
+  breakevenEffective: number | null;
   /** Where the true hit rate probably is (95% range), percents. */
   range: { low: number; high: number } | null;
   /** Biggest fall in £ from a high point of the running profit to a later low. Positive number, 0 when it never fell. */
@@ -407,6 +414,15 @@ export interface EquityPoint {
 type ResultRow = ReturnType<EngineDb["listResultsForWinLoss"]>[number];
 
 /** Builds a StrategyReturn pick by pick, in time order. */
+/**
+ * The hit rate at which profit would be nil, if wins kept paying `avgWin` (£ won per winning pick, after commission) and
+ * losses kept costing `avgLoss` (£ lost per losing pick): avgLoss / (avgWin + avgLoss), as a percent to 1 d.p.
+ */
+export function effectiveBreakeven(avgWin: number, avgLoss: number): number | null {
+  if (!(avgWin > 0) || !(avgLoss > 0)) return null;
+  return Math.round((1000 * avgLoss) / (avgWin + avgLoss)) / 10;
+}
+
 class ReturnTally {
   private settled = 0;
   private hits = 0;
@@ -414,6 +430,10 @@ class ReturnTally {
   private assumed = 0;
   private staked = 0;
   private profit = 0;
+  private winSum = 0;
+  private winN = 0;
+  private lossSum = 0;
+  private lossN = 0;
   private oddsSum = 0;
   private oddsN = 0;
   private peak = 0;
@@ -457,6 +477,13 @@ class ReturnTally {
     if (priced.oddsSource === "assumed") this.assumed++;
     this.staked += priced.stake;
     this.profit += priced.profit;
+    if (r.result === "hit") {
+      this.winSum += priced.profit;
+      this.winN++;
+    } else {
+      this.lossSum += priced.stake;
+      this.lossN++;
+    }
     this.peak = Math.max(this.peak, this.profit);
     this.maxDrawdown = Math.max(this.maxDrawdown, this.peak - this.profit);
     this.days.set(day, (this.days.get(day) ?? 0) + priced.profit);
@@ -478,6 +505,7 @@ class ReturnTally {
       roi: staked > 0 ? Math.round((profit / staked) * 1000) / 1000 : null,
       avgOdds,
       breakeven: breakevenHitRate(avgOdds, this.commission),
+      breakevenEffective: this.winN > 0 && this.lossN > 0 ? effectiveBreakeven(this.winSum / this.winN, this.lossSum / this.lossN) : null,
       range: hitRateRange(this.hits, this.settled),
       maxDrawdown: r2(this.maxDrawdown),
       longestLosingRun: this.longestRun,
@@ -548,7 +576,12 @@ export interface HitRateContext {
   /** Settled picks whose price is known, and their mean odds. */
   oddsKnown: number;
   avgOdds: number | null;
+  /** At the average odds of every pick (assumes winners and losers were priced alike). */
   breakeven: number | null;
+  /** From what the winners actually paid and the losers cost; this is the one the Dashboard judges against. */
+  breakevenEffective: number | null;
+  /** The same picks split by price, so it shows which price ranges make money. */
+  bands: OddsBand[];
   /** Picks that could be priced in £, and the return on each £1 staked on them. */
   counted: number;
   roi: number | null;
@@ -559,16 +592,58 @@ export interface HitRateContext {
   assumed: number;
 }
 
+/** Price ranges for the Dashboard's odds table. `to` is exclusive. */
+export const ODDS_BANDS: Array<{ label: string; from: number; to: number }> = [
+  { label: "Under 1.50", from: 0, to: 1.5 },
+  { label: "1.50 – 1.79", from: 1.5, to: 1.8 },
+  { label: "1.80 – 2.19", from: 1.8, to: 2.2 },
+  { label: "2.20 and over", from: 2.2, to: Infinity },
+];
+
+/** One price range: how often it won, what it needs, and (admin only on the site) what it made. */
+export interface OddsBand {
+  label: string;
+  /** Settled picks in this range whose price is known. */
+  settled: number;
+  hits: number;
+  hitRate: number | null;
+  /** Needed to break even in this range (from what its winners paid, else at its average odds). */
+  breakeven: number | null;
+  counted: number;
+  staked: number;
+  profit: number;
+  roi: number | null;
+}
+
 /** The Dashboard's hit-rate context, over exactly the settled picks its hit rate counts (ids from EngineDb.statsSettledIds). */
 export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: string | null): HitRateContext {
   const { commission, price } = pricingInputs(db);
   const t = new ReturnTally(commission);
+  const bandTallies = ODDS_BANDS.map(() => new ReturnTally(commission));
   for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
     if (!ids.has(r.id)) continue;
     const { priced, odds } = price(r);
     t.add(r, priced, odds);
+    if (odds !== null) {
+      const i = ODDS_BANDS.findIndex((b) => odds >= b.from && odds < b.to);
+      if (i >= 0) bandTallies[i]!.add(r, priced, odds);
+    }
   }
   const s = t.result();
+  const bands: OddsBand[] = ODDS_BANDS.map((b, i) => {
+    const x = bandTallies[i]!.result();
+    return {
+      label: b.label,
+      settled: x.settled,
+      hits: x.hits,
+      hitRate: x.settled > 0 ? Math.round((x.hits / x.settled) * 1000) / 10 : null,
+      breakeven: x.breakevenEffective ?? x.breakeven,
+      counted: x.counted,
+      staked: x.staked,
+      profit: x.profit,
+      roi: x.roi,
+    };
+  });
   return {
     settled: s.settled,
     hits: s.hits,
@@ -576,6 +651,8 @@ export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: 
     oddsKnown: t.oddsCount,
     avgOdds: s.avgOdds,
     breakeven: s.breakeven,
+    breakevenEffective: s.breakevenEffective,
+    bands,
     counted: s.counted,
     roi: s.roi,
     profit: s.profit,

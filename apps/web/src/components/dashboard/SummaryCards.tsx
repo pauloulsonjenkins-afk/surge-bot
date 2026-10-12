@@ -13,6 +13,7 @@ import { useMe } from "@/queries/use-me";
 import { useSending } from "@/queries/use-sending";
 import { useUnplaced } from "@/queries/use-unplaced";
 import { BreakevenBar } from "@/components/ui/BreakevenBar";
+import { OddsBands } from "./OddsBands";
 
 const TONE = { hit: "text-hit", loss: "text-loss", muted: "text-ink", ink: "text-ink" } as const;
 
@@ -50,7 +51,8 @@ export function HeroRow({
   // The money over exactly the picks the figures below count. Null for anyone but the admin (the stats route removes it).
   const money = c && typeof c.profit === "number" ? { profit: c.profit, staked: c.staked ?? 0 } : null;
   const hitRate = totals.hitRate === null ? "–" : `${totals.hitRate}%`;
-  const breakeven = c?.breakeven ?? null;
+  // Judged on what the winners actually paid, not the average price of every pick (older engines only send the latter).
+  const breakeven = c?.breakevenEffective ?? c?.breakeven ?? null;
 
   const record = (
     <>
@@ -116,6 +118,8 @@ export function HeroRow({
 
       <Verdict stats={stats} money={money !== null} />
 
+      <OddsBands bands={c?.bands} money={money !== null} />
+
       <p className="text-xs text-ink-muted">
         {secondary.map((s, i) => (
           <span key={i}>
@@ -163,8 +167,9 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
     const pence = Math.round(Math.abs(c.roi) * 1000) / 10;
     const over = `over ${formatNumber(c.counted)} priced pick${c.counted === 1 ? "" : "s"}`;
     const lead = c.roi > 0 ? `Making ${pence}p per £1 staked ${over}` : c.roi < 0 ? `Losing ${pence}p per £1 staked ${over}` : `Breaking even ${over}`;
-    const clearlyAbove = c.range != null && c.breakeven !== null && c.range.low > c.breakeven;
-    const clearlyBelow = c.range != null && c.breakeven !== null && c.range.high < c.breakeven;
+    const breakeven = c.breakevenEffective ?? c.breakeven;
+    const clearlyAbove = c.range != null && breakeven !== null && c.range.low > breakeven;
+    const clearlyBelow = c.range != null && breakeven !== null && c.range.high < breakeven;
     if (c.roi < 0 && clearlyAbove) text = `${lead}, though the hit rate is clearly above break-even: look at the stakes on the losing strategies.`;
     else if (c.roi > 0 && clearlyBelow) text = `${lead}, though the hit rate is below break-even: a few long prices are carrying it.`;
     else if (clearlyAbove) text = `${lead}, and the hit rate is clearly above break-even.`;
@@ -172,7 +177,7 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
     else text = `${lead}. Too few picks to call it yet.`;
     tone = moneyTone(c.roi);
   } else {
-    const call = againstBreakeven(stats.totals.hitRate, c.breakeven, c.range);
+    const call = againstBreakeven(stats.totals.hitRate, c.breakevenEffective ?? c.breakeven, c.range);
     text = call ? `${call.text.charAt(0).toUpperCase()}${call.text.slice(1)}.` : "No odds are known for these picks, so break-even can’t be worked out yet.";
     tone = call?.tone ?? "muted";
   }

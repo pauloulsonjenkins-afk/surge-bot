@@ -270,6 +270,19 @@ export interface HitRateStats {
   context?: HitRateContext;
 }
 
+/** One price range on the Dashboard's odds table. Mirrors OddsBand in the engine's winloss.ts; the money fields are null for anyone but the admin. */
+export interface OddsBand {
+  label: string;
+  settled: number;
+  hits: number;
+  hitRate: number | null;
+  breakeven: number | null;
+  counted: number;
+  staked: number | null;
+  profit: number | null;
+  roi: number | null;
+}
+
 /** Mirrors HitRateContext in the engine's winloss.ts. */
 export interface HitRateContext {
   settled: number;
@@ -278,8 +291,12 @@ export interface HitRateContext {
   range: { low: number; high: number } | null;
   oddsKnown: number;
   avgOdds: number | null;
-  /** Hit rate needed to break even at avgOdds after commission, percent. */
+  /** Hit rate needed to break even at avgOdds after commission, percent (assumes winners and losers were priced alike). */
   breakeven: number | null;
+  /** Hit rate needed to break even given what the winners actually paid and the losers cost, percent; the Dashboard judges against this (missing on an older engine). */
+  breakevenEffective?: number | null;
+  /** The same picks split by price (missing on an older engine). */
+  bands?: OddsBand[];
   counted: number;
   /** Return per £1 staked; null for anyone but the admin. */
   roi: number | null;
