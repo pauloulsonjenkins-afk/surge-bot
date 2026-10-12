@@ -196,6 +196,8 @@ export const RECORD_FROM: Record<string, string> = {
   "action-packed": "2026-10-11T17:16:00.000Z",
   // Both Teams to Score: loosened in InPlayGuru on 11 Oct 2026 (pre-match favourite under 1.80, was 1.50 or less).
   "both teams to score": "2026-10-11T17:21:00.000Z",
+  // Wake-up Call (Time to fight): the owner changed its InPlayGuru rules on 12 Oct 2026 (marker 21:00 UK).
+  "time to fight": "2026-10-12T20:00:00.000Z",
 };
 
 function strategyLabel(raw: string): string {

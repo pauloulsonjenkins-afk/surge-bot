@@ -29,3 +29,23 @@ test("form: the last 20 picks and the last 7 days, each with the window before a
   assert.ok(f.week.before.settled >= 13);
   assert.ok(f.recent.streak && f.recent.streak.n >= 1);
 });
+
+test("a strategy whose rules changed: the week before the change against everything since", async () => {
+  const { RECORD_FROM } = await import("../src/storage/engine-db");
+  const db = new EngineDb(":memory:", () => {});
+  const from = Date.parse(RECORD_FROM["late goal hunter"] = new Date(Date.now() - 2 * 86_400_000).toISOString());
+  try {
+    for (let i = 0; i < 12; i++) {
+      const at = new Date(from + (i < 6 ? -(i + 1) * 3_600_000 : (i - 5) * 3_600_000));
+      const hit = i >= 6 || i === 0;
+      db.upsertLivePick("c", i + 1, alert(i, hit), parseAlert(alert(i, hit)), at.toISOString(), at.toISOString());
+    }
+    const c = computeStrategyForm(db)["late goal hunter"]!.change!;
+    assert.equal(c.before.all.settled, 6);
+    assert.equal(c.before.all.hits, 1);
+    assert.equal(c.after.all.settled, 6);
+    assert.equal(c.after.all.hits, 6);
+  } finally {
+    delete RECORD_FROM["late goal hunter"];
+  }
+});

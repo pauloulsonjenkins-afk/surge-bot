@@ -710,6 +710,8 @@ export interface StrategyForm {
   recent: FormWindow;
   /** Settled picks from the last 7 days. */
   week: FormWindow;
+  /** For a strategy whose rules changed (RECORD_FROM): the 7 days before the change against everything since. */
+  change?: { at: string; before: FormWindow; after: FormWindow };
 }
 
 export const RECENT_PICKS = 20;
@@ -723,10 +725,16 @@ export function computeStrategyForm(db: EngineDb, now = new Date()): Record<stri
   const { commission, price } = pricingInputs(db);
   const since = new Date(now.getTime() - 60 * 86_400_000).toISOString();
   const byKey = new Map<string, Array<{ r: ResultRow; priced: ReturnType<typeof priceResult>; odds: number | null }>>();
+  // Picks in the week before a rule change, to compare with the picks since.
+  const beforeChange = new Map<string, Array<{ r: ResultRow; priced: ReturnType<typeof priceResult>; odds: number | null }>>();
   for (const r of db.listResultsForWinLoss(since)) {
     const p = price(r);
     const from = RECORD_FROM[p.key];
-    if (from && r.firstSeenAt < from) continue;
+    if (from && r.firstSeenAt < from) {
+      if (r.firstSeenAt >= new Date(Date.parse(from) - 7 * 86_400_000).toISOString())
+        (beforeChange.get(p.key) ?? beforeChange.set(p.key, []).get(p.key)!).push({ r, priced: p.priced, odds: p.odds });
+      continue;
+    }
     (byKey.get(p.key) ?? byKey.set(p.key, []).get(p.key)!).push({ r, priced: p.priced, odds: p.odds });
   }
   const window = (rows: Array<{ r: ResultRow; priced: ReturnType<typeof priceResult>; odds: number | null }>, before: typeof rows): FormWindow => {
@@ -762,6 +770,13 @@ export function computeStrategyForm(db: EngineDb, now = new Date()): Record<stri
     const week = rows.filter((x) => x.r.firstSeenAt >= weekStart);
     const prevWeek = rows.filter((x) => x.r.firstSeenAt >= prevStart && x.r.firstSeenAt < weekStart);
     out[key] = { recent: window(recent, beforeRecent), week: window(week, prevWeek) };
+  }
+  for (const [key, from] of Object.entries(RECORD_FROM)) {
+    const before = beforeChange.get(key) ?? [];
+    const after = byKey.get(key) ?? [];
+    if (before.length === 0 && after.length === 0) continue;
+    const empty = window([], []);
+    out[key] = { ...(out[key] ?? { recent: empty, week: empty }), change: { at: from, before: window(before, []), after: window(after, []) } };
   }
   return out;
 }

@@ -867,7 +867,7 @@ export interface AdminStrategy {
   /** Money figures, all time, split into live and sim (missing on an older engine). */
   returns?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn } | null;
   /** Recent form: the last 20 settled picks, and the last 7 days (mirrors StrategyForm in the engine's winloss.ts). */
-  form?: { recent: FormWindow; week: FormWindow } | null;
+  form?: { recent: FormWindow; week: FormWindow; change?: { at: string; before: FormWindow; after: FormWindow } } | null;
 }
 
 /** One window of a strategy's form, with the window before it for comparison. */

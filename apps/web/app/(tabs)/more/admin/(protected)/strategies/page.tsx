@@ -36,6 +36,45 @@ const FORM_OPTIONS: Array<{ value: FormKind; label: string }> = [
 const pctOf = (hits: number, n: number) => Math.round((100 * hits) / n);
 const money = (r: StrategyReturn) => `${r.profit >= 0 ? "+" : "−"}£${Math.abs(r.profit).toFixed(2)}${r.roi !== null ? ` (${r.roi >= 0 ? "+" : ""}${Math.round(r.roi * 100)}%)` : ""}`;
 
+/** Before and after a rule change: the 7 days before it against everything since, side by side. */
+function ChangeCompare({ c }: { c: NonNullable<NonNullable<AdminStrategy["form"]>["change"]> }) {
+  const cell = (w: typeof c.before, label: string) => {
+    const a = w.all;
+    const rate = a.settled ? pctOf(a.hits ?? 0, a.settled) : null;
+    return (
+      <div className="rounded-lg border border-line p-2.5">
+        <p className="text-xs text-ink-muted">{label}</p>
+        <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">{rate === null ? "–" : `${rate}%`}</p>
+        <p className="text-xs tabular-nums text-ink-muted">
+          {a.settled} settled{a.breakeven != null ? ` · needs ${Math.round(a.breakeven)}%` : ""}
+          {a.counted > 0 ? ` · ${money(a)}` : ""}
+        </p>
+      </div>
+    );
+  };
+  const b = c.before.all;
+  const af = c.after.all;
+  const verdict =
+    af.settled < 20
+      ? `Too early to judge: ${af.settled} settled since the change. Give it about 20+.`
+      : b.settled === 0
+        ? "Nothing to compare against from the week before."
+        : (() => {
+            const diff = pctOf(af.hits ?? 0, af.settled) - pctOf(b.hits ?? 0, b.settled);
+            return Math.abs(diff) < 3 ? "About the same as before the change so far." : diff > 0 ? `Better since the change: up ${diff} points.` : `Weaker since the change: down ${-diff} points.`;
+          })();
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-ink-muted">Before and after the change on {dayMonth.format(new Date(c.at))}</p>
+      <div className="grid grid-cols-2 gap-2">
+        {cell(c.before, "Week before")}
+        {cell(c.after, "Since the change")}
+      </div>
+      <p className="text-xs text-ink">{verdict}</p>
+    </div>
+  );
+}
+
 /**
  * A strategy's recent form in words: hit rate against what its odds need, against the window before, the money in
  * Live and Sim, and its current run. From the engine's computeStrategyForm (counted from a rule change, if any).
@@ -495,6 +534,7 @@ function StrategyCard({
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
             {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
           </p>
+          {row.form?.change && <ChangeCompare c={row.form.change} />}
           {row.recordFrom && (
             <p className="text-xs text-warn">
               It changed on {lastSeen.format(new Date(row.recordFrom))}, so the record counts only alerts from then. The money still counts every real bet,
