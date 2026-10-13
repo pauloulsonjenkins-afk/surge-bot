@@ -84,6 +84,7 @@ export interface PickFull {
   ftScore: string | null;
   kickoffAt: string | null;
   betableUntil: string;
+  why: string | null;
 }
 
 export interface BetView {
@@ -250,4 +251,41 @@ export interface AlertsView {
   options: Array<{ key: string; name: string }>;
   devices: Array<{ endpoint: string; label: string | null; createdAt: string }>;
   publicKey: string;
+}
+
+export interface RecordSummary {
+  wins: number;
+  losses: number;
+  hitRate: number | null;
+  profit: number;
+  roi: number | null;
+  priced: number;
+  avgOdds: number | null;
+}
+export interface TrackRecord {
+  strategies: Array<{ key: string; name: string; current: RecordSummary; changed: { at: string; before: RecordSummary } | null; firstAt: string | null }>;
+  rows: Array<{
+    id: number;
+    at: string;
+    strategyKey: string;
+    strategyName: string;
+    home: string | null;
+    away: string | null;
+    competition: string | null;
+    minute: number | null;
+    score: string | null;
+    market: string | null;
+    selection: string | null;
+    odds: number | null;
+    result: "hit" | "miss";
+    ftScore: string | null;
+    amended: boolean;
+    beforeChange: boolean;
+    profit: number | null;
+    why: string | null;
+  }>;
+  page: number;
+  more: boolean;
+  total: number;
+  commissionPct: number;
 }

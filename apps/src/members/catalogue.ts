@@ -13,6 +13,7 @@ import type { EngineDb, LivePick } from "../storage/engine-db";
 import { alertOddsOfPick, betableUntil, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
 import { listStrategyNames } from "../inplayguru/strategy-names";
 import type { MembersConfig } from "./config";
+import { whyFired } from "./why";
 
 export const MARKET_LABEL: Record<string, string> = {
   NEXT_GOAL: "Next goal",
@@ -117,6 +118,8 @@ export interface PickFull {
   kickoffAt: string | null;
   /** Until when the pick can still be bet. */
   betableUntil: string;
+  /** "Why this fired": the match picture in words, never the figures (why.ts). Null without stats. */
+  why: string | null;
 }
 
 export function pickPrice(p: LivePick): number | null {
@@ -149,6 +152,7 @@ export function toPickFull(p: LivePick, key: string, name: string, now: Date, ma
     ftScore: p.ftScore,
     kickoffAt: ko === null ? null : new Date(ko).toISOString(),
     betableUntil: new Date(betableUntil(p, maxAgeMinutes)).toISOString(),
+    why: whyFired(p),
   };
 }
 

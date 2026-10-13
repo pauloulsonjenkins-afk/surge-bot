@@ -5,7 +5,7 @@
  * active) and works out their permissions itself. Nothing the browser sends decides what a member may see or do.
  *
  *   GET  public/offer (no member: what sign-up offers) | me | plans | dashboard | strategies | strategy?key= | upcoming | history?mode&strategy&from&to&result&execution&page
- *        performance?mode&range | settings | automation | notifications | community | community/strategy?id=
+ *        performance?mode&range | record?strategy&page | settings | automation | notifications | community | community/strategy?id=
  *   POST trial/start {strategies} | follow {strategy, mode, auto} or {strategy, off: true} | settings {...}
  *        settings/reset-sim {bank} | simulate {pickId} | notifications/read | event {event, props}
  *        billing/checkout | billing/portal | betfair/connect {kind} | betfair/test | betfair/disconnect
@@ -31,6 +31,7 @@ import { connectOrTest, disconnect } from "./betfair-connection";
 import { globalKillSwitch, memberKillSwitch, setMemberLive, type LiveDeps } from "./live";
 import { createStrategy, deleteStrategy, leaderboard, listOwnStrategies, ownStrategyView, updateStrategy } from "./community";
 import { effectiveTier } from "./permissions";
+import { trackRecordView } from "./track-record";
 import { addAlertDevice, alertsView, chooseAlerts, removeAlertDevice, sendAlertTest } from "./alerts";
 
 export interface MembersRouteCtx {
@@ -140,6 +141,8 @@ async function memberRoute(c: MembersRouteCtx, route: string): Promise<void> {
         return ok({ notifications: store.listNotifications(id, 50), unread: store.unreadCount(id) });
       case "alerts":
         return ok({ alerts: alertsView(db, ctx) });
+      case "record":
+        return ok(trackRecordView(db, ctx, { strategy: s(url.searchParams.get("strategy"), 120)?.toLowerCase() || undefined, page: Number(url.searchParams.get("page")) || 0 }));
       case "community":
         return ok({ own: can(ctx.access, "createStrategy") ? listOwnStrategies(db, ctx) : [], leaderboard: leaderboard(db, ctx), canCreate: can(ctx.access, "createStrategy") && ctx.config.flags.strategyCreation, catalogue: listCatalogue(db, ctx.config).map((x) => ({ key: x.key, name: x.name })) });
       case "community/strategy":

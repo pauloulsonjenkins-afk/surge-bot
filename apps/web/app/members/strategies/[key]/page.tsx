@@ -84,6 +84,7 @@ export default function StrategyPage({ params }: { params: Promise<{ key: string
                       {p.score ?? ""} · {p.market}
                       {p.selection ? ` · ${p.selection}` : ""} · {odds(p.odds)}
                     </span>
+                    {p.why && <span className="mt-0.5 block text-xs italic text-ink-muted">Why it fired: {p.why}</span>}
                   </span>
                   <span className={`shrink-0 text-xs font-medium ${p.result === "hit" ? "text-hit" : p.result === "miss" ? "text-loss" : "text-ink-muted"}`}>
                     {p.result === "hit" ? "Won" : p.result === "miss" ? "Lost" : p.state === "void" ? "Void" : p.state === "live" ? "Live" : "Waiting"}

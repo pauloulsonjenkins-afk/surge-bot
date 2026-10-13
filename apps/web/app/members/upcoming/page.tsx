@@ -44,6 +44,7 @@ export default function UpcomingPage() {
                     {p.market}
                     {p.selection ? ` · ${p.selection}` : ""} · <strong>{odds(p.odds)}</strong>
                   </p>
+                  {p.why && <p className="mt-1 text-xs italic text-ink-muted">Why it fired: {p.why}</p>}
                   <p className="text-xs text-ink-muted">Bettable until {when(p.betableUntil)}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiFetchError, getJson } from "./fetch-json";
 import { useHydrated } from "./use-me";
 import type { EdgeView } from "@/lib/members/edge";
-import type { AlertsView, Automation, Community, Dashboard, MembersMe, MemberSettings, Notification, Performance, Plans, StrategyItem, Upcoming, BetView, PickFull } from "@/lib/members/types";
+import type { TrackRecord, AlertsView, Automation, Community, Dashboard, MembersMe, MemberSettings, Notification, Performance, Plans, StrategyItem, Upcoming, BetView, PickFull } from "@/lib/members/types";
 
 const ROOT = ["members"] as const;
 
@@ -32,6 +32,8 @@ export const useMembersSettings = () => useMembersGet<MemberSettings>("settings"
 export const useMembersAutomation = () => useMembersGet<Automation>("automation", { refetchMs: 30_000 });
 export const useMembersNotifications = () => useMembersGet<{ notifications: Notification[]; unread: number }>("notifications", { refetchMs: 60_000 });
 export const useMembersAlerts = () => useMembersGet<{ alerts: AlertsView }>("alerts");
+export const useMembersRecord = (strategy: string, page: number) =>
+  useMembersGet<TrackRecord>(`record?${new URLSearchParams({ ...(strategy ? { strategy } : {}), page: String(page) })}`, { refetchMs: 5 * 60_000 });
 export const useMembersPlans = () => useMembersGet<Plans>("plans");
 export const useMembersCommunity = () => useMembersGet<Community>("community");
 

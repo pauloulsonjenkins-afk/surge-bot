@@ -103,7 +103,8 @@ export function alertMessage(p: LivePick, entry: CatalogueEntry, now: Date, maxA
   const f = toPickFull(p, entry.key, entry.name, now, maxAge);
   const bet = [f.market, f.selection].filter(Boolean).join(" · ") || "See the app";
   const when = f.minute !== null ? `${f.minute}'${f.score ? ` ${f.score}` : ""}` : f.kickoffAt ? "pre-match" : null;
-  const body = [`${bet}${f.odds !== null ? ` @ ${f.odds.toFixed(2)}` : ""}`, when, f.competition].filter(Boolean).join(" · ");
+  const line = [`${bet}${f.odds !== null ? ` @ ${f.odds.toFixed(2)}` : ""}`, when, f.competition].filter(Boolean).join(" · ");
+  const body = f.why ? `${line}\n${f.why}` : line;
   return { title: `${entry.name}: ${f.home ?? "?"} v ${f.away ?? "?"}`, body, url: `/members/upcoming#pick-${p.id}`, tag: `alert-${p.id}` };
 }
 
