@@ -13,8 +13,10 @@
  *  - Live needs a balance read within the last 30 minutes. If Betfair can't be read, no percentage bet is placed
  *    (never a guess).
  *  - Simulation uses the last balance read, however old, so it keeps working through a short outage.
- *  - The result is rounded to the penny, held to the highest-stake safety limit (capped, not refused), and must be at
- *    least Betfair's smallest bet (£1), or the bet is skipped with the reason.
+ *  - The result is rounded to the penny and held to the highest-stake safety limit (capped, not refused).
+ *  - Under Betfair's smallest bet (£1) it is ROUNDED UP to £1, as long as the percentage comes to at least half of it
+ *    (so a 1% strategy keeps betting when the balance dips under £100). Under half (a very small balance) the bet is
+ *    skipped with the reason, so a stake is never more than double what its percentage asks for.
  */
 import type { EngineDb } from "../storage/engine-db";
 import type { SendingSettings } from "./bet-feed";
@@ -23,6 +25,8 @@ const BANK_KEY = "betfair_bank";
 export const BANK_FRESH_MS = 30 * 60_000;
 /** Betfair's smallest bet. */
 export const MIN_BET = 1;
+/** The smallest percentage stake that is rounded up to MIN_BET (see the rules above). */
+export const ROUND_UP_FROM = MIN_BET / 2;
 export const MIN_PCT = 0.1;
 export const MAX_PCT = 25;
 
@@ -68,6 +72,8 @@ export interface StakeAnswer {
   pct: number | null;
   /** The percentage worked out above the highest-stake limit, so the limit was used. */
   capped: boolean;
+  /** The percentage came to under £1, so Betfair's £1 minimum was used instead. */
+  roundedUp?: boolean;
   reason: string | null;
 }
 
@@ -82,7 +88,9 @@ export function resolveStake(settings: SendingSettings, key: string, bank: Bank,
   if (bank.total === null || bank.at === null) return none("The Betfair balance isn't known yet, so a percentage stake can't be worked out.");
   if (opts.live && opts.now.getTime() - Date.parse(bank.at) > BANK_FRESH_MS) return none("The Betfair balance is out of date (not read for over 30 minutes), so no percentage bet is placed.");
   const raw = Math.round(((bank.total * pct) / 100) * 100) / 100;
-  if (raw < MIN_BET) return none(`${pct}% of £${bank.total.toFixed(2)} is £${raw.toFixed(2)}, below Betfair's smallest bet (£${MIN_BET.toFixed(2)}).`);
+  if (raw < ROUND_UP_FROM)
+    return none(`${pct}% of £${bank.total.toFixed(2)} is £${raw.toFixed(2)}, too far below Betfair's smallest bet (£${MIN_BET.toFixed(2)}) to round up.`);
+  if (raw < MIN_BET) return { stake: MIN_BET, pct, capped: false, roundedUp: true, reason: null };
   const capped = raw > settings.maxStake;
   return { stake: capped ? settings.maxStake : raw, pct, capped, reason: null };
 }

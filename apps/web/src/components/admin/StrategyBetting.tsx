@@ -357,7 +357,7 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
                   if (!bank?.total || !Number.isFinite(n) || n <= 0) return null;
                   const raw = Math.round(((bank.total * n) / 100) * 100) / 100;
                   const capped = raw > settings.maxStake;
-                  return <span className="text-ink"> {n}% = £{(capped ? settings.maxStake : raw).toFixed(2)}{capped ? ` (held to your £${settings.maxStake} limit)` : ""}{raw < 1 ? ", below Betfair's £1 minimum" : ""} per bet now.</span>;
+                  return <span className="text-ink"> {n}% = £{(capped ? settings.maxStake : raw).toFixed(2)}{capped ? ` (held to your £${settings.maxStake} limit)` : ""}{raw < 0.5 ? ", too far below Betfair's £1 minimum: skipped" : raw < 1 ? " (under Betfair's £1 minimum, so £1 is bet)" : ""} per bet now.</span>;
                 })()}
               </span>
               {s.stakePct == null && !pctDirty && s.stake !== null && <span className="mt-1 block">Currently a flat £{s.stake.toFixed(2)}. Setting a percentage replaces it.</span>}

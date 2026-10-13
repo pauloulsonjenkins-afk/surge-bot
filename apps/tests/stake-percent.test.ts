@@ -64,7 +64,13 @@ test("no balance, a stale balance (live only), or a tiny result: no bet, with th
   assert.match(stale.reason!, /out of date/);
   assert.equal(resolveStake(s, KEY, getBank(db), { now: NOW, live: false }).stake, 5, "simulation uses the last balance, however old");
 
-  saveBank(db, { available: 50, exposure: 0 }, NOW); // 1% of £50 = £0.50
+  // Just under £1 (1% of £95.03): rounded up to Betfair's £1 minimum, so the strategy keeps betting.
+  saveBank(db, { available: 95.03, exposure: 0 }, NOW);
+  const up = resolveStake(s, KEY, getBank(db), { now: NOW, live: true });
+  assert.equal(up.stake, 1);
+  assert.equal(up.roundedUp, true);
+
+  saveBank(db, { available: 40, exposure: 0 }, NOW); // 1% of £40 = £0.40: under half of £1, never more than double the %
   const tiny = resolveStake(s, KEY, getBank(db), { now: NOW, live: true });
   assert.equal(tiny.stake, null);
   assert.match(tiny.reason!, /smallest bet/);
