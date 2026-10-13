@@ -45,6 +45,17 @@ export async function forMember(method: "GET" | "POST", path: string, body?: unk
   }
 }
 
+/** Requests that need nobody signed in and carry nothing about any member (what sign-up offers). */
+export async function forPublic(path: string): Promise<NextResponse> {
+  try {
+    const r = await engineRequest("GET", `public/${path}`, null);
+    return NextResponse.json(r.data, { status: r.status });
+  } catch (err) {
+    console.error(`[members/public/${path}]`, err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: "The members service isn't answering. Try again in a moment." }, { status: 502 });
+  }
+}
+
 /** The admin's requests (no member id). The caller checks the admin session first. */
 export async function forAdmin(method: "GET" | "POST", path: string, body?: unknown): Promise<NextResponse> {
   try {

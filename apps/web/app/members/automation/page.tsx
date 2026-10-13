@@ -83,7 +83,7 @@ export default function AutomationPage() {
       </Card>
 
       {!data.live.allowedByMembership ? (
-        <LockedFeature me={me.data} feature="live_betting" title="Live betting" pitch="Paid members can run approved strategies on Betfair automatically, with stake limits, loss limits and a stop button." />
+        <LockedFeature me={me.data} feature="live_betting" title="Live betting" pitch="Full access can run approved strategies on Betfair automatically, with stake limits, loss limits and a stop button." />
       ) : (
         <Card title="Live betting" actions={<ModeBadge mode="live" />}>
           <ModeBanner mode="live" />

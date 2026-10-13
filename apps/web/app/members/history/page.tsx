@@ -78,7 +78,7 @@ export default function HistoryPage() {
         </Card>
       ) : (
         <>
-          {data.limitedToDays && <p className="text-xs text-ink-muted">Free membership shows the last {data.limitedToDays} days, and match details only for strategies your membership covers.</p>}
+          {data.limitedToDays && <p className="text-xs text-ink-muted">Your account shows the last {data.limitedToDays} days, and match details only for the strategies it covers.</p>}
           <ul className="space-y-2 md:hidden">
             {data.rows.map((b) => (
               <li key={b.id} className="rounded-xl border border-line bg-surface p-3">

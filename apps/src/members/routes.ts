@@ -4,7 +4,7 @@
  * cookie and passes their account id in the header X-Member-Id; the engine re-reads the account (it must exist and be
  * active) and works out their permissions itself. Nothing the browser sends decides what a member may see or do.
  *
- *   GET  me | plans | dashboard | strategies | strategy?key= | upcoming | history?mode&strategy&from&to&result&execution&page
+ *   GET  public/offer (no member: what sign-up offers) | me | plans | dashboard | strategies | strategy?key= | upcoming | history?mode&strategy&from&to&result&execution&page
  *        performance?mode&range | settings | automation | notifications | community | community/strategy?id=
  *   POST trial/start {strategies} | follow {strategy, mode, auto} or {strategy, off: true} | settings {...}
  *        settings/reset-sim {bank} | simulate {pickId} | notifications/read | event {event, props}
@@ -54,6 +54,12 @@ export async function handleMembersRoute(c: MembersRouteCtx): Promise<boolean> {
   if (!c.path.startsWith(PREFIX)) return false;
   const route = c.path.slice(PREFIX.length);
   try {
+    // Signed-out visitors: what sign-up offers (the landing and join pages), nothing about any member.
+    if (route === "public/offer" && c.method === "GET") {
+      const cfg = getMembersConfig(c.db);
+      c.send(c.res, 200, { selling: cfg.flags.selling, trial: cfg.flags.trial, trialDays: cfg.trialDays, trialStrategyLimit: cfg.trialStrategyLimit, priceLabel: cfg.flags.selling ? cfg.paidPriceLabel : "" });
+      return true;
+    }
     if (route.startsWith("admin/")) await adminRoute(c, route.slice(6));
     else await memberRoute(c, route);
   } catch (err) {
@@ -193,6 +199,7 @@ async function memberRoute(c: MembersRouteCtx, route: string): Promise<void> {
       return ok({ ok: true });
     }
     case "billing/checkout":
+      if (!ctx.config.flags.selling) throw new Refused("Memberships aren't available to buy.");
       store.event(id, "upgrade_clicked", null, at());
       return ok({ url: await createCheckout(db, ctx) });
     case "billing/portal":

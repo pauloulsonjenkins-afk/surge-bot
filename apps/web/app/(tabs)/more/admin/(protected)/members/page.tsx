@@ -57,6 +57,7 @@ interface ConfigResp {
 }
 
 const FLAG_LABEL: Record<string, string> = {
+  selling: "Selling memberships (Membership page, prices, Stripe, upgrade prompts). Off = free trial only",
   trial: "7-day trial offered",
   community: "Community leaderboard (off = Coming soon)",
   strategyCreation: "Members can create strategies",
@@ -297,17 +298,32 @@ function MemberRow({
             Reset trial
           </button>
           {m.trialEndsAt && (
-            <button type="button" className={btn} onClick={() => onAction({ action: "extend_trial", days: 3 })}>
-              Extend trial 3 days
-            </button>
+            <>
+              <button type="button" className={btn} onClick={() => onAction({ action: "extend_trial", days: 3 })}>
+                Extend trial 3 days
+              </button>
+              <button type="button" className={btn} onClick={() => onAction({ action: "extend_trial", days: 7 })}>
+                Extend trial 7 days
+              </button>
+            </>
           )}
+          <button
+            type="button"
+            className={btn}
+            onClick={async () => {
+              if (await confirm({ title: `Give ${m.email} full access?`, body: "Every strategy in full, with no end date, until you remove it. No payment is taken. Live betting stays off unless you switch it on for members.", confirmLabel: "Give full access" }))
+                onAction({ action: "grant_paid", until: FULL_ACCESS_UNTIL });
+            }}
+          >
+            Full access (no end date)
+          </button>
           <input type="date" aria-label="Paid until" className={`${input} w-40`} value={until} onChange={(e) => setUntil(e.target.value)} />
           <button type="button" className={btn} disabled={!until} onClick={() => onAction({ action: "grant_paid", until: `${until}T23:59:59Z` })}>
-            Paid until date
+            Full access until date
           </button>
           {m.paidSource === "admin" && (
             <button type="button" className={btn} onClick={() => onAction({ action: "grant_paid", until: null })}>
-              Remove paid
+              Remove full access
             </button>
           )}
           {m.liveEnabled && (
@@ -348,6 +364,9 @@ function MemberRow({
     </li>
   );
 }
+
+/** "No end date" full access is paid access to a date far enough away never to arrive. */
+const FULL_ACCESS_UNTIL = "2099-12-31T23:59:59Z";
 
 const NUM_KEYS = ["trialDays", "trialStrategyLimit", "freeHistoryDays", "defaultSimBank", "commissionPct", "simSlippagePct"] as const;
 type NumKey = (typeof NUM_KEYS)[number];

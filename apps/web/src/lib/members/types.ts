@@ -44,7 +44,7 @@ export interface MembersMe {
   trial: TrialStatus;
   paid: { until: string | null; source: string | null; status: string | null; canManage: boolean };
   billing: { available: boolean; priceLabel: string };
-  flags: { community: boolean; trial: boolean; strategyCreation: boolean; strategySharing: boolean };
+  flags: { selling: boolean; community: boolean; trial: boolean; strategyCreation: boolean; strategySharing: boolean };
   live: { enabled: boolean; paused: boolean };
   sim: { bank: number; startBank: number; startedAt: string };
   unread: number;

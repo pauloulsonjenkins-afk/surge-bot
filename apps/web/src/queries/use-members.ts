@@ -49,6 +49,22 @@ export function useMembersAction<B = Record<string, unknown>, R = Record<string,
   });
 }
 
+/** What sign-up offers, for signed-out pages. Memberships count as not on sale until the engine says otherwise. */
+export interface MembersOffer {
+  selling: boolean;
+  trial: boolean;
+  trialDays: number;
+  trialStrategyLimit: number;
+  priceLabel: string;
+}
+export function useMembersOffer() {
+  return useQuery({
+    queryKey: [...ROOT, "offer"],
+    queryFn: ({ signal }) => getJson<MembersOffer>("/api/members/offer", "the members area", signal),
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** Records a product event (upgrade prompt shown, premium feature clicked...). Fire and forget. */
 export function trackMemberEvent(event: string, props?: Record<string, unknown>): void {
   void fetch("/api/members/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, props }) }).catch(() => {});

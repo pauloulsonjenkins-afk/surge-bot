@@ -154,7 +154,7 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
       </div>
 
       {me.tier === "free" || me.tier === "expired" ? (
-        <LockedFeature me={me} feature="dashboard_selections" title="See which games qualify" pitch="Members see every qualifying match, market and price the moment a strategy fires." />
+        <LockedFeature me={me} feature="dashboard_selections" title="See which games qualify" pitch="See every qualifying match, market and price the moment a strategy fires." />
       ) : null}
     </div>
   );

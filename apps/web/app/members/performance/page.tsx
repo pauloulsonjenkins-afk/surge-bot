@@ -45,7 +45,7 @@ export default function PerformancePage() {
         <Skeleton className="h-80 w-full" />
       ) : (
         <>
-          {data.limitedToDays && <p className="text-xs text-ink-muted">Free membership shows the last {data.limitedToDays} days. Members see the full history.</p>}
+          {data.limitedToDays && <p className="text-xs text-ink-muted">Your account shows the last {data.limitedToDays} days.</p>}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {data.bank && <Tile label="Bank" value={gbp(data.bank.now, false)} sub={`started at ${gbp(data.bank.start, false)}`} />}
             <Tile label="Profit" value={gbp(data.summary.profit)} tone={moneyTone(data.summary.profit)} />

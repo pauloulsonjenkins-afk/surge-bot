@@ -24,7 +24,7 @@ export default function TrialPage() {
 
   if (t.state !== "available") {
     return (
-      <Card title="Premium Trial">
+      <Card title="Free trial">
         <p className="text-sm text-ink-muted">{t.state === "active" ? "Your trial is running." : (t.reason ?? "A trial isn't available on this account.")}</p>
       </Card>
     );
@@ -33,7 +33,7 @@ export default function TrialPage() {
   const toggle = (k: string) => setChosen((c) => (c.includes(k) ? c.filter((x) => x !== k) : c.length < limit ? [...c, k] : c));
   return (
     <div className="space-y-5">
-      <PageHeader title={`Choose your ${limit} trial strategies`} subtitle={`For ${t.days} days you get the full premium view of these ${limit}: how they work, every qualifying game, and upcoming opportunities. Simulation only, no real money.`} />
+      <PageHeader title={`Choose your ${limit} trial strategies`} subtitle={`For ${t.days} days you get full access to these ${limit}: how they work, every qualifying game, and upcoming opportunities. Simulation only, no real money.`} />
       <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-ink">
         Choose carefully: the strategies are fixed for the whole trial and can&apos;t be swapped. The trial starts as soon as you press Start.
       </p>

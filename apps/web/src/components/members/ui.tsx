@@ -53,12 +53,15 @@ export function ModeBanner({ mode }: { mode: "sim" | "live" }) {
 
 export const TIER_LABEL: Record<Tier, string> = { free: "Free", trial: "Premium Trial", paid: "Member", expired: "Free", suspended: "Suspended", admin: "Admin" };
 
-export function TierBadge({ tier }: { tier: Tier }) {
+/** While memberships aren't on sale, no package names: a trial is just a trial, and paid is "Full access". */
+const QUIET_LABEL: Record<Tier, string> = { ...TIER_LABEL, trial: "Trial", paid: "Full access" };
+
+export function TierBadge({ tier, selling = true }: { tier: Tier; selling?: boolean }) {
   const premium = tier === "paid" || tier === "admin" || tier === "trial";
   return (
     <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${premium ? "bg-accent text-accent-ink" : "bg-surface-2 text-ink-muted"}`}>
       {premium && <Crown size={12} aria-hidden />}
-      {TIER_LABEL[tier]}
+      {(selling ? TIER_LABEL : QUIET_LABEL)[tier]}
     </span>
   );
 }
@@ -74,12 +77,14 @@ export function TrialCountdown({ me }: { me: MembersMe }) {
       <p className="flex items-center gap-2 text-sm text-ink">
         <Clock size={16} aria-hidden className={urgent ? "text-warn" : "text-accent"} />
         <span>
-          <strong>Premium Trial</strong> · {me.trial.strategies.length} strategies · {left}
+          <strong>{me.flags.selling ? "Premium Trial" : "Free trial"}</strong> · {me.trial.strategies.length} strategies · {left}
         </span>
       </p>
-      <Link href="/members/upgrade" onClick={() => trackMemberEvent("upgrade_clicked", { from: "trial_banner" })} className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink">
-        Upgrade to keep access
-      </Link>
+      {me.flags.selling && (
+        <Link href="/members/upgrade" onClick={() => trackMemberEvent("upgrade_clicked", { from: "trial_banner" })} className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink">
+          Upgrade to keep access
+        </Link>
+      )}
     </div>
   );
 }
@@ -87,6 +92,15 @@ export function TrialCountdown({ me }: { me: MembersMe }) {
 /** After a trial ends: helpful, not pushy. */
 export function TrialEnded({ me }: { me: MembersMe }) {
   if (me.tier !== "expired" || me.trial.state !== "used") return null;
+  if (!me.flags.selling)
+    return (
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="text-base font-semibold text-ink">Your free trial has ended</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Results, your simulation and your history are all still here. Strategy details and qualifying games are locked for now.
+        </p>
+      </div>
+    );
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
       <h2 className="text-base font-semibold text-ink">Your Premium Trial has ended</h2>
@@ -111,12 +125,15 @@ export function LockedFeature({ title, pitch, me, feature }: { title: string; pi
   }, [feature]);
   const canTrial = me?.trial.state === "available";
   const trialOutsideScope = me?.tier === "trial";
+  // Not on sale: no "Upgrade" button and no talk of memberships; only the trial, while it can still be started.
+  const selling = me?.flags.selling !== false;
   return (
     <div className="rounded-xl border border-dashed border-line bg-surface p-5 text-center">
       <Lock size={20} aria-hidden className="mx-auto text-ink-muted" />
       <p className="mt-2 text-sm font-semibold text-ink">{title}</p>
       <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">{pitch}</p>
-      <p className="mt-1 text-xs text-ink-muted">{trialOutsideScope ? "Not one of your trial strategies." : "Members feature"}</p>
+      <p className="mt-1 text-xs text-ink-muted">{trialOutsideScope ? "Not one of your trial strategies." : selling ? "Members feature" : canTrial ? "Included in the free trial" : "Not included on your account"}</p>
+      {(selling || canTrial) && (
       <Link
         href={canTrial ? "/members/trial" : "/members/upgrade"}
         onClick={() => trackMemberEvent("premium_feature_clicked", { feature })}
@@ -124,6 +141,7 @@ export function LockedFeature({ title, pitch, me, feature }: { title: string; pi
       >
         {canTrial ? `Start ${me?.trial.days ?? 7}-day trial` : "Upgrade"}
       </Link>
+      )}
     </div>
   );
 }

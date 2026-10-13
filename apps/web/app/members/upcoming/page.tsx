@@ -96,7 +96,7 @@ export default function UpcomingPage() {
               ))}
             </ul>
           </Card>
-          <LockedFeature me={me.data} feature="upcoming" title="See exactly which games qualify" pitch="Members see the match, market and price for every opportunity the moment it fires, and can simulate or bet it." />
+          <LockedFeature me={me.data} feature="upcoming" title="See exactly which games qualify" pitch="See the match, market and price for every opportunity the moment it fires, and can simulate or bet it." />
         </>
       )}
     </div>

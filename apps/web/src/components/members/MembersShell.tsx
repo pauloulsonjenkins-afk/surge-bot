@@ -22,6 +22,8 @@ export default function MembersShell({ children }: { children: React.ReactNode }
   const [more, setMore] = useState(false);
   const isActive = (href: string) => (href === "/members" ? pathname === "/members" : pathname === href || pathname.startsWith(`${href}/`));
   const signedIn = Boolean(me);
+  const selling = me?.flags.selling === true;
+  const nav = MEMBERS_NAV.filter((n) => selling || !("sales" in n));
 
   return (
     <div className="flex min-h-dvh flex-col bg-app text-ink">
@@ -35,7 +37,7 @@ export default function MembersShell({ children }: { children: React.ReactNode }
             <span className="hidden rounded-full border border-accent/50 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-accent sm:inline">Beta</span>
           </Link>
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {me && <TierBadge tier={me.tier} />}
+            {me && <TierBadge tier={me.tier} selling={selling} />}
             {me && (
               <Link href="/members/notifications" aria-label={`Notifications${me.unread ? `, ${me.unread} unread` : ""}`} className="relative rounded-md p-1.5 text-ink-muted hover:text-ink">
                 <Bell size={18} />
@@ -67,7 +69,7 @@ export default function MembersShell({ children }: { children: React.ReactNode }
         {signedIn && (
           <nav aria-label="Members" className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 overflow-y-auto border-r border-line px-3 py-4 lg:block">
             <ul className="space-y-0.5">
-              {MEMBERS_NAV.map(({ href, label, icon: Icon }) => (
+              {nav.map(({ href, label, icon: Icon }) => (
                 <li key={href}>
                   <Link
                     href={href}
@@ -93,7 +95,7 @@ export default function MembersShell({ children }: { children: React.ReactNode }
       {signedIn && (
         <nav aria-label="Members" className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <ul className="mx-auto flex max-w-md">
-            {MEMBERS_NAV.filter((n) => n.mobile).map(({ href, short, icon: Icon }) => (
+            {nav.filter((n) => n.mobile).map(({ href, short, icon: Icon }) => (
               <li key={href} className="flex-1">
                 <Link href={href} aria-current={isActive(href) ? "page" : undefined} className={`flex flex-col items-center gap-0.5 py-2 text-[0.72rem] ${isActive(href) ? "text-accent" : "text-ink-muted"}`}>
                   <Icon size={20} />
@@ -121,7 +123,7 @@ export default function MembersShell({ children }: { children: React.ReactNode }
               </button>
             </div>
             <ul className="grid grid-cols-2 gap-2">
-              {MEMBERS_NAV.filter((n) => !n.mobile).map(({ href, label, icon: Icon }) => (
+              {nav.filter((n) => !n.mobile).map(({ href, label, icon: Icon }) => (
                 <li key={href}>
                   <Link href={href} onClick={() => setMore(false)} className="flex items-center gap-2 rounded-lg border border-line px-3 py-3 text-sm text-ink">
                     <Icon size={16} className="text-accent" />

@@ -402,3 +402,29 @@ test("app alerts: paid and trial only, up to 2 strategies (a trial's own), each 
   assert.match(msg.body, /@ 1\.40|@ 3\.00|60'/);
   assert.ok(!JSON.stringify(msg).includes(entry.trigger || "@@none@@"));
 });
+
+test("not selling (the default): no upgrade wording or price; the admin can extend a trial or give full access", async () => {
+  const { meView } = await import("../src/members/views");
+  const id = user("quiet@example.com");
+  saveMembersConfig(db, { paidPriceLabel: "£19 a month" });
+  const start = new Date(Date.now() - 6 * 86_400_000);
+  assert.equal(startTrial(db, memberContext(db, id, start)!, ["action-packed", "home pressure", "late goal hunter"], start).ok, true);
+  const me = meView(db, memberContext(db, id)!);
+  assert.equal(me.flags.selling, false);
+  assert.equal(me.billing.available, false);
+  assert.equal(me.billing.priceLabel, "");
+  runMembershipNotices(db);
+  const notes = membersStore(db).listNotifications(id);
+  assert.ok(notes.length > 0);
+  for (const x of notes) assert.doesNotMatch(`${x.title} ${x.body} ${x.link}`, /upgrade|premium|membership/i);
+  // Extend, then full access with no end date.
+  adminUpdateMember(db, id, { action: "extend_trial", days: 7 });
+  assert.equal(memberContext(db, id, new Date(Date.now() + 5 * 86_400_000))!.tier, "trial");
+  adminUpdateMember(db, id, { action: "grant_paid", until: "2099-12-31T23:59:59Z" });
+  const full = memberContext(db, id)!;
+  assert.equal(full.tier, "paid");
+  assert.equal(strategyAllowed(full.access, "viewSelections", "losing team pushing hard"), true);
+  // Switched on later, the sales wording comes back.
+  saveMembersConfig(db, { flags: { selling: true } });
+  assert.equal(meView(db, memberContext(db, id)!).billing.priceLabel, "£19 a month");
+});

@@ -29,16 +29,22 @@ export default function SettingsPage() {
   if (isLoading || !data || !me.data) return <Skeleton className="h-96 w-full" />;
   return (
     <div className="space-y-5">
-      <PageHeader title="Settings" subtitle="Staking, limits, your simulation bank and your membership." />
+      <PageHeader title="Settings" subtitle="Staking, limits, your simulation bank and your account." />
       {/* Remounts with fresh values whenever the saved settings change. */}
       <StakingCard key={`s-${data.stakingMethod}-${data.stakeValue}`} s={data} />
       <RiskCard key={`r-${JSON.stringify(data.risk)}`} s={data} />
       <SimCard s={data} />
-      <Card title="Membership">
+      <Card title={me.data.flags.selling ? "Membership" : "Your account"}>
         <p className="text-sm text-ink">
-          {me.data.tier === "paid" ? `Member${me.data.paid.until ? ` until ${when(me.data.paid.until)} (renews automatically while subscribed)` : ""}` : me.data.tier === "trial" ? `Premium Trial, ends ${when(me.data.trial.endsAt)}` : me.data.tier === "admin" ? "Administrator" : me.data.tier === "suspended" ? "Suspended" : me.data.tier === "expired" ? "Free (your trial or membership has ended)" : "Free"}
+          {me.data.tier === "paid" && !me.data.flags.selling
+            ? `Full access${me.data.paid.until && Date.parse(me.data.paid.until) < Date.parse("2090-01-01") ? ` until ${when(me.data.paid.until)}` : ""}`
+            : me.data.tier === "trial" && !me.data.flags.selling
+              ? `Free trial, ends ${when(me.data.trial.endsAt)}`
+              : me.data.tier === "expired" && !me.data.flags.selling
+                ? "Free (your trial has ended)"
+                : me.data.tier === "paid" ? `Member${me.data.paid.until ? ` until ${when(me.data.paid.until)} (renews automatically while subscribed)` : ""}` : me.data.tier === "trial" ? `Premium Trial, ends ${when(me.data.trial.endsAt)}` : me.data.tier === "admin" ? "Administrator" : me.data.tier === "suspended" ? "Suspended" : me.data.tier === "expired" ? "Free (your trial or membership has ended)" : "Free"}
         </p>
-        {me.data.paid.canManage && <BillingButton />}
+        {me.data.paid.canManage && me.data.flags.selling && <BillingButton />}
       </Card>
     </div>
   );
@@ -79,7 +85,7 @@ function StakingCard({ s }: { s: MemberSettings }) {
           <input className={`${input} mt-1`} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
         </label>
       </div>
-      {!s.advancedStaking && <p className="mt-2 text-xs text-ink-muted">Percentage, custom and strategy-defined staking come with the trial and full membership.</p>}
+      {!s.advancedStaking && <p className="mt-2 text-xs text-ink-muted">Percentage, custom and strategy-defined staking come with the trial and full access.</p>}
       <button type="button" className={`${btnPrimary} mt-3`} disabled={save.isPending} onClick={() => save.mutate({ stakingMethod: method, stakeValue: Number(value) })}>
         Save staking
       </button>
@@ -112,7 +118,7 @@ function RiskCard({ s }: { s: MemberSettings }) {
           );
         })}
       </div>
-      {!s.advancedRisk && <p className="mt-2 text-xs text-ink-muted">The other limits come with the trial and full membership.</p>}
+      {!s.advancedRisk && <p className="mt-2 text-xs text-ink-muted">The other limits come with the trial and full access.</p>}
       <button
         type="button"
         className={`${btnPrimary} mt-3`}

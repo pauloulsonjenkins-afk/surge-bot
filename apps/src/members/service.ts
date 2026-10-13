@@ -105,7 +105,7 @@ function trialRefusal(db: EngineDb, ctx: MemberContext): string | null {
   if (ctx.tier === "suspended") return "This account is suspended.";
   if (ctx.tier === "paid" || ctx.tier === "admin") return "You already have full access.";
   if (ctx.tier === "trial" || ctx.member.trialStartedAt) return "You've already had your free trial.";
-  if (isDisposableEmail(ctx.user.email)) return "Trials need a permanent email address. Throwaway inboxes can use the Free membership.";
+  if (isDisposableEmail(ctx.user.email)) return "Trials need a permanent email address. Throwaway inboxes can still see the results and use the simulation.";
   const claim = membersStore(db).trialClaim(emailKey(ctx.user.email));
   if (claim && claim.userId !== ctx.user.id) return "A trial has already been used with this email address.";
   if (claim) return "You've already had your free trial.";
@@ -145,7 +145,7 @@ export function startTrial(db: EngineDb, ctx: MemberContext, strategies: unknown
     userId: ctx.user.id,
     at,
     kind: "trial_started",
-    title: `Your ${ctx.config.trialDays}-day Premium Trial has started`,
+    title: ctx.config.flags.selling ? `Your ${ctx.config.trialDays}-day Premium Trial has started` : `Your ${ctx.config.trialDays} days of full access have started`,
     body: `You have full access to your ${chosen.length} chosen strategies until ${new Date(endsAt).toUTCString().slice(0, 22)}. Simulation only: no real money is placed.`,
     link: "/members",
   });
@@ -162,6 +162,7 @@ export function runMembershipNotices(db: EngineDb, now = new Date()): void {
   const store = membersStore(db);
   const at = now.toISOString();
   const t = now.getTime();
+  const selling = getMembersConfig(db).flags.selling;
   for (const m of store.listMembers()) {
     if (m.trialEndsAt) {
       const left = Date.parse(m.trialEndsAt) - t;
@@ -169,16 +170,23 @@ export function runMembershipNotices(db: EngineDb, now = new Date()): void {
       const paid = m.paidUntil !== null && Date.parse(m.paidUntil) > t;
       const add = (key: string, title: string, body: string, kind: string) => {
         notices.add(key);
-        if (!paid) store.notify({ userId: m.userId, at, kind, title, body, link: "/members/upgrade" });
+        if (!paid) store.notify({ userId: m.userId, at, kind, title, body, link: selling ? "/members/upgrade" : "/members" });
       };
       if (left <= 0 && !notices.has("ended")) {
-        add("ended", "Your Premium Trial has ended", "You're back on the Free membership. Your simulation, settings and history are all kept. Upgrade any time to unlock everything again.", "trial_expired");
+        add(
+          "ended",
+          selling ? "Your Premium Trial has ended" : "Your 7 days of full access have ended",
+          selling
+            ? "You're back on the Free membership. Your simulation, settings and history are all kept. Upgrade any time to unlock everything again."
+            : "Results, your simulation, settings and history are all kept. Strategy details and selections are locked for now.",
+          "trial_expired",
+        );
         store.event(m.userId, "trial_expired", null, at);
         store.audit({ at, userId: m.userId, actor: "system", action: "trial_expiry", object: `member ${m.userId}`, result: "ok", detail: null });
       } else if (left > 0 && left <= 86_400_000 && !notices.has("1d")) {
-        add("1d", "Your trial ends tomorrow", "Your Premium Trial ends within 24 hours. Upgrade to keep detailed strategies, selections and full analytics.", "trial_ending");
+        add("1d", "Your trial ends tomorrow", selling ? "Your Premium Trial ends within 24 hours. Upgrade to keep detailed strategies, selections and full analytics." : "Your full access ends within 24 hours.", "trial_ending");
       } else if (left > 86_400_000 && left <= 3 * 86_400_000 && !notices.has("3d")) {
-        add("3d", "3 days left of your trial", "Your Premium Trial has 3 days left. Upgrade any time to keep full access.", "trial_ending");
+        add("3d", "3 days left of your trial", selling ? "Your Premium Trial has 3 days left. Upgrade any time to keep full access." : "Your full access has 3 days left.", "trial_ending");
       }
       if (notices.size !== m.trialNotices.length) store.updateMember(m.userId, { trialNotices: [...notices] }, at);
     }
@@ -187,8 +195,8 @@ export function runMembershipNotices(db: EngineDb, now = new Date()): void {
         userId: m.userId,
         at,
         kind: "paid_ended",
-        title: "Your membership has ended",
-        body: "You're on the Free membership now. Everything you had is kept; renew to unlock it again.",
+        title: selling ? "Your membership has ended" : "Your full access has ended",
+        body: selling ? "You're on the Free membership now. Everything you had is kept; renew to unlock it again." : "Everything you had is kept. Strategy details and selections are locked for now.",
         link: m.paidUntil,
       });
       store.audit({ at, userId: m.userId, actor: "system", action: "membership_change", object: "paid ended", result: "ok", detail: m.paidUntil });

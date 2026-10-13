@@ -3,13 +3,17 @@
 import Link from "next/link";
 import { Check, FlaskConical, LineChart, Lock, ShieldCheck, Zap } from "lucide-react";
 import { SaferGambling } from "./ui";
+import { useMembersOffer } from "@/queries/use-members";
 
 /** What a signed-out visitor sees at /members: what the platform is, the three ways in, and join / sign in. */
 export default function Landing() {
+  const offer = useMembersOffer().data;
+  const days = offer?.trialDays ?? 7;
+  const picks = offer?.trialStrategyLimit ?? 3;
   return (
     <div className="mx-auto max-w-4xl space-y-10">
       <section className="space-y-4 pt-4 text-center">
-        <p className="text-xs font-semibold uppercase tracking-widest text-accent">GoalBrew Members · Beta</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-accent">GoalBrew · Beta</p>
         <h1 className="font-display text-3xl font-bold text-ink [font-stretch:115%] sm:text-4xl">Football betting strategies, measured properly.</h1>
         <p className="mx-auto max-w-2xl text-sm text-ink-muted sm:text-base">
           See how the house strategies are really doing, follow them with a simulated bank, and track your own results bet by bet. Free to join; no card
@@ -39,6 +43,17 @@ export default function Landing() {
         ))}
       </section>
 
+      {/* Memberships not on sale: one free trial card, no packages or prices. */}
+      {!offer?.selling ? (
+        <section className="mx-auto max-w-md">
+          <Plan
+            name={`Free ${days}-day trial`}
+            price="Free, no card needed"
+            highlight
+            points={[`Choose ${picks} strategies`, `Full detail for those ${picks}`, "Qualifying games and upcoming opportunities", "Simulation bank, staking and risk controls"]}
+          />
+        </section>
+      ) : (
       <section className="grid gap-3 md:grid-cols-3">
         <Plan
           name="Free"
@@ -60,6 +75,7 @@ export default function Landing() {
           icon={<Zap size={14} aria-hidden />}
         />
       </section>
+      )}
 
       <SaferGambling />
       <p className="pb-2 text-center text-xs">

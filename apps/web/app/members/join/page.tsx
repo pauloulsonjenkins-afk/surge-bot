@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { input } from "@/components/members/ui";
+import { useMembersOffer } from "@/queries/use-members";
 
 const USERNAME_OK = /^[A-Za-z0-9_]{3,20}$/;
 
@@ -19,6 +20,9 @@ export default function JoinPage() {
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const offer = useMembersOffer().data;
+  const days = offer?.trialDays ?? 7;
+  const picks = offer?.trialStrategyLimit ?? 3;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -37,7 +41,8 @@ export default function JoinPage() {
         return;
       }
       qc.clear();
-      router.replace("/members");
+      // Straight on to choosing the trial strategies (that page explains itself if a trial isn't available).
+      router.replace(offer?.trial === false ? "/members" : "/members/trial");
       router.refresh();
     } catch {
       setError("Network error. Try again.");
@@ -49,7 +54,11 @@ export default function JoinPage() {
   return (
     <div className="mx-auto max-w-sm space-y-4 pt-6">
       <h1 className="font-display text-2xl font-bold text-ink [font-stretch:115%]">Create your free account</h1>
-      <p className="text-sm text-ink-muted">Free forever: house results and a simulation bank. Start a 7-day Premium Trial whenever you&apos;re ready.</p>
+      <p className="text-sm text-ink-muted">
+        {offer?.selling
+          ? `Free forever: house results and a simulation bank. Start a ${days}-day Premium Trial whenever you're ready.`
+          : `Free. Choose ${picks} strategies and get ${days} days of full access to them: how they work, every qualifying game and upcoming opportunities. No card needed.`}
+      </p>
       <form onSubmit={submit} className="space-y-3">
         <input className={input} autoComplete="name" placeholder="Your name" aria-label="Your name" required value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
         <div>

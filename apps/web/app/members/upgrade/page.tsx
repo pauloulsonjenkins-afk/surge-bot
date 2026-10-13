@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Minus } from "lucide-react";
 import { PageHeader, Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -12,7 +14,13 @@ export default function UpgradePage() {
   const me = useMembersMe();
   const plans = useMembersPlans();
   const checkout = useMembersAction<Record<string, never>, { url: string }>("billing/checkout");
-  if (!me.data || !plans.data) return <Skeleton className="h-96 w-full" />;
+  const router = useRouter();
+  const closed = me.data?.flags.selling === false;
+  // Memberships aren't on sale: this page doesn't exist as far as members can tell.
+  useEffect(() => {
+    if (closed) router.replace("/members");
+  }, [closed, router]);
+  if (!me.data || !plans.data || closed) return <Skeleton className="h-96 w-full" />;
   const m = me.data;
   const p = plans.data;
   const scopeText = (scope: string) => (scope === "all" ? "Every strategy" : scope === "selected" ? `${p.trialStrategyLimit} chosen strategies` : "–");

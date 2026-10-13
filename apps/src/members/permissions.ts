@@ -105,6 +105,11 @@ export const DEFAULT_TIER_RULES: Record<Tier, TierRules> = {
 
 /** Feature flags: a switched-off feature is off for every tier, whatever the matrix says. */
 export interface FeatureFlags {
+  /**
+   * Memberships on sale: the Membership page, prices, Stripe checkout and "upgrade" prompts. Off = free 7-day access
+   * only, with no mention of paid packages; the admin can still extend a trial or give full access from the Members page.
+   */
+  selling: boolean;
   trial: boolean;
   /** Community browsing (off = the Coming soon page). */
   community: boolean;
@@ -117,6 +122,7 @@ export interface FeatureFlags {
 }
 
 export const DEFAULT_FLAGS: FeatureFlags = {
+  selling: false,
   trial: true,
   community: false,
   strategyCreation: true,
@@ -128,6 +134,7 @@ export const DEFAULT_FLAGS: FeatureFlags = {
 
 /** Which capabilities each flag switches off. */
 const FLAG_CAPS: Record<keyof FeatureFlags, Capability[]> = {
+  selling: [],
   trial: [],
   community: [],
   strategyCreation: ["createStrategy"],

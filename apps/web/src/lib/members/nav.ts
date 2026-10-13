@@ -14,5 +14,6 @@ export const MEMBERS_NAV = [
   { href: "/members/automation", label: "Betfair Automation", short: "Automation", icon: Zap, mobile: false },
   { href: "/members/community", label: "Community", short: "Community", icon: Users, mobile: false },
   { href: "/members/settings", label: "Settings", short: "Settings", icon: Settings, mobile: false },
-  { href: "/members/upgrade", label: "Membership", short: "Membership", icon: Crown, mobile: false },
+  // Only while memberships are on sale (the "selling" switch on the admin Members page).
+  { href: "/members/upgrade", label: "Membership", short: "Membership", icon: Crown, mobile: false, sales: true },
 ] as const;
