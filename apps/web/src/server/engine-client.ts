@@ -1456,7 +1456,7 @@ export interface DirectSettings {
   maxSpreadPct: number;
   minOverround: number;
   maxOverround: number;
-  strategyLimits: Record<string, { maxSpreadPct?: number; maxOverround?: number }>;
+  strategyLimits: Record<string, { maxSpreadPct?: number; maxOverround?: number; acceptBelowPct?: number }>;
   cancelUnmatchedSeconds: number;
   dailyStakeLimit: number;
   acceptBelowPct: number;

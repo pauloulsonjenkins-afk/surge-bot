@@ -323,3 +323,15 @@ test("the download says who placed each bet: BF Bot Manager's bet on a Shadow pi
   const cols = header!.split(",");
   assert.equal(row!.split(",")[cols.indexOf("Bet placed by")], "Bet feed");
 });
+
+test("a strategy can accept further below the price shown than the rest (Underdog Taking Charge: 10%)", () => {
+  const db = new EngineDb(":memory:", () => {});
+  assert.equal(getDirectSettings(db).strategyLimits["underdog taking charge"]?.acceptBelowPct, 10);
+  const s = saveDirectSettings(db, { strategyLimits: { "Underdog taking charge": { acceptBelowPct: 12 }, "time to fight": { maxOverround: 140 } } }, new Date(), ENV);
+  assert.equal(s.strategyLimits["underdog taking charge"]?.acceptBelowPct, 12);
+  assert.equal(s.strategyLimits["time to fight"]?.acceptBelowPct, undefined);
+  // 1.46 shown: 5% asks about 1.39, 10% about 1.32; never under the strategy's minimum odds.
+  assert.ok(askPrice(1.46, 1.2, 10) < askPrice(1.46, 1.2, 5));
+  assert.ok(askPrice(1.46, 1.2, 10) >= 1.31);
+  assert.equal(askPrice(1.25, 1.2, 10), 1.2);
+});

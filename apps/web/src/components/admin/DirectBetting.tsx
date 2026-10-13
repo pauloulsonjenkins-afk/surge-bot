@@ -167,13 +167,13 @@ function NumberField({ label, value, onChange, suffix, step = 1 }: { label: stri
   );
 }
 
-type Form = { maxSpreadPct: string; minOverround: string; maxOverround: string; cancelUnmatchedSeconds: string; dailyStakeLimit: string; acceptBelowPct: string; maxShortenPct: string; limits: Record<string, { spread: string; over: string }> };
+type Form = { maxSpreadPct: string; minOverround: string; maxOverround: string; cancelUnmatchedSeconds: string; dailyStakeLimit: string; acceptBelowPct: string; maxShortenPct: string; limits: Record<string, { spread: string; over: string; below: string }> };
 
 function toForm(s: DirectSettings, strategies: string[]): Form {
   const limits: Form["limits"] = {};
   for (const label of strategies) {
     const l = s.strategyLimits[label.toLowerCase()] ?? {};
-    limits[label.toLowerCase()] = { spread: l.maxSpreadPct?.toString() ?? "", over: l.maxOverround?.toString() ?? "" };
+    limits[label.toLowerCase()] = { spread: l.maxSpreadPct?.toString() ?? "", over: l.maxOverround?.toString() ?? "", below: l.acceptBelowPct?.toString() ?? "" };
   }
   return {
     maxSpreadPct: String(s.maxSpreadPct),
@@ -196,16 +196,17 @@ export function Limits({ data }: { data: DirectStatus }) {
   const reset = () => setEdit(null);
 
   const set = (patch: Partial<Form>) => setEdit({ ...form, ...patch });
-  const setLimit = (key: string, patch: Partial<{ spread: string; over: string }>) =>
-    setEdit({ ...form, limits: { ...form.limits, [key]: { ...(form.limits[key] ?? { spread: "", over: "" }), ...patch } } });
+  const setLimit = (key: string, patch: Partial<{ spread: string; over: string; below: string }>) =>
+    setEdit({ ...form, limits: { ...form.limits, [key]: { ...(form.limits[key] ?? { spread: "", over: "", below: "" }), ...patch } } });
 
   function submit() {
     const strategyLimits: DirectSettings["strategyLimits"] = {};
     for (const [k, v] of Object.entries(form.limits)) {
-      const l: { maxSpreadPct?: number; maxOverround?: number } = {};
+      const l: { maxSpreadPct?: number; maxOverround?: number; acceptBelowPct?: number } = {};
       if (v.spread.trim()) l.maxSpreadPct = Number(v.spread);
       if (v.over.trim()) l.maxOverround = Number(v.over);
-      if (l.maxSpreadPct !== undefined || l.maxOverround !== undefined) strategyLimits[k] = l;
+      if (v.below.trim()) l.acceptBelowPct = Number(v.below);
+      if (Object.keys(l).length) strategyLimits[k] = l;
     }
     save.mutate(
       {
@@ -257,13 +258,14 @@ export function Limits({ data }: { data: DirectStatus }) {
               <tr className="text-left text-xs text-ink-muted">
                 <th className="py-1.5 pr-3 font-medium">Strategy</th>
                 <th className="py-1.5 pr-3 font-medium">Gap %</th>
-                <th className="py-1.5 font-medium">Overround up to %</th>
+                <th className="py-1.5 pr-3 font-medium">Overround up to %</th>
+                <th className="py-1.5 font-medium">Accept below %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {data.strategies.map((label) => {
                 const key = label.toLowerCase();
-                const v = form.limits[key] ?? { spread: "", over: "" };
+                const v = form.limits[key] ?? { spread: "", over: "", below: "" };
                 return (
                   <tr key={key}>
                     <td className="py-1.5 pr-3 text-ink">{label}</td>
@@ -278,7 +280,7 @@ export function Limits({ data }: { data: DirectStatus }) {
                         className="w-20 rounded-md border border-line bg-surface-2 px-2 py-1 tabular-nums text-ink"
                       />
                     </td>
-                    <td className="py-1.5">
+                    <td className="py-1.5 pr-3">
                       <input
                         aria-label={`${label}: overround up to`}
                         type="number"
@@ -286,6 +288,17 @@ export function Limits({ data }: { data: DirectStatus }) {
                         value={v.over}
                         placeholder={String(data.settings.maxOverround)}
                         onChange={(e) => setLimit(key, { over: e.target.value })}
+                        className="w-20 rounded-md border border-line bg-surface-2 px-2 py-1 tabular-nums text-ink"
+                      />
+                    </td>
+                    <td className="py-1.5">
+                      <input
+                        aria-label={`${label}: accept down to this % below the price shown`}
+                        type="number"
+                        inputMode="decimal"
+                        value={v.below}
+                        placeholder={String(data.settings.acceptBelowPct)}
+                        onChange={(e) => setLimit(key, { below: e.target.value })}
                         className="w-20 rounded-md border border-line bg-surface-2 px-2 py-1 tabular-nums text-ink"
                       />
                     </td>

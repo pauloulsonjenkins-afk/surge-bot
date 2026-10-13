@@ -51,6 +51,8 @@ export interface StrategyLimits {
   maxSpreadPct?: number;
   /** Highest overround allowed (percent). */
   maxOverround?: number;
+  /** How far below the price shown this strategy's bets may match (percent), overriding acceptBelowPct. */
+  acceptBelowPct?: number;
 }
 
 export interface DirectSettings {
@@ -92,6 +94,9 @@ export const DEFAULT_DIRECT: DirectSettings = {
   strategyLimits: {
     "time to fight": { maxOverround: 140 },
     "losing team pushing hard": { maxSpreadPct: 25 },
+    // Underdog win-or-draw late on, with the underdog ahead: the price falls by the minute and the markets are thin, so
+    // at 5% below a delayed price its bets went unmatched (5 of 6, 11-13 Oct 2026). The owner chose 10% on 13 Oct.
+    "underdog taking charge": { acceptBelowPct: 10 },
   },
   cancelUnmatchedSeconds: 120,
   dailyStakeLimit: 50,
@@ -122,9 +127,11 @@ function limitsOf(v: unknown): Record<string, StrategyLimits> {
     const l: StrategyLimits = {};
     const spread = num(r.maxSpreadPct, 1, 100, NaN);
     const over = num(r.maxOverround, 100, 300, NaN);
+    const below = num(r.acceptBelowPct, 0, 20, NaN);
     if (Number.isFinite(spread)) l.maxSpreadPct = spread;
     if (Number.isFinite(over)) l.maxOverround = over;
-    if (l.maxSpreadPct !== undefined || l.maxOverround !== undefined) out[strategyLabel(k).toLowerCase()] = l;
+    if (Number.isFinite(below)) l.acceptBelowPct = below;
+    if (Object.keys(l).length) out[strategyLabel(k).toLowerCase()] = l;
   }
   return out;
 }
@@ -643,7 +650,7 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   }
 
   // The price asked for: the lowest accepted. Betfair matches it at the best price on offer, which is at least this.
-  const ask = askPrice(me.back, d.minPrice, s.acceptBelowPct);
+  const ask = askPrice(me.back, d.minPrice, limits.acceptBelowPct ?? s.acceptBelowPct);
   // Not enough money on offer at the prices we'd accept: the bet would only part-match (or not at all).
   const depth = depthAtOrAbove(me.backDepth, ask);
   if (depth !== null && depth < d.stake) return wait(`Only ${money(depth)} on offer at ${ask.toFixed(2)} or better (stake ${money(d.stake)}).`);
@@ -731,7 +738,7 @@ async function workLay(
     return wait(`Lay price has risen from ${alertPrice.toFixed(2)} at the alert to ${me.lay.toFixed(2)} (limit ${s.maxShortenPct}%).`);
   }
 
-  const ask = askLayPrice(me.lay, maxPrice, s.acceptBelowPct);
+  const ask = askLayPrice(me.lay, maxPrice, limits.acceptBelowPct ?? s.acceptBelowPct);
   const size = layStake(d.stake, ask);
   if (size < MIN_STAKE) {
     return fail(`At ${ask.toFixed(2)} a ${money(d.stake)} liability is a ${money(size)} lay, under Betfair's ${money(MIN_STAKE)} minimum: raise the liability to at least ${money(Math.ceil((ask - 1) * 100) / 100)}.`);
