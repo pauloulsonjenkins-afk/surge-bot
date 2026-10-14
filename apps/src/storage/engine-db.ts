@@ -199,6 +199,8 @@ export const RECORD_FROM: Record<string, string> = {
   "both teams to score": "2026-10-11T17:21:00.000Z",
   // Wake-up Call (Time to fight): the owner changed its InPlayGuru rules on 12 Oct 2026 (marker 21:00 UK).
   "time to fight": "2026-10-12T20:00:00.000Z",
+  // 2nd half goals last 10 matches 2: capped at 75' in InPlayGuru on 14 Oct 2026 (its 161 alerts after 75' lost 18%).
+  "2nd half goals last 10 matches 2": "2026-10-14T15:33:00.000Z",
 };
 
 function strategyLabel(raw: string): string {
