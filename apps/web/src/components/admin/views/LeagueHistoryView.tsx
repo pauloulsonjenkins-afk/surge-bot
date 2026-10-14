@@ -258,7 +258,7 @@ export default function HistoryPage() {
     <div className="space-y-6">
       <PageHeader
         as="h2"
-        title="League history"
+        title="Past seasons"
         subtitle="Past results and prices for 38 leagues, used to see how each league plays and to test a strategy on past seasons before risking money. Data: football-data.co.uk."
       />
       <div className="flex flex-wrap items-center gap-3">

@@ -377,7 +377,7 @@ export default function ReconcilePage() {
     <div className="space-y-6">
       <PageHeader
         as="h2"
-        title="Reconcile"
+        title="Betfair check"
         subtitle="The app counts bets matched on Betfair at their real figures. This compares the app’s estimate (from the alert’s price and your stake) with what your betting software actually placed: how many picks never matched, the price you really got, and the real profit."
       />
 

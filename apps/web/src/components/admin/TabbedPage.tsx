@@ -30,7 +30,7 @@ function Tabs({ tabs, label }: { tabs: PageTab[]; label: string }) {
             role="tab"
             aria-selected={t.id === current.id}
             onClick={() => choose(t.id)}
-            className={`flex-1 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
               t.id === current.id ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
             }`}
           >

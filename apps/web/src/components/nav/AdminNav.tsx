@@ -34,7 +34,7 @@ export default function AdminNav() {
         </Link>
       )}
       <Link href="/more" className="flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">
-        More admin <ChevronRight size={14} aria-hidden />
+        More <ChevronRight size={14} aria-hidden />
       </Link>
     </nav>
   );

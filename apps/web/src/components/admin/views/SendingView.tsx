@@ -304,10 +304,10 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
       {/* 4. Settings you rarely change, in tabs at the bottom. */}
       {view === "limits" && (
       <section className="rounded-xl border border-line bg-surface p-3.5">
-        <h2 className="text-sm font-medium text-ink">Sending settings</h2>
+        <h2 className="text-sm font-medium text-ink">Settings for every strategy</h2>
         <p className="mt-0.5 text-xs text-ink-muted">Settings that apply to every strategy. You rarely need to change these.</p>
 
-        <div role="tablist" aria-label="Sending settings" className="mt-3 grid grid-cols-3 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
+        <div role="tablist" aria-label="Settings for every strategy" className="mt-3 grid grid-cols-3 gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
           {SETTINGS_TABS.map((t) => (
             <button
               key={t.id}
