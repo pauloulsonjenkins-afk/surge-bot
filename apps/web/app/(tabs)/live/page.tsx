@@ -124,6 +124,14 @@ function placementChip(p: Placement): { label: string; tone: ChipTone; title: st
  * name is spelled differently, or the exact market isn't. Shown as a warning icon on the row and in full when it's opened.
  */
 function exchangeIssue(pick: LivePick): { label: string; detail: string } | null {
+  // A team's own goals market (French Press, Pass Master): the code is right (seen on Betfair for bigger matches), but
+  // Betfair only lists these markets for some matches, so there's nothing to fix.
+  if (pick.exchange === "on" && pick.marketCheck === "noMarket" && /TEAM_[AB]_OVER_UNDER/.test(pick.marketCheckDetail ?? "")) {
+    return {
+      label: "No team-goals market",
+      detail: `${pick.marketCheckDetail ?? ""} Betfair only offers a team's own goals market for some matches (mostly bigger ones), so this pick can't be bet. The market code is right: nothing to fix.`.trim(),
+    };
+  }
   if (pick.exchange === "on" && (pick.marketCheck === "noMarket" || pick.marketCheck === "noSelection")) {
     return {
       label: "Not on Betfair as sent",
