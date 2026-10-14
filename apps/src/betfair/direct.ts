@@ -213,7 +213,8 @@ export interface Book {
   inplay: boolean;
   runners: BookRunner[];
 }
-export type PlaceResult = { ok: true; betId: string; sizeMatched: number; avgPrice: number | null } | { ok: false; code: string };
+/** A refusal carries Betfair's code and, when it gave them, the order's and the bet's own status and codes ("detail"). */
+export type PlaceResult = { ok: true; betId: string; sizeMatched: number; avgPrice: number | null } | { ok: false; code: string; detail?: string };
 export type RefOrder = CurrentOrder & { customerOrderRef?: string };
 
 /** What direct betting needs from Betfair. The real one is BetfairTrader; tests pass a fake. */
@@ -334,7 +335,9 @@ export class BetfairTrader implements Trading {
     });
     const rep = r.instructionReports?.[0];
     if (r.status === "SUCCESS" && rep?.betId) return { ok: true, betId: rep.betId, sizeMatched: rep.sizeMatched ?? 0, avgPrice: rep.averagePriceMatched ?? null };
-    return { ok: false, code: rep?.errorCode ?? r.errorCode ?? r.status };
+    // ERROR_IN_ORDER only says the order failed; the bet's own report (when there is one) says why. Keep both.
+    const detail = `order ${r.status}${r.errorCode ? ` ${r.errorCode}` : ""}; bet ${rep ? `${rep.status}${rep.errorCode ? ` ${rep.errorCode}` : ""}` : "no report"}`;
+    return { ok: false, code: rep?.errorCode ?? r.errorCode ?? r.status, detail };
   }
 
   async cancel(marketId: string, betId: string): Promise<number> {
@@ -450,6 +453,20 @@ export const FRIENDLY: Record<string, string> = {
   BET_ACTION_ERROR: "Betfair refused the bet.",
 };
 /** Refusals worth trying again while the pick is still fresh: the market was suspended (a goal, a card) or the price went. */
+/**
+ * Betfair's general "the order failed" with no better reason (seen 3 times in 50 bets, Oct 2026, most likely a market
+ * suspended for a moment): tried once more on the next pass, a few seconds later, through every check again (still
+ * fresh, price at or above the minimum, limits). A second refusal is final.
+ */
+export const RETRY_ONCE = new Set(["ERROR_IN_ORDER"]);
+
+/** What to do with a refusal: try again (on the next pass, every check repeated) or give up, with the words shown. */
+function refusal(result: { code: string; detail?: string }, attempt: number, what: "bet" | "lay"): { retry: boolean; reason: string } {
+  const reply = result.detail ? ` Betfair's reply: ${result.detail}.` : "";
+  if (RETRY.has(result.code) || (RETRY_ONCE.has(result.code) && attempt < 2)) return { retry: true, reason: `Betfair said ${result.code}; trying again.${reply}` };
+  return { retry: false, reason: `${FRIENDLY[result.code] ?? `Betfair refused the ${what} (${result.code}).`}${reply}` };
+}
+
 export const RETRY = new Set(["MARKET_SUSPENDED", "BET_TAKEN_OR_LAPSED", "BET_LAPSED_PRICE_IMPROVEMENT_TOO_LARGE", "ERROR_IN_MATCHER", "SERVICE_UNAVAILABLE", "TIMEOUT"]);
 
 function money(n: number): string {
@@ -690,12 +707,9 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
     log.info(`Direct betting: pick ${d.pickId} placed, ${money(d.stake)} asking ${ask.toFixed(2)} (shown ${me.back.toFixed(2)}; bet ${result.betId}, ${money(result.sizeMatched)} matched).`);
     return;
   }
-  if (RETRY.has(result.code)) {
-    db.updateDirectBet(d.pickId, { state: "waiting", reason: `Betfair said ${result.code}; trying again.` }, at);
-    return;
-  }
-  db.updateDirectBet(d.pickId, { state: "failed", reason: FRIENDLY[result.code] ?? `Betfair refused the bet (${result.code}).` }, at);
-  log.warn(`Direct betting: pick ${d.pickId} refused by Betfair: ${result.code}.`);
+  const r = refusal(result, attempt, "bet");
+  db.updateDirectBet(d.pickId, { state: r.retry ? "waiting" : "failed", reason: r.reason }, at);
+  log.warn(`Direct betting: pick ${d.pickId} refused by Betfair (attempt ${attempt}): ${result.code}${result.detail ? ` [${result.detail}]` : ""}.`);
 }
 
 /**
@@ -780,12 +794,9 @@ async function workLay(
     log.info(`Direct betting: pick ${d.pickId} LAID ${money(size)} asking ${ask.toFixed(2)} (shown ${me.lay.toFixed(2)}; liability ${money(d.stake)}; bet ${result.betId}).`);
     return;
   }
-  if (RETRY.has(result.code)) {
-    db.updateDirectBet(d.pickId, { state: "waiting", reason: `Betfair said ${result.code}; trying again.` }, at);
-    return;
-  }
-  db.updateDirectBet(d.pickId, { state: "failed", reason: FRIENDLY[result.code] ?? `Betfair refused the lay (${result.code}).` }, at);
-  log.warn(`Direct betting: lay for pick ${d.pickId} refused by Betfair: ${result.code}.`);
+  const r = refusal(result, attempt, "lay");
+  db.updateDirectBet(d.pickId, { state: r.retry ? "waiting" : "failed", reason: r.reason }, at);
+  log.warn(`Direct betting: lay for pick ${d.pickId} refused by Betfair (attempt ${attempt}): ${result.code}${result.detail ? ` [${result.detail}]` : ""}.`);
 }
 
 // ---------------------------------------------------------------------------

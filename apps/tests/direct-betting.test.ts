@@ -335,3 +335,32 @@ test("a strategy can accept further below the price shown than the rest (Underdo
   assert.ok(askPrice(1.46, 1.2, 10) >= 1.31);
   assert.equal(askPrice(1.25, 1.2, 10), 1.2);
 });
+
+test("ERROR_IN_ORDER: tried once more on the next pass, then final, with Betfair's own reply kept", async () => {
+  const { db, add, bf } = setup("live");
+  const id = add();
+  bf.place = async (o) => {
+    bf.placed.push({ price: o.price, size: o.size, ref: o.ref });
+    return { ok: false, code: "ERROR_IN_ORDER", detail: "order FAILURE ERROR_IN_ORDER; bet FAILURE MARKET_NOT_OPEN_FOR_BETTING" };
+  };
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(db.getDirectBet(id)!.state, "waiting");
+  assert.match(db.getDirectBet(id)!.reason ?? "", /trying again.*MARKET_NOT_OPEN_FOR_BETTING/);
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(db.getDirectBet(id)!.state, "failed");
+  assert.match(db.getDirectBet(id)!.reason ?? "", /Betfair's reply: order FAILURE/);
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(bf.placed.length, 2, "two tries, never a third");
+});
+
+test("ERROR_IN_ORDER then success on the retry: placed once", async () => {
+  const { db, add, bf } = setup("live");
+  const id = add();
+  bf.placeFails = "ERROR_IN_ORDER";
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(db.getDirectBet(id)!.state, "waiting");
+  bf.placeFails = null;
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(db.getDirectBet(id)!.state, "placed");
+  assert.equal(bf.placed.length, 2);
+});
