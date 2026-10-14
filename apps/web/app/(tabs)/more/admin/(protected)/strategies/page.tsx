@@ -174,6 +174,23 @@ function ReadyForLive({ row, check, hasStop }: { row: AdminStrategy; check: Chec
   );
 }
 
+/**
+ * The hit rate to hold against break-even, and that break-even: over the PRICED picks (the same ones as the money) and
+ * from what the winners actually paid, so a card can't say "above break-even" while its money says it loses. Falls back
+ * to every settled pick and the average-odds break-even with an older engine.
+ */
+function judged(m: StrategyReturn | null, hitRate: number | null, settled: number) {
+  if (m && m.pricedHits !== undefined && m.counted > 0) {
+    return {
+      hitRate: Math.round((m.pricedHits / m.counted) * 1000) / 10,
+      breakeven: m.breakevenEffective ?? m.breakeven ?? null,
+      range: m.pricedRange ?? null,
+      settled: m.counted,
+    };
+  }
+  return { hitRate, breakeven: m?.breakeven ?? null, range: m?.range ?? null, settled };
+}
+
 /** Below this many priced picks a return is too noisy to act on. */
 const SAMPLE = 50;
 
@@ -268,8 +285,8 @@ function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | 
   // biggest profit lever, so say so. A nudge only; the stake itself is changed in Bet settings.
   const live = r.live as StrategyReturn;
   if (modeOf(row) === "live" && live.counted >= SAMPLE && live.roi !== null && live.roi >= 0.05) {
-    const hit = record(row.liveHits ?? 0, row.liveMisses ?? 0).hitRate;
-    if (hit !== null && typeof live.breakeven === "number" && hit > live.breakeven) {
+    const j = judged(live, record(row.liveHits ?? 0, row.liveMisses ?? 0).hitRate, live.settled);
+    if (j.hitRate !== null && j.breakeven !== null && j.hitRate > j.breakeven) {
       return { tone: "good", text: `Clear edge over ${live.counted} live bets: the best place to raise the stake.` };
     }
   }
@@ -279,14 +296,17 @@ function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | 
  * What the hit rate needs beside it: the odds it was won at, the hit rate those odds need to break even after
  * commission, and the range the true hit rate is probably in, given how few picks there are.
  */
-function OddsContext({ hitRate, money }: { hitRate: number | null; money: NonNullable<ReturnType<typeof returnsFor>> }) {
+function OddsContext({ hitRate, settled, money }: { hitRate: number | null; settled: number; money: NonNullable<ReturnType<typeof returnsFor>> }) {
   const m = money as StrategyReturn;
   if (m.avgOdds === undefined) return null; // older engine
-  const verdict = againstBreakeven(hitRate, m.breakeven, m.range);
-  const range = rangeText(m.range);
+  const j = judged(m, hitRate, settled);
+  const verdict = againstBreakeven(j.hitRate, j.breakeven, j.range);
+  const range = rangeText(j.range);
   return (
     <p className="mt-1 text-xs text-ink-muted">
-      {m.avgOdds === null ? "Odds unknown: set assumed odds on Profit" : `Avg odds ${m.avgOdds.toFixed(2)} · break-even ${m.breakeven}%`}
+      {m.avgOdds === null
+        ? "Odds unknown: set assumed odds on Profit"
+        : `Avg odds ${m.avgOdds.toFixed(2)} · priced picks hit ${j.hitRate}% · break-even ${j.breakeven}% (from what winners paid)`}
       {range && ` · likely ${range}`}
       {verdict && <span className={verdict.tone === "hit" ? "text-hit" : verdict.tone === "loss" ? "text-loss" : ""}> · {verdict.text}</span>}
       {m.assumed ? (
@@ -457,6 +477,7 @@ function StrategyCard({
   const [open, setOpen] = useState(false);
 
   const ret = money as StrategyReturn | null;
+  const judge = judged(ret, hitRate, settled);
   // The headline is the return on each £1 staked (what decides whether a strategy is worth betting), or the £ total
   // when sorting by it.
   const adj = money ? adjustedRoi(money.roi, money.counted) : null;
@@ -513,7 +534,7 @@ function StrategyCard({
                 .join(" · ")}
             </span>
             <span className="mt-1.5 block max-w-xs">
-              <BreakevenBar hitRate={hitRate} breakeven={ret?.breakeven} range={ret?.range} settled={settled} since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
+              <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
           </span>
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
@@ -562,7 +583,7 @@ function StrategyCard({
               from before the change are shown as &quot;Before&quot;.
             </p>
           )}
-          {money && money.settled > 0 && <OddsContext hitRate={hitRate} money={money} />}
+          {money && money.settled > 0 && <OddsContext hitRate={hitRate} settled={settled} money={money} />}
           {/* Live and simulation side by side, so a strategy's real results can be checked against what it does unbet. */}
           {(live.settled > 0 || sim.settled > 0) && (
             <dl className="grid grid-cols-2 gap-2 text-xs">

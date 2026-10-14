@@ -894,7 +894,12 @@ export interface StrategyReturn {
   avgOdds?: number | null;
   /** Hit rate needed to break even at avgOdds after commission, percent. */
   breakeven?: number | null;
+  /** Break-even from what the winners actually paid and the losers cost: the one to judge by. */
+  breakevenEffective?: number | null;
   range?: { low: number; high: number } | null;
+  /** Hits among the priced picks (the same picks as the money), and their likely range. */
+  pricedHits?: number;
+  pricedRange?: { low: number; high: number } | null;
   /** Biggest fall in £ from a high point of running profit. */
   maxDrawdown?: number;
   longestLosingRun?: number;

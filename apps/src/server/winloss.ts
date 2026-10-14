@@ -373,6 +373,12 @@ export interface StrategyReturn {
   hits: number;
   /** Of those, the ones that could be priced (stake and odds known, and for Sim, placed under the feed's rules). */
   counted: number;
+  /**
+   * Hits among the priced picks, and their likely range: the hit rate to judge against break-even, since it is over the
+   * same picks as the money (a hit rate over every settled pick can disagree with it).
+   */
+  pricedHits: number;
+  pricedRange: { low: number; high: number } | null;
   staked: number;
   profit: number;
   /** Profit per pound staked (0.12 = 12p back for every £1), or null when nothing was staked. */
@@ -500,6 +506,8 @@ class ReturnTally {
       settled: this.settled,
       hits: this.hits,
       counted: this.counted,
+      pricedHits: this.winN,
+      pricedRange: hitRateRange(this.winN, this.counted),
       staked,
       profit,
       roi: staked > 0 ? Math.round((profit / staked) * 1000) / 1000 : null,
