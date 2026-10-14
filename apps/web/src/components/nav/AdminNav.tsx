@@ -12,7 +12,8 @@ const chip = (active: boolean) =>
 
 /**
  * The admin menu on phones and tablets: the everyday pages only, so it fits without scrolling, then "More admin"
- * (the More page lists every group). When an occasional page is open, its name shows too, so you can see where you are.
+ * (the More page lists every group). When an occasional page is open, its name (or short name) shows too, so you can
+ * see where you are; it is held to the width that still leaves "More" on a phone.
  */
 export default function AdminNav() {
   const pathname = usePathname();
@@ -29,8 +30,8 @@ export default function AdminNav() {
       ))}
       <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-line" />
       {other && (
-        <Link href={other.href} aria-current="page" className={chip(true)}>
-          {other.label}
+        <Link href={other.href} aria-current="page" className={`${chip(true)} max-w-[4.75rem] truncate`}>
+          {"short" in other ? other.short : other.label}
         </Link>
       )}
       <Link href="/more" className="flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">

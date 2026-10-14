@@ -30,8 +30,8 @@ export const ADMIN_GROUPS = [
     daily: false,
     items: [
       { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier, and how each league played over past seasons." },
-      { href: "/more/admin/edge", label: "Fixtures and value bets", description: "Pre-match insight and value bets for every fixture in the next 48 hours." },
-      { href: "/more/admin/goal-model", label: "Goal model", description: "Our own model of the in-play stats, in shadow: does it beat the market price? You get a notification once it's proved." },
+      { href: "/more/admin/edge", label: "Fixtures and value bets", short: "Fixtures", description: "Pre-match insight and value bets for every fixture in the next 48 hours." },
+      { href: "/more/admin/goal-model", label: "Goal model", short: "Model", description: "Our own model of the in-play stats, in shadow: does it beat the market price? You get a notification once it's proved." },
     ],
   },
   {
@@ -40,7 +40,7 @@ export const ADMIN_GROUPS = [
     items: [
       { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, trials and full access, and the members' rules." },
       { href: "/more/admin/settings", label: "Settings", description: "Public view, Telegram and webhook alerts, download every pick, fresh start." },
-      { href: "/more/admin/results", label: "Fix a result", description: "Correct a hit or miss, or remove a pick." },
+      { href: "/more/admin/results", label: "Fix a result", short: "Fixes", description: "Correct a hit or miss, or remove a pick." },
     ],
   },
   {
