@@ -72,7 +72,7 @@ export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "
     const a = r.layOdds ?? null;
     return a !== null && a > 1.01 ? Math.round((a / (a - 1)) * 1000) / 1000 : null;
   }
-  if (r.market === "NEXT_GOAL" || r.market === "OVER_1_5") {
+  if (r.market === "NEXT_GOAL" || r.market === "OVER_1_5" || r.market === "TWO_MORE_GOALS") {
     return r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1 ? r.overOdds : null;
   }
   if (r.market === "FAVOURITE_TO_WIN") return r.favouriteOdds !== null && r.favouriteOdds > 1 ? r.favouriteOdds : null;

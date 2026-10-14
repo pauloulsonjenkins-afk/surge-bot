@@ -117,9 +117,9 @@ const DEFAULTS: Record<string, StrategyInfo> = {
   },
   "pass master 1st half": {
     name: "Filter Coffee",
-    description: "The favourite is passing well in the first half: backs it to score again. Sim only, as Betfair doesn't list the market.",
+    description: "The favourite is passing well in the first half: backs two more goals in the match. In Sim until 50 priced picks.",
     trigger: "20' to 40', favourite 2.00 or less pre-match, its passing 65%+ and momentum 60+.",
-    bet: "Favourite to score again",
+    bet: "Two more goals (Over goals at the alert + 1.5)",
   },
 };
 

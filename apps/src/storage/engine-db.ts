@@ -191,7 +191,8 @@ export const EDGE_CHAT = "edge";
  *   on them were Match Odds and lost on draws.
  */
 export const RECORD_FROM: Record<string, string> = {
-  "pass master 1st half": "2026-10-01T18:30:00.000Z",
+  // Pass Master: Match Odds until 1 Oct 2026, the favourite to score until 14 Oct, then two more goals (parse-alert.ts).
+  "pass master 1st half": "2026-10-14T13:08:00.000Z",
   // Action-packed: the owner changed its InPlayGuru rules on 11 Oct 2026 (marker set 18:16 UK; its last alert before was 10 Oct).
   "action-packed": "2026-10-11T17:16:00.000Z",
   // Both Teams to Score: loosened in InPlayGuru on 11 Oct 2026 (pre-match favourite under 1.80, was 1.50 or less).

@@ -25,6 +25,8 @@ export type MarketCode =
   | "FAVOURITE_TO_WIN"
   | "FAVOURITE_TO_SCORE"
   | "OVER_1_5"
+  /** Two more goals in the match: Over (goals at the alert + 1.5), any team. */
+  | "TWO_MORE_GOALS"
   | "FIRST_HALF_GOALS"
   /** Lay the away side before kick-off: wins on a home win or a draw. Laid only by GoalBrew's direct betting (Match Odds). */
   | "AWAY_WIN_LAY";
@@ -111,9 +113,11 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /\b(?:first|1st|1h)\s*half\s+goals?\b/, market: "FIRST_HALF_GOALS" },
   // "Time to fight": Over the next goal, the same bet as Momentum (line = goals so far + 0.5).
   { test: /time to fight/, market: "NEXT_GOAL" },
-  // "Pass Master 1st half": the favourite (shortest live price) to score again before full time, i.e. the
-  // favourite's own goals Over (their goals at the alert + 0.5). It was Match Odds on the favourite until 1 Oct 2026.
-  { test: /pass master 1st half/, market: "FAVOURITE_TO_SCORE" },
+  // "Pass Master 1st half": two more goals in the match, Over (goals at the alert + 1.5), any team (from 14 Oct 2026).
+  // Was Match Odds on the favourite until 1 Oct 2026, then the favourite to score again, which Betfair rarely lists a
+  // market for. Over its first 20 alerts two more goals came in 17 (85%), at prices around 1.3 to 1.6, and the
+  // Over/Under market is on Betfair for practically every match.
+  { test: /pass master 1st half/, market: "TWO_MORE_GOALS" },
   // InPlayGuru strategies defined as "Over 0.5 Goals Since Picked (Next goal)" (checked on its Strategies page, 1 Oct 2026).
   { test: /home pressure/, market: "NEXT_GOAL" },
   // "Favourite pressure 2nd half" (added 2 Oct 2026): Pass Master's favourite-dominance signal at 50-70', with the score
@@ -445,6 +449,13 @@ export function parseAlert(text: string): ParsedAlert {
         flags.push("No Over/Under line in the alert to cross-check the target line against.");
       }
     }
+  } else if (market === "TWO_MORE_GOALS") {
+    if (goalsHome !== null && goalsAway !== null) {
+      targetLine = goalsHome + goalsAway + 1.5;
+      selection = `Over ${targetLine}`;
+    } else {
+      flags.push("Could not read the score, so the goal line can't be worked out.");
+    }
   } else if (market === "OVER_1_5") {
     // A fixed line: Over 1.5 goals in the match.
     targetLine = 1.5;
@@ -508,7 +519,7 @@ export function parseAlert(text: string): ParsedAlert {
     const b = Number(ft[2]);
     let computed: PickResult | null = null;
     // Over (goals at the alert + 0.5): wins if the final total is above that line.
-    if ((market === "NEXT_GOAL" || market === "OVER_1_5") && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
+    if ((market === "NEXT_GOAL" || market === "OVER_1_5" || market === "TWO_MORE_GOALS") && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
     else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";
     // Favourite to win (Match Odds): hits only if the favourite wins. A draw loses.
     else if (market === "FAVOURITE_TO_WIN" && favourite !== null) {
