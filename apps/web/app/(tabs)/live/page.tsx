@@ -127,7 +127,7 @@ function exchangeIssue(pick: LivePick): { label: string; detail: string } | null
   if (pick.exchange === "on" && (pick.marketCheck === "noMarket" || pick.marketCheck === "noSelection")) {
     return {
       label: "Not on Betfair as sent",
-      detail: `${pick.marketCheckDetail ?? ""} Fix the market code or selection wording on the Sending page (Bet wording).`.trim(),
+      detail: `${pick.marketCheckDetail ?? ""} Fix the market code or selection wording on Betting → Limits and switches (Bet wording).`.trim(),
     };
   }
   if (pick.exchange === "off") {
@@ -139,7 +139,7 @@ function exchangeIssue(pick: LivePick): { label: string; detail: string } | null
   if (pick.exchange === "nameDiffers") {
     return {
       label: "Name differs on Betfair",
-      detail: `Betfair lists it as “${pick.exchangeEvent ?? "?"}”. Add the team’s Betfair name under Match names on the Sending page.`,
+      detail: `Betfair lists it as “${pick.exchangeEvent ?? "?"}”. Add the team’s Betfair name under Match names on Betting → Limits and switches.`,
     };
   }
   return null;

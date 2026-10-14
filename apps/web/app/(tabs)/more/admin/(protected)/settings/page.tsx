@@ -25,7 +25,7 @@ function FreshStartCard() {
       confirmLabel: "Start fresh from now",
       body: (
         <>
-          <p>The Dashboard, strategy hit rates, Win/Loss and profit figures will count only alerts from this moment on, so they all start at zero.</p>
+          <p>The Dashboard, strategy hit rates and Profit figures will count only alerts from this moment on, so they all start at zero.</p>
           <p>
             <strong>Nothing is deleted.</strong> The Results page, Trade Log and your settings (stakes, minimum odds, switches) are untouched, and you
             can undo this at any time to bring the old figures back.
@@ -50,7 +50,7 @@ function FreshStartCard() {
     <section className="rounded-xl border border-line bg-surface p-3.5">
       <h3 className="text-sm font-medium text-ink">Fresh start</h3>
       <p className="mt-0.5 text-xs text-ink-muted">
-        Restarts the Dashboard, strategy hit rates, Win/Loss and profit figures from zero, without deleting anything.
+        Restarts the Dashboard, strategy hit rates and Profit figures from zero, without deleting anything.
       </p>
       {save.error && <p className="mt-2 text-xs text-destructive">{save.error.message}</p>}
       {at === null ? (
@@ -156,7 +156,7 @@ function DownloadCard() {
       <h3 className="text-sm font-medium text-ink">Download every pick</h3>
       <p className="mt-0.5 text-xs text-ink-muted">
         Every alert ever received, one row each, for Excel: time, weekday and hour; strategy, Live or Sim and how it was bet; league, teams, minute and
-        score; every stat the alert carried; prices; the result; and stake, odds and profit, worked out the same way as the Dashboard and Win/Loss.
+        score; every stat the alert carried; prices; the result; and stake, odds and profit, worked out the same way as the Dashboard and Profit page.
         Removed picks are included and marked, so filter on Excluded if you want them out.
       </p>
       <a

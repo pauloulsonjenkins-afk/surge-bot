@@ -180,7 +180,7 @@ export function BetfairCoverage() {
           (data.competitionCount === 0 ? (
             <p className="text-xs text-warn">
               Betfair’s list of competitions hasn’t been saved yet. It’s read every 6 hours once the live check on Betfair is connected (see
-              Reconcile).
+              Betting → Betfair check).
             </p>
           ) : (
             <p className="text-xs text-ink-muted">

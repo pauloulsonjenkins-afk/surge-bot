@@ -134,7 +134,7 @@ export default function TradeLogPage() {
               className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
             >
               <PencilLine size={14} />
-              Amend results
+              Fix a result
             </Link>
           ) : undefined
         }
@@ -221,7 +221,7 @@ export default function TradeLogPage() {
       {admin && (
         <p className="text-center text-xs text-ink-muted">
           Live bets matched on Betfair (marked “Betfair”) show the real stake and profit; other figures are estimated from the
-          alert’s odds, as on Win/Loss. Sim picks show what the bet would have made. Not placed: sent to your betting
+          alert’s odds, as on Profit. Sim picks show what the bet would have made. Not placed: sent to your betting
           software but never bet, so nothing was staked.
         </p>
       )}

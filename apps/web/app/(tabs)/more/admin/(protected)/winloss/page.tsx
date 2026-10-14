@@ -170,7 +170,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
     <div className="space-y-3">
       <PageHeader
         as="h2"
-        title="Win / Loss"
+        title="Profit"
         subtitle={
           <>
           Bets matched on Betfair count at their real stake, price and profit. Everything else (Sim picks, bets placed by

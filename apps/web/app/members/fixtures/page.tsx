@@ -25,7 +25,7 @@ export default function FixturesPage() {
             <Link href="/members/login?next=/members/fixtures" className="text-accent underline">
               Sign in
             </Link>
-            . The admin&apos;s copy is under Admin → Fixtures · Edge.
+            . The admin&apos;s copy is under Admin → Fixtures and value bets.
           </>
         ) : (
           (error ?? me.error)?.message

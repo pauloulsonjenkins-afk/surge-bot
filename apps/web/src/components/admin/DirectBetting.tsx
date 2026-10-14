@@ -26,7 +26,7 @@ const MODES: ReadonlyArray<{ value: DirectMode; label: string }> = [
 const MODE_TEXT: Record<DirectMode, string> = {
   off: "GoalBrew places no bets. Live strategies are recorded but nothing is bet.",
   shadow:
-    "For each pick Sending hands over, GoalBrew works out what it would bet itself (market, price, checks) and lists it below, without placing anything. Check it before going Live.",
+    "For each pick going to bet, GoalBrew works out what it would bet itself (market, price, checks) and lists it below, without placing anything. Check it before going Live.",
   live: "GoalBrew places your bets on Betfair itself. The bet feed hands out nothing new, so a pick can't be bet twice.",
 };
 
@@ -120,8 +120,8 @@ export function Readiness({ data }: { data: DirectStatus }) {
     },
     {
       ok: data.sendingOn,
-      label: "Sending switched on",
-      detail: data.sendingOn ? "Strategies set Live on Sending are bet." : "The master switch on Sending is off, so nothing is bet either way.",
+      label: "Betting switched on",
+      detail: data.sendingOn ? "Strategies set Live on Strategies are bet." : "The Betting on / off switch is off, so nothing is bet either way.",
     },
     {
       ok: r.liveAllowed,

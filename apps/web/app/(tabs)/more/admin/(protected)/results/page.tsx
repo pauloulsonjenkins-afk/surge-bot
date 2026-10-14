@@ -209,7 +209,7 @@ function SettledPicks() {
             title: "Put this pick back into your results?",
             confirmLabel: "Put back",
             details: [{ label: "Match", value: `${pick.home ?? "?"} v ${pick.away ?? "?"}` }],
-            body: <p>It counts again on the Dashboard, Trade Log and Win/Loss.</p>,
+            body: <p>It counts again on the Dashboard, Trade Log and Profit.</p>,
           }
         : {
             title: "Remove this pick from your results?",
@@ -218,7 +218,7 @@ function SettledPicks() {
             details: [{ label: "Match", value: `${pick.home ?? "?"} v ${pick.away ?? "?"}` }],
             body: (
               <>
-                <p>Use this when the bet was wrong or never actually went on. It comes out of the Dashboard, Trade Log and Win/Loss straight away.</p>
+                <p>Use this when the bet was wrong or never actually went on. It comes out of the Dashboard, Trade Log and Profit straight away.</p>
                 <p>The original alert stays on the Raw alerts tab, and you can put it back at any time.</p>
               </>
             ),
@@ -346,7 +346,7 @@ export default function AmendResultsPage() {
     <div className="space-y-6">
       <PageHeader
         as="h2"
-        title="Amend results"
+        title="Fix a result"
         subtitle="The Trade Log, with the tools to correct it."
         actions={
           <Segmented

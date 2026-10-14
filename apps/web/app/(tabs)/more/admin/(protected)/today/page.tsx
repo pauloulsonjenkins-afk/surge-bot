@@ -229,8 +229,8 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           warn={d.limits.dailyLossLimit === 0 || d.limits.lossStop !== null}
         >
           {d.limits.dailyLossLimit === 0 && (
-            <Link href="/more/admin/sending" className="mt-1 block text-xs text-warn underline">
-              Set one on Sending
+            <Link href="/more/admin/sending?tab=limits" className="mt-1 block text-xs text-warn underline">
+              Set one on Betting
             </Link>
           )}
         </Tile>

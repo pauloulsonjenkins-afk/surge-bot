@@ -275,13 +275,13 @@ function OddsContext({ hitRate, money }: { hitRate: number | null; money: NonNul
   const range = rangeText(m.range);
   return (
     <p className="mt-1 text-xs text-ink-muted">
-      {m.avgOdds === null ? "Odds unknown: set assumed odds on Win/Loss" : `Avg odds ${m.avgOdds.toFixed(2)} · break-even ${m.breakeven}%`}
+      {m.avgOdds === null ? "Odds unknown: set assumed odds on Profit" : `Avg odds ${m.avgOdds.toFixed(2)} · break-even ${m.breakeven}%`}
       {range && ` · likely ${range}`}
       {verdict && <span className={verdict.tone === "hit" ? "text-hit" : verdict.tone === "loss" ? "text-loss" : ""}> · {verdict.text}</span>}
       {m.assumed ? (
         <span className="text-warn">
           {" "}
-          · {m.assumed === m.counted ? "All" : `${m.assumed} of ${m.counted}`} priced at the assumed odds set on Win/Loss, not a real
+          · {m.assumed === m.counted ? "All" : `${m.assumed} of ${m.counted}`} priced at the assumed odds set on Profit, not a real
           price, so treat this return as a guess
         </span>
       ) : null}
@@ -357,7 +357,7 @@ function AboutStrategy({ label }: { label: string }) {
         />
       </label>
       {save.error && <p className="text-destructive">{save.error.message}</p>}
-      <p className="text-ink-muted">Only the name shown in the app changes. Sending, stakes and results keep using the original name.</p>
+      <p className="text-ink-muted">Only the name shown in the app changes. Betting, stakes and results keep using the original name.</p>
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
@@ -654,7 +654,7 @@ function StrategyCard({
                 </select>
               </label>
               <p className="text-xs text-ink-muted">
-                The Dashboard and stats then treat both as one strategy, and nothing is deleted. Sending is not affected: each strategy keeps its own
+                The Dashboard and stats then treat both as one strategy, and nothing is deleted. Betting is not affected: each strategy keeps its own
                 switch and stake.
               </p>
               <button
@@ -757,7 +757,7 @@ export default function StrategiesPage() {
         <>
           <p>
             Their {alerts} saved alert{alerts === 1 ? "" : "s"} are deleted for good, so they disappear from the Dashboard, Live, Strategies, Trade
-            Log and Win/Loss.
+            Log and Profit.
           </p>
           {sent > 0 && (
             <p>
@@ -834,8 +834,8 @@ export default function StrategiesPage() {
           <>
             Every strategy in one place: its results, its Live / Sim switch, and (tap it) its stake, minimum odds, stop loss, rename, merge and delete.
             Ranked by the return on each £1 staked. Betting on or off for everything, and the safety limits, are on{" "}
-            <Link href="/more/admin/sending" className="text-accent underline">
-              Sending
+            <Link href="/more/admin/sending?tab=limits" className="text-accent underline">
+              Betting
             </Link>
             .
           </>

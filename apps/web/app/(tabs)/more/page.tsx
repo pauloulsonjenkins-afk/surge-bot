@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bot, BrainCircuit, CalendarDays, ChevronRight, Crown, Gauge, History, ListChecks, Lock, PencilLine, Scale, Send, Settings, TrendingUp, Trophy } from "lucide-react";
+import { Bot, BrainCircuit, CalendarDays, ChevronRight, Crown, Gauge, Lock, PencilLine, Send, Settings, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
@@ -13,15 +13,11 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: n
   "/more/admin/sending": Send,
   "/more/admin/strategies": Bot,
   "/more/admin/leagues": Trophy,
-  "/more/admin/history": History,
   "/more/admin/goal-model": BrainCircuit,
   "/more/admin/edge": CalendarDays,
   "/more/admin/winloss": TrendingUp,
   "/more/admin/results": PencilLine,
-  "/more/admin/reconcile": Scale,
   "/more/admin/horses": HorseHeadIcon,
-  "/more/admin/horse-stats": TrendingUp,
-  "/more/admin/horse-log": ListChecks,
   "/more/admin/members": Crown,
   "/more/admin/settings": Settings,
 };

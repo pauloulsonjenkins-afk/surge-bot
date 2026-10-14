@@ -1,48 +1,52 @@
 /**
- * The admin pages, grouped by job, in the order they appear in the desktop sidebar, the phone admin menu and
- * the More page:
- * - Betting: each strategy (results and its bet settings), how bets reach Betfair, and what really happened there.
- * - Results: how the alerts are doing, and the data behind those figures.
- * - Members and site: who can use the site and what they get.
- * - Horses: the separate horse racing log.
- * Settled picks themselves live on the Trade Log; "Amend results" is the admin's editing view of it (with the raw
- * alerts as a second tab).
+ * The admin pages, grouped by how often they're used, in the order they appear in the desktop sidebar, the phone
+ * admin row and the More page:
+ * - Every day: today at a glance, each strategy, and the betting itself (bets placed, limits, the Betfair check).
+ * - Money: profit and loss.
+ * - Research: leagues (ours and their past seasons), pre-match value, the goal model. Opened now and then.
+ * - Site: members, settings, and fixing a result.
+ * - Horses: the separate racing log, one page with tabs.
+ * On phones only "Every day" sits in the admin row; the rest are a tap away on More (see AdminNav).
+ * Settled picks live on the Trade Log; "Fix a result" is the admin's editing view of it (raw alerts on a second tab).
+ * Old addresses (reconcile, history, horse-log, horse-stats, direct, picks, telegram) redirect to their new places.
  */
 export const ADMIN_GROUPS = [
   {
-    label: "Betting",
+    label: "Every day",
+    daily: true,
     items: [
       { href: "/more/admin/today", label: "Today", description: "One glance: betting on or off, today's result, money out, limits, alert health, speed and why picks weren't placed." },
       { href: "/more/admin/strategies", label: "Strategies", description: "Each strategy's results, Live / Sim, stake, minimum odds and stop loss." },
-      { href: "/more/admin/sending", label: "Sending", description: "Betting on or off, placing bets on Betfair, safety limits and bet wording." },
-      { href: "/more/admin/reconcile", label: "Reconcile", description: "Real Betfair results against the app's estimates." },
+      { href: "/more/admin/sending", label: "Betting", description: "Bets placed on Betfair, the on / off switch and safety limits, and the check against Betfair's real results." },
     ],
   },
   {
-    label: "Results",
+    label: "Money",
+    daily: false,
+    items: [{ href: "/more/admin/winloss", label: "Profit", description: "Profit and loss by day and strategy, and running costs." }],
+  },
+  {
+    label: "Research",
+    daily: false,
     items: [
-      { href: "/more/admin/winloss", label: "Win/Loss", description: "Profit and loss by day and strategy, and running costs." },
-      { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier." },
-      { href: "/more/admin/edge", label: "Fixtures · Edge", description: "The pre-match insight cards members see, for every fixture in the next 48 hours." },
+      { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier, and how each league played over past seasons." },
+      { href: "/more/admin/edge", label: "Fixtures and value bets", description: "Pre-match insight and value bets for every fixture in the next 48 hours." },
       { href: "/more/admin/goal-model", label: "Goal model", description: "Our own model of the in-play stats, in shadow: does it beat the market price? You get a notification once it's proved." },
-      { href: "/more/admin/history", label: "League history", description: "How each league plays, and strategies tested on past seasons." },
-      { href: "/more/admin/results", label: "Amend results", description: "Correct a hit or miss, or remove a pick." },
     ],
   },
   {
-    label: "Members and site",
+    label: "Site",
+    daily: false,
     items: [
-      { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, memberships, trials and the members' rules." },
+      { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, trials and full access, and the members' rules." },
       { href: "/more/admin/settings", label: "Settings", description: "Public view, Telegram and webhook alerts, download every pick, fresh start." },
+      { href: "/more/admin/results", label: "Fix a result", description: "Correct a hit or miss, or remove a pick." },
     ],
   },
   {
     label: "Horses",
-    items: [
-      { href: "/more/admin/horses", label: "Today's bets", description: "Enter your daily NAP and choices, and mark the results." },
-      { href: "/more/admin/horse-log", label: "Horse log", description: "Every day’s tipped horses, and what you did with each one." },
-      { href: "/more/admin/horse-stats", label: "How it's going", description: "Profit over time, which choice is paying, courses and patterns." },
-    ],
+    daily: false,
+    items: [{ href: "/more/admin/horses", label: "Horses", description: "Today's NAP and choices, every day's log, and how it's going." }],
   },
 ] as const;
 

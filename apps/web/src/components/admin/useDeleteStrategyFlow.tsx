@@ -22,7 +22,7 @@ export function useDeleteStrategyFlow() {
         <>
           <p>
             {alerts !== undefined ? `Its ${alerts} saved alert${alerts === 1 ? "" : "s"} are` : "Its saved alerts are"} deleted for good, so it
-            disappears from the Dashboard, Live, Strategies, Trade Log and Win/Loss.
+            disappears from the Dashboard, Live, Strategies, Trade Log and Profit.
           </p>
           {sent > 0 && (
             <p>

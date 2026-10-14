@@ -46,7 +46,7 @@ export function betSummary(s: SendingStrategy, settings: SendingSettings): { tex
     const parts = [marketName(s.market), stakeText(s) ? `${stakeText(s)} liability` : "No liability set yet", s.maxLayOdds != null ? `max lay ${s.maxLayOdds.toFixed(2)}` : null, hasStop ? "stop loss set" : null];
     return { text: parts.filter(Boolean).join(" · "), warn: !hasStake(s) };
   }
-  if (!canBet(s, settings)) return { text: "Can't be bet yet: set its market under Sending → Bet wording", warn: true };
+  if (!canBet(s, settings)) return { text: "Can't be bet yet: set its market under Betting → Limits and switches → Bet wording", warn: true };
   const hasStop = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
   const parts = [
     marketName(s.market),
@@ -195,11 +195,11 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
       ],
       body: (
         <>
-          <p>Its new picks will be bet with real money{settings.enabled ? "" : " once betting is switched on (Sending)"}.</p>
+          <p>Its new picks will be bet with real money{settings.enabled ? "" : " once betting is switched on (Betting)"}.</p>
           {isLay(s) && (
             <p>
               These are LAY bets: each one wins a small amount on a home win or draw, and loses the full liability if the away side wins. They are placed only
-              by GoalBrew&apos;s direct betting, so Sending → Betting on Betfair must be Live.
+              by GoalBrew&apos;s direct betting, so Betting → Limits and switches → Betting on Betfair must be Live.
             </p>
           )}
           {!hasStop && (
@@ -274,7 +274,7 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
     const raw = (stake ?? "").trim().replace(/^£/, "");
     const n = Number(raw);
     if (!raw || !Number.isFinite(n) || n <= 0) return setError("Enter a stake above zero, for example 2 or 2.50.");
-    if (n > settings.maxStake) return setError(`That is above your highest stake allowed (£${settings.maxStake}). Raise that limit on Sending first if you really mean it.`);
+    if (n > settings.maxStake) return setError(`That is above your highest stake allowed (£${settings.maxStake}). Raise that limit on Betting → Limits and switches first if you really mean it.`);
     setError(null);
     save.mutate({ stakes: { [key]: n } }, { onSuccess: () => setStake(undefined) });
   }
