@@ -6,7 +6,7 @@ import { ChevronRight } from "lucide-react";
 import { ADMIN_GROUPS, ADMIN_SECTIONS } from "@/lib/admin-sections";
 
 const chip = (active: boolean) =>
-  `shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors ${
+  `shrink-0 rounded-md px-2 py-1.5 text-sm transition-colors ${
     active ? "bg-accent/15 font-medium text-ink shadow-[inset_0_-2px_0_var(--accent)]" : "text-ink-muted hover:bg-surface-2 hover:text-ink"
   }`;
 
@@ -21,13 +21,13 @@ export default function AdminNav() {
   const other = ADMIN_SECTIONS.find((s) => isOn(s.href) && !daily.some((d) => d.href === s.href));
 
   return (
-    <nav aria-label="Admin" className="flex items-center gap-1 overflow-x-auto border-b border-line px-3 py-2 lg:hidden">
+    <nav aria-label="Admin" className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-2 lg:hidden">
       {daily.map((s) => (
         <Link key={s.href} href={s.href} aria-current={isOn(s.href) ? "page" : undefined} className={chip(isOn(s.href))}>
           {s.label}
         </Link>
       ))}
-      <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-line" />
+      <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-line" />
       {other && (
         <Link href={other.href} aria-current="page" className={chip(true)}>
           {other.label}
