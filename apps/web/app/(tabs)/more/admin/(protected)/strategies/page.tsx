@@ -191,6 +191,25 @@ function judged(m: StrategyReturn | null, hitRate: number | null, settled: numbe
   return { hitRate, breakeven: m?.breakeven ?? null, range: m?.range ?? null, settled };
 }
 
+/** Checks before a price-check figure is coloured as a verdict (it settles much sooner than a hit rate). */
+const CHECKS_TO_JUDGE = 20;
+
+/**
+ * Did the alert's price beat Betfair's price a few minutes later (against the typical drift), or at kick-off? The
+ * earliest sign of a real edge: it settles in about 20 picks, long before a hit rate does.
+ */
+function PriceCheckLine({ check }: { check: CheckResult }) {
+  const judged = check.picks >= CHECKS_TO_JUDGE;
+  const tone = !judged ? "text-ink-muted" : check.vsTypical > 0 ? "text-hit" : "text-loss";
+  const v = `${check.vsTypical > 0 ? "+" : ""}${check.vsTypical.toFixed(1)}%`;
+  return (
+    <span className="mt-0.5 block text-xs text-ink-muted" title="How much better the alert's price was than Betfair's price a few minutes later (against the typical drift), or at kick-off for pre-match picks. Positive, again and again, means the strategy finds value the market hasn't priced yet.">
+      Price check: <span className={tone}>{v} {check.kickOff ? "vs kick-off" : "vs the market"}</span> · {check.picks} check{check.picks === 1 ? "" : "s"}
+      {judged ? "" : " (too early)"}
+    </span>
+  );
+}
+
 /** Below this many priced picks a return is too noisy to act on. */
 const SAMPLE = 50;
 
@@ -533,6 +552,7 @@ function StrategyCard({
                 .filter(Boolean)
                 .join(" · ")}
             </span>
+            {check && check.picks > 0 && <PriceCheckLine check={check} />}
             <span className="mt-1.5 block max-w-xs">
               <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>

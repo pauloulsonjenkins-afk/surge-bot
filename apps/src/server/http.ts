@@ -9,6 +9,7 @@
  *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
+ *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N|since=ISO  totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
@@ -89,6 +90,7 @@ import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
+import { applyAdvice, strategyAdvice } from "./strategy-advice";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { cachedModelReport, publishModel, shadowReport } from "../model/goal-model";
 import { getProbe } from "../fixtures/probe";
@@ -413,6 +415,32 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         log.info(body.start ? "Fresh start: figures now count from this moment." : "Fresh start undone: all figures count again.");
       }
       send(res, 200, { at: db.getFreshStart() });
+      return;
+    }
+
+    // A strategy suggestion carried out (the admin pressed Apply on Today): stake ladder, Live or Sim (strategy-advice.ts).
+    if (req.method === "POST" && path === "/internal/strategy-advice/apply") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const kinds = ["try-live", "back-to-sim", "stake-up", "stake-down"] as const;
+      const kind = kinds.find((k) => k === body.kind);
+      if (typeof body.key !== "string" || !kind) {
+        send(res, 400, { error: "Which suggestion?" });
+        return;
+      }
+      try {
+        const done = applyAdvice(db, body.key, kind);
+        send(res, 200, { applied: done, advice: strategyAdvice(db) });
+      } catch (err) {
+        send(res, 400, { error: err instanceof Error ? err.message : "Couldn't apply that." });
+      }
       return;
     }
 

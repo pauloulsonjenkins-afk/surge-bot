@@ -1660,7 +1660,7 @@ export interface TodaySnapshot {
   stopped: Array<{ strategy: string; reason: string | null }>;
   speed: { today: SpeedReport; week: SpeedReport };
   /** Suggestions to put a strategy Live or back to Sim (missing on an older engine). */
-  advice?: Array<{ key: string; kind: "try-live" | "back-to-sim"; reason: string }>;
+  advice?: StrategyAdvice[];
 }
 
 export interface NotPlacedReport {
@@ -1792,4 +1792,30 @@ export interface TeamGoalsReport {
   sinceStart: { pass: TeamGoalsGroup; fail: TeamGoalsGroup };
   backfilled: { pass: TeamGoalsGroup; fail: TeamGoalsGroup };
   byStrategy: Array<{ strategy: string; pass: TeamGoalsGroup; fail: TeamGoalsGroup }>;
+}
+
+/** A strategy suggestion (engine strategy-advice.ts): Live / Sim, or one step on the stake ladder. */
+export interface StrategyAdvice {
+  key: string;
+  kind: "try-live" | "back-to-sim" | "stake-up" | "stake-down";
+  reason: string;
+  /** What Apply does, in words. Missing from an older engine. */
+  action?: string;
+}
+
+/** Carries out one suggestion (the admin pressed Apply). */
+export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"]): Promise<{ advice: StrategyAdvice[] }> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  const res = await fetch(`${baseUrl}/internal/strategy-advice/apply`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ key, kind }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as { advice?: StrategyAdvice[]; error?: string };
+  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  return { advice: data.advice ?? [] };
 }

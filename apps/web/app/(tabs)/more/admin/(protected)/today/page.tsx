@@ -10,7 +10,8 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useNotPlaced, useToday, type SpeedReport, type TodaySnapshot } from "@/queries/use-today";
 import { useSaveSending } from "@/queries/use-sending";
 import { useStrategyNames } from "@/queries/use-strategy-names";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { StrategyAdvice } from "@/server/engine-client";
 import { getJson } from "@/queries/fetch-json";
 import { TopOpportunity } from "@/components/edge/EdgeList";
 import type { EdgeCard } from "@/lib/members/edge";
@@ -250,16 +251,10 @@ function Tiles({ d }: { d: TodaySnapshot }) {
       </div>
 
       {d.advice && d.advice.length > 0 && (
-        <Card title="Suggestions" subtitle="From recent results. Nothing changes until you switch it on Strategies; you get one notification per new suggestion.">
-          <ul className="space-y-2 text-sm">
+        <Card title="Suggestions" subtitle="From results since each strategy's rules last changed. Nothing changes until you press Apply; you get one notification per new suggestion.">
+          <ul className="space-y-3 text-sm">
             {d.advice.map((a) => (
-              <li key={a.key}>
-                <Link href="/more/admin/strategies" className="font-medium text-ink underline decoration-line">
-                  {names.name(a.key)}
-                </Link>{" "}
-                <span className={a.kind === "try-live" ? "text-hit" : "text-warn"}>{a.kind === "try-live" ? "ready to try Live at £1" : "consider putting back to Sim"}</span>
-                <span className="block text-xs text-ink-muted">{a.reason}</span>
-              </li>
+              <AdviceRow key={`${a.key}:${a.kind}`} a={a} name={names.name(a.key)} />
             ))}
           </ul>
         </Card>
@@ -317,5 +312,58 @@ export default function TodayPage() {
       )}
       <NotPlaced />
     </div>
+  );
+}
+
+const ADVICE_LABEL: Record<StrategyAdvice["kind"], string> = {
+  "try-live": "ready to try Live",
+  "back-to-sim": "consider putting back to Sim",
+  "stake-up": "worth a bigger stake",
+  "stake-down": "worth a smaller stake",
+};
+
+/** One suggestion, with Apply (confirmed first: it changes real-money betting). */
+function AdviceRow({ a, name }: { a: StrategyAdvice; name: string }) {
+  const qc = useQueryClient();
+  const dialog = useDialog();
+  const [done, setDone] = useState<string | null>(null);
+  const apply = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/advice/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: a.key, kind: a.kind }) });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Couldn't apply that.");
+    },
+    onSuccess: () => {
+      setDone(a.action ?? "Done");
+      void qc.invalidateQueries();
+    },
+  });
+  const good = a.kind === "try-live" || a.kind === "stake-up";
+  return (
+    <li className="flex flex-wrap items-start justify-between gap-2">
+      <span className="min-w-0 flex-1">
+        <Link href="/more/admin/strategies" className="font-medium text-ink underline decoration-line">
+          {name}
+        </Link>{" "}
+        <span className={good ? "text-hit" : "text-warn"}>{ADVICE_LABEL[a.kind]}</span>
+        <span className="block text-xs text-ink-muted">{a.reason}</span>
+        {apply.error && <span className="block text-xs text-destructive">{apply.error.message}</span>}
+      </span>
+      {a.action &&
+        (done ? (
+          <span className="shrink-0 text-xs text-hit">Done: {done}</span>
+        ) : (
+          <button
+            type="button"
+            disabled={apply.isPending}
+            onClick={async () => {
+              if (await dialog.confirm({ title: `${name}: ${a.action}?`, tone: "money", confirmLabel: a.action!, body: <p>{a.reason}</p> })) apply.mutate();
+            }}
+            className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50"
+          >
+            {apply.isPending ? "Applying…" : a.action}
+          </button>
+        ))}
+    </li>
   );
 }
