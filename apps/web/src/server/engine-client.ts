@@ -369,6 +369,8 @@ export interface SendingSettings {
   dailyLossLimit?: number;
   /** The stake ladder applies its raises and cuts by itself (one step a week at most). Missing on an older engine. */
   ladderAuto?: boolean;
+  /** No in-play bet from an alert after this minute (0 = off). Missing on an older engine. */
+  latestMinute?: number;
   bttsMarketType: string;
   bttsSelection: string;
   underdogMarketType: string;

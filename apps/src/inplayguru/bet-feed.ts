@@ -77,6 +77,11 @@ export interface SendingSettings {
    * most every 7 days, with a notification for each. Off = suggestions only. Live / Sim changes always wait for the admin.
    */
   ladderAuto: boolean;
+  /**
+   * In-play picks from an alert after this minute are never bet (Live) nor recorded as Sim bets, whatever the strategy's
+   * own rules say: a safety net for a rule mistake upstream (Sustained momentum fired at 93' on 14 Oct 2026). 0 = off.
+   */
+  latestMinute: number;
   /** Most money (£) staked in total on any one match, across strategies, so correlated bets (e.g. several Next goal strategies) can't stack. 0 = no limit. */
   matchCap: number;
   /** Market code and selection name used for Both Teams to Score. */
@@ -125,6 +130,7 @@ export const DEFAULT_SENDING: SendingSettings = {
   matchCap: 0,
   dailyLossLimit: 0,
   ladderAuto: false,
+  latestMinute: 88,
   bttsMarketType: "BOTH_TEAMS_TO_SCORE",
   bttsSelection: "Yes",
   underdogMarketType: "DOUBLE_CHANCE",
@@ -246,6 +252,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     matchCap: clampInt(raw.matchCap, 0, 5000, DEFAULT_SENDING.matchCap),
     dailyLossLimit: clampInt(raw.dailyLossLimit, 0, 100000, DEFAULT_SENDING.dailyLossLimit),
     ladderAuto: raw.ladderAuto === true,
+    latestMinute: clampInt(raw.latestMinute, 0, 130, DEFAULT_SENDING.latestMinute),
     bttsMarketType: cleanCode(raw.bttsMarketType, DEFAULT_SENDING.bttsMarketType),
     bttsSelection: cleanCode(raw.bttsSelection, DEFAULT_SENDING.bttsSelection),
     underdogMarketType: cleanCode(raw.underdogMarketType, DEFAULT_SENDING.underdogMarketType),
@@ -273,6 +280,7 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
 
   if (typeof patch.enabled === "boolean") next.enabled = patch.enabled;
   if (typeof patch.ladderAuto === "boolean") next.ladderAuto = patch.ladderAuto;
+  if (patch.latestMinute !== undefined) next.latestMinute = clampInt(patch.latestMinute, 0, 130, current.latestMinute);
   // Stakes first, so a request can set a stake and switch the strategy on together.
   if (patch.stakes && typeof patch.stakes === "object") {
     for (const [k, v] of Object.entries(patch.stakes as Record<string, unknown>)) {
@@ -636,6 +644,10 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       skipped.push(skip(p, p.flags[0] ?? "Not sendable."));
       continue;
     }
+    if (tooLate(p, settings)) {
+      skipped.push(skip(p, `Alert at ${p.minute}', after the latest minute bet (${settings.latestMinute}').`));
+      continue;
+    }
     if (!p.home || !p.away) {
       skipped.push(skip(p, "Team names missing."));
       continue;
@@ -792,6 +804,11 @@ export function alertOddsOfPick(p: LivePick): number | null {
  * sent (stop loss, daily limit, the feed wasn't read...), it is recorded here as not placed.
  * Returns how many picks were recorded.
  */
+/** An in-play alert later than the latest minute allowed (Sending: latestMinute). Pre-match picks have no minute. */
+export function tooLate(p: Pick<LivePick, "minute">, settings: Pick<SendingSettings, "latestMinute">): boolean {
+  return settings.latestMinute > 0 && p.minute !== null && p.minute > settings.latestMinute;
+}
+
 export function recordSimBets(db: EngineDb, now = new Date()): number {
   // Only picks that arrive after recording first started: older ones keep being priced at the strategy's
   // stake, rather than being judged now as if they had arrived late.
@@ -826,6 +843,7 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     if (noSend.has(p.leagueKey)) skipped = "This league is marked as not on Betfair.";
     else if (liveNow) skipped = "Not sent by the bet feed in time.";
     else if (!fresh) skipped = "The alert arrived too late to bet.";
+    else if (tooLate(p, settings)) skipped = `Alert at ${p.minute}', after the latest minute bet (${settings.latestMinute}').`;
     else if (stake === null) skipped = staked.reason ?? "No stake set for this strategy.";
     else if (stake > settings.maxStake) skipped = `Stake £${stake.toFixed(2)} is above the highest allowed (£${settings.maxStake}).`;
     else if (p.market !== "AWAY_WIN_LAY" && minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;

@@ -26,6 +26,7 @@ const whenFmt = new Intl.DateTimeFormat("en-GB", {
 interface Form {
   maxStake: string;
   maxAgeMinutes: string;
+  latestMinute: string;
   dailyCap: string;
   matchCap: string;
   dailyLossLimit: string;
@@ -51,6 +52,7 @@ function toForm(s: SendingSettings): Form {
   return {
     maxStake: String(s.maxStake),
     maxAgeMinutes: String(s.maxAgeMinutes),
+    latestMinute: String(s.latestMinute ?? 88),
     dailyCap: String(s.dailyCap),
     matchCap: String(s.matchCap ?? 0),
     dailyLossLimit: String(s.dailyLossLimit ?? 0),
@@ -144,6 +146,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
       {
         maxStake: Number(form!.maxStake),
         maxAgeMinutes: Number(form!.maxAgeMinutes),
+        latestMinute: Number(form!.latestMinute),
         dailyCap: Number(form!.dailyCap),
         matchCap: Number(form!.matchCap),
         dailyLossLimit: Number(form!.dailyLossLimit),
@@ -347,6 +350,16 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                   onChange={(e) => setForm({ ...form, maxAgeMinutes: e.target.value })}
                 />
                 <span className="mt-1 block">Pre-match picks (First Half Goal) can be bet until kick-off instead.</span>
+              </label>
+              <label className="text-xs text-ink-muted">
+                Latest minute to bet
+                <input
+                  inputMode="numeric"
+                  className={`${inputCls} mt-1`}
+                  value={form.latestMinute}
+                  onChange={(e) => setForm({ ...form, latestMinute: e.target.value })}
+                />
+                <span className="mt-1 block">No in-play bet from an alert after this minute, whatever a strategy&apos;s own rules say. 0 = no limit.</span>
               </label>
               <label className="text-xs text-ink-muted">
                 Most new picks per day
