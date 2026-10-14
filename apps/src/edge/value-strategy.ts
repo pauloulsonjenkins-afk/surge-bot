@@ -230,3 +230,75 @@ export function startValueSettling(db: EngineDb): void {
   setTimeout(() => void run(), 5 * 60_000).unref?.();
   setInterval(() => void run(), SETTLE_EVERY_MS).unref?.();
 }
+
+// ---- Bet by hand ----------------------------------------------------------------------------------------------------
+
+/** A Best Value Cuppa pick that can still be bet by hand (before kick-off), for the Bet buttons on Today and Edge. */
+export interface BettableValuePick {
+  id: number;
+  home: string | null;
+  away: string | null;
+  league: string | null;
+  selection: string | null;
+  kickoff: string;
+  /** Betfair's price when the pick was recorded. */
+  price: number;
+  trend: string;
+  /** Already handed to betting (by a Bet press, or because the strategy is Live): what direct betting says. */
+  sent: { at: string; state: string | null; reason: string | null; matched: number | null; avgPrice: number | null } | null;
+}
+
+export function bettableValuePicks(db: EngineDb, now = new Date()): BettableValuePick[] {
+  const out: BettableValuePick[] = [];
+  for (const o of db.listOpenEdgePicks()) {
+    const info = (o.detail as ParsedAlert & { edge?: EdgePickInfo }).edge;
+    if (!info?.kickoff || Date.parse(info.kickoff) <= now.getTime()) continue;
+    const p = db.getLivePick(o.id);
+    if (!p) continue;
+    const d = p.sentAt ? db.getDirectBet(p.id) : null;
+    out.push({
+      id: p.id,
+      home: p.home,
+      away: p.away,
+      league: p.competition,
+      selection: p.selection,
+      kickoff: info.kickoff,
+      price: info.price,
+      trend: info.trend,
+      sent: p.sentAt ? { at: p.sentAt, state: d?.state ?? null, reason: d?.reason ?? null, matched: d?.sizeMatched ?? null, avgPrice: d?.avgPrice ?? null } : null,
+    });
+  }
+  return out.sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+}
+
+/**
+ * The admin pressed Bet on a value pick: it is handed to GoalBrew's direct betting as if its strategy were Live, at the
+ * stake chosen, and placed on the next pass with every usual check (minimum odds, spread, overround, stale price, daily
+ * stake limit, highest-stake limit, not after kick-off). The pick then counts as a Live Best Value Cuppa bet.
+ * Throws with a reason when it can't be bet.
+ */
+export function betValuePick(db: EngineDb, pickId: number, stake: number, deps: { directLive: boolean }, now = new Date()): void {
+  const p = db.getLivePick(pickId);
+  if (!p || p.market !== "EDGE_VALUE") throw new Error("That isn't a value bet GoalBrew recorded.");
+  if (p.sentAt) throw new Error("That bet has already been handed to betting.");
+  if (p.result || p.excluded) throw new Error("That pick has already settled.");
+  const info = (p.detail as (ParsedAlert & { edge?: EdgePickInfo }) | null)?.edge;
+  if (!info?.kickoff || Date.parse(info.kickoff) <= now.getTime()) throw new Error("It has kicked off: too late to bet.");
+  if (!deps.directLive) throw new Error("GoalBrew's direct betting isn't Live (Betting → Limits), so it can't place bets.");
+  const settings = getSendingSettings(db);
+  if (!Number.isFinite(stake) || stake < 1) throw new Error("Betfair's smallest bet is £1.");
+  if (stake > settings.maxStake) throw new Error(`That's above your highest stake allowed (£${settings.maxStake}).`);
+  if (!info.marketType || !info.selectionName) throw new Error("This pick has no Betfair market stored.");
+  const row = {
+    pickId: p.id,
+    provider: STRATEGY,
+    marketType: info.marketType,
+    selectionName: info.selectionName,
+    eventName: p.exchangeEvent ?? `${p.home ?? "?"} v ${p.away ?? "?"}`,
+    betType: "BACK" as const,
+    stake: Math.round(stake * 100) / 100,
+    minPrice: settings.minOdds[KEY_NAME] ?? null,
+  };
+  db.resendPick(p.id, JSON.stringify(row), now.toISOString());
+  log.info(`${STRATEGY}: bet by hand, £${row.stake.toFixed(2)} on ${p.home} v ${p.away} (${p.selection}).`);
+}

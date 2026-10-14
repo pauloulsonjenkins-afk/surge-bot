@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { PageHeader } from "@/components/ui/Card";
+import { Card, PageHeader } from "@/components/ui/Card";
+import { ValueBets } from "@/components/edge/ValueBets";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { EdgeList } from "@/components/edge/EdgeList";
@@ -20,8 +21,11 @@ export default function AdminEdgePage() {
       <PageHeader
         as="h2"
         title="Fixtures and value bets"
-        subtitle="The pre-match insight cards members see, for every fixture in the next 48 hours in the 38 football-data leagues. Worked out every 6 hours; read-only, nothing here bets."
+        subtitle="The pre-match insight cards members see, for every fixture in the next 48 hours in the 38 football-data leagues, and the value bets you can place."
       />
+      <Card title="Value bets to place" subtitle="Best Value Cuppa's picks before kick-off. Bet hands one to GoalBrew's direct betting, which places it on Betfair with its usual checks.">
+        <ValueBets empty="No value bets before their kick-off right now." />
+      </Card>
       {error ? <QueryError error={error} next="/more/admin/edge" /> : isLoading || !data ? <Skeleton className="h-96 w-full" /> : <EdgeList cards={data.cards} />}
     </div>
   );

@@ -107,3 +107,29 @@ test("a match Betfair lists the other way round is not priced", async () => {
   assert.equal(sameOrder("Csikszereda M. Ciuc", "Univ. Craiova", "Universitatea Craiova v Csikszereda"), false);
   assert.equal(sameOrder("Man United", "Leeds", "Man Utd v Leeds"), true);
 });
+
+test("Bet by hand: a Sim value pick is handed to direct betting at the chosen stake, once, and only before kick-off", async () => {
+  const { betValuePick, bettableValuePicks } = await import("../src/edge/value-strategy");
+  const { saveSendingSettings } = await import("../src/inplayguru/bet-feed");
+  const db = new EngineDb(":memory:", () => {});
+  const realNow = new Date();
+  const c = card(0, [trend("BTTS in 16 of last 20", "BTTS", "yes", 2.2, 0.08, 7)]);
+  c.fixture.kickoff = new Date(realNow.getTime() + 2 * 3_600_000).toISOString();
+  saveSendingSettings(db, { maxStake: 5 });
+  recordValuePicks(db, [c], realNow);
+  const [p] = bettableValuePicks(db, realNow);
+  assert.ok(p);
+  assert.equal(p.sent, null);
+  assert.throws(() => betValuePick(db, p.id, 1, { directLive: false }, realNow), /direct betting isn't Live/);
+  assert.throws(() => betValuePick(db, p.id, 0.5, { directLive: true }, realNow), /smallest bet/);
+  assert.throws(() => betValuePick(db, p.id, 10, { directLive: true }, realNow), /highest stake/);
+  betValuePick(db, p.id, 1.5, { directLive: true }, realNow);
+  const sent = db.getLivePick(p.id)!;
+  const row = JSON.parse(sent.sentRowJson!);
+  assert.equal(row.marketType, "MT_BTTS");
+  assert.equal(row.selectionName, "SEL_yes");
+  assert.equal(row.stake, 1.5);
+  assert.ok(bettableValuePicks(db, realNow)[0]!.sent, "shown as sent");
+  assert.throws(() => betValuePick(db, p.id, 1, { directLive: true }, realNow), /already been handed/);
+  assert.throws(() => betValuePick(db, p.id, 1, { directLive: true }, new Date(realNow.getTime() + 3 * 3_600_000)), /already been handed|kicked off/);
+});

@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { getJson } from "@/queries/fetch-json";
 import { TopOpportunity } from "@/components/edge/EdgeList";
+import { ValueBets } from "@/components/edge/ValueBets";
 import type { EdgeCard } from "@/lib/members/edge";
 
 const gbp = (n: number) => `${n < 0 ? "−" : ""}£${Math.abs(n).toFixed(2)}`;
@@ -171,6 +172,10 @@ function EdgeBox() {
       }
     >
       {error ? <p className="text-sm text-destructive">{error.message}</p> : !data ? <Skeleton className="h-14 w-full" /> : <TopOpportunity cards={data.cards} />}
+      <div className="mt-3 border-t border-line pt-2">
+        <p className="text-xs font-medium text-ink-muted">Value bets to place (Best Value Cuppa, next 6 hours)</p>
+        <ValueBets withinHours={6} empty="None in the next 6 hours." />
+      </div>
     </Card>
   );
 }

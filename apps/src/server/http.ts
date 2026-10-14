@@ -9,6 +9,7 @@
  *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
+ *   GET  /internal/edge/bettable · POST /internal/edge/bet {pickId, stake}   value bets to place by hand (admin site only)
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
@@ -91,6 +92,7 @@ import { computeHitRateContext, computePickProfits, computeStrategyEquity, compu
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, strategyAdvice } from "./strategy-advice";
+import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { cachedModelReport, publishModel, shadowReport } from "../model/goal-model";
 import { getProbe } from "../fixtures/probe";
@@ -415,6 +417,30 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         log.info(body.start ? "Fresh start: figures now count from this moment." : "Fresh start undone: all figures count again.");
       }
       send(res, 200, { at: db.getFreshStart() });
+      return;
+    }
+
+    // Best Value Cuppa picks still bettable by hand, and the Bet button (edge/value-strategy.ts).
+    if ((req.method === "GET" && path === "/internal/edge/bettable") || (req.method === "POST" && path === "/internal/edge/bet")) {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        try {
+          betValuePick(db, Number(body.pickId), Number(body.stake), { directLive: effectiveMode(getDirectSettings(db)) === "live" });
+          wakeDirect();
+        } catch (err) {
+          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't place that." });
+          return;
+        }
+      }
+      send(res, 200, { picks: bettableValuePicks(db) });
       return;
     }
 
