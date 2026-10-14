@@ -1832,6 +1832,9 @@ export interface BettableValuePick {
   kickoff: string;
   price: number;
   trend: string;
+  /** The chance the price needs to pay, and the trend's edge over it (0.16 = 16 points). Missing from an older engine. */
+  needed?: number | null;
+  edge?: number | null;
   sent: { at: string; state: string | null; reason: string | null; matched: number | null; avgPrice: number | null } | null;
 }
 

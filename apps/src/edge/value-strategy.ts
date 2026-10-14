@@ -244,6 +244,9 @@ export interface BettableValuePick {
   /** Betfair's price when the pick was recorded. */
   price: number;
   trend: string;
+  /** The chance that price needs to pay after commission, and the trend's edge over it (0.16 = 16 points), when recorded. */
+  needed: number | null;
+  edge: number | null;
   /** Already handed to betting (by a Bet press, or because the strategy is Live): what direct betting says. */
   sent: { at: string; state: string | null; reason: string | null; matched: number | null; avgPrice: number | null } | null;
 }
@@ -265,6 +268,8 @@ export function bettableValuePicks(db: EngineDb, now = new Date()): BettableValu
       kickoff: info.kickoff,
       price: info.price,
       trend: info.trend,
+      needed: typeof info.needed === "number" ? info.needed : null,
+      edge: typeof info.edge === "number" ? info.edge : null,
       sent: p.sentAt ? { at: p.sentAt, state: d?.state ?? null, reason: d?.reason ?? null, matched: d?.sizeMatched ?? null, avgPrice: d?.avgPrice ?? null } : null,
     });
   }

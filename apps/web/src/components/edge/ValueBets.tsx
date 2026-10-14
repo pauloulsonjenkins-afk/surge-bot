@@ -68,6 +68,14 @@ function Row({ p }: { p: BettableValuePick }) {
           {time.format(new Date(p.kickoff))} · {p.league} · <span className="text-ink">{p.selection}</span> · {p.price.toFixed(2)} when found
         </span>
         <span className="block text-xs text-ink-muted">{p.trend}</span>
+        {p.edge != null && (
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-ink-muted">
+            {p.needed != null && <span>needs {Math.round(p.needed * 100)}% to pay</span>}
+            <span className={`rounded-full px-2 py-0.5 font-medium ${p.edge > 0 ? "bg-accent/15 text-accent" : "bg-surface-2 text-ink-muted"}`}>
+              Value {p.edge > 0 ? "+" : ""}{Math.round(p.edge * 100)} pts
+            </span>
+          </span>
+        )}
         {bet.error && <span className="block text-xs text-destructive">{bet.error.message}</span>}
       </span>
       {s ? (
