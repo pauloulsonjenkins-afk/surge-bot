@@ -2465,6 +2465,12 @@ export class EngineDb {
     this.onChange();
   }
 
+  /** A shadow score re-priced (e.g. a stale Betfair price replaced by the alert's): price, where from, chance needed, edge. */
+  repriceModelScore(pickId: number, s: { price: number; priceFrom: string; pNeeded: number; edge: number }): void {
+    this.db.prepare(`UPDATE pick_model_scores SET price = ?, price_from = ?, p_needed = ?, edge = ? WHERE pick_id = ?`).run(s.price, s.priceFrom, s.pNeeded, s.edge, pickId);
+    this.onChange();
+  }
+
   getModelScore(pickId: number): { version: string; pModel: number; pNeeded: number; edge: number; price: number; priceFrom: string } | null {
     const r = this.db.prepare(`SELECT version, p_model, p_needed, edge, price, price_from FROM pick_model_scores WHERE pick_id = ?`).get(pickId) as
       | { version: string; p_model: number; p_needed: number; edge: number; price: number; price_from: string }

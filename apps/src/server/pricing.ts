@@ -160,3 +160,16 @@ export function oddsFor(
 ): number | null {
   return pickOdds(r, assumedOdds)?.odds ?? null;
 }
+
+/**
+ * A Betfair price this much above the alert's own price is taken to be STALE: read from before a goal the alert already
+ * counts (the delayed app key shows prices up to a few minutes old, and alerts often fire just after a goal). Seen
+ * 13 Oct 2026: 49 of 382 next-goal picks, e.g. Over 3.5 at 1-2 shown at 4.40 when the alert said 1.62; every one of
+ * those bet for real went unmatched, and the goal model's shadow test booked their wins at the phantom price.
+ */
+export const STALE_PRICE_RATIO = 1.3;
+
+/** True when Betfair's price is far enough above the alert's own to be a pre-goal snapshot rather than the real price. */
+export function isStaleExchangePrice(exchange: number | null | undefined, alert: number | null | undefined): boolean {
+  return exchange != null && alert != null && alert > 1 && exchange > alert * STALE_PRICE_RATIO;
+}

@@ -33,6 +33,7 @@ import type { CurrentOrder } from "./exchange";
 import { findRunner, getBetfairLinkStatus, post, readCredentials } from "./exchange";
 import type { DirectBet, EngineDb, LivePick } from "../storage/engine-db";
 import { alertOddsOfPick, betableUntil, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, strategyLabel, type FeedRow } from "../inplayguru/bet-feed";
+import { isStaleExchangePrice } from "../server/pricing";
 import { getBank, saveBank } from "../inplayguru/stake";
 import { ukDateOf, ukDayBounds } from "../server/uk-time";
 import { log } from "../server/log";
@@ -659,6 +660,14 @@ async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, m
   if (spread > maxSpread) return wait(`Back ${me.back.toFixed(2)} and lay ${me.lay!.toFixed(2)} are ${spread}% apart (limit ${maxSpread}%).`);
   if (over === null) return wait("Not every selection has a price, so the overround can't be checked.");
   if (over < s.minOverround || over > maxOver) return wait(`Overround ${over}% is outside ${s.minOverround}% to ${maxOver}%.`);
+
+  // Betfair's price far above the alert's own: a snapshot from before the goal the alert already counts (delayed prices).
+  // A bet asked there never matches and is cancelled after the wait, so wait for Betfair to catch up instead; the pick
+  // is checked again on every pass until it does or the pick is too old to bet.
+  const ownPrice = alertOddsOfPick(p);
+  if (isStaleExchangePrice(me.back, ownPrice)) {
+    return wait(`Betfair shows ${me.back.toFixed(2)}, far above the alert's ${ownPrice!.toFixed(2)}: probably from before the latest goal. Waiting for it to catch up.`);
+  }
 
   // The market has already moved against the pick since the alert: the value it saw has gone.
   const alertPrice = p.exchangeOdds ?? alertOddsOfPick(p);

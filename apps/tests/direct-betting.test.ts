@@ -364,3 +364,19 @@ test("ERROR_IN_ORDER then success on the retry: placed once", async () => {
   assert.equal(db.getDirectBet(id)!.state, "placed");
   assert.equal(bf.placed.length, 2);
 });
+
+test("a Betfair price far above the alert's (from before a goal) waits for Betfair to catch up instead of asking it", async () => {
+  const { db, add, bf } = setup("live");
+  const id = add();
+  // The alert says 1.80; Betfair still shows the pre-goal 4.40 (the other runner keeps the book about 100%).
+  const realBook = bf.book.bind(bf);
+  bf.book = async () => ({ status: "OPEN", inplay: true, runners: [{ selectionId: 1, status: "ACTIVE", back: 4.4, lay: 4.5 }, { selectionId: 2, status: "ACTIVE", back: 1.3, lay: 1.31 }] });
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(bf.placed.length, 0);
+  assert.match(db.getDirectBet(id)!.reason ?? "", /far above the alert's 1.80/);
+  // Betfair catches up: placed at the real price.
+  bf.book = realBook;
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(bf.placed.length, 1);
+  assert.equal(db.getDirectBet(id)!.state, "placed");
+});

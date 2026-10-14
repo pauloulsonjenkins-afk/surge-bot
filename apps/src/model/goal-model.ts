@@ -26,6 +26,7 @@ import type { EngineDb } from "../storage/engine-db";
 import type { ParsedAlert } from "../inplayguru/parse-alert";
 import { sendPush } from "../server/push";
 import { log } from "../server/log";
+import { isStaleExchangePrice } from "../server/pricing";
 
 export const FEATURES = [
   "Market's chance (log-odds)",
@@ -305,15 +306,40 @@ export function scorePick(
   if (!f) return null;
   const waited = opts.noWait === true || now.getTime() - Date.parse(p.firstSeenAt) > 2 * 60_000;
   if (p.exchange === null && !waited) return null;
-  const betfair = p.exchange === "on" && p.exchangeOdds !== null && p.exchangeOdds > 1;
+  // Betfair's price, unless it is a stale pre-goal snapshot (far above the alert's own): then the alert's.
+  const betfair = p.exchange === "on" && p.exchangeOdds !== null && p.exchangeOdds > 1 && !isStaleExchangePrice(p.exchangeOdds, f.odds);
   const price = betfair ? p.exchangeOdds! : f.odds;
   const pModel = predict(model, f.x);
   const pNeeded = breakEven(price);
   return { pModel, pMarket: f.pMarket, price, priceFrom: betfair ? "betfair" : "alert", pNeeded, edge: pModel - pNeeded };
 }
 
+const STALE_FIX_KEY = "goal_model_stale_prices_fixed";
+
+/**
+ * Once: re-prices shadow scores taken at a stale Betfair price (see STALE_PRICE_RATIO) at the alert's own price, so the
+ * shadow figures and the filter's past answers no longer count phantom long prices. The model's own estimate is kept.
+ */
+export function fixStaleShadowPrices(db: EngineDb): number {
+  if (db.getSetting(STALE_FIX_KEY)) return 0;
+  let fixed = 0;
+  for (const r of db.listModelScores(100_000)) {
+    if (r.priceFrom !== "betfair") continue;
+    const p = db.getLivePick(r.pickId);
+    const f = p?.detail ? featuresOf(p.detail) : null;
+    if (!f || !isStaleExchangePrice(r.price, f.odds)) continue;
+    const pNeeded = breakEven(f.odds);
+    db.repriceModelScore(r.pickId, { price: f.odds, priceFrom: "alert", pNeeded, edge: r.pModel - pNeeded });
+    fixed++;
+  }
+  db.setSetting(STALE_FIX_KEY, new Date().toISOString());
+  if (fixed) log.info(`Goal model: re-priced ${fixed} shadow scores taken at a stale Betfair price.`);
+  return fixed;
+}
+
 /** One pass: retrain weekly, then score any new next-goal picks. Returns how many were scored. */
 export function shadowTick(db: EngineDb, now = new Date()): number {
+  fixStaleShadowPrices(db);
   let model = getActiveModel(db);
   if (!model || now.getTime() - Date.parse(model.trainedAt) > RETRAIN_EVERY_MS) model = publishModel(db, now) ?? model;
   if (!model) return 0;

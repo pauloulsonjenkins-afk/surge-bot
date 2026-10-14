@@ -68,3 +68,14 @@ test("the 'proved' notification fires once when the would-bet picks clearly beat
   assert.equal(await notifyIfProved(db), true);
   assert.equal(await notifyIfProved(db), false);
 });
+
+test("a Betfair price far above the alert's own is a stale pre-goal snapshot: the alert's price is used instead", () => {
+  const detail = parseAlert(alert);
+  const own = detail.odds.over!;
+  const base = { detail, exchange: "on", firstSeenAt: new Date().toISOString() };
+  const stale = scorePick(flat, { ...base, exchangeOdds: Math.round(own * 2.5 * 100) / 100 });
+  assert.equal(stale?.priceFrom, "alert");
+  assert.equal(stale?.price, own);
+  const close = scorePick(flat, { ...base, exchangeOdds: Math.round(own * 1.1 * 100) / 100 });
+  assert.equal(close?.priceFrom, "betfair", "a little above is a real price");
+});
