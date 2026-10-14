@@ -299,6 +299,8 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
       )}
 
       {/* Push notifications for picks not placed, per device. */}
+      {view === "limits" && <LadderCard on={settings.ladderAuto === true} />}
+
       {view === "limits" && <NotificationsCard />}
 
       {/* 4. Settings you rarely change, in tabs at the bottom. */}
@@ -546,3 +548,58 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
 }
 
 /** When direct betting is on, say so here: in Live the betting software is handed nothing new. */
+
+/**
+ * The stake ladder's switch: suggestions only (you press Apply on Today), or raises and cuts applied by themselves, one
+ * step a week at most per strategy, each with a notification. Live / Sim changes always wait for you.
+ */
+function LadderCard({ on }: { on: boolean }) {
+  const save = useSaveSending();
+  const dialog = useDialog();
+  return (
+    <Card
+      title="Stake ladder"
+      subtitle="Stakes move one step (1 → 1.5 → 2 → 3 → 4 → 5% of the balance, or £1 → £2 → £3 → £5) when a Live strategy proves itself over 50+ bets, or starts losing. Your highest-stake limit still caps every bet."
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-ink">
+          {on ? (
+            <>
+              <span className="font-medium text-hit">Automatic.</span> Raises and cuts happen by themselves, at most one step a week per strategy, and you get a
+              notification each time. Putting a strategy Live or back to Sim still waits for you.
+            </>
+          ) : (
+            <>
+              <span className="font-medium">Suggestions only.</span> You get a notification, and the change waits for you to press Apply on Today.
+            </>
+          )}
+        </p>
+        <button
+          type="button"
+          disabled={save.isPending}
+          onClick={async () => {
+            if (
+              on ||
+              (await dialog.confirm({
+                title: "Let stakes change automatically?",
+                tone: "money",
+                confirmLabel: "Turn on automatic stakes",
+                body: (
+                  <p>
+                    A Live strategy&apos;s stake will go up one step after 50+ bets at +5% or better (and down after 30+ losing bets), without asking first. One
+                    step a week at most per strategy, never above your highest-stake limit, with a notification each time.
+                  </p>
+                ),
+              }))
+            )
+              save.mutate({ ladderAuto: !on });
+          }}
+          className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium ${on ? "border border-line text-ink" : "bg-accent text-accent-ink"} disabled:opacity-50`}
+        >
+          {on ? "Back to suggestions only" : "Turn on automatic stakes"}
+        </button>
+      </div>
+      {save.error && <p className="mt-2 text-xs text-destructive">{save.error.message}</p>}
+    </Card>
+  );
+}

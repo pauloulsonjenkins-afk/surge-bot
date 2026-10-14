@@ -367,6 +367,8 @@ export interface SendingSettings {
   matchCap?: number;
   /** Stop all new bets for the day once Live is down this much (£) across every strategy. 0 = off. Missing on an older engine. */
   dailyLossLimit?: number;
+  /** The stake ladder applies its raises and cuts by itself (one step a week at most). Missing on an older engine. */
+  ladderAuto?: boolean;
   bttsMarketType: string;
   bttsSelection: string;
   underdogMarketType: string;

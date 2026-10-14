@@ -18,6 +18,10 @@
  *     Sending still caps every bet.
  *
  * One notification per change: the same suggestion isn't sent again until it has gone away and come back.
+ *
+ * AUTOMATIC STAKES (Sending: ladderAuto): stake raises and cuts are applied by the hourly check instead of waiting,
+ * one step per strategy at most every 7 days (counting manual Applies too), each with its own notification. "Try Live"
+ * and "Back to Sim" are never automatic.
  */
 import type { EngineDb } from "../storage/engine-db";
 import { computeStrategyReturns, type StrategyReturn } from "./winloss";
@@ -30,6 +34,17 @@ import { log } from "./log";
 
 const SAMPLE = 50;
 const STATE_KEY = "strategy_advice_state";
+/** When each strategy's stake last moved on the ladder (manually or automatically), so automatic steps are 7 days apart. */
+const LAST_STEP_KEY = "stake_ladder_last_step";
+export const AUTO_GAP_MS = 7 * 86_400_000;
+
+function lastSteps(db: EngineDb): Record<string, string> {
+  try {
+    return JSON.parse(db.getSetting(LAST_STEP_KEY) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
 export const PCT_STEPS = [1, 1.5, 2, 3, 4, 5];
 export const FLAT_STEPS = [1, 2, 3, 5];
 
@@ -155,6 +170,7 @@ export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = n
     const stake = "pct" in to ? { stakePct: { [k]: to.pct } } : { stakes: { [k]: to.flat } };
     saveSendingSettings(db, { ...stake, ...(a.kind === "try-live" ? { strategies: { [k]: true } } : {}) });
   }
+  if (a.kind === "stake-up" || a.kind === "stake-down") db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
   log.info(`Strategy suggestion applied: ${displayName(db, k)}: ${a.action}.`);
   return a;
 }
@@ -166,8 +182,35 @@ const LABEL: Record<AdviceKind, string> = {
   "stake-down": "worth a smaller stake",
 };
 
+/** With automatic stakes on: applies each stake step that's due (7+ days since that strategy's last step). Returns them. */
+export function autoApplyStakes(db: EngineDb, now = new Date()): Advice[] {
+  if (!getSendingSettings(db).ladderAuto) return [];
+  const last = lastSteps(db);
+  const done: Advice[] = [];
+  for (const a of strategyAdvice(db, now)) {
+    if (a.kind !== "stake-up" && a.kind !== "stake-down") continue;
+    const prev = last[a.key];
+    if (prev && now.getTime() - Date.parse(prev) < AUTO_GAP_MS) continue;
+    try {
+      done.push(applyAdvice(db, a.key, a.kind, now));
+    } catch (err) {
+      log.warn(`Automatic stake for ${a.key} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return done;
+}
+
 /** Sends one notification for any NEW suggestions, in one message, and remembers what was sent. */
 export async function notifyAdvice(db: EngineDb, now = new Date()): Promise<number> {
+  // Automatic stakes first, each told on its own; what's left are suggestions.
+  for (const a of autoApplyStakes(db, now)) {
+    await sendPush(db, {
+      title: `Stake ${a.kind === "stake-up" ? "raised" : "lowered"}: ${displayName(db, a.key)}`,
+      body: `${a.action.replace(/^Raise/, "Raised").replace(/^Lower/, "Lowered")} automatically. ${a.reason} Turn automatic stakes off on Betting → Limits.`,
+      url: "/more/admin/strategies",
+      tag: `stake-auto-${a.key}`,
+    });
+  }
   const advice = strategyAdvice(db, now);
   let state: Record<string, string> = {};
   try {

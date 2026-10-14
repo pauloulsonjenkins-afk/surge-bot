@@ -34,3 +34,13 @@ test("the Sunday review is due once, from 19:00 UK on Sunday", () => {
   assert.match(msg.title, /GoalBrew week: Live/);
   assert.match(msg.body, /No changes suggested/);
 });
+
+test("automatic stakes: off by default, saved by its switch, and nothing moves without a qualifying strategy", async () => {
+  const { autoApplyStakes } = await import("../src/server/strategy-advice");
+  const db = new EngineDb(":memory:", () => {});
+  assert.equal(getSendingSettings(db).ladderAuto, false);
+  saveSendingSettings(db, { ladderAuto: true, enabled: true, strategies: { "favourite pressure 2nd half": true }, stakePct: { "favourite pressure 2nd half": 2 } });
+  assert.equal(getSendingSettings(db).ladderAuto, true);
+  assert.deepEqual(autoApplyStakes(db), []);
+  assert.equal(getSendingSettings(db).stakePct["favourite pressure 2nd half"], 2);
+});

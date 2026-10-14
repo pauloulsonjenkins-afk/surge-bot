@@ -72,6 +72,11 @@ export interface SendingSettings {
   dailyCap: number;
   /** Stop all NEW bets for the rest of the UK day once Live is down this much (£) across every strategy. 0 = off. */
   dailyLossLimit: number;
+  /**
+   * The stake ladder (server/strategy-advice.ts) applies its stake raises and cuts by itself, one step per strategy at
+   * most every 7 days, with a notification for each. Off = suggestions only. Live / Sim changes always wait for the admin.
+   */
+  ladderAuto: boolean;
   /** Most money (£) staked in total on any one match, across strategies, so correlated bets (e.g. several Next goal strategies) can't stack. 0 = no limit. */
   matchCap: number;
   /** Market code and selection name used for Both Teams to Score. */
@@ -119,6 +124,7 @@ export const DEFAULT_SENDING: SendingSettings = {
   dailyCap: 30,
   matchCap: 0,
   dailyLossLimit: 0,
+  ladderAuto: false,
   bttsMarketType: "BOTH_TEAMS_TO_SCORE",
   bttsSelection: "Yes",
   underdogMarketType: "DOUBLE_CHANCE",
@@ -239,6 +245,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     dailyCap: clampInt(raw.dailyCap, 0, 1000, DEFAULT_SENDING.dailyCap),
     matchCap: clampInt(raw.matchCap, 0, 5000, DEFAULT_SENDING.matchCap),
     dailyLossLimit: clampInt(raw.dailyLossLimit, 0, 100000, DEFAULT_SENDING.dailyLossLimit),
+    ladderAuto: raw.ladderAuto === true,
     bttsMarketType: cleanCode(raw.bttsMarketType, DEFAULT_SENDING.bttsMarketType),
     bttsSelection: cleanCode(raw.bttsSelection, DEFAULT_SENDING.bttsSelection),
     underdogMarketType: cleanCode(raw.underdogMarketType, DEFAULT_SENDING.underdogMarketType),
@@ -265,6 +272,7 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
   const next: SendingSettings = { ...current, strategies: { ...current.strategies }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds } };
 
   if (typeof patch.enabled === "boolean") next.enabled = patch.enabled;
+  if (typeof patch.ladderAuto === "boolean") next.ladderAuto = patch.ladderAuto;
   // Stakes first, so a request can set a stake and switch the strategy on together.
   if (patch.stakes && typeof patch.stakes === "object") {
     for (const [k, v] of Object.entries(patch.stakes as Record<string, unknown>)) {
