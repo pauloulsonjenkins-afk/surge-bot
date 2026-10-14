@@ -534,24 +534,37 @@ export function pricingInputs(db: EngineDb) {
   };
 }
 
+type ModeReturns = { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
+
 /**
  * Live, Sim and All returns for every strategy (keyed by lower-case name), for the Strategies page. Worked out pick by
  * pick exactly as Win/Loss does, so the two always agree. Merged strategies are not combined here. With `sinceIso`, only
  * picks from then on count.
+ *
+ * With `fromRuleChange`, a strategy whose rules changed (RECORD_FROM) counts its money from the change too, like its
+ * win / loss record, and its picks from before go to `before` instead (shown smaller, so nothing is hidden).
  */
-export function computeStrategyReturns(db: EngineDb, sinceIso: string | null = null): Record<string, { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }> {
+export function computeStrategyReturns(
+  db: EngineDb,
+  sinceIso: string | null = null,
+  opts: { fromRuleChange?: boolean } = {},
+): Record<string, ModeReturns & { before?: ModeReturns }> {
   const { commission, price } = pricingInputs(db);
-  const tallies = new Map<string, { live: ReturnTally; sim: ReturnTally; all: ReturnTally }>();
+  const fresh = () => ({ live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) });
+  const tallies = new Map<string, { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null }>();
   for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
     const { key, priced, odds } = price(r);
     let t = tallies.get(key);
-    if (!t) tallies.set(key, (t = { live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) }));
-    if (isLivePlacement(r.placement)) t.live.add(r, priced, odds);
-    else if (r.placement === "sim") t.sim.add(r, priced, odds);
-    t.all.add(r, priced, odds);
+    if (!t) tallies.set(key, (t = { now: fresh(), before: null }));
+    const changed = opts.fromRuleChange ? RECORD_FROM[key] : undefined;
+    const into = changed && r.firstSeenAt < changed ? (t.before ??= fresh()) : t.now;
+    if (isLivePlacement(r.placement)) into.live.add(r, priced, odds);
+    else if (r.placement === "sim") into.sim.add(r, priced, odds);
+    into.all.add(r, priced, odds);
   }
-  const out: Record<string, { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }> = {};
-  for (const [key, t] of tallies) out[key] = { live: t.live.result(), sim: t.sim.result(), all: t.all.result() };
+  const done = (t: ReturnType<typeof fresh>): ModeReturns => ({ live: t.live.result(), sim: t.sim.result(), all: t.all.result() });
+  const out: Record<string, ModeReturns & { before?: ModeReturns }> = {};
+  for (const [key, t] of tallies) out[key] = { ...done(t.now), ...(t.before ? { before: done(t.before) } : {}) };
   return out;
 }
 

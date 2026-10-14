@@ -1226,7 +1226,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const sinceParam = new URL(rawUrl, "http://internal").searchParams.get("since");
       const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
       const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
-      const returns = computeStrategyReturns(db, since);
+      // Money counts from a rule change like the record does; the figures from before come back as `before`.
+      const returns = computeStrategyReturns(db, since, { fromRuleChange: true });
       const form = computeStrategyForm(db);
       send(res, 200, {
         ignored: Object.values(db.getIgnoredStrategies()).sort(),

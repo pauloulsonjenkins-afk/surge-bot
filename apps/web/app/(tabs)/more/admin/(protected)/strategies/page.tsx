@@ -9,7 +9,7 @@ import { marketName } from "@/lib/markets";
 import { gbp } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
-import { ModeBadge, ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
+import { ModeBadge } from "@/components/ui/ModeToggle";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
 import { EquityCurve } from "@/components/admin/EquityCurve";
@@ -215,6 +215,17 @@ function periodStart(period: Period): string | null {
 
 type SortBy = "adjusted" | "roi" | "profit" | "hitRate";
 
+/** Whose figures each card shows: "own" = its own mode (Live or Sim), else the same mode for every card. */
+type View = "own" | "live" | "sim" | "all";
+const VIEWS: { value: View; label: string }[] = [
+  { value: "own", label: "Own mode" },
+  { value: "live", label: "Live" },
+  { value: "sim", label: "Sim" },
+  { value: "all", label: "All" },
+];
+
+const shortDay = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
+
 const SORTS: { value: SortBy; label: string }[] = [
   { value: "adjusted", label: "Return % (adjusted)" },
   { value: "roi", label: "Return %" },
@@ -385,6 +396,7 @@ function AboutStrategy({ label }: { label: string }) {
 
 function StrategyCard({
   row,
+  mode: pickMode,
   all,
   sortBy,
   formKind,
@@ -408,6 +420,8 @@ function StrategyCard({
   /** The Betfair balance percentage stakes work from. */
   bank?: SendingState["bank"];
   row: AdminStrategy;
+  /** Whose figures the card shows: its own mode, or the one chosen at the top of the page. */
+  mode: "all" | "live" | "sim";
   all: AdminStrategy[];
   sortBy: SortBy;
   /** Which form paragraph to show: the last 20 picks or the last 7 days (the page's Form switch). */
@@ -425,13 +439,15 @@ function StrategyCard({
   const [merging, setMerging] = useState(false);
   const [showCurve, setShowCurve] = useState(false);
   const [target, setTarget] = useState("");
-  const pickMode = usePickMode();
   const live = record(row.liveHits ?? 0, row.liveMisses ?? 0);
   const sim = record(row.simHits ?? 0, row.simMisses ?? 0);
   // The headline figures follow the All / Live / Sim choice.
   const shown = pickMode === "live" ? live : pickMode === "sim" ? sim : record(row.hits, row.misses);
   const { hits, misses, settled, hitRate } = shown;
   const money = returnsFor(row, pickMode);
+  // The rule change's "before" figures in the same mode (the headline counts from the change).
+  const beforeAll = row.returns?.before;
+  const before = beforeAll ? (pickMode === "all" ? (beforeAll.all ?? null) : beforeAll[pickMode]) : null;
   const hint = verdict(row);
   const options = all.filter((o) => o.label !== row.label);
   const names = useStrategyNames();
@@ -497,13 +513,18 @@ function StrategyCard({
                 .join(" · ")}
             </span>
             <span className="mt-1.5 block max-w-xs">
-              <BreakevenBar hitRate={hitRate} breakeven={ret?.breakeven} range={ret?.range} />
+              <BreakevenBar hitRate={hitRate} breakeven={ret?.breakeven} range={ret?.range} settled={settled} since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
           </span>
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
             <span className="block text-xs text-ink-muted">{headline.sub}</span>
             {thin && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} priced</span>}
+            {before && before.counted > 0 && (
+              <span className="block text-xs text-ink-muted">
+                Before {shortDay.format(new Date(row.recordFrom!))}: {roiText(before.roi)} on {before.counted}
+              </span>
+            )}
           </span>
           <ChevronDown size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
@@ -537,8 +558,8 @@ function StrategyCard({
           {row.form?.change && <ChangeCompare c={row.form.change} />}
           {row.recordFrom && (
             <p className="text-xs text-warn">
-              It changed on {lastSeen.format(new Date(row.recordFrom))}, so the record counts only alerts from then. The money still counts every real bet,
-              including ones placed before the change.
+              Its rules changed on {lastSeen.format(new Date(row.recordFrom))}, so its record, money and warnings count only alerts from then. The figures
+              from before the change are shown as &quot;Before&quot;.
             </p>
           )}
           {money && money.settled > 0 && <OddsContext hitRate={hitRate} money={money} />}
@@ -710,6 +731,8 @@ export default function StrategiesPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("adjusted");
+  // Each card shows its own mode's figures (Live strategies their Live bets, Sim ones their Sim picks) unless one is chosen.
+  const [view, setView] = useState<View>("own");
   const strategies = useMemo(() => data?.strategies ?? [], [data]);
   const ignored = data?.ignored ?? [];
 
@@ -845,7 +868,7 @@ export default function StrategiesPage() {
       <div className="flex flex-wrap items-center gap-3">
         <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />
         <Segmented label="Form" value={formKind} onChange={setFormKind} options={FORM_OPTIONS} />
-        <ModeToggle />
+        <Segmented label="Whose figures" value={view} onChange={setView} options={VIEWS} />
         <div className="flex items-center gap-2 text-xs text-ink-muted">
           Sort by
           <div className="inline-flex rounded-md border border-line p-0.5" role="group" aria-label="Sort strategies by">
@@ -952,6 +975,7 @@ export default function StrategiesPage() {
               <StrategyCard
                 key={r.label}
                 row={r}
+                mode={view === "own" ? modeOf(r) : view}
                 all={strategies}
                 sortBy={sortBy}
                 formKind={formKind}
