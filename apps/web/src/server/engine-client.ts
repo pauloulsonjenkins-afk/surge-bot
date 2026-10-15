@@ -1856,3 +1856,20 @@ export async function valueBets(bet?: { pickId: number; stake: number }): Promis
   if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
   return { picks: data.picks ?? [] };
 }
+
+/** Retries a bet GoalBrew didn't get placed (Live: Retry bet). */
+export async function retryBet(pickId: number): Promise<{ state: string; reason: string | null }> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  const res = await fetch(`${baseUrl}/internal/direct/retry`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ pickId }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as { state?: string; reason?: string | null; error?: string };
+  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  return { state: data.state ?? "waiting", reason: data.reason ?? null };
+}

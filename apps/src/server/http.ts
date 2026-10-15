@@ -78,7 +78,7 @@ import type { ServerEnv } from "./server-env";
 import { sha256Hex, verifyHmacSignature, verifyPathToken } from "../inplayguru/verify";
 import { parseAlert } from "../inplayguru/parse-alert";
 import { alertTextFrom, handleVerifiedPick, useWebhookAlert } from "../inplayguru/receiver";
-import { directExportCsv, directIsLive, directReadiness, effectiveMode, getDirectSettings, saveDirectSettings, stakedToday, wake as wakeDirect } from "../betfair/direct";
+import { directExportCsv, directIsLive, directReadiness, effectiveMode, getDirectSettings, retryDirectBet, saveDirectSettings, stakedToday, wake as wakeDirect } from "../betfair/direct";
 import { createTelegramClient } from "../telegram/client";
 import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
@@ -417,6 +417,26 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         log.info(body.start ? "Fresh start: figures now count from this moment." : "Fresh start undone: all figures count again.");
       }
       send(res, 200, { at: db.getFreshStart() });
+      return;
+    }
+
+    // Retry a bet that wasn't placed (Live: Retry bet).
+    if (req.method === "POST" && path === "/internal/direct/retry") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      try {
+        const d = retryDirectBet(db, Number(body.pickId));
+        send(res, 200, { state: d.state, reason: d.reason });
+      } catch (err) {
+        send(res, 400, { error: err instanceof Error ? err.message : "Couldn't retry that." });
+      }
       return;
     }
 

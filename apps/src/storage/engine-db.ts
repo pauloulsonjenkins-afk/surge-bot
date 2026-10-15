@@ -75,6 +75,8 @@ export interface DirectBet extends DirectBetInfo {
   cancelled: number | null;
   reason: string | null;
   attempts: number;
+  /** Times the admin retried it by hand (Live: Retry bet). Each retry places under its own order reference. */
+  retries: number;
 }
 
 interface DirectBetRow {
@@ -101,6 +103,7 @@ interface DirectBetRow {
   cancelled: number | null;
   reason: string | null;
   attempts: number;
+  retries?: number | null;
 }
 
 function toDirectBet(r: DirectBetRow): DirectBet {
@@ -128,6 +131,7 @@ function toDirectBet(r: DirectBetRow): DirectBet {
     cancelled: r.cancelled,
     reason: r.reason,
     attempts: r.attempts,
+    retries: r.retries ?? 0,
   };
 }
 
@@ -926,6 +930,10 @@ export class EngineDb {
       );
     `);
     const directCols = this.db.prepare(`PRAGMA table_info(direct_bets)`).all() as Array<{ name: string }>;
+    if (!directCols.some((c) => c.name === "retries")) {
+      // How many times the admin retried a not-placed bet by hand (each retry gets its own order reference).
+      this.db.exec(`ALTER TABLE direct_bets ADD COLUMN retries INTEGER NOT NULL DEFAULT 0`);
+    }
     if (!directCols.some((c) => c.name === "ask_price")) {
       // The price each bet asked for (Shadow: would have asked for), as against the price shown.
       this.db.exec(`ALTER TABLE direct_bets ADD COLUMN ask_price REAL`);
@@ -953,7 +961,7 @@ export class EngineDb {
       marketId: "market_id", selectionId: "selection_id", stake: "stake", minPrice: "min_price", price: "price", bestLay: "best_lay",
       askPrice: "ask_price",
       overround: "overround", betId: "bet_id", sizeMatched: "size_matched", avgPrice: "avg_price", cancelled: "cancelled",
-      reason: "reason", attempts: "attempts",
+      reason: "reason", attempts: "attempts", retries: "retries",
     };
     const sets: string[] = ["updated_at = ?"];
     const values: unknown[] = [at];

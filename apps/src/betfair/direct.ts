@@ -363,9 +363,12 @@ export class BetfairTrader implements Trading {
 // ---------------------------------------------------------------------------
 // The work
 
-/** The reference every order for a pick carries. Betfair allows letters, digits and a few symbols, 32 at most. */
-export function orderRef(pickId: number): string {
-  return `GB${pickId}`;
+/**
+ * The reference every order for a pick carries. Betfair allows letters, digits and a few symbols, 32 at most. A retry by
+ * hand gets its own ("GB123R1"), so the earlier cancelled or refused order isn't mistaken for the new one.
+ */
+export function orderRef(pickId: number, retries = 0): string {
+  return retries > 0 ? `GB${pickId}R${retries}` : `GB${pickId}`;
 }
 
 /** Overround of a market in percent: the sum of 1 / best back price. Double Chance covers each result twice, so it is halved. */
@@ -553,7 +556,7 @@ export async function runDirect(db: EngineDb, trading: Trading, now = new Date()
 
 async function work(db: EngineDb, t: Trading, d: DirectBet, s: DirectSettings, mode: DirectMode, maxAgeMinutes: number, now: Date): Promise<void> {
   const at = now.toISOString();
-  const ref = orderRef(d.pickId);
+  const ref = orderRef(d.pickId, d.retries);
 
   // Sent, answer unknown: Betfair's order list says whether it was placed. Never sent again blindly.
   if (d.state === "placing") {
@@ -783,7 +786,7 @@ async function workLay(
     db.updateDirectBet(d.pickId, { state: "skipped", reason: `Daily stake limit reached (${money(staked)} of ${money(s.dailyStakeLimit)} placed today).` }, at);
     return;
   }
-  const ref = orderRef(d.pickId);
+  const ref = orderRef(d.pickId, d.retries);
   const existing = (await t.ordersByRef([ref]))[0];
   if (existing) {
     db.updateDirectBet(d.pickId, { state: "placed", betId: existing.betId, sizeMatched: existing.sizeMatched ?? 0, avgPrice: existing.averagePriceMatched ?? null, reason: null }, at);
@@ -971,4 +974,25 @@ export function directExportCsv(db: EngineDb): string {
     excelTime(b.updatedAt),
   ]);
   return toExcelCsv(header, rows);
+}
+
+/**
+ * The admin pressed "Retry bet" on a pick that wasn't placed (refused, cancelled unmatched, or skipped): it goes back
+ * to waiting, under a new order reference, and the next pass tries it with every usual check. Only while the alert is
+ * still fresh enough to bet (the age limit on Sending, or kick-off for pre-match picks). Throws with a reason.
+ */
+export function retryDirectBet(db: EngineDb, pickId: number, now = new Date(), env = process.env): DirectBet {
+  if (effectiveMode(getDirectSettings(db), env) !== "live") throw new Error("Direct betting isn't Live, so nothing can be retried.");
+  const d = db.getDirectBet(pickId);
+  if (!d || d.mode !== "live") throw new Error("GoalBrew didn't try to bet this pick, so there's nothing to retry.");
+  const notPlaced = d.state === "failed" || d.state === "skipped" || (d.state === "placed" && (d.sizeMatched ?? 0) === 0 && (d.cancelled ?? 0) > 0);
+  if (!notPlaced) throw new Error(d.state === "placed" ? "This bet is on Betfair already." : "It's still being worked on.");
+  const p = db.getLivePick(pickId);
+  if (!p || p.excluded) throw new Error("The pick was removed.");
+  const maxAge = getSendingSettings(db).maxAgeMinutes;
+  if (now.getTime() > betableUntil(p, maxAge)) throw new Error(`Too late to retry: alerts are only bet within ${maxAge} minutes (pre-match picks until kick-off).`);
+  db.updateDirectBet(pickId, { state: "waiting", attempts: 0, retries: d.retries + 1, betId: null, sizeMatched: null, avgPrice: null, cancelled: null, reason: "Retried by hand." }, now.toISOString());
+  log.info(`Direct betting: pick ${pickId} retried by hand (retry ${d.retries + 1}).`);
+  wake();
+  return db.getDirectBet(pickId)!;
 }

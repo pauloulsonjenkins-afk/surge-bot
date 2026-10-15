@@ -380,3 +380,27 @@ test("a Betfair price far above the alert's (from before a goal) waits for Betfa
   assert.equal(bf.placed.length, 1);
   assert.equal(db.getDirectBet(id)!.state, "placed");
 });
+
+test("Retry by hand: a refused bet goes back to waiting under a new order reference and is placed; only while fresh", async () => {
+  const { retryDirectBet } = await import("../src/betfair/direct");
+  const { db, add, bf } = setup("live");
+  const id = add();
+  bf.placeFails = "INSUFFICIENT_FUNDS";
+  await runDirect(db, bf, new Date(), ENV);
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(db.getDirectBet(id)!.state, "failed");
+  bf.placeFails = null;
+  const d = retryDirectBet(db, id, new Date(), ENV);
+  assert.equal(d.state, "waiting");
+  assert.equal(d.retries, 1);
+  await runDirect(db, bf, new Date(), ENV);
+  assert.equal(db.getDirectBet(id)!.state, "placed");
+  assert.equal(bf.placed.at(-1)!.ref, `GB${id}R1`, "a fresh reference, so the old order isn't mistaken for it");
+  assert.throws(() => retryDirectBet(db, id, new Date(), ENV), /on Betfair already/);
+  // Too old: the alert is past the age limit.
+  const id2 = add("Lens", "Lille");
+  bf.placeFails = "INSUFFICIENT_FUNDS";
+  await runDirect(db, bf, new Date(), ENV);
+  await runDirect(db, bf, new Date(), ENV);
+  assert.throws(() => retryDirectBet(db, id2, new Date(Date.now() + 60 * 60_000), ENV), /Too late to retry/);
+});

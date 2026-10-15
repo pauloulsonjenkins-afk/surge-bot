@@ -352,6 +352,8 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
 
           {admin && pick.exchange === "off" && (pick.exchangeCandidates?.length ?? 0) > 0 && <BetfairChoices pick={pick} />}
 
+          {admin && (placement?.state === "notPlaced" || placement?.state === "lapsed") && <RetryBet pickId={pick.id} />}
+
           {admin && <ManualBet pick={pick} placement={placement} />}
 
           {pick.detail?.matched != null && pick.detail.strikeRate != null && (
@@ -586,6 +588,38 @@ export default function LivePage() {
         </Link>
         .
       </p>
+    </div>
+  );
+}
+
+/**
+ * Retry a bet that wasn't placed (refused, or cancelled unmatched): GoalBrew's direct betting tries it again straight
+ * away, with every usual check, while the alert is still fresh enough to bet. The engine says why when it can't.
+ */
+function RetryBet({ pickId }: { pickId: number }) {
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setMsg(null);
+          try {
+            const res = await fetch("/api/admin/direct/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pickId }) });
+            const body = (await res.json().catch(() => ({}))) as { error?: string };
+            setMsg(res.ok ? { ok: true, text: "Retrying now: check Betting → Bets in a few seconds." } : { ok: false, text: body.error ?? "Couldn't retry that." });
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50"
+      >
+        {busy ? "Retrying…" : "Retry bet"}
+      </button>
+      {msg && <span className={`text-xs ${msg.ok ? "text-hit" : "text-warn"}`}>{msg.text}</span>}
     </div>
   );
 }
