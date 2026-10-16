@@ -502,6 +502,10 @@ export function overUnderMarket(line: number | null | undefined): { marketType: 
  * Betfair price lookup (betfair/exchange.ts), so the price read is for exactly the bet that would be placed.
  */
 export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name: string) => string): { marketType: string; selectionName: string } | { error: string } {
+  if (p.market === "NO_MORE_GOALS") {
+    const m = overUnderMarket(p.detail?.targetLine ?? null);
+    return m ? { marketType: m.marketType, selectionName: m.selectionName.replace(/^Over /, "Under ") } : { error: "Could not work out the Over/Under line." };
+  }
   if (p.market === "NEXT_GOAL" || p.market === "OVER_1_5" || p.market === "TWO_MORE_GOALS") {
     return overUnderMarket(p.detail?.targetLine ?? null) ?? { error: "Could not work out the Over/Under line." };
   }

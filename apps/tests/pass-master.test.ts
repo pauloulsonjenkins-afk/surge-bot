@@ -58,3 +58,20 @@ test("sent as the match's Over/Under market at its line, which Betfair lists for
 test("its record starts again from the change of bet", () => {
   assert.ok(RECORD_FROM["pass master 1st half"]! >= "2026-10-14T00:00:00.000Z");
 });
+
+test("Snore-fest is no more goals: Under (goals at the alert + 0.5), sent as the Under selection, graded from the final score", async () => {
+  const text = (ft?: string) =>
+    ["🔔 💤 Snore-fest (Under 0.5)", "", "🇫🇷 France Ligue 1 (3rd vs 9th)", "Lens vs Lille", "", "Timer: 72'", "Goals: 0 - 0", ...(ft ? ["", "⸻⸻ Match Summary ⸻⸻", "", "Half-Time Score: 0-0", `Full-Time Score: ${ft}`, "", "✅ Hit"] : [])].join("\n");
+  const p = parseAlert(text());
+  assert.equal(p.market, "NO_MORE_GOALS");
+  assert.equal(p.targetLine, 0.5);
+  assert.equal(p.selection, "Under 0.5");
+  assert.equal(parseAlert(text("0-0")).result, "hit");
+  assert.equal(parseAlert(text("1-0")).result, "miss");
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "snore-fest": 1 }, strategies: { "snore-fest": true } });
+  db.upsertLivePick("chat", 1, text(), parseAlert(text()), new Date(Date.now() - 60_000).toISOString());
+  const feed = buildFeed(db, { markSent: false });
+  assert.equal(feed.rows[0]?.marketType, "OVER_UNDER_05");
+  assert.equal(feed.rows[0]?.selectionName, "Under 0.5 Goals");
+});

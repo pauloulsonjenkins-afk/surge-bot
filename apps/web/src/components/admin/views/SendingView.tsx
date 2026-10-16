@@ -84,7 +84,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "wording", label: "Bet wording" },
 ];
 
-const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS"]);
+const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS"]);
 
 /**
  * Betting's first two tabs. "bets": what is going on Betfair now (and what didn't). "limits": how bets are placed and

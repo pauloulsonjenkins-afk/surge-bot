@@ -115,6 +115,12 @@ const DEFAULTS: Record<string, StrategyInfo> = {
     trigger: "61' to 75', the leading side 1.80 or less pre-match and one goal ahead, its momentum up 48+ in 12 minutes and a shot on target in that time, no red cards.",
     bet: "Favourite to score again",
   },
+  "snore-fest": {
+    name: "Decaf",
+    description: "A dead game late on: 0-0 after 70' with neither side pushing. Backs no more goals. In Sim as a test.",
+    trigger: "70'+, 0-0, momentum 30 or under now and 10 minutes ago.",
+    bet: "No more goals (Under goals at the alert + 0.5)",
+  },
   "pass master 1st half": {
     name: "Filter Coffee",
     description: "The favourite is passing well in the first half: backs two more goals in the match. In Sim until 50 priced picks.",

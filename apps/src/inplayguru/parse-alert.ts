@@ -27,6 +27,8 @@ export type MarketCode =
   | "OVER_1_5"
   /** Two more goals in the match: Over (goals at the alert + 1.5), any team. */
   | "TWO_MORE_GOALS"
+  /** No more goals in the match: Under (goals at the alert + 0.5). */
+  | "NO_MORE_GOALS"
   | "FIRST_HALF_GOALS"
   /** Lay the away side before kick-off: wins on a home win or a draw. Laid only by GoalBrew's direct betting (Match Odds). */
   | "AWAY_WIN_LAY";
@@ -118,6 +120,9 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // market for. Over its first 20 alerts two more goals came in 17 (85%), at prices around 1.3 to 1.6, and the
   // Over/Under market is on Betfair for practically every match.
   { test: /pass master 1st half/, market: "TWO_MORE_GOALS" },
+  // "Snore-fest (Under 0.5)" (added 16 Oct 2026, from InPlayGuru's gallery, Sim test): 70'+, still 0-0, both sides'
+  // momentum 30 or under now and 10 minutes ago, backed as no more goals, Under (goals at the alert + 0.5).
+  { test: /snore/, market: "NO_MORE_GOALS" },
   // InPlayGuru strategies defined as "Over 0.5 Goals Since Picked (Next goal)" (checked on its Strategies page, 1 Oct 2026).
   { test: /home pressure/, market: "NEXT_GOAL" },
   // "Favourite pressure 2nd half" (added 2 Oct 2026): Pass Master's favourite-dominance signal at 50-70', with the score
@@ -449,6 +454,13 @@ export function parseAlert(text: string): ParsedAlert {
         flags.push("No Over/Under line in the alert to cross-check the target line against.");
       }
     }
+  } else if (market === "NO_MORE_GOALS") {
+    if (goalsHome !== null && goalsAway !== null) {
+      targetLine = goalsHome + goalsAway + 0.5;
+      selection = `Under ${targetLine}`;
+    } else {
+      flags.push("Could not read the score, so the goal line can't be worked out.");
+    }
   } else if (market === "TWO_MORE_GOALS") {
     if (goalsHome !== null && goalsAway !== null) {
       targetLine = goalsHome + goalsAway + 1.5;
@@ -520,6 +532,8 @@ export function parseAlert(text: string): ParsedAlert {
     let computed: PickResult | null = null;
     // Over (goals at the alert + 0.5): wins if the final total is above that line.
     if ((market === "NEXT_GOAL" || market === "OVER_1_5" || market === "TWO_MORE_GOALS") && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
+    // No more goals: wins only if the final total stays under the line.
+    else if (market === "NO_MORE_GOALS" && targetLine !== null) computed = a + b < targetLine ? "hit" : "miss";
     else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";
     // Favourite to win (Match Odds): hits only if the favourite wins. A draw loses.
     else if (market === "FAVOURITE_TO_WIN" && favourite !== null) {
