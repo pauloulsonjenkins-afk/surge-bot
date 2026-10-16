@@ -44,7 +44,7 @@ function latestScore(pick: LivePick): string {
  * kick-off, so tonight's games aren't listed as "waiting for a result" before they've finished. Others from the alert.
  */
 function startOf(pick: LivePick): number {
-  const ko = Date.parse((pick.detail as { edge?: { kickoff?: string } } | null)?.edge?.kickoff ?? "");
+  const ko = Date.parse(pick.detail?.kickoff ?? "");
   return Number.isFinite(ko) ? ko : Date.parse(pick.firstSeenAt);
 }
 

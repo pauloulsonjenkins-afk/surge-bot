@@ -166,6 +166,8 @@ export interface PublicPick {
     strikeRate: number | null;
     /** A pre-match alert's kick-off wording ("In 1 hour"). */
     kickoffRaw?: string | null;
+    /** A Best Value Cuppa pick's kick-off time (ISO), so Live counts its match from the start. */
+    kickoff?: string | null;
   } | null;
 }
 
@@ -205,6 +207,7 @@ export function toPublicPick(p: LivePick): PublicPick {
           matched: p.detail.matched,
           strikeRate: p.detail.strikeRate,
           kickoffRaw: p.detail.kickoffRaw ?? null,
+          kickoff: (p.detail as { edge?: { kickoff?: string } }).edge?.kickoff ?? null,
         }
       : null,
   };

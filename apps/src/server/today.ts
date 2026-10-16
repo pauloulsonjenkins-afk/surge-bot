@@ -32,7 +32,7 @@ const CATEGORIES: Array<{ test: RegExp; category: string; fix: string }> = [
   { test: /Daily stake limit|Daily limit|Match limit|Daily loss stop/i, category: "A daily or match limit", fix: "Your safety limits working." },
   { test: /Paused:/i, category: "Paused: Betfair problems", fix: "The circuit breaker. Check Betfair's status." },
   { test: /Not enough money in the Betfair account|INSUFFICIENT_FUNDS/i, category: "Not enough money in the account", fix: "Top up the Betfair account." },
-  { test: /turned it down|betting software/i, category: "Old bot turned it down", fix: "From before GoalBrew placed its own bets (BF Bot Manager). Nothing to fix now." },
+  { test: /turned it down|betting software|no reason was recorded|but no bet was matched/i, category: "Old bot, no reason recorded", fix: "From before GoalBrew placed its own bets (BF Bot Manager). Nothing to fix now." },
   { test: /Too old/i, category: "Alert too late to bet", fix: "The alert arrived after the betting window. Check the Telegram delay." },
 ];
 
