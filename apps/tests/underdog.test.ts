@@ -114,3 +114,27 @@ test("stored underdog results saved as Over goals are corrected at start-up", ()
   assert.equal(pick?.market, "UNDERDOG_DOUBLE_CHANCE");
   assert.equal(pick?.selection, "Underdog to win or draw");
 });
+
+test("the alert's own underdog-or-draw price comes from its live 1X2, so a stale pre-goal Betfair price is spotted", async () => {
+  const { alertOddsOfPick } = await import("../src/inplayguru/bet-feed");
+  const db = new EngineDb(":memory:", () => {});
+  const text = alert();
+  db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
+  const p = db.listLivePicks(1)[0]!;
+  // Away underdog leading: draw 3.60, away 1.44 live, so draw-or-away is about 1 / (1/3.60 + 1/1.44) = 1.03.
+  assert.equal(alertOddsOfPick(p), 1.03);
+  const { isStaleExchangePrice } = await import("../src/server/pricing");
+  assert.equal(isStaleExchangePrice(1.4, alertOddsOfPick(p)), true, "1.40 on Betfair is a pre-goal price");
+});
+
+test("in Sim the near-certainty is held back by the minimum odds, as Live would", async () => {
+  const { recordSimBets } = await import("../src/inplayguru/bet-feed");
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { stakes: { "underdog taking charge action": 2 }, minOdds: { "underdog taking charge action": 1.2 } });
+  recordSimBets(db, new Date(Date.now() - 60_000)); // Sim recording starts before the alert arrives
+  const text = alert();
+  db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
+  recordSimBets(db);
+  const row = db.sqlite.prepare("SELECT sim_row FROM live_picks LIMIT 1").get() as { sim_row: string | null };
+  assert.match(JSON.parse(row.sim_row ?? "{}").skipped ?? "", /below the minimum 1.20/);
+});

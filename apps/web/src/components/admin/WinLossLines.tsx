@@ -64,12 +64,13 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
   const lo = values.length ? Math.min(...values) : 0;
   // Where £0 falls, from the top (0) to the bottom (1): of the line's own range (stroke), and of the range down to or up
   // to £0 (the fade, which is drawn between the line and £0).
-  const crosses = hi > 0 && lo < 0;
-  const lineSplit = crosses ? hi / (hi - lo) : hi > 0 ? 1 : 0;
+  // £0 itself counts as in profit (green): the split sits a hair below the zero line, so a flat £0 start isn't red.
+  const crosses = hi >= 0 && lo < 0;
+  const lineSplit = crosses ? Math.min(1, hi / (hi - lo) + 0.01) : 1;
   const fillTop = Math.max(hi, 0);
   const fillBottom = Math.min(lo, 0);
   const fillSplit = fillTop - fillBottom > 0 ? fillTop / (fillTop - fillBottom) : 1;
-  const whole = lo >= 0 ? UP : DOWN;
+  const whole = lo >= 0 ? UP : DOWN; // used only when the line doesn't cross £0
   const stroke = filled ? (crosses ? `url(#${id}-stroke)` : whole) : null;
   const keyColour = filled ? (values.at(-1) ?? 0) < 0 ? DOWN : UP : null;
   return (

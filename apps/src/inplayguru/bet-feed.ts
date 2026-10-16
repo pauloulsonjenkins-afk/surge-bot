@@ -777,6 +777,15 @@ export function alertOddsOfPick(p: LivePick): number | null {
   const d = p.detail;
   if (!d) return null;
   const live = d.odds?.live1x2 ?? null;
+  // Underdog win or draw: the alert's own price, from its live 1X2 (1 / (1/underdog + 1/draw)). These alerts fire just
+  // after the underdog goes ahead, when the real price is often 1.01-1.10 while a delayed Betfair price still shows the
+  // pre-goal 1.3-1.5 (16 Oct 2026: 10 of 12 such bets went unmatched). With this, direct betting waits instead of asking a
+  // phantom price, and the minimum odds hold the near-certainties back in Live and Sim alike.
+  if (p.market === "UNDERDOG_DOUBLE_CHANCE") {
+    if (!live || !d.underdog || live.some((x) => !(x > 1))) return null;
+    const win = d.underdog === "home" ? live[0] : live[2];
+    return Math.round((1 / (1 / win + 1 / live[1])) * 100) / 100;
+  }
   const favouriteOdds = d.favourite && live ? (d.favourite === "home" ? live[0] : live[2]) : null;
   return alertOddsOf({
     market: p.market,
