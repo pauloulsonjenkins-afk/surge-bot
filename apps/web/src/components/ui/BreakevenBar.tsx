@@ -13,6 +13,7 @@ export function BreakevenBar({
   caption = true,
   settled,
   since,
+  noun = "pick",
 }: {
   hitRate: number | null;
   breakeven: number | null | undefined;
@@ -23,6 +24,8 @@ export function BreakevenBar({
   settled?: number;
   /** Where those picks start, for the "too early" words (e.g. "since 12 Oct"). */
   since?: string;
+  /** What "settled" counts, e.g. "priced pick" where only picks with a known price are judged. */
+  noun?: string;
 }) {
   if (hitRate === null || breakeven === null || breakeven === undefined) return null;
   const early = settled !== undefined && settled < JUDGE_FROM;
@@ -48,7 +51,7 @@ export function BreakevenBar({
           needs {breakeven}% ·{" "}
           {early ? (
             <span>
-              {settled} pick{settled === 1 ? "" : "s"}
+              {settled} {noun}{settled === 1 ? "" : "s"}
               {since ? ` ${since}` : ""}: too early to judge
             </span>
           ) : (

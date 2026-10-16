@@ -81,13 +81,13 @@ function minPriceSent(rowJson: string | null): number | null {
 
 export function reasonFor(exchange: string | null, check: string | null, detail: string | null, price: number | null, minPrice: number | null): string {
   if (exchange === "off") return "The match wasn't found on Betfair.";
-  if (exchange === "nameDiffers") return "Betfair spells a team differently: add it under Sending → Match names.";
+  if (exchange === "nameDiffers") return "Betfair spells a team differently: add it under Betting → Limits → Match names.";
   if (check === "noMarket" || check === "noSelection") return detail ?? "The market sent isn't on Betfair for this match.";
   if (check === "ok" && price !== null && minPrice !== null && price < minPrice) {
     return `Betfair's price was ${price.toFixed(2)}, below this strategy's minimum odds of ${minPrice.toFixed(2)}, so it wasn't taken.`;
   }
-  if (check === "ok") return "The bet is on Betfair as sent, so your betting software turned it down: check that strategy's market types, timing and price rules, and that it's running.";
-  return "Not checked on Betfair. Check your betting software's log for this match.";
+  if (check === "ok") return "The bet is on Betfair as sent, but no bet was matched: see the reason on Betting → Bets.";
+  return "Not checked on Betfair, and no reason was recorded.";
 }
 
 /**

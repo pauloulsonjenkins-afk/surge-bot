@@ -21,7 +21,7 @@
  *
  * Only settled picks count: a bet still in play has no result yet.
  */
-import type { EngineDb } from "../storage/engine-db";
+import { isLivePlacement, type EngineDb } from "../storage/engine-db";
 import { alertOddsOf } from "../server/pricing";
 
 export interface StopLossRule {
@@ -140,6 +140,21 @@ function winLossInputs(db: EngineDb): { commission: number; assumedOdds: Record<
   return { commission, assumedOdds };
 }
 
+type WinLossRow = ReturnType<EngineDb["listResultsForWinLoss"]>[number];
+
+/**
+ * The stake a pick counts at today. Live: a matched Betfair bet at the amount matched, a bet placed by hand at its
+ * stake, or (before Betfair was checked) the stake sent. A pick sent but never placed staked nothing, so it is left
+ * out, as on Profit. Sim: the simulated bet's stake.
+ */
+function countedStake(r: WinLossRow, mode: "live" | "sim"): number | null {
+  if (mode === "live") {
+    if (!isLivePlacement(r.placement)) return null;
+    return r.placement === "betfair" ? r.betStake : r.sentStake;
+  }
+  return r.placement === "sim" && r.sim && r.sim.skipped === null ? r.sim.stake : null;
+}
+
 /**
  * Today's result across every strategy (UK day), counted the same way as each strategy's stop loss: Live counts the
  * bets really placed (a Betfair bet at its real result), Sim the simulated ones. Used by the whole-account daily loss
@@ -153,16 +168,7 @@ export function accountToday(db: EngineDb, now = new Date(), mode: "live" | "sim
   let settled = 0;
   for (const r of db.listResultsForWinLoss(since)) {
     if (ukDay.format(new Date(r.firstSeenAt)) !== today) continue;
-    const stake =
-      mode === "live"
-        ? r.sent
-          ? r.placement === "betfair"
-            ? r.betStake
-            : r.sentStake
-          : null
-        : r.placement === "sim" && r.sim && r.sim.skipped === null
-          ? r.sim.stake
-          : null;
+    const stake = countedStake(r, mode);
     if (stake === null) continue;
     const key = labelOf(r.strategy).toLowerCase();
     if (mode === "live" && r.placement === "betfair" && r.betProfit !== null) net += r.betProfit > 0 ? r.betProfit * (1 - commission) : r.betProfit;
@@ -192,16 +198,7 @@ export function computeStopLoss(db: EngineDb, now = new Date(), mode: "live" | "
   // Live counts the bets actually placed: a matched Betfair bet at the amount matched, or one placed by hand (a pick
   // sent but never placed lost nothing). Sim counts the simulated bets that would have been placed, at their recorded
   // stake: the same limits, run as if the strategy were live.
-  const stakeOf = (r: ReturnType<EngineDb["listResultsForWinLoss"]>[number]): number | null =>
-    mode === "live"
-      ? r.sent
-        ? r.placement === "betfair"
-          ? r.betStake
-          : r.sentStake
-        : null
-      : r.placement === "sim" && r.sim && r.sim.skipped === null
-        ? r.sim.stake
-        : null;
+  const stakeOf = (r: WinLossRow): number | null => countedStake(r, mode);
   const picks = db.listResultsForWinLoss(since).filter((r) => stakeOf(r) !== null && ukDay.format(new Date(r.firstSeenAt)) === today);
 
   for (const key of keys) {

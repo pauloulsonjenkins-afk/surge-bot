@@ -231,7 +231,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Tile
           label="Daily loss stop"
           value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}
-          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : `${gbp(d.today.liveNet)} so far today`) : undefined}
+          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet)} of it used today` : "None used: Live isn't down today") : undefined}
           warn={d.limits.dailyLossLimit === 0 || d.limits.lossStop !== null}
         >
           {d.limits.dailyLossLimit === 0 && (

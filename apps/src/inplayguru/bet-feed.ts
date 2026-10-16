@@ -438,7 +438,7 @@ export function addMatchName(db: EngineDb, alertName: unknown, exchangeName: unk
       return l.trim() !== "" && !(i > 0 && l.slice(0, i).trim().toLowerCase() === from.toLowerCase());
     });
   const next = [...kept, line].join("\n");
-  if (next.length > 5000) throw new Error("Match names is full (5,000 characters). Tidy it on the Sending page first.");
+  if (next.length > 5000) throw new Error("Match names is full (5,000 characters). Tidy it under Betting → Limits → Match names first.");
   saveSendingSettings(db, { aliases: next });
   return line;
 }
@@ -515,14 +515,14 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
     const side = p.detail?.favourite ?? null;
     if (side === null) return { error: "Could not tell which side is the favourite." };
     const code = side === "home" ? settings.favouriteScoresHomeMarketType : settings.favouriteScoresAwayMarketType;
-    if (!code) return { error: "Set the favourite-to-score market codes on the Sending page (Bet wording) first." };
+    if (!code) return { error: "Set the favourite-to-score market codes under Betting → Limits → Bet wording first." };
     const line = p.detail?.targetLine ?? null;
     if (line === null) return { error: "Could not work out the favourite's goal line." };
     const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)).padStart(2, "0"));
     return { marketType: fill(code), selectionName: fill(settings.favouriteScoresSelection) };
   }
   if (p.market === "FIRST_HALF_CORNERS") {
-    if (!settings.firstHalfCornersMarketType) return { error: "Set the first-half corners market code on the Sending page (Bet wording) first." };
+    if (!settings.firstHalfCornersMarketType) return { error: "Set the first-half corners market code under Betting → Limits → Bet wording first." };
     const line = p.detail?.targetLine ?? null;
     if (line === null) return { error: "Could not work out the corner line." };
     const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)).padStart(2, "0"));
@@ -581,8 +581,8 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     .sort((a, b) => a.id - b.id);
 
   if (!settings.enabled) {
-    const r = empty("Sending is switched off.");
-    r.skipped = recent.filter((p) => p.status !== "settled").map((p) => skip(p, "Sending is switched off."));
+    const r = empty("Betting is switched off.");
+    r.skipped = recent.filter((p) => p.status !== "settled").map((p) => skip(p, "Betting is switched off."));
     return r;
   }
 
@@ -705,7 +705,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     // A lay is only ever placed by GoalBrew's own direct betting, never handed to other betting software.
     const lay = p.market === "AWAY_WIN_LAY";
     if (lay && !opts.direct) {
-      skipped.push(skip(p, "Lay bets are placed only by GoalBrew's direct betting (Sending: Betting on Betfair, Live)."));
+      skipped.push(skip(p, "Lay bets are placed only by GoalBrew's direct betting (Betting → Limits, Live)."));
       continue;
     }
 

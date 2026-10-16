@@ -281,7 +281,7 @@ test("live for the admin needs every switch; then one order per alert, with its 
     db.setPickExchange(q.id, "on", "Home v Away", 3, null, "E2");
     await runMembers(db, new Date(), deps);
     assert.equal(placed.length, 1);
-    assert.match(membersStore(db).listBets(id, { mode: "live" }).find((b) => b.pickId === q.id)!.reason!, /already sent/);
+    assert.match(membersStore(db).listBets(id, { mode: "live" }).find((b) => b.pickId === q.id)!.reason!, /already bet/);
     // The member's STOP: nothing more is placed.
     memberKillSwitch(db, id);
     const r = addAlert("Action-packed", null);

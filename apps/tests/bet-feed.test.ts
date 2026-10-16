@@ -48,7 +48,7 @@ test("nothing is sent while the master switch is off", () => {
   add(alert("Lens", "Lille"), minutesAgo(1));
   const feed = buildFeed(db, { markSent: true, now: NOW });
   assert.equal(feed.rows.length, 0);
-  assert.equal(feed.blockedReason, "Sending is switched off.");
+  assert.equal(feed.blockedReason, "Betting is switched off.");
 });
 
 test("a fresh, sendable pick is sent once, then repeated unchanged", () => {

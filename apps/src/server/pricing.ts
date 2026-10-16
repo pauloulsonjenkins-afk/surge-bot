@@ -83,7 +83,7 @@ export function priceResult(
   r: PriceableResult,
   ctx: { strategyStake: number | null; assumedOdds: number | null; commission: number; estimate?: boolean },
 ): PriceOutcome {
-  if (r.placement === "notPlaced") return { kind: "notPlaced", reason: "Sent, but your betting software never placed it." };
+  if (r.placement === "notPlaced") return { kind: "notPlaced", reason: "Sent to bet, but no bet was placed on Betfair." };
   // Real money: what Betfair matched and paid.
   if (!ctx.estimate && r.placement === "betfair" && r.betStake && r.betOdds && r.betOdds > 1 && r.market === "AWAY_WIN_LAY") {
     // A matched LAY: Betfair's stake is the backer's, so the money risked is the liability, stake x (price - 1), and

@@ -44,7 +44,7 @@ export function ModeCard({ data }: { data: DirectStatus }) {
         tone: "money",
         body: (
           <>
-            <p>From now on GoalBrew places each new pick on Betfair with real money, using your stakes, minimum odds, stop losses and daily limit from Sending.</p>
+            <p>From now on GoalBrew places each new pick on Betfair with real money, using your stakes, minimum odds, stop losses (on Strategies) and daily limit (on Limits).</p>
             <p>
               Up to <strong>{money(s.dailyStakeLimit)}</strong> a day can be staked here; unmatched stake is
               cancelled after {s.cancelUnmatchedSeconds} seconds.
@@ -226,7 +226,7 @@ export function Limits({ data }: { data: DirectStatus }) {
   return (
     <Card
       title="Checks before each bet"
-      subtitle="Checked before every bet. A pick that fails one waits and is checked again until it's too old to bet. Stakes, minimum odds and stop losses come from Sending."
+      subtitle="Checked before every bet. A pick that fails one waits and is checked again until it's too old to bet. Stakes, minimum odds and stop losses come from Strategies."
     >
       <div className="flex flex-wrap gap-4">
         <NumberField label="Back/lay gap at most" value={form.maxSpreadPct} onChange={(v) => set({ maxSpreadPct: v })} suffix="%" />

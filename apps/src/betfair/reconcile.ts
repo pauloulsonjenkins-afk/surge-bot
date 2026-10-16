@@ -484,7 +484,7 @@ export function explainUnlinked(
   return {
     reason: suggestion
       ? `One team name differs from the pick sent then, “${nearest.event}”: Betfair writes “${suggestion.to}” for the alert’s “${suggestion.from}”.`
-      : `One team name differs from the pick sent then, “${nearest.event}”. Add the other under Match names on the Sending page.`,
+      : `One team name differs from the pick sent then, “${nearest.event}”. Add the other under Betting → Limits → Match names.`,
     suggestion,
   };
 }

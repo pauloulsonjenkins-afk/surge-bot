@@ -87,7 +87,7 @@ export function HeroRow({
             <>
               {money.staked > 0 && <span className="tabular-nums">{gbp(money.staked, false)} staked · </span>}
               <Link href="/more/admin/winloss" className="underline hover:text-ink">
-                Win/Loss
+                Profit
               </Link>
             </>
           }
@@ -188,7 +188,7 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
         <span className="text-ink-muted"> Odds known for {formatNumber(c.oddsKnown)} of {formatNumber(c.settled)} picks.</span>
       )}
       {c.assumed ? (
-        <span className="text-warn"> {formatNumber(c.assumed)} priced at an assumed price set on Win/Loss, so the return is partly a guess.</span>
+        <span className="text-warn"> {formatNumber(c.assumed)} priced at an assumed price set on Profit, so the return is partly a guess.</span>
       ) : null}
     </p>
   );
@@ -211,7 +211,7 @@ function StatusStrip({ pending }: { pending: number }) {
     <nav aria-label="Status" className="flex flex-wrap gap-2">
       <Link href="/more/admin/sending" className={`${pill} ${on ? "border-line text-ink" : "border-warn/40 bg-warn/10 text-warn"}`}>
         <span aria-hidden className={`h-2 w-2 rounded-full ${on ? "pulse-dot bg-hit" : "bg-warn"}`} />
-        Sending {on ? "on" : "off"}
+        Betting {on ? "on" : "off"}
       </Link>
       <Link href="/more/admin/sending" className={`${pill} border-line text-ink`} title="Strategies whose picks are sent to bet">
         {live} Live

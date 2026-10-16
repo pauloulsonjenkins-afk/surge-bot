@@ -26,18 +26,18 @@ const CATEGORIES: Array<{ test: RegExp; category: string; fix: string }> = [
   { test: /apart \(limit|price gap/i, category: "Back and lay too far apart", fix: "A thin or nervous market. Raise the gap limit only for strategies that need it." },
   { test: /Overround/i, category: "Overround out of range", fix: "Check the overround limits on Direct betting for this market type." },
   { test: /not matched within|cancelled/i, category: "Not matched in time", fix: "The price moved away. A slightly bigger 'take down to' % may help." },
-  { test: /spells a team|Match names|No selection called/i, category: "Team or selection name differs", fix: "A bug: add the name under Sending, Match names." },
+  { test: /spells a team|Match names|No selection called/i, category: "Team or selection name differs", fix: "Add Betfair's spelling under Betting → Limits → Match names." },
   { test: /wasn't found on Betfair|no .+ market|isn't on Betfair|Finding the match/i, category: "Match or market not on Betfair", fix: "Mark the league 'not on Betfair' so it stops being sent." },
   { test: /suspended|has closed|MARKET_/i, category: "Market suspended or closed", fix: "Usually a goal just before the bet. Nothing to fix." },
   { test: /Daily stake limit|Daily limit|Match limit|Daily loss stop/i, category: "A daily or match limit", fix: "Your safety limits working." },
   { test: /Paused:/i, category: "Paused: Betfair problems", fix: "The circuit breaker. Check Betfair's status." },
   { test: /Not enough money in the Betfair account|INSUFFICIENT_FUNDS/i, category: "Not enough money in the account", fix: "Top up the Betfair account." },
-  { test: /turned it down|betting software/i, category: "Betting software turned it down", fix: "Check BF Bot Manager's rules for that strategy (older picks)." },
+  { test: /turned it down|betting software/i, category: "Old bot turned it down", fix: "From before GoalBrew placed its own bets (BF Bot Manager). Nothing to fix now." },
   { test: /Too old/i, category: "Alert too late to bet", fix: "The alert arrived after the betting window. Check the Telegram delay." },
 ];
 
 export function categorise(reason: string | null): { category: string; fix: string } {
-  if (!reason) return { category: "No reason recorded", fix: "Look at the pick on Sending." };
+  if (!reason) return { category: "No reason recorded", fix: "Look at the pick on Betting → Bets." };
   // "Too old to bet. <last reason>": the last reason it was waiting for is the real cause.
   const inner = reason.replace(/^Too old to bet\.\s*/i, "");
   for (const c of CATEGORIES) if (inner && c.test.test(inner)) return { category: c.category, fix: c.fix };

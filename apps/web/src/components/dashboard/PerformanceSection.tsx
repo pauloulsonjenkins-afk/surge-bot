@@ -164,7 +164,7 @@ export function PerformanceSection({
         title="Breakdown"
         subtitle={
           tab === "strategy"
-            ? lights ? "Tap a strategy to filter the whole dashboard to it. The figure is its all-time return per £1 staked (hit rate under it); the dot: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
+            ? lights ? "Tap a strategy to filter the whole dashboard to it. The big figure is its all-time return per £1 staked; the hit rate under it is for the period chosen above; the dot: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
             : tab === "minute"
               ? "Hit rate by the match minute the alert fired"
               : "Tap a country, tier or league to filter this section"
@@ -206,7 +206,7 @@ export function PerformanceSection({
                         {strategyNames.name(r.name)}
                       </span>
                       <span className="text-xs text-ink-muted">
-                        {r.agg.alerts} alerts
+                        {r.agg.alerts} alert{r.agg.alerts === 1 ? "" : "s"}
                         {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}
                       </span>
                     </span>
@@ -222,7 +222,7 @@ export function PerformanceSection({
                             {v > 0 ? "+" : ""}
                             {v}%
                           </span>
-                          <span className="block text-xs text-ink-muted">hit {pct(r.agg)}</span>
+                          <span className="block text-xs text-ink-muted">all time · hit {pct(r.agg)} here</span>
                         </span>
                       );
                     })()}

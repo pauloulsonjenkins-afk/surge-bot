@@ -39,6 +39,15 @@ function latestScore(pick: LivePick): string {
   return pick.goalsHome !== null && pick.goalsAway !== null ? `${pick.goalsHome} – ${pick.goalsAway}` : "– –";
 }
 
+/**
+ * When a pick's match clock starts, for in play / waiting: a Best Value Cuppa pick (made hours before) counts from its
+ * kick-off, so tonight's games aren't listed as "waiting for a result" before they've finished. Others from the alert.
+ */
+function startOf(pick: LivePick): number {
+  const ko = Date.parse((pick.detail as { edge?: { kickoff?: string } } | null)?.edge?.kickoff ?? "");
+  return Number.isFinite(ko) ? ko : Date.parse(pick.firstSeenAt);
+}
+
 /** Re-renders every half minute, so the estimated match clock moves on. */
 function useNow(everyMs = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
@@ -528,14 +537,12 @@ export default function LivePage() {
   }
 
   const now = Date.now();
-  const inPlay = (data ?? []).filter(
-    (p) => p.status !== "settled" && now - new Date(p.firstSeenAt).getTime() < STILL_LIVE_MS,
-  );
+  const inPlay = (data ?? []).filter((p) => p.status !== "settled" && now - startOf(p) < STILL_LIVE_MS);
   // Grouped by match, in order of each match's newest alert (Map keeps insertion order, and the list is newest first).
   const matches = new Map<string, LivePick[]>();
   for (const p of inPlay) (matches.get(matchKey(p)) ?? matches.set(matchKey(p), []).get(matchKey(p))!).push(p);
   const older = (data ?? []).filter((p) => {
-    const age = now - new Date(p.firstSeenAt).getTime();
+    const age = now - startOf(p);
     return p.status !== "settled" && age >= STILL_LIVE_MS && age < WAITING_MS;
   });
   const waiting = older.filter((p) => !p.waitingClearedAt);

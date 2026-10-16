@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { computeStopLoss, saveStopLossRule, getStopLossRules } from "../src/inplayguru/stop-loss";
+import { accountToday, computeStopLoss, saveStopLossRule, getStopLossRules } from "../src/inplayguru/stop-loss";
 
 const S = "Blistering Momentum";
 const KEY = S.toLowerCase();
@@ -188,4 +188,16 @@ test("bad values are ignored, not saved", () => {
   saveStopLossRule(db, S, { dailyLoss: 10, lossRun: 2.5 });
   assert.equal(getStopLossRules(db)[KEY]?.dailyLoss, 10);
   assert.equal(getStopLossRules(db)[KEY]?.lossRun, null);
+});
+
+test("a pick sent but never placed on Betfair lost nothing: not in today's Live total or the stop loss", () => {
+  const { db, sentAndSettled } = setup(NOW);
+  saveStopLossRule(db, S, { dailyLoss: 2 });
+  // Any Betfair bet from well before means every pick sent since is checked against Betfair; these had none.
+  const placedAt = new Date(NOW.getTime() - 3 * 86_400_000).toISOString();
+  db.saveBetfairBets([{ betId: "OLD", placedAt, settledAt: placedAt, event: "Old v Match", market: null, selection: "Over 0.5 Goals", side: "back", provider: null, status: "settled", stake: 1, matched: 1, odds: 2, profit: 1 }], "t");
+  sentAndSettled("miss");
+  sentAndSettled("miss");
+  assert.equal(computeStopLoss(db, NOW).get(KEY)?.stopped, false);
+  assert.deepEqual(accountToday(db, NOW), { net: 0, settled: 0 });
 });

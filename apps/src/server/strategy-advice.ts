@@ -5,7 +5,8 @@
  *   Try Live (a Sim strategy), all of:
  *     - 50+ priced Sim picks, with the return still above zero once pulled towards zero for luck (adjusted);
  *     - still making money in Sim over the last 30 days (20+ priced picks);
- *     - beating Betfair's later price over 50+ price checks (vs typical at 5 minutes, or at kick-off);
+ *     - pre-match strategies only: beating the kick-off price over 50+ price checks (the in-play check leaves out picks a
+ *       goal settled, so it isn't a fair verdict);
  *     - a stop loss set.
  *     Apply: Live at £1 (or its own stake if it has one).
  *   Back to Sim (a Live strategy):
@@ -87,7 +88,6 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
   const sinceChange = computeStrategyReturns(db, null, { fromRuleChange: true });
   const recent = computeStrategyReturns(db, new Date(now.getTime() - 30 * 86_400_000).toISOString(), { fromRuleChange: true });
   const checks = priceCheckReport(db, 30, now);
-  const typical = checks.typical.t5;
   const out: Advice[] = [];
   for (const [key, r] of Object.entries(all)) {
     const live = settings.enabled && settings.strategies[key] === true;
@@ -99,8 +99,9 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       const adj = adjusted(sim.roi, sim.counted);
       const recentSim = rec?.sim;
       const ko = checks.rows.find((x) => x.strategy.toLowerCase() === key && x.kind === "ko");
-      const t5 = checks.rows.find((x) => x.strategy.toLowerCase() === key && x.kind === "t5");
-      const check = ko ? { picks: ko.picks, edge: ko.edge } : t5 && typical !== undefined ? { picks: t5.picks, edge: t5.edge - typical } : null;
+      // Pre-match strategies must also beat the kick-off price. The in-play check isn't used: it leaves out every pick a
+      // goal settled within 5 minutes, so the quickest winners look worst.
+      const check = ko ? { picks: ko.picks, edge: ko.edge } : null;
       const stop = stops[key];
       const ok =
         sim.counted >= SAMPLE &&
@@ -110,9 +111,7 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
         recentSim.counted >= 20 &&
         recentSim.roi !== null &&
         recentSim.roi > 0 &&
-        !!check &&
-        check.picks >= SAMPLE &&
-        check.edge > 0 &&
+        (!check || (check.picks >= SAMPLE && check.edge > 0)) &&
         !!stop &&
         (stop.dailyLoss !== null || stop.lossRun !== null);
       if (ok) {
@@ -122,7 +121,7 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
           kind: "try-live",
           action: `Put Live at ${stakeWords(to)}`,
           to,
-          reason: `${pct(sim.roi!)} per £1 over ${sim.counted} Sim picks (${pct(adj!)} adjusted), ${pct(recentSim!.roi!)} in the last 30 days, and beating Betfair's later price by ${check!.edge.toFixed(1)}% over ${check!.picks} checks.`,
+          reason: `${pct(sim.roi!)} per £1 over ${sim.counted} Sim picks (${pct(adj!)} adjusted), ${pct(recentSim!.roi!)} in the last 30 days${check ? `, and beating the kick-off price by ${check.edge.toFixed(1)}% over ${check.picks} checks` : ""}.`,
         });
       }
       continue;

@@ -47,9 +47,8 @@ export function PriceCheck() {
         earliest sign a strategy has a real edge, well before enough results come in to prove it.
       </p>
       <p className="mt-1 text-xs text-ink-muted">
-        In-play goal prices drift out as minutes pass without a goal, so every in-play pick looks a little worse later. In-play figures are therefore shown
-        against the average of all strategies (“vs typical”). Picks where a goal had already settled the bet are left out. Last 30 days; faded = fewer
-        than {ENOUGH} checks.
+        Only the kick-off column is a fair verdict. The in-play columns leave out every pick a goal settled within those minutes, so the strategies that
+        win quickest look worst; no suggestion uses them. Judge in-play strategies by their return. Last 30 days; faded = fewer than {ENOUGH} checks.
       </p>
       {error ? (
         <p className="mt-2 text-sm text-destructive">{error.message}</p>

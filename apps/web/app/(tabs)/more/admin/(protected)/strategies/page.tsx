@@ -23,6 +23,8 @@ import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/
 import Link from "next/link";
 import { PriceCheck } from "@/components/admin/PriceCheck";
 import { usePriceCheck } from "@/queries/use-price-check";
+import { useToday } from "@/queries/use-today";
+import type { StrategyAdvice } from "@/server/engine-client";
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
@@ -140,7 +142,8 @@ type CheckResult = { picks: number; vsTypical: number; kickOff: boolean };
 
 /**
  * The written rule for moving a Sim strategy to Live, shown on its card: enough picks, still profitable once pulled
- * towards zero for luck, beating the market's later price, and a stop loss in place. All four, then £1 Live.
+ * towards zero for luck, beating the kick-off price (pre-match only), and a stop loss in place. The same rule as the
+ * "Put Live" suggestion on Today (strategy-advice.ts), which also wants the last 30 days up.
  */
 function ReadyForLive({ row, check, hasStop }: { row: AdminStrategy; check: CheckResult | undefined; hasStop: boolean }) {
   const sim = row.returns?.sim;
@@ -148,18 +151,21 @@ function ReadyForLive({ row, check, hasStop }: { row: AdminStrategy; check: Chec
   const items: Array<{ ok: boolean; text: string }> = [
     { ok: (sim?.counted ?? 0) >= SAMPLE, text: `${SAMPLE}+ priced Sim picks (has ${sim?.counted ?? 0})` },
     { ok: adj !== null && adj > 0, text: `Adjusted Sim return above zero (${roiText(adj)})` },
-    {
-      ok: !!check && check.picks >= SAMPLE && check.vsTypical > 0,
-      text: check
-        ? `Beats Betfair's later price over ${SAMPLE}+ checks (${check.vsTypical > 0 ? "+" : ""}${check.vsTypical.toFixed(1)}% ${check.kickOff ? "at kick-off" : "vs typical at 5 min"}, ${check.picks} checks)`
-        : `Beats Betfair's later price over ${SAMPLE}+ checks (no checks yet)`,
-    },
+    // Pre-match strategies only: their price at the alert against the kick-off price.
+    ...(check
+      ? [
+          {
+            ok: check.picks >= SAMPLE && check.vsTypical > 0,
+            text: `Beats the kick-off price over ${SAMPLE}+ checks (${check.vsTypical > 0 ? "+" : ""}${check.vsTypical.toFixed(1)}%, ${check.picks} checks)`,
+          },
+        ]
+      : []),
     { ok: hasStop, text: "A stop loss is set" },
   ];
   const ready = items.every((i) => i.ok);
   return (
     <div className="rounded-md bg-surface-2 p-2.5 text-xs">
-      <p className={`font-medium ${ready ? "text-hit" : "text-ink"}`}>{ready ? "Ready for Live: try it at £1." : "Ready for Live? Not yet."}</p>
+      <p className={`font-medium ${ready ? "text-hit" : "text-ink"}`}>{ready ? "Ready for Live: Today suggests it once its last 30 days are up too." : "Ready for Live? Not yet."}</p>
       <ul className="mt-1 space-y-0.5">
         {items.map((i) => (
           <li key={i.text} className={i.ok ? "text-ink" : "text-ink-muted"}>
@@ -291,26 +297,6 @@ function sortValue(row: AdminStrategy, m: "live" | "sim", by: SortBy): number | 
 }
 
 /** A nudge once there are enough picks to go on: a Sim strategy that makes money, or a Live one that loses it. */
-function verdict(row: AdminStrategy): { tone: "good" | "warn"; text: string } | null {
-  const r = row.returns;
-  if (!r) return null;
-  if (modeOf(row) === "sim" && r.sim.counted >= SAMPLE && r.sim.roi !== null && r.sim.roi > 0) {
-    return { tone: "good", text: `Profitable in Sim over ${r.sim.counted} picks: worth trying Live.` };
-  }
-  if (modeOf(row) === "live" && r.live.counted >= SAMPLE && r.live.roi !== null && r.live.roi < 0) {
-    return { tone: "warn", text: `Losing money over ${r.live.counted} live bets: consider putting it back to Sim.` };
-  }
-  // A proven winner: enough bets, a clear return and a hit rate above what its odds need. Raising the stake is the
-  // biggest profit lever, so say so. A nudge only; the stake itself is changed in Bet settings.
-  const live = r.live as StrategyReturn;
-  if (modeOf(row) === "live" && live.counted >= SAMPLE && live.roi !== null && live.roi >= 0.05) {
-    const j = judged(live, record(row.liveHits ?? 0, row.liveMisses ?? 0).hitRate, live.settled);
-    if (j.hitRate !== null && j.breakeven !== null && j.hitRate > j.breakeven) {
-      return { tone: "good", text: `Clear edge over ${live.counted} live bets: the best place to raise the stake.` };
-    }
-  }
-  return null;
-}
 /**
  * What the hit rate needs beside it: the odds it was won at, the hit rate those odds need to break even after
  * commission, and the range the true hit rate is probably in, given how few picks there are.
@@ -450,9 +436,12 @@ function StrategyCard({
   settings,
   bank,
   check,
+  advice,
 }: {
-  /** Its price check result, for the Ready for Live checklist. */
+  /** Its kick-off price check result (pre-match strategies), for the Ready for Live checklist. */
   check?: CheckResult;
+  /** Today's suggestion for it (Live / Sim or the stake ladder), if any: the one place those rules live. */
+  advice?: StrategyAdvice;
   /** Its betting controls (from Sending); missing while they load. */
   bet: SendingStrategy | undefined;
   settings: SendingSettings | undefined;
@@ -487,7 +476,9 @@ function StrategyCard({
   // The rule change's "before" figures in the same mode (the headline counts from the change).
   const beforeAll = row.returns?.before;
   const before = beforeAll ? (pickMode === "all" ? (beforeAll.all ?? null) : beforeAll[pickMode]) : null;
-  const hint = verdict(row);
+  const hint = advice
+    ? { tone: advice.kind === "try-live" || advice.kind === "stake-up" ? "good" : "warn", text: `Suggested: ${advice.action ?? advice.kind}. ${advice.reason} Apply it on Today.` }
+    : null;
   const options = all.filter((o) => o.label !== row.label);
   const names = useStrategyNames();
   const info = names.info(row.label);
@@ -505,7 +496,7 @@ function StrategyCard({
       ? {
           value: roiText(adj),
           tone: roiTone(adj),
-          sub: money && money.staked > 0 ? `${roiText(money.roi)} on ${money.counted} priced` : "adjusted return per £1",
+          sub: money && money.staked > 0 ? `adjusted · ${roiText(money.roi)} on ${money.counted} priced` : "adjusted return per £1",
         }
       : sortBy === "profit"
       ? {
@@ -554,13 +545,13 @@ function StrategyCard({
             </span>
             {check && check.picks > 0 && <PriceCheckLine check={check} />}
             <span className="mt-1.5 block max-w-xs">
-              <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
+              <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
           </span>
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
             <span className="block text-xs text-ink-muted">{headline.sub}</span>
-            {thin && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} priced</span>}
+            {thin && sortBy !== "adjusted" && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} priced</span>}
             {before && before.counted > 0 && (
               <span className="block text-xs text-ink-muted">
                 Before {shortDay.format(new Date(row.recordFrom!))}: {roiText(before.roi)} on {before.counted}
@@ -750,14 +741,17 @@ export default function StrategiesPage() {
   const priceCheck = usePriceCheck(30, true);
   const checks = useMemo(() => {
     const m = new Map<string, CheckResult>();
-    const typical = priceCheck.data?.typical.t5;
     for (const r of priceCheck.data?.rows ?? []) {
       const k = r.strategy.toLowerCase();
+      // Pre-match only: the in-play figures leave out every pick a goal settled within the 5 minutes, so the strategies
+      // that win quickest look worst (Second Pour, the best Live strategy, shows about -17%). Not a fair verdict.
       if (r.kind === "ko") m.set(k, { picks: r.picks, vsTypical: r.edge, kickOff: true });
-      else if (r.kind === "t5" && typical !== undefined) m.set(k, { picks: r.picks, vsTypical: Math.round((r.edge - typical) * 10) / 10, kickOff: false });
     }
     return m;
   }, [priceCheck.data]);
+  // Today's suggestions, so each card says the same as Today (one set of rules, in the engine).
+  const today = useToday();
+  const adviceOf = useMemo(() => new Map((today.data?.advice ?? []).map((a) => [a.key.toLowerCase(), a])), [today.data]);
   const betOf = useMemo(() => {
     const map = new Map<string, SendingStrategy>();
     for (const s of sending.data?.strategies ?? []) map.set(s.label.toLowerCase(), s);
@@ -931,7 +925,7 @@ export default function StrategiesPage() {
       {period !== "ALL" && (
         <p className={`text-xs text-ink-muted ${isPlaceholderData ? "animate-pulse" : ""}`}>
           {period === "YTD" ? "Since 1 January" : period === "1D" ? "Today (since midnight)" : `Last ${period === "7D" ? "7 days" : "30 days"}`} only. Figures from
-          fewer than {SAMPLE} priced picks are faded and get no Live / Sim suggestion; the equity curve is always all time.
+          fewer than {SAMPLE} priced picks are faded. Suggestions (the same as on Today) use their own windows, whatever the period here; the equity curve is always all time.
         </p>
       )}
 
@@ -1031,6 +1025,7 @@ export default function StrategiesPage() {
                 settings={sending.data?.settings}
                 bank={sending.data?.bank}
                 check={checks.get(r.label.toLowerCase())}
+                advice={adviceOf.get(r.label.toLowerCase())}
               />
             );
             return (

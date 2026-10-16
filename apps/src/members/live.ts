@@ -88,7 +88,7 @@ export function liveBlock(db: EngineDb, ctx: MemberContext, deps: LiveDeps | nul
 
 /** Another bet on this alert already on the house Betfair account, by any route. */
 function houseAlreadyBet(db: EngineDb, p: LivePick, userId: number): string | null {
-  if (p.sentAt) return "This alert was already sent to the betting software for the same Betfair account.";
+  if (p.sentAt) return "This alert was already bet on the same Betfair account.";
   if (db.getDirectBet(p.id)?.mode === "live") return "Direct betting already bet this alert on the same Betfair account.";
   const other = membersStore(db)
     .listAllBets({ mode: "live", since: new Date(Date.parse(p.firstSeenAt) - 60_000).toISOString(), limit: 5000 })

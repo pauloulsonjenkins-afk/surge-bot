@@ -1390,7 +1390,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       // A strategy that is still switched on for sending can't be deleted: switch it off first.
       if (getSendingSettings(db).strategies[label.toLowerCase()] === true) {
-        send(res, 409, { error: "Switch this strategy off on the Sending page before deleting it." });
+        send(res, 409, { error: "Put this strategy back to Sim on Strategies before deleting it." });
         return;
       }
       const result = db.removeStrategyPicks(label);

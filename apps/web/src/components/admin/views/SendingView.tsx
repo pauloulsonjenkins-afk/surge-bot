@@ -333,7 +333,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
           {tab === "limits" && (
             <div className="grid grid-cols-2 gap-3">
               <label className="col-span-2 text-xs text-ink-muted">
-                Highest stake allowed (£). Nothing above this is ever sent.
+                Highest stake allowed (£). No bet is ever bigger than this.
                 <input
                   inputMode="decimal"
                   className={`${inputCls} mt-1`}
@@ -349,7 +349,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                   value={form.maxAgeMinutes}
                   onChange={(e) => setForm({ ...form, maxAgeMinutes: e.target.value })}
                 />
-                <span className="mt-1 block">Pre-match picks (First Half Goal) can be bet until kick-off instead.</span>
+                <span className="mt-1 block">Pre-match picks (Early Roast, Away Win Lay, Best Value Cuppa) can be bet until kick-off instead.</span>
               </label>
               <label className="text-xs text-ink-muted">
                 Latest minute to bet
@@ -380,7 +380,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                 />
                 <span className="mt-1 block">
                   Counts every strategy together, so several Next goal strategies firing on the same game can&apos;t stack up. A pick that would go over is held back and
-                  shows under Skipped.
+                  shows under Held back on Bets.
                 </span>
               </label>
               <label className="text-xs text-ink-muted">
