@@ -184,10 +184,10 @@ export interface WinLossState {
   strategies: WinLossStrategy[];
   /** The lines the figures and graph show: merged strategies appear once. */
   reported: WinLossReported[];
-  periods: { d1: WinLossPeriod; d7: WinLossPeriod; mtd: WinLossPeriod; ytd: WinLossPeriod };
+  periods: { d1: WinLossPeriod; d7: WinLossPeriod; d30: WinLossPeriod; mtd: WinLossPeriod; ytd: WinLossPeriod };
   /** Month to date, one entry per UK day from the 1st to today (days with no settled picks are £0). Before any monthly cost. */
   mtdDaily: Array<{ date: string; pnl: number }>;
-  series: { d1: WinLossPoint[]; d7: WinLossPoint[]; mtd: WinLossPoint[]; ytd: WinLossPoint[] };
+  series: { d1: WinLossPoint[]; d7: WinLossPoint[]; d30: WinLossPoint[]; mtd: WinLossPoint[]; ytd: WinLossPoint[] };
 }
 
 function addDays(iso: string, n: number): string {
@@ -204,10 +204,12 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
   const today = ukDay.format(now);
   const year = today.slice(0, 4);
   const month = today.slice(0, 7);
-  const start = { d1: today, d7: addDays(today, -6), mtd: `${month}-01`, ytd: `${year}-01-01` };
+  const start = { d1: today, d7: addDays(today, -6), d30: addDays(today, -29), mtd: `${month}-01`, ytd: `${year}-01-01` };
+  // The last 30 days reach back into last year in January; the strategy table still counts this year only.
+  const earliest = start.d30 < start.ytd ? start.d30 : start.ytd;
 
-  // A day of margin either side of the year start; the exact UK day is checked below.
-  const rows = db.listResultsForWinLoss(new Date(`${addDays(start.ytd, -1)}T00:00:00Z`).toISOString());
+  // A day of margin before the earliest start; the exact UK day is checked below.
+  const rows = db.listResultsForWinLoss(new Date(`${addDays(earliest, -1)}T00:00:00Z`).toISOString());
   const merges = db.getStrategyMerges();
   /** The line a strategy is reported on: its own name, or the one it was merged into. */
   const reportedAs = (key: string, label: string): string => merges[key] ?? label;
@@ -222,7 +224,15 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
 
   for (const r of rows) {
     const day = ukDay.format(new Date(r.firstSeenAt));
-    if (day < start.ytd || day > today) continue;
+    if (day < earliest || day > today) continue;
+    // Before this year (January's 30-day view only): priced for that view, but not in the year's table.
+    if (day < start.ytd) {
+      if (!inPickMode(r.placement, mode)) continue;
+      const k = strategyLabel(r.strategy).toLowerCase();
+      const out = priceResult(r, { strategyStake: currentStake(db, sending, k), assumedOdds: settings.assumedOdds[k] ?? null, commission: settings.commission / 100 });
+      if (out.kind === "priced") priced.push({ day, time: ukTime.format(new Date(r.firstSeenAt)), key: k, gkey: reportedAs(k, strategyLabel(r.strategy)).toLowerCase(), profit: out.profit });
+      continue;
+    }
 
     const label = strategyLabel(r.strategy);
     const key = label.toLowerCase();
@@ -276,7 +286,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     const [ty, tm] = month.split("-").map(Number) as [number, number];
     return (ty - fy) * 12 + (tm - fm) + 1;
   };
-  const expenditureFor = (p: "d1" | "d7" | "mtd" | "ytd") =>
+  const expenditureFor = (p: "d1" | "d7" | "d30" | "mtd" | "ytd") =>
     p === "mtd" || p === "ytd" ? r2(monthsCharged(start[p]) * ex.monthly) : 0;
 
   // ---- the lines shown: original strategies grouped by what they are merged into ----
@@ -296,7 +306,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
 
   // ---- period totals ----
   const keys = reported.map((l) => l.key);
-  const period = (p: "d1" | "d7" | "mtd" | "ytd"): WinLossPeriod => {
+  const period = (p: "d1" | "d7" | "d30" | "mtd" | "ytd"): WinLossPeriod => {
     const strategies: Record<string, number> = {};
     for (const k of keys) strategies[k] = 0;
     let picks = 0;
@@ -313,7 +323,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
   };
 
   // ---- line graph data ----
-  const dailySeries = (p: "d7" | "mtd" | "ytd"): WinLossPoint[] => {
+  const dailySeries = (p: "d7" | "d30" | "mtd" | "ytd"): WinLossPoint[] => {
     const byDay = new Map<string, Priced[]>();
     for (const x of priced) if (x.day >= start[p]) (byDay.get(x.day) ?? byDay.set(x.day, []).get(x.day)!).push(x);
     const cum: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
@@ -323,7 +333,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     for (let d = start[p]; d <= today; d = addDays(d, 1)) {
       for (const x of byDay.get(d) ?? []) cum[x.gkey] = (cum[x.gkey] ?? 0) + x.profit;
       // The monthly cost is charged on the 1st, for month and year views only.
-      if (p !== "d7" && ex.enabled && ex.startMonth !== null && d.endsWith("-01") && d.slice(0, 7) >= ex.startMonth) {
+      if ((p === "mtd" || p === "ytd") && ex.enabled && ex.startMonth !== null && d.endsWith("-01") && d.slice(0, 7) >= ex.startMonth) {
         spent += ex.monthly;
       }
       const total = Object.values(cum).reduce((a, b) => a + b, 0);
@@ -358,9 +368,9 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     maxStake: sending.maxStake,
     strategies: [...tally.values()].sort((a, b) => b.settled - a.settled),
     reported,
-    periods: { d1: period("d1"), d7: period("d7"), mtd: period("mtd"), ytd: period("ytd") },
+    periods: { d1: period("d1"), d7: period("d7"), d30: period("d30"), mtd: period("mtd"), ytd: period("ytd") },
     mtdDaily,
-    series: { d1: oneDay(), d7: dailySeries("d7"), mtd: dailySeries("mtd"), ytd: dailySeries("ytd") },
+    series: { d1: oneDay(), d7: dailySeries("d7"), d30: dailySeries("d30"), mtd: dailySeries("mtd"), ytd: dailySeries("ytd") },
   };
 }
 
