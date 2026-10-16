@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { gbp } from "@/lib/format";
 
@@ -45,11 +46,32 @@ function LinesTooltip({
   );
 }
 
-/** Straight-line cumulative profit/loss chart, with a zero line and a small colour key. */
+const UP = "var(--hit)";
+const DOWN = "var(--loss)";
+
+/**
+ * Straight-line cumulative profit/loss chart, with a zero line and a small colour key.
+ *
+ * One line is coloured by where it is: green, with a green fade down to £0, while in profit, and red, with a red fade
+ * up to £0, while in loss, so a spell below zero shows even in a period that finished up. Several lines keep their own
+ * colours and no fade (they would smear over each other).
+ */
 export function WinLossLines({ data, series }: { data: Array<Record<string, number | string>>; series: LineSeries[] }) {
-  // One line gets a soft fade beneath it (the line's colour at the top, nothing at the bottom); several lines would
-  // just smear over each other, so they stay plain.
+  const id = useId().replace(/:/g, "");
   const filled = series.length === 1;
+  const values = filled ? data.map((d) => d[series[0]!.key]).filter((v): v is number => typeof v === "number") : [];
+  const hi = values.length ? Math.max(...values) : 0;
+  const lo = values.length ? Math.min(...values) : 0;
+  // Where £0 falls, from the top (0) to the bottom (1): of the line's own range (stroke), and of the range down to or up
+  // to £0 (the fade, which is drawn between the line and £0).
+  const crosses = hi > 0 && lo < 0;
+  const lineSplit = crosses ? hi / (hi - lo) : hi > 0 ? 1 : 0;
+  const fillTop = Math.max(hi, 0);
+  const fillBottom = Math.min(lo, 0);
+  const fillSplit = fillTop - fillBottom > 0 ? fillTop / (fillTop - fillBottom) : 1;
+  const whole = lo >= 0 ? UP : DOWN;
+  const stroke = filled ? (crosses ? `url(#${id}-stroke)` : whole) : null;
+  const keyColour = filled ? (values.at(-1) ?? 0) < 0 ? DOWN : UP : null;
   return (
     <>
       <div className="h-56 w-full">
@@ -57,9 +79,17 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
           <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
             {filled && (
               <defs>
-                <linearGradient id="winloss-fade" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={series[0]!.color} stopOpacity={0.32} />
-                  <stop offset="100%" stopColor={series[0]!.color} stopOpacity={0} />
+                {/* The line: green above £0, red below (a hard change exactly at £0). */}
+                <linearGradient id={`${id}-stroke`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset={lineSplit} stopColor={UP} />
+                  <stop offset={lineSplit} stopColor={DOWN} />
+                </linearGradient>
+                {/* The fade: strongest away from £0, nothing at £0, green above and red below. */}
+                <linearGradient id={`${id}-fade`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset={0} stopColor={UP} stopOpacity={fillSplit > 0 ? 0.32 : 0} />
+                  <stop offset={fillSplit} stopColor={UP} stopOpacity={0.02} />
+                  <stop offset={fillSplit} stopColor={DOWN} stopOpacity={0.02} />
+                  <stop offset={1} stopColor={DOWN} stopOpacity={fillSplit < 1 ? 0.32 : 0} />
                 </linearGradient>
               </defs>
             )}
@@ -82,17 +112,25 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
             <ReferenceLine y={0} stroke="var(--ink-muted)" strokeOpacity={0.5} />
             <Tooltip cursor={{ stroke: "var(--line)" }} content={(p) => <LinesTooltip active={p.active} label={p.label} payload={p.payload} series={series} />} />
             {filled && (
-              <Area type="linear" dataKey={series[0]!.key} baseValue={0} stroke="none" fill="url(#winloss-fade)" isAnimationActive={false} activeDot={false} legendType="none" tooltipType="none" />
+              <Area type="linear" dataKey={series[0]!.key} baseValue={0} stroke="none" fill={`url(#${id}-fade)`} isAnimationActive={false} activeDot={false} legendType="none" tooltipType="none" />
             )}
             {series.map((s) => (
               <Line
                 key={s.key}
                 type="linear"
                 dataKey={s.key}
-                stroke={s.color}
+                stroke={stroke ?? s.color}
                 strokeWidth={2}
                 strokeDasharray={s.dashed ? "5 4" : undefined}
-                dot={data.length <= 14 ? { r: 2.5, fill: s.color } : false}
+                dot={
+                  data.length > 14
+                    ? false
+                    : filled
+                      ? (props: { cx?: number; cy?: number; value?: unknown; index?: number }) => (
+                          <circle key={props.index} cx={props.cx} cy={props.cy} r={2.5} fill={typeof props.value === "number" && props.value < 0 ? DOWN : UP} />
+                        )
+                      : { r: 2.5, fill: s.color }
+                }
                 isAnimationActive={false}
               />
             ))}
@@ -102,7 +140,7 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
         {series.map((s) => (
           <li key={s.key} className="flex items-center gap-1.5 text-xs text-ink-muted">
-            <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
+            <span className="h-2 w-2 rounded-full" style={{ background: keyColour ?? s.color }} />
             {s.name}
           </li>
         ))}
