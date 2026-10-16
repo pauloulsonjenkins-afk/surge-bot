@@ -764,6 +764,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
       if (linked > 0) log.info(`Betfair: ${linked} new bet(s) linked to picks.`);
       const corrected = db.markBetPicksOnExchange();
       if (corrected > 0) log.info(`Betfair: ${corrected} pick(s) marked on Betfair from their placed bets.`);
+      for (const c of db.applyBetfairResults()) log.info(`Betfair: pick ${c.id} amended ${c.from} → ${c.to} to match how Betfair settled its bet.`);
       status.lastOkAt = new Date().toISOString();
       status.lastCount = bets.length;
       // Picks still with no bet 3 minutes after sending: one push notification each (betfair/unplaced.ts).

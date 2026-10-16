@@ -554,6 +554,14 @@ export function pricingInputs(db: EngineDb) {
 
 type ModeReturns = { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
 
+/** Best Value Cuppa's bet types, for splitting its record (Unders are being watched as a strategy of their own). */
+export type EdgeBetKind = "unders" | "overs" | "btts" | "result";
+export function edgeBetKind(bet: { market: string; pick: string }): EdgeBetKind {
+  if (bet.market === "MO" || bet.market === "DC") return "result";
+  if (bet.market === "BTTS") return "btts";
+  return bet.pick === "under" || bet.pick === "no" ? "unders" : "overs";
+}
+
 /**
  * Live, Sim and All returns for every strategy (keyed by lower-case name), for the Strategies page. Worked out pick by
  * pick exactly as Win/Loss does, so the two always agree. Merged strategies are not combined here. With `sinceIso`, only
@@ -566,23 +574,40 @@ export function computeStrategyReturns(
   db: EngineDb,
   sinceIso: string | null = null,
   opts: { fromRuleChange?: boolean } = {},
-): Record<string, ModeReturns & { before?: ModeReturns }> {
+): Record<string, ModeReturns & { before?: ModeReturns; byBet?: Partial<Record<EdgeBetKind, ModeReturns>> }> {
   const { commission, price } = pricingInputs(db);
   const fresh = () => ({ live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) });
-  const tallies = new Map<string, { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null }>();
+  const tallies = new Map<string, { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null; byBet?: Map<EdgeBetKind, ReturnType<typeof fresh>> }>();
   for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
     const { key, priced, odds } = price(r);
     let t = tallies.get(key);
     if (!t) tallies.set(key, (t = { now: fresh(), before: null }));
     const changed = opts.fromRuleChange ? RECORD_FROM[key] : undefined;
     const into = changed && r.firstSeenAt < changed ? (t.before ??= fresh()) : t.now;
-    if (isLivePlacement(r.placement)) into.live.add(r, priced, odds);
-    else if (r.placement === "sim") into.sim.add(r, priced, odds);
-    into.all.add(r, priced, odds);
+    const targets = [into];
+    // Best Value Cuppa: also by bet type (from its rule change too, like the headline).
+    if (r.edgeBet && into === t.now) {
+      const kind = edgeBetKind(r.edgeBet);
+      t.byBet ??= new Map();
+      let k = t.byBet.get(kind);
+      if (!k) t.byBet.set(kind, (k = fresh()));
+      targets.push(k);
+    }
+    for (const x of targets) {
+      if (isLivePlacement(r.placement)) x.live.add(r, priced, odds);
+      else if (r.placement === "sim") x.sim.add(r, priced, odds);
+      x.all.add(r, priced, odds);
+    }
   }
   const done = (t: ReturnType<typeof fresh>): ModeReturns => ({ live: t.live.result(), sim: t.sim.result(), all: t.all.result() });
-  const out: Record<string, ModeReturns & { before?: ModeReturns }> = {};
-  for (const [key, t] of tallies) out[key] = { ...done(t.now), ...(t.before ? { before: done(t.before) } : {}) };
+  const out: Record<string, ModeReturns & { before?: ModeReturns; byBet?: Partial<Record<EdgeBetKind, ModeReturns>> }> = {};
+  for (const [key, t] of tallies) {
+    out[key] = {
+      ...done(t.now),
+      ...(t.before ? { before: done(t.before) } : {}),
+      ...(t.byBet ? { byBet: Object.fromEntries([...t.byBet].map(([k, v]) => [k, done(v)])) } : {}),
+    };
+  }
   return out;
 }
 

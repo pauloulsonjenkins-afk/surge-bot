@@ -871,7 +871,14 @@ export interface AdminStrategy {
   stake: number | null;
   /** Money figures, all time, split into live and sim (missing on an older engine). */
   /** From the rule change when there was one (recordFrom); `before` holds the figures from before it. */
-  returns?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn; before?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn } } | null;
+  returns?: {
+    live: StrategyReturn;
+    sim: StrategyReturn;
+    all?: StrategyReturn;
+    before?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn };
+    /** Best Value Cuppa only: the same figures split by bet type. */
+    byBet?: Partial<Record<"unders" | "overs" | "btts" | "result", { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }>>;
+  } | null;
   /** Recent form: the last 20 settled picks, and the last 7 days (mirrors StrategyForm in the engine's winloss.ts). */
   form?: { recent: FormWindow; week: FormWindow; change?: { at: string; before: FormWindow; after: FormWindow } } | null;
 }

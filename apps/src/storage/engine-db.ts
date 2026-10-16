@@ -1057,6 +1057,35 @@ export class EngineDb {
     return r.changes;
   }
 
+  /**
+   * Betfair's settlement is the final word on a pick GoalBrew bet itself: once every matched bet on it has settled, a
+   * result that disagrees (InPlayGuru's final score missed a late goal, say) is amended to what Betfair paid, as if
+   * done on "Fix a result". Only picks with a bet placed by direct betting (the exact market and selection sent), and
+   * never one already amended by hand. Returns the picks changed.
+   */
+  applyBetfairResults(): Array<{ id: number; from: "hit" | "miss"; to: "hit" | "miss" }> {
+    const rows = this.db
+      .prepare(
+        `SELECT p.id AS id, p.result AS result,
+                SUM(CASE WHEN b.status = 'won' THEN 1 ELSE 0 END) AS won,
+                SUM(CASE WHEN b.status IN ('won', 'lost') THEN 0 ELSE 1 END) AS open
+         FROM live_picks p JOIN betfair_bets b ON b.pick_id = p.id AND b.matched > 0
+         WHERE p.result IN ('hit', 'miss') AND p.result_override IS NULL AND p.excluded = 0
+           AND EXISTS (SELECT 1 FROM direct_bets d WHERE d.pick_id = p.id AND d.bet_id IS NOT NULL)
+         GROUP BY p.id
+         HAVING open = 0`,
+      )
+      .all() as Array<{ id: number; result: "hit" | "miss"; won: number; open: number }>;
+    const changed: Array<{ id: number; from: "hit" | "miss"; to: "hit" | "miss" }> = [];
+    for (const r of rows) {
+      const paid: "hit" | "miss" = r.won > 0 ? "hit" : "miss";
+      if (paid === r.result) continue;
+      this.setResultOverride(r.id, paid);
+      changed.push({ id: r.id, from: r.result, to: paid });
+    }
+    return changed;
+  }
+
   /** Webhooks that didn't come from the Telegram listener (which stores its messages here too), newest first. */
   listExternalWebhooks(limit = 10): StoredWebhook[] {
     const rows = this.db
@@ -2167,6 +2196,8 @@ export class EngineDb {
     favouriteOdds: number | null;
     /** For away-win-lay picks: the away side's pre-match win price printed in the alert. */
     layOdds: number | null;
+    /** For a Best Value Cuppa pick: which bet it was (market and side), so its record can be split by bet type. */
+    edgeBet: { market: string; pick: string } | null;
     /** The price the pick's bet actually matched at on Betfair (stake-weighted), when it has one. */
     betOdds: number | null;
     /** The price taken on a bet placed by hand (logged on Live). */
@@ -2227,8 +2258,11 @@ export class EngineDb {
       let overOdds: number | null = null;
       let favouriteOdds: number | null = null;
       let layOdds: number | null = null;
+      let edgeBet: { market: string; pick: string } | null = null;
       try {
-        const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert>;
+        const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert> & { edge?: { bet?: { market?: unknown; pick?: unknown } } };
+        const eb = p.edge?.bet;
+        if (eb && typeof eb.market === "string" && typeof eb.pick === "string") edgeBet = { market: eb.market, pick: eb.pick };
         const pre = p.odds?.preMatch1x2;
         if (p.market === "AWAY_WIN_LAY" && Array.isArray(pre) && typeof pre[2] === "number" && pre[2] > 1) layOdds = pre[2];
         targetLine = typeof p.targetLine === "number" ? p.targetLine : null;
@@ -2275,6 +2309,7 @@ export class EngineDb {
         overOdds,
         favouriteOdds,
         layOdds,
+        edgeBet,
         sentStake,
         sent: isLivePlacement(placement),
         placement,

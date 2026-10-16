@@ -216,6 +216,46 @@ function PriceCheckLine({ check }: { check: CheckResult }) {
   );
 }
 
+const BET_KINDS = [
+  { key: "unders", label: "Unders" },
+  { key: "overs", label: "Overs" },
+  { key: "btts", label: "Both teams to score" },
+  { key: "result", label: "Result" },
+] as const;
+
+/**
+ * Best Value Cuppa's record split by bet type, on its card. Unders are being watched as a possible strategy of their
+ * own (backtested Unders lose in general, but its value-picked ones started well): 50+ priced picks before acting.
+ */
+function ByBetLine({ row, mode }: { row: AdminStrategy; mode: "all" | "live" | "sim" }) {
+  const by = row.returns?.byBet;
+  if (!by) return null;
+  const parts = BET_KINDS.flatMap(({ key, label }) => {
+    const m = by[key]?.[mode];
+    if (!m || m.settled === 0) return [];
+    const hits = m.hits ?? 0;
+    return [{ key, text: `${label} ${hits}–${m.settled - hits}`, roi: m.counted > 0 ? m.roi : null, counted: m.counted }];
+  });
+  if (parts.length === 0) return null;
+  return (
+    <span className="mt-1 block text-xs text-ink-muted" title={`By bet type. Unders are being watched: ${SAMPLE}+ priced picks before reading anything into them.`}>
+      By bet:{" "}
+      {parts.map((p, i) => (
+        <span key={p.key}>
+          {i > 0 && " · "}
+          {p.text}
+          {p.roi !== null && (
+            <span className={p.counted >= SAMPLE ? roiTone(p.roi) : ""}>
+              {" "}
+              {roiText(p.roi)} on {p.counted}
+            </span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Below this many priced picks a return is too noisy to act on. */
 const SAMPLE = 50;
 
@@ -547,6 +587,7 @@ function StrategyCard({
             <span className="mt-1.5 block max-w-xs">
               <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
+            <ByBetLine row={row} mode={pickMode} />
           </span>
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
