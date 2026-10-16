@@ -100,7 +100,7 @@ function placementChip(p: Placement): { label: string; tone: ChipTone; title: st
       return {
         label: "Not placed",
         tone: "warn",
-        title: "No bet on Betfair 3 minutes after the pick was sent. Your betting software may be off, or turned it down (market types, timing, minimum odds).",
+        title: "No bet on Betfair 3 minutes after the pick was sent: refused, not matched, or held back by a check. The reason is on Betting → Bets.",
       };
     case "manual":
       return {
@@ -112,10 +112,10 @@ function placementChip(p: Placement): { label: string; tone: ChipTone; title: st
       return {
         label: "Sent · until kick-off",
         tone: "muted",
-        title: "A pre-match bet: it stays in the feed until kick-off, so your betting software can place it any time before the start.",
+        title: "A pre-match bet: GoalBrew can place it any time before kick-off.",
       };
     default:
-      return { label: "Sent · checking", tone: "muted", title: "Sent to your betting software. Checking Betfair for the bet." };
+      return { label: "Sent · checking", tone: "muted", title: "Sent to bet. Checking Betfair for the bet." };
   }
 }
 

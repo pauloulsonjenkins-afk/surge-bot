@@ -197,7 +197,7 @@ function SettledPicks() {
       title: result === null ? "Put back the alert’s own result?" : `Set this result to ${result === "hit" ? "Hit" : "Miss"}?`,
       confirmLabel: result === null ? "Put back the alert’s result" : `Mark as ${result === "hit" ? "Hit" : "Miss"}`,
       details: [{ label: "Match", value: `${pick.home ?? "?"} v ${pick.away ?? "?"}` }],
-      body: <p>The Dashboard, Strategies and Trade Log will use it. Nothing changes in your betting software.</p>,
+      body: <p>The Dashboard, Strategies and Trade Log will use it. Nothing changes on Betfair.</p>,
     });
     if (ok) setResult.mutate({ id: pick.id, result });
   }

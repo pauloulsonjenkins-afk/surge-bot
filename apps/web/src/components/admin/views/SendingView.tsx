@@ -402,7 +402,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
           {tab === "names" && (
             <>
               <p className="mb-2 text-xs text-ink-muted">
-                If your betting software can&apos;t find a match, the team name in the alert differs from Betfair&apos;s. Fix it here, one per line:{" "}
+                If GoalBrew can&apos;t find a match on Betfair, the team name in the alert differs from Betfair&apos;s. Fix it here, one per line:{" "}
                 <span className="font-mono text-ink">alert name = Betfair name</span>.
               </p>
               <textarea

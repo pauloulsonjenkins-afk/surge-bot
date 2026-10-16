@@ -30,7 +30,6 @@
  *   GET  /internal/horses                       the admin's daily horse racing bets (admin site only)
  *   PUT  /internal/horses/day                   save one day's NAP / Next best / 3rd / 4th choice and EW Yankee (admin site only)
  *   POST /internal/horses/result                mark one horse bet won, lost, void or pending (admin site only)
- *   GET  /feeds/bets/<feed token>.csv           the bet feed the betting software polls
  *   POST /imports/betfair/<import token>        the betting software's bet history export (CSV body), posted by tools/bf-import.ps1
  *   POST /internal/betfair/import               the same, uploaded on the admin Reconcile page (admin site only)
  *   GET  /internal/betfair/reconcile            real bets against the app's estimates, per strategy (admin site only)
@@ -85,7 +84,7 @@ import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { telegramHealth } from "./telegram-watchdog";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { currentStake, getBank } from "../inplayguru/stake";
-import { addMatchName, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, noteFeedFetched, recordSimBets, saveSendingSettings, toCsv } from "../inplayguru/bet-feed";
+import { addMatchName, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
@@ -112,7 +111,6 @@ import { stripeWebhook } from "../members/stripe";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
-const FEED_PREFIX = "/feeds/bets/";
 const BETFAIR_IMPORT_PREFIX = "/imports/betfair/";
 /** A bet history export can run to thousands of rows. */
 const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
@@ -1084,36 +1082,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         cornerMarkets: cornerMarketsSeen(db),
         teamMarkets: teamMarketsSeen(db),
       });
-      return;
-    }
-
-    if (req.method === "GET" && path.startsWith(FEED_PREFIX)) {
-      const feedToken = process.env.BET_FEED_TOKEN;
-      const provided = path.slice(FEED_PREFIX.length).replace(/\.csv$/i, "");
-      // Same answer for "not configured" and "wrong token", so the link can't be probed.
-      if (!feedToken || !verifyPathToken(provided, feedToken)) {
-        send(res, 404, { error: "not_found" });
-        return;
-      }
-      const ua = req.headers["user-agent"];
-      noteFeedFetched(Array.isArray(ua) ? ua[0] : ua);
-      // GoalBrew places the bets itself (Direct betting: Live), so the betting software is handed nothing.
-      if (directIsLive(db)) {
-        const csv = toCsv([]);
-        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Length": Buffer.byteLength(csv), "Cache-Control": "no-store" });
-        res.end(csv);
-        return;
-      }
-      const feed = buildFeed(db, { markSent: true, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0 });
-      if (feed.newlySent > 0) {
-        log.info(`Bet feed: ${feed.newlySent} new pick(s) handed over (${feed.rows.length} row(s) served).`);
-      }
-      res.writeHead(200, {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Length": Buffer.byteLength(feed.csv),
-        "Cache-Control": "no-store",
-      });
-      res.end(feed.csv);
       return;
     }
 

@@ -27,7 +27,7 @@ const MODE_TEXT: Record<DirectMode, string> = {
   off: "GoalBrew places no bets. Live strategies are recorded but nothing is bet.",
   shadow:
     "For each pick going to bet, GoalBrew works out what it would bet itself (market, price, checks) and lists it below, without placing anything. Check it before going Live.",
-  live: "GoalBrew places your bets on Betfair itself. The bet feed hands out nothing new, so a pick can't be bet twice.",
+  live: "GoalBrew places your bets on Betfair itself, with every check below.",
 };
 
 export function ModeCard({ data }: { data: DirectStatus }) {
@@ -46,7 +46,7 @@ export function ModeCard({ data }: { data: DirectStatus }) {
           <>
             <p>From now on GoalBrew places each new pick on Betfair with real money, using your stakes, minimum odds, stop losses and daily limit from Sending.</p>
             <p>
-              The bet feed hands out nothing new. Up to <strong>{money(s.dailyStakeLimit)}</strong> a day can be staked here; unmatched stake is
+              Up to <strong>{money(s.dailyStakeLimit)}</strong> a day can be staked here; unmatched stake is
               cancelled after {s.cancelUnmatchedSeconds} seconds.
             </p>
           </>
@@ -57,7 +57,7 @@ export function ModeCard({ data }: { data: DirectStatus }) {
       const ok = await dialog.confirm({
         title: mode === "off" ? "Stop direct betting?" : "Back to Shadow?",
         confirmLabel: mode === "off" ? "Switch off" : "Back to Shadow",
-        body: <p>No more bets are placed from GoalBrew; new picks go back to the bet feed straight away. Bets already placed stay on Betfair.</p>,
+        body: <p>No more bets are placed: Live strategies&apos; new picks are recorded but not bet. Bets already placed stay on Betfair.</p>,
       });
       if (!ok) return;
     }
@@ -428,7 +428,7 @@ export function Activity({ bets }: { bets: DirectBetRow[] }) {
       }
     >
       {bets.length === 0 ? (
-        <p className="text-xs text-ink-muted">Nothing yet. Picks show here once direct betting is in Shadow or Live and the feed sends one.</p>
+        <p className="text-xs text-ink-muted">Nothing yet. Picks show here once direct betting is in Shadow or Live and a Live strategy alerts.</p>
       ) : (
         <>
         <ul className="divide-y divide-line">

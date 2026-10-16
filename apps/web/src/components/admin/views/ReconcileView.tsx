@@ -259,7 +259,7 @@ function UnlinkedBets({ report }: { report: ReconcileReport }) {
       ],
       body: (
         <p>
-          Picks for this team are then sent to your betting software as “{s.to}”, and bets already placed on it link to their picks. You can
+          Picks for this team are then bet on Betfair as “{s.to}”, and bets already placed on it link to their picks. You can
           change or remove it under Match names on the Sending page.
         </p>
       ),
@@ -378,7 +378,7 @@ export default function ReconcilePage() {
       <PageHeader
         as="h2"
         title="Betfair check"
-        subtitle="The app counts bets matched on Betfair at their real figures. This compares the app’s estimate (from the alert’s price and your stake) with what your betting software actually placed: how many picks never matched, the price you really got, and the real profit."
+        subtitle="The app counts bets matched on Betfair at their real figures. This compares the app’s estimate (from the alert’s price and your stake) with what was actually placed on Betfair: how many picks never matched, the price you really got, and the real profit."
       />
 
       {data?.betfairLink && <BetfairLinkCard link={data.betfairLink} />}

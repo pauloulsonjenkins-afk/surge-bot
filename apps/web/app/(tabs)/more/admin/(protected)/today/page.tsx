@@ -202,7 +202,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Tile
           label="Betting"
           value={d.betting.on ? (d.betting.breaker.open ? "Paused" : "On") : "Off"}
-          sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "betting software"}`}
+          sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
         <Tile label="Live today" value={<span className={tone(d.today.liveNet)}>{gbp(d.today.liveNet)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet)} (${d.today.simSettled})`} />

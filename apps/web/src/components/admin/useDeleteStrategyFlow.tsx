@@ -30,7 +30,7 @@ export function useDeleteStrategyFlow() {
               the last 2 hours), and can be put back from the Results page.
             </p>
           )}
-          <p>Nothing changes in your betting software. To combine it with another strategy instead, use “Merge” on the Strategies page.</p>
+          <p>Nothing changes on Betfair. To combine it with another strategy instead, use “Merge” on the Strategies page.</p>
         </>
       ),
     });
@@ -57,7 +57,7 @@ export function useDeleteStrategyFlow() {
         cancelLabel: "Keep as records",
         body: (
           <>
-            <p>Deleting them makes “{label}” disappear completely from every list. Nothing changes in your betting software.</p>
+            <p>Deleting them makes “{label}” disappear completely from every list. Nothing changes on Betfair.</p>
             <p>Records of picks sent today are kept until tomorrow, because they count towards today’s daily limit.</p>
           </>
         ),
