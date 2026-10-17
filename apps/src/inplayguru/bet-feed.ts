@@ -778,6 +778,57 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
   return { rows, skipped, csv: toCsv(rows, Object.keys(settings.minOdds).length > 0), newlySent: toMark.length, blockedReason: null };
 }
 
+/**
+ * Live tab, "Bet this for real": hands one Sim pick to GoalBrew's direct betting now, at its strategy's stake (£1 if
+ * it has none). The same safety checks as any Live bet: fresh enough to bet, on Betfair, the latest minute, the daily
+ * loss stop, the highest stake and the match limit. Its minimum odds still apply (direct betting waits for the price).
+ * The pick then counts as a Live bet; its Sim record is dropped. Throws, with the reason, when it can't be bet.
+ */
+export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boolean }, now = new Date()): FeedRow {
+  const p = db.getLivePick(pickId);
+  if (!p || p.excluded) throw new Error("That pick was removed.");
+  if (p.sentAt) throw new Error("That pick has already been handed to betting.");
+  if (p.status === "settled" || p.result) throw new Error("That pick has already settled.");
+  if (!deps.directLive) throw new Error("GoalBrew's direct betting isn't Live (Betting → Limits), so it can't place bets.");
+  const settings = getSendingSettings(db);
+  if (now.getTime() > betableUntil(p, settings.maxAgeMinutes))
+    throw new Error(`Too late: alerts are only bet within ${settings.maxAgeMinutes} minutes (pre-match picks until kick-off).`);
+  if (tooLate(p, settings)) throw new Error(`The alert was at ${p.minute}', after your latest minute to bet (${settings.latestMinute}').`);
+  if (!p.home || !p.away) throw new Error("The alert has no team names.");
+  if (p.exchange === "off") throw new Error("The match wasn't found on Betfair.");
+  if (settings.dailyLossLimit > 0) {
+    const stop = dailyLossStopReason(db, settings.dailyLossLimit, now);
+    if (stop) throw new Error(stop);
+  }
+  const aliases = parseAliases(settings.aliases);
+  const alias = (name: string) => aliases.get(name.trim().toLowerCase()) ?? name.trim();
+  const market = feedMarket(p, settings, alias);
+  if ("error" in market) throw new Error(market.error);
+  const key = strategyLabel(p.strategy).toLowerCase();
+  const lay = p.market === "AWAY_WIN_LAY";
+  const staked = resolveStake(settings, key, getBank(db), { now, live: true });
+  const stake = staked.stake ?? 1;
+  if (stake > settings.maxStake) throw new Error(`Its stake £${stake.toFixed(2)} is above your highest stake allowed (£${settings.maxStake}).`);
+  if (settings.matchCap > 0) {
+    const same = (x: LivePick) => x.leagueKey === p.leagueKey && (x.home ?? "").toLowerCase() === p.home!.toLowerCase() && (x.away ?? "").toLowerCase() === p.away!.toLowerCase();
+    const out = db.listLivePicks(300).filter((x) => x.sentAt && !x.excluded && same(x)).reduce((t, x) => t + (parseFrozenRow(x)?.stake ?? 0), 0);
+    if (out + stake > settings.matchCap) throw new Error(`Match limit: £${out.toFixed(2)} is already on this match and the limit is £${settings.matchCap}.`);
+  }
+  const row: FeedRow = {
+    pickId: p.id,
+    provider: providerName(p.strategy),
+    marketType: market.marketType,
+    selectionName: market.selectionName,
+    eventName: p.exchange === "on" && p.exchangeEvent ? p.exchangeEvent : `${alias(p.home)} v ${alias(p.away)}`,
+    betType: lay ? "LAY" : "BACK",
+    stake,
+    minPrice: lay ? null : (settings.minOdds[key] ?? null),
+    ...(lay ? { maxPrice: settings.maxLayOdds[key] ?? null } : {}),
+  };
+  db.markSent([{ id: p.id, rowJson: JSON.stringify(row) }]);
+  return row;
+}
+
 // ---------------------------------------------------------------------------
 // Simulation
 

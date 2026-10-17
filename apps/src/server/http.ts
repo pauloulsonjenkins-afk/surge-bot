@@ -13,6 +13,7 @@
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   GET  /internal/leagues/returns?since=       money by league and strategy within it, and stopped strategies (admin only)
+ *   POST /internal/picks/bet-now {pickId}       bet a Sim pick for real now, with the usual safety checks (admin only)
  *   POST /internal/leagues/block                stop or restart a strategy in a league {strategy, leagueKey, league, blocked}
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N|since=ISO  totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
@@ -86,7 +87,7 @@ import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { telegramHealth } from "./telegram-watchdog";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { currentStake, getBank } from "../inplayguru/stake";
-import { addMatchName, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
+import { addMatchName, betPickNow, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
@@ -418,6 +419,28 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         log.info(body.start ? "Fresh start: figures now count from this moment." : "Fresh start undone: all figures count again.");
       }
       send(res, 200, { at: db.getFreshStart() });
+      return;
+    }
+
+    // Bet a Sim pick for real now (Live: Bet this for real).
+    if (req.method === "POST" && path === "/internal/picks/bet-now") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      try {
+        const row = betPickNow(db, Number(body.pickId), { directLive: effectiveMode(getDirectSettings(db)) === "live" });
+        log.info(`Sim pick ${row.pickId} bet for real by hand: £${row.stake.toFixed(2)} on ${row.eventName} (${row.selectionName}).`);
+        wakeDirect();
+        send(res, 200, { stake: row.stake, selection: row.selectionName, event: row.eventName });
+      } catch (err) {
+        send(res, 400, { error: err instanceof Error ? err.message : "Couldn't bet that." });
+      }
       return;
     }
 

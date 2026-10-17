@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { PageHeader } from "@/components/ui/Card";
+import { PageHeader, Segmented } from "@/components/ui/Card";
+import { useDialog } from "@/components/ui/ConfirmDialog";
+import { useSending } from "@/queries/use-sending";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
@@ -363,6 +365,8 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
 
           {admin && (placement?.state === "notPlaced" || placement?.state === "lapsed") && <RetryBet pickId={pick.id} />}
 
+          {admin && !pick.sentAt && !placement?.manual && !waiting && pick.status !== "settled" && <BetForReal pick={pick} />}
+
           {admin && <ManualBet pick={pick} placement={placement} />}
 
           {pick.detail?.matched != null && pick.detail.strikeRate != null && (
@@ -513,6 +517,8 @@ export default function LivePage() {
   // Admin only: whether each sent pick was actually placed and matched on Betfair.
   const placements = usePlacements(admin).data?.picks ?? {};
   const [showCleared, setShowCleared] = useState(false);
+  // Admin: open games' picks by Live (money staked), Sim, or both.
+  const [show, setShow] = useState<"all" | "live" | "sim">("all");
 
   if (isLoading) return <ListSkeleton />;
 
@@ -537,7 +543,10 @@ export default function LivePage() {
   }
 
   const now = Date.now();
-  const inPlay = (data ?? []).filter((p) => p.status !== "settled" && now - startOf(p) < STILL_LIVE_MS);
+  const isLive = (p: LivePick) => !!p.sentAt || !!placements[String(p.id)]?.manual;
+  const inPlay = (data ?? []).filter(
+    (p) => p.status !== "settled" && now - startOf(p) < STILL_LIVE_MS && (!admin || show === "all" || (show === "live") === isLive(p)),
+  );
   // Grouped by match, in order of each match's newest alert (Map keeps insertion order, and the list is newest first).
   const matches = new Map<string, LivePick[]>();
   for (const p of inPlay) (matches.get(matchKey(p)) ?? matches.set(matchKey(p), []).get(matchKey(p))!).push(p);
@@ -554,8 +563,24 @@ export default function LivePage() {
     <div className="space-y-6 px-4 py-4">
       {header}
 
+      {admin && (
+        <Segmented
+          label="Show"
+          value={show}
+          onChange={setShow}
+          options={[
+            { value: "all", label: "All" },
+            { value: "live", label: "Live" },
+            { value: "sim", label: "Sim" },
+          ]}
+        />
+      )}
+
       {inPlay.length === 0 ? (
-        <EmptyState title="Nothing in play" detail="New alerts appear here as they arrive." />
+        <EmptyState
+          title={show === "live" ? "No Live bets in play" : show === "sim" ? "No Sim picks in play" : "Nothing in play"}
+          detail="New alerts appear here as they arrive."
+        />
       ) : (
         <ul className="space-y-3">
           {[...matches.entries()].map(([key, picks]) => (
@@ -603,6 +628,63 @@ export default function LivePage() {
  * Retry a bet that wasn't placed (refused, or cancelled unmatched): GoalBrew's direct betting tries it again straight
  * away, with every usual check, while the alert is still fresh enough to bet. The engine says why when it can't.
  */
+/**
+ * Under a Sim pick that's still fresh enough to bet (admin): hands it to GoalBrew's direct betting now, at its
+ * strategy's stake, with the usual safety checks (Betfair, latest minute, loss stop, highest stake, match limit).
+ */
+function BetForReal({ pick }: { pick: LivePick }) {
+  const now = useNow(15_000);
+  const sending = useSending(60_000);
+  const dialog = useDialog();
+  const names = useStrategyNames();
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const maxAge = sending.data?.settings.maxAgeMinutes ?? 10;
+  // In play: within the betting window from the alert. Pre-match: until kick-off.
+  const until = pick.minute !== null ? Date.parse(pick.firstSeenAt) + maxAge * 60_000 : pick.detail?.kickoff ? Date.parse(pick.detail.kickoff) : kickoffOf(pick);
+  if (pick.exchange === "off" || (now > until && !msg)) return null;
+  const left = Math.max(0, Math.round((until - now) / 60_000));
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {!msg?.ok && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            const name = names.name(pick.strategy);
+            const ok = await dialog.confirm({
+              title: `Bet this ${name} pick for real?`,
+              tone: "money",
+              confirmLabel: "Bet it",
+              body: (
+                <p>
+                  {betText(pick.market, pick.selection) ?? pick.selection} on {pick.home} v {pick.away}, at {name}&apos;s stake (£1 if it has none). Your highest stake, match limit and
+                  daily loss stop still apply, and its minimum odds: GoalBrew waits for the price if it&apos;s below.
+                </p>
+              ),
+            });
+            if (!ok) return;
+            setBusy(true);
+            setMsg(null);
+            try {
+              const res = await fetch("/api/admin/picks/bet-now", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pickId: pick.id }) });
+              const body = (await res.json().catch(() => ({}))) as { error?: string; stake?: number };
+              setMsg(res.ok ? { ok: true, text: `Sent to bet at £${(body.stake ?? 0).toFixed(2)}: check Betting → Bets in a few seconds.` } : { ok: false, text: body.error ?? "Couldn't bet that." });
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="rounded-md border border-accent px-3 py-1.5 text-xs font-semibold text-accent disabled:opacity-50"
+        >
+          {busy ? "Sending…" : "Bet this for real"}
+        </button>
+      )}
+      {!msg && <span className="text-xs text-ink-muted">{pick.minute !== null ? `${left} min left to bet` : "until kick-off"}</span>}
+      {msg && <span className={`text-xs ${msg.ok ? "text-hit" : "text-warn"}`}>{msg.text}</span>}
+    </div>
+  );
+}
+
 function RetryBet({ pickId }: { pickId: number }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);

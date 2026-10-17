@@ -1927,3 +1927,8 @@ export function fetchLeagueReturns(since: string | null): Promise<LeagueReturnsR
 export function setStrategyLeagueBlock(body: { strategy: string; leagueKey: string; league: string; blocked: boolean }): Promise<{ blocks: LeagueReturnsReport["blocks"] }> {
   return engineCall(`/internal/leagues/block`, "the league stop", { method: "POST", body });
 }
+
+/** Bets a Sim pick for real now (Live: Bet this for real). */
+export function betPickNow(pickId: number): Promise<{ stake: number; selection: string; event: string }> {
+  return engineCall(`/internal/picks/bet-now`, "the bet", { method: "POST", body: { pickId }, timeoutMs: 10000 });
+}
