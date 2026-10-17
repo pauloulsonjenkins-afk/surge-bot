@@ -387,6 +387,11 @@ export interface FeedRow {
   minPrice: number | null;
   /** LAY rows only: the highest price it may be laid at (the strategy's maximum lay price). Null = none set. */
   maxPrice?: number | null;
+  /**
+   * Bet by hand (Live: "Bet this for real", Edge: Bet): the admin chose this Sim pick. It still counts in its strategy's
+   * Sim record, and is left out of the strategy's Live judgement (stake ladder, back to Sim); the money counts as usual.
+   */
+  byHand?: boolean;
 }
 
 export interface FeedSkip {
@@ -824,7 +829,10 @@ export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boo
     stake,
     minPrice: lay ? null : (settings.minOdds[key] ?? null),
     ...(lay ? { maxPrice: settings.maxLayOdds[key] ?? null } : {}),
+    byHand: true,
   };
+  // Its Sim bet first (if not recorded yet), so it stays in the strategy's Sim record.
+  recordSimBets(db, now);
   db.markSent([{ id: p.id, rowJson: JSON.stringify(row) }]);
   return row;
 }

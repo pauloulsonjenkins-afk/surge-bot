@@ -2217,6 +2217,9 @@ export class EngineDb {
     betProfit: number | null;
     /** The simulated bet recorded when the pick arrived, or null (sent, or from before recording existed). */
     sim: SimRecord | null;
+    /** Bet by hand from Sim (FeedRow.byHand), and the Sim bet it had, so it still counts in its strategy's Sim record. */
+    byHand: boolean;
+    simShadow: SimRecord | null;
   }> {
     const rows = this.db
       .prepare(
@@ -2281,10 +2284,12 @@ export class EngineDb {
       }
       const manual = parseManualBet(r.manual_bet);
       let sentStake: number | null = null;
+      let byHand = false;
       if (r.sent_row) {
         try {
-          const s = JSON.parse(r.sent_row) as { stake?: unknown };
+          const s = JSON.parse(r.sent_row) as { stake?: unknown; byHand?: unknown };
           sentStake = typeof s.stake === "number" && s.stake > 0 ? s.stake : null;
+          byHand = s.byHand === true;
         } catch {
           // leave as null
         }
@@ -2327,6 +2332,8 @@ export class EngineDb {
         exchangeOdds: typeof r.exchange_odds === "number" && r.exchange_odds > 1 ? r.exchange_odds : null,
         sim: r.sent_at === null && manual === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
         hiddenLeague: hiddenLeague(r),
+        byHand,
+        simShadow: byHand ? parseSimRow(r.sim_row) : null,
       };
     });
     // A hidden league's pick leaves the figures unless real money was staked on it.

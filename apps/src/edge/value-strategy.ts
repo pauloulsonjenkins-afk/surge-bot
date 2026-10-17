@@ -20,7 +20,7 @@
 import type { EngineDb } from "../storage/engine-db";
 import type { BetfairReader } from "../betfair/exchange";
 import type { ParsedAlert } from "../inplayguru/parse-alert";
-import { getSendingSettings } from "../inplayguru/bet-feed";
+import { getSendingSettings, recordSimBets } from "../inplayguru/bet-feed";
 import { getBank, resolveStake } from "../inplayguru/stake";
 import { getExchangeReader } from "../betfair/exchange";
 import { KEY, type EdgeBet, type EdgeCard, type EdgeTrend } from "./edge";
@@ -303,7 +303,10 @@ export function betValuePick(db: EngineDb, pickId: number, stake: number, deps: 
     betType: "BACK" as const,
     stake: Math.round(stake * 100) / 100,
     minPrice: settings.minOdds[KEY_NAME] ?? null,
+    byHand: true,
   };
+  // Its Sim bet first (if not recorded yet), so it stays in the strategy's Sim record (see FeedRow.byHand).
+  recordSimBets(db, now);
   db.resendPick(p.id, JSON.stringify(row), now.toISOString());
   log.info(`${STRATEGY}: bet by hand, £${row.stake.toFixed(2)} on ${p.home} v ${p.away} (${p.selection}).`);
 }

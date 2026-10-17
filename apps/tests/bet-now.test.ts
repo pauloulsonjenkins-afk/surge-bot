@@ -39,3 +39,21 @@ test("refused above the highest stake allowed", () => {
   saveSendingSettings(db, { maxStake: 1 });
   assert.throws(() => betPickNow(db, id, { directLive: true }), /highest stake/);
 });
+
+test("a pick bet by hand stays in its strategy's Sim record, is left out of its Live record, and shows on its own", async () => {
+  const { recordSimBets } = await import("../src/inplayguru/bet-feed");
+  const { computeStrategyReturns } = await import("../src/server/winloss");
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "blistering momentum": 2 }, strategies: { "blistering momentum": false } });
+  recordSimBets(db, new Date(Date.now() - 120_000)); // Sim recording started before the alert
+  const posted = new Date(Date.now() - 60_000).toISOString();
+  db.upsertLivePick("chat", 1, alert(1), parseAlert(alert(1)), posted);
+  const id = db.listLivePicks(5)[0]!.id;
+  betPickNow(db, id, { directLive: true });
+  const done = `${alert(1)}\n\n⸻⸻ Match Summary ⸻⸻\nHalf-Time Score: 0-0\nFull-Time Score: 1-0\n\n✅ Hit`;
+  db.upsertLivePick("chat", 1, done, parseAlert(done), posted);
+  const r = computeStrategyReturns(db)["blistering momentum"]!;
+  assert.equal(r.sim.counted, 1, "still in the Sim record");
+  assert.equal(r.live.counted, 0, "not in the Live record the ladder judges");
+  assert.equal(r.byHand?.settled, 1, "shown on its own");
+});

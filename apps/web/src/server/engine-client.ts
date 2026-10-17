@@ -879,6 +879,8 @@ export interface AdminStrategy {
     sim: StrategyReturn;
     all?: StrategyReturn;
     before?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn };
+    /** Sim picks bet by hand (Live: Bet this for real): their real money, kept out of the Live figures above. */
+    byHand?: StrategyReturn;
     /** Best Value Cuppa only: the same figures split by bet type. */
     byBet?: Partial<Record<"unders" | "overs" | "btts" | "result", { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }>>;
   } | null;

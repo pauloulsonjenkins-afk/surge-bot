@@ -574,10 +574,10 @@ export function computeStrategyReturns(
   db: EngineDb,
   sinceIso: string | null = null,
   opts: { fromRuleChange?: boolean } = {},
-): Record<string, ModeReturns & { before?: ModeReturns; byBet?: Partial<Record<EdgeBetKind, ModeReturns>> }> {
+): Record<string, ModeReturns & { before?: ModeReturns; byBet?: Partial<Record<EdgeBetKind, ModeReturns>>; byHand?: StrategyReturn }> {
   const { commission, price } = pricingInputs(db);
   const fresh = () => ({ live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) });
-  const tallies = new Map<string, { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null; byBet?: Map<EdgeBetKind, ReturnType<typeof fresh>> }>();
+  const tallies = new Map<string, { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null; byBet?: Map<EdgeBetKind, ReturnType<typeof fresh>>; byHand?: ReturnTally }>();
   for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
     const { key, priced, odds } = price(r);
     let t = tallies.get(key);
@@ -593,6 +593,18 @@ export function computeStrategyReturns(
       if (!k) t.byBet.set(kind, (k = fresh()));
       targets.push(k);
     }
+    // A Sim pick bet by hand: its real money is shown on its own (byHand), it stays in the Sim record at its Sim bet,
+    // and it is left out of the strategy's Live figures, which the stake ladder and "back to Sim" judge.
+    if (r.byHand) {
+      if (into === t.now) (t.byHand ??= new ReturnTally(commission)).add(r, priced, odds);
+      const shadow = { ...r, placement: "sim" as const, sent: false, sim: r.simShadow, betStake: null, betProfit: null, betOdds: null, takenOdds: null, sentStake: null };
+      const s = price(shadow);
+      for (const x of targets) {
+        if (r.simShadow) x.sim.add(shadow, s.priced, s.odds);
+        x.all.add(r, priced, odds);
+      }
+      continue;
+    }
     for (const x of targets) {
       if (isLivePlacement(r.placement)) x.live.add(r, priced, odds);
       else if (r.placement === "sim") x.sim.add(r, priced, odds);
@@ -606,6 +618,7 @@ export function computeStrategyReturns(
       ...done(t.now),
       ...(t.before ? { before: done(t.before) } : {}),
       ...(t.byBet ? { byBet: Object.fromEntries([...t.byBet].map(([k, v]) => [k, done(v)])) } : {}),
+      ...(t.byHand ? { byHand: t.byHand.result() } : {}),
     };
   }
   return out;

@@ -588,6 +588,14 @@ function StrategyCard({
               <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
             <ByBetLine row={row} mode={pickMode} />
+            {row.returns?.byHand && row.returns.byHand.settled > 0 && (
+              <span className="mt-1 block text-xs text-ink-muted" title="Sim picks you bet for real from the Live tab. They stay in this strategy's Sim record and are left out of its Live record (the stake ladder and back-to-Sim judge that), so your own picking doesn't skew it.">
+                Bet by hand: {row.returns.byHand.settled} · won {row.returns.byHand.hits ?? 0}–{row.returns.byHand.settled - (row.returns.byHand.hits ?? 0)}
+                {row.returns.byHand.staked > 0 && (
+                  <span className={roiTone(row.returns.byHand.profit)}> · {gbp(row.returns.byHand.profit)}</span>
+                )}
+              </span>
+            )}
           </span>
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
