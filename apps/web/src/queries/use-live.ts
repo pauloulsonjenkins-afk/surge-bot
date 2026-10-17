@@ -119,12 +119,13 @@ export function useLivePicks(limit = 50, enabled = true) {
 }
 
 /** Signed-in view for the Results page (includes what is needed to amend a result). */
-export function useAdminLivePicks(limit = 100, enabled = true) {
+/** The admin's picks, newest first. With `hours`, every pick from that window (up to `limit`), so whole days are complete. */
+export function useAdminLivePicks(limit = 100, enabled = true, hours?: number) {
   return usePersistedQuery({
-    queryKey: ["admin-live-picks", limit],
+    queryKey: ["admin-live-picks", limit, hours ?? null],
     enabled,
     queryFn: async (): Promise<LivePick[]> => {
-      const data = await getJson<{ picks: LivePick[] }>(`/api/admin/live?limit=${limit}`, "picks");
+      const data = await getJson<{ picks: LivePick[] }>(`/api/admin/live?limit=${limit}${hours ? `&hours=${hours}` : ""}`, "picks");
       return data.picks;
     },
     staleTime: 0,

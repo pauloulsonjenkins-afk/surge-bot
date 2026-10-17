@@ -81,6 +81,9 @@ function PickLine({ pick, admin }: { pick: Row; admin: boolean }) {
   );
 }
 
+/** Most picks the admin's Trade Log loads (the last 7 days, Live and Sim together). */
+const ADMIN_LIMIT = 1000;
+
 export default function TradeLogPage() {
   const { data: me, isLoading: meLoading } = useMe();
   const admin = me?.admin === true;
@@ -89,12 +92,16 @@ export default function TradeLogPage() {
   const [strategy, setStrategy] = useState<string>("");
   // The admin's list carries each pick's stake and profit; everyone else gets the public list.
   const pub = useLivePicks(200, !meLoading && !admin);
-  const adm = useAdminLivePicks(200, admin);
+  // Whole days: every pick from the last 7 days (Live and Sim together), so a day's total matches the Dashboard's.
+  const adm = useAdminLivePicks(ADMIN_LIMIT, admin, 24 * 7);
   const { data, isLoading, error } = admin ? adm : pub;
 
   if (meLoading || isLoading) return <ListSkeleton />;
 
-  const settledAll = ((data ?? []) as Row[]).filter((p) => !p.excluded && (p.result === "hit" || p.result === "miss"));
+  const loaded = (data ?? []) as Row[];
+  // A list cut off by the limit may hold only part of its oldest day: leave that day out rather than show a wrong total.
+  const cutDay = admin && loaded.length >= ADMIN_LIMIT ? dayFmt.format(new Date(loaded[loaded.length - 1]!.firstSeenAt)) : null;
+  const settledAll = loaded.filter((p) => !p.excluded && (p.result === "hit" || p.result === "miss") && (cutDay === null || dayFmt.format(new Date(p.firstSeenAt)) !== cutDay));
   // Live / Sim / All follows the switch shared with the Dashboard (Live = money was staked, as there).
   const inMode = settledAll.filter((p) => !admin || mode === "all" || modeOf(p) === mode);
   const strategies = [...new Map(inMode.map((p) => [strategyKey(p.strategy), p.strategy])).entries()].sort((a, b) =>
