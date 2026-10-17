@@ -92,7 +92,7 @@ import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
-import { applyAdvice, strategyAdvice } from "./strategy-advice";
+import { applyAdvice, visibleAdvice } from "./strategy-advice";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
 import { notPlacedReport, todaySnapshot } from "./today";
@@ -484,7 +484,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       }
       try {
         const done = applyAdvice(db, body.key, kind, new Date(), typeof body.league === "string" ? body.league : undefined);
-        send(res, 200, { applied: done, advice: strategyAdvice(db) });
+        send(res, 200, { applied: done, advice: visibleAdvice(db) });
       } catch (err) {
         send(res, 400, { error: err instanceof Error ? err.message : "Couldn't apply that." });
       }

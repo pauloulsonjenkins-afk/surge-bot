@@ -1676,6 +1676,8 @@ export interface TodaySnapshot {
   speed: { today: SpeedReport; week: SpeedReport };
   /** Suggestions to put a strategy Live or back to Sim (missing on an older engine). */
   advice?: StrategyAdvice[];
+  /** Automatic stakes on: each strategy's next stake step and when it's due (not a suggestion). */
+  autoStakes?: Array<{ key: string; action: string; due: string }>;
 }
 
 export interface NotPlacedReport {

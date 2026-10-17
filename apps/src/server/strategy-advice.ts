@@ -212,6 +212,28 @@ const LABEL: Record<AdviceKind, string> = {
   "league-block": "losing in one league",
 };
 
+/**
+ * The suggestions to show and notify: with automatic stakes on, stake raises and cuts aren't suggestions (they happen
+ * by themselves, one step a week), so only Live / Sim and league stops are left for the admin to decide.
+ */
+export function visibleAdvice(db: EngineDb, now = new Date()): Advice[] {
+  const all = strategyAdvice(db, now);
+  return getSendingSettings(db).ladderAuto ? all.filter((a) => a.kind !== "stake-up" && a.kind !== "stake-down") : all;
+}
+
+/** With automatic stakes on: the stake steps waiting for their week to pass, and when each is due. */
+export function autoStakeQueue(db: EngineDb, now = new Date()): Array<{ key: string; action: string; due: string }> {
+  if (!getSendingSettings(db).ladderAuto) return [];
+  const last = lastSteps(db);
+  return strategyAdvice(db, now)
+    .filter((a) => a.kind === "stake-up" || a.kind === "stake-down")
+    .map((a) => {
+      const prev = last[a.key] ? Date.parse(last[a.key]!) : NaN;
+      const due = Number.isFinite(prev) ? Math.max(now.getTime(), prev + AUTO_GAP_MS) : now.getTime();
+      return { key: a.key, action: a.action, due: new Date(due).toISOString() };
+    });
+}
+
 /** With automatic stakes on: applies each stake step that's due (7+ days since that strategy's last step). Returns them. */
 export function autoApplyStakes(db: EngineDb, now = new Date()): Advice[] {
   if (!getSendingSettings(db).ladderAuto) return [];
@@ -241,7 +263,8 @@ export async function notifyAdvice(db: EngineDb, now = new Date()): Promise<numb
       tag: `stake-auto-${a.key}`,
     });
   }
-  const advice = strategyAdvice(db, now);
+  // With automatic stakes on, the next step (due in a week) is not a suggestion: it would read as a second change.
+  const advice = visibleAdvice(db, now);
   let state: Record<string, string> = {};
   try {
     state = JSON.parse(db.getSetting(STATE_KEY) ?? "{}") as Record<string, string>;

@@ -265,6 +265,22 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         </Card>
       )}
 
+      {d.autoStakes && d.autoStakes.length > 0 && (
+        <Card title="Automatic stakes: next steps" subtitle="These happen by themselves, at most one step a week per strategy, with a notification each time. Nothing to do.">
+          <ul className="space-y-1 text-sm">
+            {d.autoStakes.map((q) => (
+              <li key={q.key}>
+                <span className="font-medium text-ink">{names.name(q.key)}</span>{" "}
+                <span className="text-ink-muted">
+                  · {q.action.toLowerCase()}{" "}
+                  {Date.parse(q.due) <= Date.parse(d.at) + 60_000 ? "at the next hourly check" : `on ${new Date(q.due).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" })}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {d.stopped.length > 0 && (
         <Card title="Stopped today">
           <ul className="space-y-1 text-sm">

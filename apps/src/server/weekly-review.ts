@@ -7,7 +7,7 @@ import type { EngineDb } from "../storage/engine-db";
 import { computeStrategyReturns } from "./winloss";
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
-import { strategyAdvice } from "./strategy-advice";
+import { autoStakeQueue, visibleAdvice } from "./strategy-advice";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { ukWeekStart } from "../members/time";
@@ -39,11 +39,12 @@ export function buildWeeklyReview(db: EngineDb, now = new Date()): { title: stri
     .filter(([key, r]) => settings.strategies[key] === true && r.live.settled > 0)
     .sort((a, b) => b[1].live.profit - a[1].live.profit);
   for (const [key, r] of liveRows) lines.push(`${displayName(db, key)} ${money(r.live.profit)} · ${r.live.hits}–${r.live.settled - r.live.hits}`);
-  const advice = strategyAdvice(db, now);
+  const advice = visibleAdvice(db, now);
   if (advice.length) {
     lines.push(`To review (${advice.length}):`);
-    for (const a of advice) lines.push(`• ${displayName(db, a.key)}: ${a.action}`);
+    for (const a of advice) lines.push(`• ${displayName(db, a.key)}${a.league ? ` in ${a.league.name}` : ""}: ${a.action}`);
   } else lines.push("No changes suggested this week.");
+  for (const q of autoStakeQueue(db, now)) lines.push(`• Automatic: ${displayName(db, q.key)}: ${q.action.toLowerCase()} on ${new Date(q.due).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" })}`);
   return { title: `GoalBrew week: Live ${money(live.profit)}`, body: lines.join("\n") };
 }
 
