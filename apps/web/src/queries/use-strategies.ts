@@ -118,9 +118,12 @@ export function useStrategyLights(enabled: boolean, mode: PickMode, since: strin
         const r = s.returns;
         if (!r) continue;
         const pick = mode === "all" ? (r.all ?? null) : r[mode];
-        const staked = pick ? pick.staked : r.live.staked + r.sim.staked;
-        const profit = pick ? pick.profit : r.live.profit + r.sim.profit;
-        const counted = pick ? pick.counted : r.live.counted + r.sim.counted;
+        // The breakdown's won / lost counts every pick in the period, so its money does too: the picks from before a
+        // rule change (`before`) are added back in.
+        const b = r.before ? (mode === "all" ? (r.before.all ?? null) : r.before[mode]) : null;
+        const staked = (pick ? pick.staked : r.live.staked + r.sim.staked) + (b?.staked ?? 0);
+        const profit = (pick ? pick.profit : r.live.profit + r.sim.profit) + (b?.profit ?? 0);
+        const counted = (pick ? pick.counted : r.live.counted + r.sim.counted) + (b?.counted ?? 0);
         const roi = staked > 0 ? profit / staked : null;
         const light: Light = roi === null || counted < LIGHT_SAMPLE ? "few" : roi > 0.03 ? "good" : roi < -0.03 ? "bad" : "ok";
         out.set(s.label.toLowerCase(), { light, roi, counted });
