@@ -792,7 +792,7 @@ export default function StrategiesPage() {
   }, [priceCheck.data]);
   // Today's suggestions, so each card says the same as Today (one set of rules, in the engine).
   const today = useToday();
-  const adviceOf = useMemo(() => new Map((today.data?.advice ?? []).map((a) => [a.key.toLowerCase(), a])), [today.data]);
+  const adviceOf = useMemo(() => new Map((today.data?.advice ?? []).filter((a) => a.kind !== "league-block").map((a) => [a.key.toLowerCase(), a])), [today.data]);
   const betOf = useMemo(() => {
     const map = new Map<string, SendingStrategy>();
     for (const s of sending.data?.strategies ?? []) map.set(s.label.toLowerCase(), s);

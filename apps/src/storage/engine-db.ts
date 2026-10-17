@@ -2198,6 +2198,9 @@ export class EngineDb {
     layOdds: number | null;
     /** For a Best Value Cuppa pick: which bet it was (market and side), so its record can be split by bet type. */
     edgeBet: { market: string; pick: string } | null;
+    /** The league as the alert named it, and its country (for the Leagues page's money figures). */
+    competition: string | null;
+    country: string | null;
     /** The price the pick's bet actually matched at on Betfair (stake-weighted), when it has one. */
     betOdds: number | null;
     /** The price taken on a bet placed by hand (logged on Live). */
@@ -2310,6 +2313,8 @@ export class EngineDb {
         favouriteOdds,
         layOdds,
         edgeBet,
+        competition: r.competition,
+        country: r.country,
         sentStake,
         sent: isLivePlacement(placement),
         placement,

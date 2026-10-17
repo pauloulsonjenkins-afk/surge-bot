@@ -1812,21 +1812,23 @@ export interface TeamGoalsReport {
 /** A strategy suggestion (engine strategy-advice.ts): Live / Sim, or one step on the stake ladder. */
 export interface StrategyAdvice {
   key: string;
-  kind: "try-live" | "back-to-sim" | "stake-up" | "stake-down";
+  kind: "try-live" | "back-to-sim" | "stake-up" | "stake-down" | "league-block";
   reason: string;
   /** What Apply does, in words. Missing from an older engine. */
   action?: string;
+  /** league-block: the league the strategy would be stopped in. */
+  league?: { key: string; name: string };
 }
 
 /** Carries out one suggestion (the admin pressed Apply). */
-export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"]): Promise<{ advice: StrategyAdvice[] }> {
+export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"], league?: string): Promise<{ advice: StrategyAdvice[] }> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
   const res = await fetch(`${baseUrl}/internal/strategy-advice/apply`, {
     method: "POST",
     headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ key, kind }),
+    body: JSON.stringify({ key, kind, ...(league ? { league } : {}) }),
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
@@ -1883,4 +1885,43 @@ export async function retryBet(pickId: number): Promise<{ state: string; reason:
   const data = (await res.json().catch(() => ({}))) as { state?: string; reason?: string | null; error?: string };
   if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
   return { state: data.state ?? "waiting", reason: data.reason ?? null };
+}
+
+/** One group's figures on Leagues → Profit (mirrors Tally in the engine's league-returns.ts). */
+export interface LeagueTally {
+  picks: number;
+  won: number;
+  lost: number;
+  counted: number;
+  staked: number;
+  profit: number;
+  sumR: number;
+  sumR2: number;
+}
+export type LeagueModes = { live: LeagueTally; sim: LeagueTally; all: LeagueTally };
+export interface LeagueReturnRow {
+  key: string;
+  league: string;
+  country: string | null;
+  modes: LeagueModes;
+  /** Lower-case strategy name -> its figures in this league. */
+  byStrategy: Record<string, LeagueModes>;
+}
+export interface LeagueReturnsReport {
+  since: string | null;
+  milestones: number[];
+  /** Priced picks before a strategy can be stopped in a league. */
+  blockFrom: number;
+  leagues: LeagueReturnRow[];
+  /** Lower-case strategy -> league key -> the league's name and when it was stopped. */
+  blocks: Record<string, Record<string, { league: string; at: string }>>;
+}
+
+export function fetchLeagueReturns(since: string | null): Promise<LeagueReturnsReport> {
+  return engineCall<LeagueReturnsReport>(`/internal/leagues/returns${since ? `?since=${encodeURIComponent(since)}` : ""}`, "league profit", { timeoutMs: 20000 });
+}
+
+/** Stops (or restarts) a strategy in one league. */
+export function setStrategyLeagueBlock(body: { strategy: string; leagueKey: string; league: string; blocked: boolean }): Promise<{ blocks: LeagueReturnsReport["blocks"] }> {
+  return engineCall(`/internal/leagues/block`, "the league stop", { method: "POST", body });
 }

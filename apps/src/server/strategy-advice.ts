@@ -18,6 +18,10 @@
  *     Steps: 1, 1.5, 2, 3, 4, 5 (% of the balance), or £1, £2, £3, £5 for a flat stake. The highest-stake limit on
  *     Sending still caps every bet.
  *
+ *   Stop in a league (a Live strategy): 100+ priced picks in one league (Live and Sim together, all time) and the
+ *     whole likely range of its return there below zero (league-returns.ts). Apply: it isn't bet in that league any
+ *     more; its picks there are recorded in Sim instead. Undo on Leagues → Profit.
+ *
  * One notification per change: the same suggestion isn't sent again until it has gone away and come back.
  *
  * AUTOMATIC STAKES (Sending: ladderAuto): stake raises and cuts are applied by the hourly check instead of waiting,
@@ -32,6 +36,7 @@ import { priceCheckReport } from "../betfair/price-check";
 import { displayName } from "../inplayguru/strategy-names";
 import { sendPush } from "./push";
 import { log } from "./log";
+import { BLOCK_FROM, computeLeagueReturns, getLeagueBlocks, isLeagueBlocked, judge, setLeagueBlock } from "./league-returns";
 
 const SAMPLE = 50;
 const STATE_KEY = "strategy_advice_state";
@@ -49,7 +54,7 @@ function lastSteps(db: EngineDb): Record<string, string> {
 export const PCT_STEPS = [1, 1.5, 2, 3, 4, 5];
 export const FLAT_STEPS = [1, 2, 3, 5];
 
-export type AdviceKind = "try-live" | "back-to-sim" | "stake-up" | "stake-down";
+export type AdviceKind = "try-live" | "back-to-sim" | "stake-up" | "stake-down" | "league-block";
 
 export interface Advice {
   key: string;
@@ -59,7 +64,12 @@ export interface Advice {
   action: string;
   /** The stake after Apply (stake-up / stake-down / try-live). */
   to?: { pct: number } | { flat: number };
+  /** league-block: the league it would be stopped in. */
+  league?: { key: string; name: string };
 }
+
+/** One suggestion's identity: a strategy can have one per kind, and one league-block per league. */
+export const adviceId = (a: Pick<Advice, "key" | "kind" | "league">) => (a.league ? `${a.key}@${a.league.key}` : a.key);
 
 const adjusted = (roi: number | null, counted: number) => (roi === null ? null : (roi * counted) / (counted + SAMPLE));
 const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
@@ -155,15 +165,35 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       if (to) out.push({ key, kind: "stake-down", action: `Lower to ${stakeWords(to)}`, to, reason: `${pct(l.roi)} per £1 over ${l.counted} Live bets since its rules last changed.` });
     }
   }
+  // Stop in a league: a Live strategy clearly losing in one league over 100+ picks.
+  const blocks = getLeagueBlocks(db);
+  for (const l of computeLeagueReturns(db)) {
+    for (const [key, m] of Object.entries(l.byStrategy)) {
+      if (!(settings.enabled && settings.strategies[key] === true) || isLeagueBlocked(blocks, key, l.key)) continue;
+      const t = m.all;
+      if (t.counted < BLOCK_FROM) continue;
+      const j = judge(t);
+      if (j.verdict !== "losing") continue;
+      const name = l.country ? `${l.league} (${l.country})` : l.league;
+      out.push({
+        key,
+        kind: "league-block",
+        league: { key: l.key, name },
+        action: `Stop it in ${l.league}`,
+        reason: `${pct(j.roi!)} per £1 over ${t.counted} picks in ${name} (likely ${pct(j.low!)} to ${pct(j.high!)}). Its picks there would be recorded in Sim instead; undo on Leagues → Profit.`,
+      });
+    }
+  }
   return out;
 }
 
 /** Carries out one current suggestion (the admin pressed Apply). Throws if it no longer applies. */
-export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = new Date()): Advice {
-  const a = strategyAdvice(db, now).find((x) => x.key === key.toLowerCase() && x.kind === kind);
+export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = new Date(), leagueKey?: string): Advice {
+  const a = strategyAdvice(db, now).find((x) => x.key === key.toLowerCase() && x.kind === kind && (kind !== "league-block" || x.league?.key === leagueKey));
   if (!a) throw new Error("That suggestion no longer applies. Refresh to see the current ones.");
   const k = a.key;
-  if (a.kind === "back-to-sim") saveSendingSettings(db, { strategies: { [k]: false } });
+  if (a.kind === "league-block") setLeagueBlock(db, k, a.league!.key, a.league!.name, true, now);
+  else if (a.kind === "back-to-sim") saveSendingSettings(db, { strategies: { [k]: false } });
   else {
     const to = a.to!;
     const stake = "pct" in to ? { stakePct: { [k]: to.pct } } : { stakes: { [k]: to.flat } };
@@ -179,6 +209,7 @@ const LABEL: Record<AdviceKind, string> = {
   "back-to-sim": "consider putting back to Sim",
   "stake-up": "worth a bigger stake",
   "stake-down": "worth a smaller stake",
+  "league-block": "losing in one league",
 };
 
 /** With automatic stakes on: applies each stake step that's due (7+ days since that strategy's last step). Returns them. */
@@ -218,9 +249,9 @@ export async function notifyAdvice(db: EngineDb, now = new Date()): Promise<numb
     state = {};
   }
   const sig = (a: Advice) => `${a.kind}:${a.action}`;
-  const fresh = advice.filter((a) => state[a.key] !== sig(a) && state[a.key] !== a.kind);
+  const fresh = advice.filter((a) => state[adviceId(a)] !== sig(a) && state[adviceId(a)] !== a.kind);
   const next: Record<string, string> = {};
-  for (const a of advice) next[a.key] = sig(a);
+  for (const a of advice) next[adviceId(a)] = sig(a);
   db.setSetting(STATE_KEY, JSON.stringify(next));
   if (fresh.length === 0) return 0;
   const line = (a: Advice) => `${displayName(db, a.key)}: ${LABEL[a.kind]} (${a.action.toLowerCase()})`;

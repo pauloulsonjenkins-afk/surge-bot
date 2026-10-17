@@ -26,6 +26,7 @@ import { startHistoryRefresh } from "../history/football-data";
 import { startDailyTips } from "./daily-tips";
 import { notifyIfProved, shadowTick } from "../model/goal-model";
 import { notifyAdvice } from "./strategy-advice";
+import { notifyLeagueMilestones } from "./league-returns";
 import { startEdge } from "../edge/edge";
 import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startValueSettling } from "../edge/value-strategy";
@@ -110,6 +111,8 @@ async function main(): Promise<void> {
     const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
     if (hour < 8 || hour >= 22) return;
     void notifyAdvice(db).catch((err) => log.warn(`Strategy suggestions failed: ${err instanceof Error ? err.message : String(err)}`));
+    // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.
+    void notifyLeagueMilestones(db).catch((err) => log.warn(`League milestones failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3_600_000);
   adviceCheck.unref();
 

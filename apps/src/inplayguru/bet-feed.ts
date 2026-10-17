@@ -45,6 +45,7 @@ import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
 import { modelVerdict } from "../model/goal-model";
+import { getLeagueBlocks, isLeagueBlocked } from "./league-blocks";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -592,6 +593,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
   const today = ukDay.format(now);
   const stops = computeStopLoss(db, now);
   const noSend = db.noSendLeagues();
+  const blocks = getLeagueBlocks(db);
   let sentToday = db.recentSentTimes().filter((t) => ukDay.format(new Date(t)) === today).length;
 
   const rows: FeedRow[] = [];
@@ -642,6 +644,11 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     // A league whose matches aren't on Betfair (marked on the Leagues page) is recorded but never sent.
     if (noSend.has(p.leagueKey)) {
       skipped.push(skip(p, "This league is marked as not on Betfair (Leagues page)."));
+      continue;
+    }
+    // This strategy is stopped in this league (Leagues page, Profit): recorded in Sim instead (recordSimBets).
+    if (isLeagueBlocked(blocks, label, p.leagueKey)) {
+      skipped.push(skip(p, "This strategy is stopped in this league (Leagues → Profit): recorded in Sim."));
       continue;
     }
     if (!p.sendable) {
@@ -839,13 +846,15 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
   const today = ukDay.format(now);
   const stops = computeStopLoss(db, now, "sim");
   const noSend = db.noSendLeagues();
+  const blocks = getLeagueBlocks(db);
   let betsToday = [...db.recentSentTimes(), ...db.recentSimBetTimes()].filter((t) => ukDay.format(new Date(t)) === today).length;
 
   const items: Array<{ id: number; rowJson: string }> = [];
   for (const p of candidates) {
     const key = strategyLabel(p.strategy).toLowerCase();
     const fresh = now.getTime() <= betableUntil(p, settings.maxAgeMinutes);
-    const liveNow = settings.enabled && settings.strategies[key] === true;
+    // Stopped in this league: never bet there, so it's simulated like a Sim strategy's pick.
+    const liveNow = settings.enabled && settings.strategies[key] === true && !isLeagueBlocked(blocks, key, p.leagueKey);
     if (liveNow && fresh) continue; // the bet feed decides this one
 
     const staked = resolveStake(settings, key, bank, { now, live: false });

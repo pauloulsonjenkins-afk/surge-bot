@@ -259,7 +259,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Card title="Suggestions" subtitle="From results since each strategy's rules last changed. Nothing changes until you press Apply; you get one notification per new suggestion.">
           <ul className="space-y-3 text-sm">
             {d.advice.map((a) => (
-              <AdviceRow key={`${a.key}:${a.kind}`} a={a} name={names.name(a.key)} />
+              <AdviceRow key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} a={a} name={a.league ? `${names.name(a.key)} in ${a.league.name}` : names.name(a.key)} />
             ))}
           </ul>
         </Card>
@@ -325,6 +325,7 @@ const ADVICE_LABEL: Record<StrategyAdvice["kind"], string> = {
   "back-to-sim": "consider putting back to Sim",
   "stake-up": "worth a bigger stake",
   "stake-down": "worth a smaller stake",
+  "league-block": "losing in one league",
 };
 
 /** One suggestion, with Apply (confirmed first: it changes real-money betting). */
@@ -334,7 +335,7 @@ function AdviceRow({ a, name }: { a: StrategyAdvice; name: string }) {
   const [done, setDone] = useState<string | null>(null);
   const apply = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/admin/advice/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: a.key, kind: a.kind }) });
+      const res = await fetch("/api/admin/advice/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: a.key, kind: a.kind, ...(a.league ? { league: a.league.key } : {}) }) });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(body.error ?? "Couldn't apply that.");
     },
@@ -347,7 +348,7 @@ function AdviceRow({ a, name }: { a: StrategyAdvice; name: string }) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-2">
       <span className="min-w-0 flex-1">
-        <Link href="/more/admin/strategies" className="font-medium text-ink underline decoration-line">
+        <Link href={a.league ? "/more/admin/leagues?tab=profit" : "/more/admin/strategies"} className="font-medium text-ink underline decoration-line">
           {name}
         </Link>{" "}
         <span className={good ? "text-hit" : "text-warn"}>{ADVICE_LABEL[a.kind]}</span>

@@ -12,6 +12,8 @@
  *   GET  /internal/edge/bettable · POST /internal/edge/bet {pickId, stake}   value bets to place by hand (admin site only)
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
+ *   GET  /internal/leagues/returns?since=       money by league and strategy within it, and stopped strategies (admin only)
+ *   POST /internal/leagues/block                stop or restart a strategy in a league {strategy, leagueKey, league, blocked}
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N|since=ISO  totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
@@ -91,6 +93,7 @@ import { computeHitRateContext, computePickProfits, computeStrategyEquity, compu
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, strategyAdvice } from "./strategy-advice";
+import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { cachedModelReport, publishModel, shadowReport } from "../model/goal-model";
@@ -473,14 +476,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const body = await readJsonBody(req);
-      const kinds = ["try-live", "back-to-sim", "stake-up", "stake-down"] as const;
+      const kinds = ["try-live", "back-to-sim", "stake-up", "stake-down", "league-block"] as const;
       const kind = kinds.find((k) => k === body.kind);
       if (typeof body.key !== "string" || !kind) {
         send(res, 400, { error: "Which suggestion?" });
         return;
       }
       try {
-        const done = applyAdvice(db, body.key, kind);
+        const done = applyAdvice(db, body.key, kind, new Date(), typeof body.league === "string" ? body.league : undefined);
         send(res, 200, { applied: done, advice: strategyAdvice(db) });
       } catch (err) {
         send(res, 400, { error: err instanceof Error ? err.message : "Couldn't apply that." });
@@ -498,6 +501,43 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       send(res, 200, { leagues: db.listLeaguesForAdmin() });
+      return;
+    }
+
+    // Leagues → Profit: money by league and by strategy within each, plus which strategies are stopped where.
+    if (req.method === "GET" && path === "/internal/leagues/returns") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const sinceParam = new URL(rawUrl, "http://internal").searchParams.get("since");
+      const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
+      const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
+      send(res, 200, { since, milestones: MILESTONES, blockFrom: BLOCK_FROM, leagues: computeLeagueReturns(db, since), blocks: getLeagueBlocks(db) });
+      return;
+    }
+
+    // Stop or restart one strategy in one league (Leagues → Profit).
+    if (req.method === "POST" && path === "/internal/leagues/block") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      if (typeof body.strategy !== "string" || typeof body.leagueKey !== "string" || typeof body.league !== "string" || typeof body.blocked !== "boolean") {
+        send(res, 400, { error: "strategy, leagueKey, league and blocked are needed" });
+        return;
+      }
+      setLeagueBlock(db, body.strategy, body.leagueKey, body.league.slice(0, 200), body.blocked);
+      send(res, 200, { blocks: getLeagueBlocks(db) });
       return;
     }
 
