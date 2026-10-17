@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import type { AdminStrategies, AdminStrategy, PickMode, RemoveStrategyResult, StrategyEquity, StrategyReturn } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
@@ -100,16 +100,18 @@ export type Light = "good" | "bad" | "ok" | "few";
 const LIGHT_SAMPLE = 20;
 
 /**
- * A traffic light per strategy for the dashboard's breakdown, from its all-time return per £1: green when it makes
- * money, red when it loses it, amber when it is about level, grey when there are too few picks. Admin only (the
- * figures come from the admin strategies route), so nothing loads for anyone else.
+ * A traffic light per strategy for the dashboard's breakdown, from its return per £1 over the Dashboard's period
+ * (`since`, or all time): green when it makes money, red when it loses it, amber when it is about level, grey when
+ * there are too few picks. Admin only (the figures come from the admin strategies route), so nothing loads for anyone else.
  */
-export function useStrategyLights(enabled: boolean, mode: PickMode) {
+export function useStrategyLights(enabled: boolean, mode: PickMode, since: string | null = null) {
   return useQuery({
-    queryKey: [...KEY, "lights"],
+    queryKey: [...KEY, "lights", since],
     enabled,
     staleTime: 60_000,
-    queryFn: ({ signal }) => getJson<AdminStrategies>("/api/admin/strategies", "the strategies", signal),
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) =>
+      getJson<AdminStrategies>(`/api/admin/strategies${since ? `?since=${encodeURIComponent(since)}` : ""}`, "the strategies", signal),
     select: (d): Map<string, { light: Light; roi: number | null; counted: number }> => {
       const out = new Map<string, { light: Light; roi: number | null; counted: number }>();
       for (const s of d.strategies) {

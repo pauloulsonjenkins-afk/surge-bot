@@ -76,6 +76,9 @@ export default function DashboardPage() {
   // The same string all day, so the queries keep their key until midnight.
   const since = timeframe === "1D" ? ukMidnightIso() : null;
   const days = timeframe === "1D" ? null : (TIMEFRAMES.find((t) => t.value === timeframe)?.days ?? null);
+  // The same period as a start time, for the breakdown's £ figures. Whole hours, so the request stays the same a while.
+  const [hour] = useState(() => Math.floor(Date.now() / 3_600_000) * 3_600_000);
+  const periodSince = since ?? (days ? new Date(hour - days * 86_400_000).toISOString() : null);
   const [strategy, setStrategy] = useState<string | null>(null);
   const strategyNames = useStrategyNames();
   const mode = usePickMode();
@@ -151,7 +154,13 @@ export default function DashboardPage() {
           )}
 
           {performanceCells.length > 0 ? (
-            <PerformanceSection key={`${since ?? days ?? "all"}:${mode}`} cells={performanceCells} strategy={strategy} onStrategyChange={setStrategy} />
+            <PerformanceSection
+              key={`${since ?? days ?? "all"}:${mode}`}
+              cells={performanceCells}
+              strategy={strategy}
+              onStrategyChange={setStrategy}
+              since={periodSince}
+            />
           ) : (
             <SimpleBreakdown stats={data} isLoading={isLoading} />
           )}

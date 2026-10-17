@@ -59,8 +59,11 @@ export function PerformanceSection({
   cells,
   strategy,
   onStrategyChange,
+  since = null,
 }: {
   cells: ResolvedCell[];
+  /** Start of the Dashboard's period (null = all time), so each strategy's return covers the same picks as its record. */
+  since?: string | null;
   /** The strategy the whole dashboard is filtered to, or null for every strategy. */
   strategy: string | null;
   onStrategyChange: (strategy: string | null) => void;
@@ -71,7 +74,7 @@ export function PerformanceSection({
   const [tab, setTab] = useState<"strategy" | "minute" | "league">("strategy");
   const strategyNames = useStrategyNames();
   const { data: me } = useMe();
-  const lights = useStrategyLights(!!me?.admin, usePickMode()).data;
+  const lights = useStrategyLights(!!me?.admin, usePickMode(), since).data;
 
   const byStrategy = useMemo(() => (strategy ? cells.filter((a) => a.strategy === strategy) : cells), [cells, strategy]);
   const byLeague = useMemo(() => cells.filter((a) => matchesLeague(a, leagueFilter)), [cells, leagueFilter]);
@@ -164,7 +167,7 @@ export function PerformanceSection({
         title="Breakdown"
         subtitle={
           tab === "strategy"
-            ? lights ? "Tap a strategy to filter the whole dashboard to it. The big figure is its all-time return per £1 staked; the hit rate under it is for the period chosen above; the dot: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
+            ? lights ? "Tap a strategy to filter the whole dashboard to it. Won and lost, and the return per £1 staked, are for the period chosen above; the dot: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
             : tab === "minute"
               ? "Hit rate by the match minute the alert fired"
               : "Tap a country, tier or league to filter this section"
@@ -206,13 +209,14 @@ export function PerformanceSection({
                         {strategyNames.name(r.name)}
                       </span>
                       <span className="text-xs text-ink-muted">
-                        {r.agg.alerts} alert{r.agg.alerts === 1 ? "" : "s"}
+                        <span className="text-hit">Won {r.agg.hits}</span> · <span className="text-loss">Lost {r.agg.misses}</span>
+                        {r.agg.pending > 0 && ` · ${r.agg.pending} waiting`}
                         {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}
                       </span>
                     </span>
                     {(() => {
-                      // For the admin, the money figure leads (return per £1, all time): a high hit rate at short odds can
-                      // still lose. The hit rate is shown under it.
+                      // For the admin, the money figure leads (return per £1 over the period): a high hit rate at short odds
+                      // can still lose. The hit rate is shown under it.
                       const l = lights?.get(r.name.toLowerCase());
                       if (!l || l.roi === null) return <span className="shrink-0 text-base font-semibold tabular-nums text-ink">{pct(r.agg)}</span>;
                       const v = Math.round(l.roi * 1000) / 10;
@@ -222,7 +226,7 @@ export function PerformanceSection({
                             {v > 0 ? "+" : ""}
                             {v}%
                           </span>
-                          <span className="block text-xs text-ink-muted">all time · hit {pct(r.agg)} here</span>
+                          <span className="block text-xs text-ink-muted">hit {pct(r.agg)}</span>
                         </span>
                       );
                     })()}
