@@ -38,9 +38,14 @@ test("the bet is worded per market, with Betfair's team names", () => {
 });
 
 test("only value trends on matches in the next 3 hours, best two per match", () => {
-  const soon = card(2, [trend("a", "OU25", "over", 1.9, 0.03, 1), trend("b", "BTTS", "yes", 1.8, 0.08, 2), trend("c", "MO", "home", 1.6, 0.05, 3), trend("d", "OU15", "over", 1.2, -0.02, 4)]);
+  const soon = card(2, [trend("a", "OU25", "over", 1.9, 0.03, 1), trend("b", "BTTS", "yes", 1.8, 0.08, 2), trend("c", "HT05", "over", 1.6, 0.05, 3), trend("d", "OU15", "over", 1.2, -0.02, 4)]);
   const later = card(5, [trend("e", "OU35", "under", 1.5, 0.1, 5)]);
   assert.deepEqual(valuePicks([soon, later], now).map((p) => p.trend.text), ["b", "c"]);
+});
+
+test("result bets (to win, double chance) are no longer picked: 8-16 and about -40% per £1 by 18 Oct", () => {
+  const c = card(1, [trend("Liverpool to win", "MO", "home", 2.1, 0.12, 1), trend("Liverpool or draw", "DC", "homeDraw", 1.5, 0.1, 2), trend("Under 2.5", "OU25", "under", 2.0, 0.06, 3)]);
+  assert.deepEqual(valuePicks([c], now).map((p) => p.trend.text), ["Under 2.5"]);
 });
 
 test("picks are added once as never-sendable Sim picks at the Betfair price, then settled from Betfair's result", async () => {
@@ -93,8 +98,6 @@ test("in Sim nothing is sent; switched Live, each pick goes out as its own marke
 });
 
 test("never two bets that pull against each other, nothing under 5 points of edge or 10 games", () => {
-  const both = card(1, [trend("Liverpool or draw", "DC", "homeDraw", 1.8, 0.09, 1), trend("Man City or draw", "DC", "drawAway", 1.41, 0.07, 2), trend("Under 2.5", "OU25", "under", 2.0, 0.06, 3)]);
-  assert.deepEqual(valuePicks([both], now).map((p) => p.trend.text), ["Liverpool or draw", "Under 2.5"]);
   const overUnder = card(1, [trend("Over 2.5", "OU25", "over", 1.9, 0.08, 4), trend("Under 3.5", "OU35", "under", 1.5, 0.07, 5)]);
   assert.deepEqual(valuePicks([overUnder], now).map((p) => p.trend.text), ["Over 2.5"]);
   const thin = trend("Under 2.5 in 7 of the last 8 meetings", "OU25", "under", 2.0, 0.2, 6);

@@ -2,8 +2,9 @@
  * BEST VALUE CUPPA: Edge's Betfair value bets, recorded as a strategy of their own so they build a Sim record like
  * every other strategy (Strategies, Results, Win/Loss).
  *
- * The bet varies pick to pick: a team to win, double chance, both teams to score yes/no, goals over/under (1.5, 2.5,
- * 3.5) or a first-half goal, whichever trend Betfair prices below its history (edge/edge-prices.ts).
+ * The bet varies pick to pick: both teams to score yes/no, goals over/under (1.5, 2.5, 3.5) or a first-half goal,
+ * whichever trend Betfair prices below its history (edge/edge-prices.ts). Result bets (a team to win, double chance)
+ * were dropped on 18 Oct 2026: 8-16, about -40% per £1, while the goals bets were level or better. Edge still shows them.
  *
  *   picks   each time the prices are read, every value trend on a match kicking off within the next 3 hours: at least
  *           5 points of edge, on at least 10 games, at most two per match (best first) and never two that pull against
@@ -98,7 +99,7 @@ export function valuePicks(cards: EdgeCard[], now = new Date()): Array<{ card: E
     const taken = new Set<string>();
     let n = 0;
     for (const trend of card.trends
-      .filter((t) => t.bet && t.sample >= MIN_SAMPLE && t.betfair && t.betfair.price !== null && (t.betfair.edge ?? 0) >= MIN_EDGE && t.betfair.marketId && t.betfair.marketType && t.betfair.selection && t.betfair.selectionId !== undefined && t.betfair.eventId)
+      .filter((t) => t.bet && family(t.bet) !== "result" && t.sample >= MIN_SAMPLE && t.betfair && t.betfair.price !== null && (t.betfair.edge ?? 0) >= MIN_EDGE && t.betfair.marketId && t.betfair.marketType && t.betfair.selection && t.betfair.selectionId !== undefined && t.betfair.eventId)
       .sort((a, b) => b.betfair!.edge! - a.betfair!.edge!)) {
       const f = family(trend.bet!);
       const clash = f === "result" ? taken.has("result") : taken.has(f === "goalsUp" ? "goalsDown" : "goalsUp");
