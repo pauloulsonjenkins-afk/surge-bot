@@ -130,6 +130,22 @@ function modeOf(row: AdminStrategy): "live" | "sim" {
   return row.mode ?? (row.sendingOn ? "live" : "sim");
 }
 
+/** Priced picks a mode needs before "Own mode" shows it (below this, a strategy that just switched shows its old mode). */
+const OWN_FROM = 20;
+
+/**
+ * Whose figures "Own mode" shows: the strategy's current mode, unless that mode has fewer than OWN_FROM priced picks
+ * and the other has more. A strategy just moved from Live to Sim has a "Sim" record made only of the alerts it didn't
+ * bet (below minimum odds, too late, not on Betfair), unpriced and unrepresentative; its Live record is the real one.
+ */
+function ownMode(row: AdminStrategy): { mode: "live" | "sim"; borrowed: boolean } {
+  const m = modeOf(row);
+  const other = m === "live" ? "sim" : "live";
+  const r = row.returns;
+  if (r && r[m].counted < OWN_FROM && r[other].counted >= OWN_FROM) return { mode: other, borrowed: true };
+  return { mode: m, borrowed: false };
+}
+
 /** True once a strategy has a settled pick in this mode and period; the rest are tucked under "No data yet". */
 function hasPicks(row: AdminStrategy, m: "live" | "sim"): boolean {
   const hits = m === "live" ? (row.liveHits ?? 0) : (row.simHits ?? 0);
@@ -186,7 +202,9 @@ function ReadyForLive({ row, check, hasStop }: { row: AdminStrategy; check: Chec
  * to every settled pick and the average-odds break-even with an older engine.
  */
 function judged(m: StrategyReturn | null, hitRate: number | null, settled: number) {
-  if (m && m.pricedHits !== undefined && m.counted > 0) {
+  if (m && m.pricedHits !== undefined) {
+    // No priced picks: nothing to hold against break-even (an unpriced hit rate would colour the bar on its own).
+    if (m.counted === 0) return { hitRate: null, breakeven: null, range: null, settled: 0 };
     return {
       hitRate: Math.round((m.pricedHits / m.counted) * 1000) / 10,
       breakeven: m.breakevenEffective ?? m.breakeven ?? null,
@@ -491,6 +509,7 @@ function AboutStrategy({ label }: { label: string }) {
 function StrategyCard({
   row,
   mode: pickMode,
+  borrowed = false,
   all,
   sortBy,
   formKind,
@@ -519,6 +538,8 @@ function StrategyCard({
   row: AdminStrategy;
   /** Whose figures the card shows: its own mode, or the one chosen at the top of the page. */
   mode: "all" | "live" | "sim";
+  /** Own mode is showing the other mode's record, because its current mode has too few priced picks yet. */
+  borrowed?: boolean;
   all: AdminStrategy[];
   sortBy: SortBy;
   /** Which form paragraph to show: the last 20 picks or the last 7 days (the page's Form switch). */
@@ -616,6 +637,11 @@ function StrategyCard({
             <span className="mt-1.5 block max-w-xs">
               <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
+            {borrowed && (
+              <span className="mt-1 block text-xs text-warn">
+                Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {modeOf(row) === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} priced picks there yet.
+              </span>
+            )}
             <ByBetLine row={row} mode={pickMode} />
             <SegmentLines row={row} mode={pickMode} />
             {row.returns?.byHand && row.returns.byHand.settled > 0 && (
@@ -1080,7 +1106,7 @@ export default function StrategiesPage() {
           {failed && <p className="rounded-md border border-line bg-surface p-2 text-xs text-destructive">{failed.message}</p>}
           {(["live", "sim"] as const).map((m) => {
             // Best first by the chosen figure (in the section's own mode), so what to act on is at the top and bottom.
-            const valueOf = (r: AdminStrategy) => sortValue(r, m, sortBy) ?? -Infinity;
+            const valueOf = (r: AdminStrategy) => sortValue(r, view === "own" ? ownMode(r).mode : m, sortBy) ?? -Infinity;
             const group = strategies
               .filter((r) => modeOf(r) === m)
               .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
@@ -1089,7 +1115,8 @@ export default function StrategiesPage() {
               <StrategyCard
                 key={r.label}
                 row={r}
-                mode={view === "own" ? modeOf(r) : view}
+                mode={view === "own" ? ownMode(r).mode : view}
+                borrowed={view === "own" && ownMode(r).borrowed}
                 all={strategies}
                 sortBy={sortBy}
                 formKind={formKind}
