@@ -2220,6 +2220,8 @@ export class EngineDb {
     /** Bet by hand from Sim (FeedRow.byHand), and the Sim bet it had, so it still counts in its strategy's Sim record. */
     byHand: boolean;
     simShadow: SimRecord | null;
+    /** The alert's score, stats and prices when it fired, for the slices watched on a strategy's card (server/segments.ts). */
+    facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null } | null;
   }> {
     const rows = this.db
       .prepare(
@@ -2265,8 +2267,16 @@ export class EngineDb {
       let favouriteOdds: number | null = null;
       let layOdds: number | null = null;
       let edgeBet: { market: string; pick: string } | null = null;
+      let facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null } | null = null;
       try {
         const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert> & { edge?: { bet?: { market?: unknown; pick?: unknown } } };
+        facts = {
+          goalsHome: typeof p.goalsHome === "number" ? p.goalsHome : null,
+          goalsAway: typeof p.goalsAway === "number" ? p.goalsAway : null,
+          stats: p.stats && typeof p.stats === "object" ? p.stats : {},
+          preMatch1x2: p.odds?.preMatch1x2 ?? null,
+          live1x2: p.odds?.live1x2 ?? null,
+        };
         const eb = p.edge?.bet;
         if (eb && typeof eb.market === "string" && typeof eb.pick === "string") edgeBet = { market: eb.market, pick: eb.pick };
         const pre = p.odds?.preMatch1x2;
@@ -2334,6 +2344,7 @@ export class EngineDb {
         hiddenLeague: hiddenLeague(r),
         byHand,
         simShadow: byHand ? parseSimRow(r.sim_row) : null,
+        facts,
       };
     });
     // A hidden league's pick leaves the figures unless real money was staked on it.

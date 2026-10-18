@@ -28,6 +28,7 @@
  */
 import { inPickMode, isLivePlacement, RECORD_FROM, type EngineDb, type PickMode, type Placement } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
+import { SEGMENTS } from "./segments";
 import { currentStake } from "../inplayguru/stake";
 import { breakevenHitRate, hitRateRange, oddsFor, priceResult } from "./pricing";
 
@@ -554,6 +555,14 @@ export function pricingInputs(db: EngineDb) {
 
 type ModeReturns = { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
 
+/** A slice watched on a strategy's card (segments.ts): its record, and the rest of the strategy's. */
+export interface SegmentReturns {
+  id: string;
+  label: string;
+  in: ModeReturns;
+  out: ModeReturns;
+}
+
 /** Best Value Cuppa's bet types, for splitting its record (Unders are being watched as a strategy of their own). */
 export type EdgeBetKind = "unders" | "overs" | "btts" | "result";
 export function edgeBetKind(bet: { market: string; pick: string }): EdgeBetKind {
@@ -574,10 +583,13 @@ export function computeStrategyReturns(
   db: EngineDb,
   sinceIso: string | null = null,
   opts: { fromRuleChange?: boolean } = {},
-): Record<string, ModeReturns & { before?: ModeReturns; byBet?: Partial<Record<EdgeBetKind, ModeReturns>>; byHand?: StrategyReturn }> {
+): Record<string, ModeReturns & { before?: ModeReturns; byBet?: Partial<Record<EdgeBetKind, ModeReturns>>; byHand?: StrategyReturn; segments?: SegmentReturns[] }> {
   const { commission, price } = pricingInputs(db);
   const fresh = () => ({ live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) });
-  const tallies = new Map<string, { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null; byBet?: Map<EdgeBetKind, ReturnType<typeof fresh>>; byHand?: ReturnTally }>();
+  const tallies = new Map<
+    string,
+    { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null; byBet?: Map<EdgeBetKind, ReturnType<typeof fresh>>; byHand?: ReturnTally; segs?: Map<string, { in: ReturnType<typeof fresh>; out: ReturnType<typeof fresh> }> }
+  >();
   for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
     const { key, priced, odds } = price(r);
     let t = tallies.get(key);
@@ -592,6 +604,17 @@ export function computeStrategyReturns(
       let k = t.byBet.get(kind);
       if (!k) t.byBet.set(kind, (k = fresh()));
       targets.push(k);
+    }
+    // A slice being watched on the card (segments.ts): this pick's record goes to the slice, or to the rest.
+    const segs = SEGMENTS[key];
+    if (segs && r.facts && into === t.now) {
+      t.segs ??= new Map();
+      for (const seg of segs) {
+        if (r.firstSeenAt < seg.since) continue;
+        let s = t.segs.get(seg.id);
+        if (!s) t.segs.set(seg.id, (s = { in: fresh(), out: fresh() }));
+        targets.push(seg.test(r.facts) ? s.in : s.out);
+      }
     }
     // A Sim pick bet by hand: its real money is shown on its own (byHand), it stays in the Sim record at its Sim bet,
     // and it is left out of the strategy's Live figures, which the stake ladder and "back to Sim" judge.
@@ -619,6 +642,9 @@ export function computeStrategyReturns(
       ...(t.before ? { before: done(t.before) } : {}),
       ...(t.byBet ? { byBet: Object.fromEntries([...t.byBet].map(([k, v]) => [k, done(v)])) } : {}),
       ...(t.byHand ? { byHand: t.byHand.result() } : {}),
+      ...(t.segs?.size
+        ? { segments: (SEGMENTS[key] ?? []).filter((s) => t.segs!.has(s.id)).map((s) => ({ id: s.id, label: s.label, in: done(t.segs!.get(s.id)!.in), out: done(t.segs!.get(s.id)!.out) })) }
+        : {}),
     };
   }
   return out;

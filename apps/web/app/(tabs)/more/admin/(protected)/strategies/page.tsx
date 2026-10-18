@@ -256,6 +256,35 @@ function ByBetLine({ row, mode }: { row: AdminStrategy; mode: "all" | "live" | "
   );
 }
 
+/**
+ * A slice being watched on the card (engine segments.ts), against the rest of the strategy: e.g. Second Pour's Golden
+ * alerts. Nothing is bet differently; it's judged on new matches once it has 50+ priced picks.
+ */
+function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | "live" | "sim" }) {
+  const segs = row.returns?.segments;
+  if (!segs?.length) return null;
+  const part = (m: StrategyReturn) => {
+    const hits = m.hits ?? 0;
+    return (
+      <>
+        {hits}–{m.settled - hits}
+        {m.counted > 0 && m.roi !== null && <span className={m.counted >= SAMPLE ? roiTone(m.roi) : ""}> {roiText(m.roi)} on {m.counted}</span>}
+      </>
+    );
+  };
+  return (
+    <>
+      {segs.map((s) =>
+        s.in[mode].settled + s.out[mode].settled === 0 ? null : (
+          <span key={s.id} className="mt-1 block text-xs text-ink-muted" title={`Being watched: ${SAMPLE}+ priced picks on new matches before reading anything into it. Nothing is bet differently.`}>
+            {s.label}: {part(s.in[mode])} · the rest: {part(s.out[mode])}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
 /** Below this many priced picks a return is too noisy to act on. */
 const SAMPLE = 50;
 
@@ -588,6 +617,7 @@ function StrategyCard({
               <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
             <ByBetLine row={row} mode={pickMode} />
+            <SegmentLines row={row} mode={pickMode} />
             {row.returns?.byHand && row.returns.byHand.settled > 0 && (
               <span className="mt-1 block text-xs text-ink-muted" title="Sim picks you bet for real from the Live tab. They stay in this strategy's Sim record and are left out of its Live record (the stake ladder and back-to-Sim judge that), so your own picking doesn't skew it.">
                 Bet by hand: {row.returns.byHand.settled} · won {row.returns.byHand.hits ?? 0}–{row.returns.byHand.settled - (row.returns.byHand.hits ?? 0)}

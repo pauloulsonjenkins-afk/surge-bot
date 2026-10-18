@@ -879,6 +879,8 @@ export interface AdminStrategy {
     sim: StrategyReturn;
     all?: StrategyReturn;
     before?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn };
+    /** Slices being watched (engine segments.ts), e.g. Second Pour's Golden alerts, with the rest for comparison. */
+    segments?: Array<{ id: string; label: string; in: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }; out: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn } }>;
     /** Sim picks bet by hand (Live: Bet this for real): their real money, kept out of the Live figures above. */
     byHand?: StrategyReturn;
     /** Best Value Cuppa only: the same figures split by bet type. */
