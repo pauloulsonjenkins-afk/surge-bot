@@ -1936,3 +1936,24 @@ export function setStrategyLeagueBlock(body: { strategy: string; leagueKey: stri
 export function betPickNow(pickId: number): Promise<{ stake: number; selection: string; event: string }> {
   return engineCall(`/internal/picks/bet-now`, "the bet", { method: "POST", body: { pickId }, timeoutMs: 10000 });
 }
+
+/** One week's figures for a strategy (mirrors WeekTally in the engine's strategy-weeks.ts). */
+export interface WeekTally {
+  picks: number;
+  won: number;
+  lost: number;
+  counted: number;
+  staked: number;
+  profit: number;
+}
+export type WeekModes = { live: WeekTally; sim: WeekTally; all: WeekTally };
+export interface StrategyWeeksReport {
+  /** Mondays (YYYY-MM-DD, UK), oldest first; the last is the current week so far. */
+  weeks: string[];
+  /** Lower-case strategy name ("__all__" = every strategy) -> per week, the last 7 days and the 28 days before. */
+  strategies: Record<string, { weeks: WeekModes[]; last7: WeekModes; prev28: WeekModes }>;
+}
+
+export function fetchStrategyWeeks(): Promise<StrategyWeeksReport> {
+  return engineCall<StrategyWeeksReport>("/internal/strategies/weeks", "the weekly figures", { timeoutMs: 20000 });
+}

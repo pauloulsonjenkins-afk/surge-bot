@@ -2,7 +2,9 @@
 
 import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
-import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
+import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, useStrategyWeeks, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
+import { StrategyWeekly, trendOf } from "@/components/admin/StrategyWeekly";
+import type { WeekTally } from "@/server/engine-client";
 import { useFreshStart } from "@/queries/use-fresh-start";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 import { marketName } from "@/lib/markets";
@@ -510,6 +512,8 @@ function StrategyCard({
   row,
   mode: pickMode,
   borrowed = false,
+  last7,
+  prev28,
   all,
   sortBy,
   formKind,
@@ -540,6 +544,9 @@ function StrategyCard({
   mode: "all" | "live" | "sim";
   /** Own mode is showing the other mode's record, because its current mode has too few priced picks yet. */
   borrowed?: boolean;
+  /** Its last 7 days and the 28 before, in the card's mode (Strategies → Weekly data), for the collapsed card. */
+  last7?: WeekTally;
+  prev28?: WeekTally;
   all: AdminStrategy[];
   sortBy: SortBy;
   /** Which form paragraph to show: the last 20 picks or the last 7 days (the page's Form switch). */
@@ -633,23 +640,20 @@ function StrategyCard({
                 .filter(Boolean)
                 .join(" · ")}
             </span>
-            {check && check.picks > 0 && <PriceCheckLine check={check} />}
-            <span className="mt-1.5 block max-w-xs">
-              <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
-            </span>
+            {last7 && (
+              <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+                Last 7 days:{" "}
+                <span className={last7.counted > 0 ? roiTone(last7.profit) : ""}>{last7.counted > 0 ? gbp(last7.profit) : "–"}</span> · {last7.picks} bet
+                {last7.picks === 1 ? "" : "s"}
+                {prev28 && (() => {
+                  const t = trendOf(last7, prev28);
+                  return <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${t.cls}`}>{t.label}</span>;
+                })()}
+              </span>
+            )}
             {borrowed && (
               <span className="mt-1 block text-xs text-warn">
                 Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {modeOf(row) === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} priced picks there yet.
-              </span>
-            )}
-            <ByBetLine row={row} mode={pickMode} />
-            <SegmentLines row={row} mode={pickMode} />
-            {row.returns?.byHand && row.returns.byHand.settled > 0 && (
-              <span className="mt-1 block text-xs text-ink-muted" title="Sim picks you bet for real from the Live tab. They stay in this strategy's Sim record and are left out of its Live record (the stake ladder and back-to-Sim judge that), so your own picking doesn't skew it.">
-                Bet by hand: {row.returns.byHand.settled} · won {row.returns.byHand.hits ?? 0}–{row.returns.byHand.settled - (row.returns.byHand.hits ?? 0)}
-                {row.returns.byHand.staked > 0 && (
-                  <span className={roiTone(row.returns.byHand.profit)}> · {gbp(row.returns.byHand.profit)}</span>
-                )}
               </span>
             )}
           </span>
@@ -657,11 +661,6 @@ function StrategyCard({
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
             <span className="block text-xs text-ink-muted">{headline.sub}</span>
             {thin && sortBy !== "adjusted" && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} priced</span>}
-            {before && before.counted > 0 && (
-              <span className="block text-xs text-ink-muted">
-                Before {shortDay.format(new Date(row.recordFrom!))}: {roiText(before.roi)} on {before.counted}
-              </span>
-            )}
           </span>
           <ChevronDown size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
@@ -680,6 +679,26 @@ function StrategyCard({
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
           {info?.description && <p className="text-xs text-ink">{info.description}</p>}
+          {/* The detail behind the headline: hit rate against break-even, and the slices being watched. */}
+          <div className="space-y-1">
+            <span className="block max-w-xs">
+              <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
+            </span>
+            {check && check.picks > 0 && <PriceCheckLine check={check} />}
+            {before && before.counted > 0 && (
+              <span className="block text-xs text-ink-muted">
+                Before {shortDay.format(new Date(row.recordFrom!))}: {roiText(before.roi)} on {before.counted}
+              </span>
+            )}
+            <ByBetLine row={row} mode={pickMode} />
+            <SegmentLines row={row} mode={pickMode} />
+            {row.returns?.byHand && row.returns.byHand.settled > 0 && (
+              <span className="mt-1 block text-xs text-ink-muted" title="Sim picks you bet for real from the Live tab. They stay in this strategy's Sim record and are left out of its Live record (the stake ladder and back-to-Sim judge that), so your own picking doesn't skew it.">
+                Bet by hand: {row.returns.byHand.settled} · won {row.returns.byHand.hits ?? 0}–{row.returns.byHand.settled - (row.returns.byHand.hits ?? 0)}
+                {row.returns.byHand.staked > 0 && <span className={roiTone(row.returns.byHand.profit)}> · {gbp(row.returns.byHand.profit)}</span>}
+              </span>
+            )}
+          </div>
           <div className="rounded-lg bg-surface-2 p-3">
             <p className="mb-1 text-xs font-medium text-ink-muted">{formKind === "week" ? "Last 7 days" : "Recent form: last 20 picks"}</p>
             <FormParagraph row={row} kind={formKind} />
@@ -873,6 +892,9 @@ export default function StrategiesPage() {
   const [sortBy, setSortBy] = useState<SortBy>("adjusted");
   // Each card shows its own mode's figures (Live strategies their Live bets, Sim ones their Sim picks) unless one is chosen.
   const [view, setView] = useState<View>("own");
+  // Weekly (the default): one row per strategy, £ week by week; Cards: the full card per strategy.
+  const [layout, setLayout] = useState<"weekly" | "cards">("weekly");
+  const weeksData = useStrategyWeeks();
   const strategies = useMemo(() => data?.strategies ?? [], [data]);
   const ignored = data?.ignored ?? [];
 
@@ -1006,7 +1028,8 @@ export default function StrategiesPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />
+        <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "weekly", label: "Weekly" }, { value: "cards", label: "Cards" }]} />
+        {layout === "cards" && <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />}
         <Segmented label="Form" value={formKind} onChange={setFormKind} options={FORM_OPTIONS} />
         <Segmented label="Whose figures" value={view} onChange={setView} options={VIEWS} />
         <div className="flex items-center gap-2 text-xs text-ink-muted">
@@ -1132,8 +1155,11 @@ export default function StrategiesPage() {
                 bank={sending.data?.bank}
                 check={checks.get(r.label.toLowerCase())}
                 advice={adviceOf.get(r.label.toLowerCase())}
+                last7={weeksData.data?.strategies[r.label.toLowerCase()]?.last7[view === "own" ? ownMode(r).mode : view]}
+                prev28={weeksData.data?.strategies[r.label.toLowerCase()]?.prev28[view === "own" ? ownMode(r).mode : view]}
               />
             );
+            const byKey = new Map(group.map((r) => [r.label.toLowerCase(), r]));
             return (
               <section key={m} className="space-y-3">
                 <div>
@@ -1147,8 +1173,18 @@ export default function StrategiesPage() {
                       : "New picks are recorded and settled as if bet, but no money is placed. Switch one to Live with its Sim / Live switch."}
                   </p>
                 </div>
+                {layout === "weekly" ? (
+                  <StrategyWeekly
+                    rows={group}
+                    data={weeksData.data}
+                    modeOf={(label) => (label === "__all__" ? (view === "own" ? "all" : view) : view === "own" ? ownMode(byKey.get(label.toLowerCase())!).mode : view)}
+                    renderCard={(key) => (byKey.has(key) ? renderCard(byKey.get(key)!) : null)}
+                    showTotal={m === "sim"}
+                  />
+                ) : (
                 <ul className="space-y-2">{group.filter((r) => hasPicks(r, m)).map(renderCard)}</ul>
-                {group.some((r) => !hasPicks(r, m)) && (
+                )}
+                {layout === "cards" && group.some((r) => !hasPicks(r, m)) && (
                   <details className="rounded-xl border border-line bg-surface p-3">
                     <summary className="cursor-pointer text-sm font-medium text-ink">
                       No data yet <span className="font-normal text-ink-muted">· {group.filter((r) => !hasPicks(r, m)).length}</span>

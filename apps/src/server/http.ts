@@ -12,6 +12,7 @@
  *   GET  /internal/edge/bettable · POST /internal/edge/bet {pickId, stake}   value bets to place by hand (admin site only)
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
+ *   GET  /internal/strategies/weeks             each strategy's £ by week, last 7 days and the 28 before (admin only)
  *   GET  /internal/leagues/returns?since=       money by league and strategy within it, and stopped strategies (admin only)
  *   POST /internal/picks/bet-now {pickId}       bet a Sim pick for real now, with the usual safety checks (admin only)
  *   POST /internal/leagues/block                stop or restart a strategy in a league {strategy, leagueKey, league, blocked}
@@ -94,6 +95,7 @@ import { computeHitRateContext, computePickProfits, computeStrategyEquity, compu
 import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
+import { computeStrategyWeeks } from "./strategy-weeks";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
 import { notPlacedReport, todaySnapshot } from "./today";
@@ -524,6 +526,20 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       send(res, 200, { leagues: db.listLeaguesForAdmin() });
+      return;
+    }
+
+    // Strategies → Weekly: each strategy's £ week by week, the last 7 days and the 4 weeks before (strategy-weeks.ts).
+    if (req.method === "GET" && path === "/internal/strategies/weeks") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      send(res, 200, { ...computeStrategyWeeks(db) });
       return;
     }
 

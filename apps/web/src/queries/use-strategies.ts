@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import type { AdminStrategies, AdminStrategy, PickMode, RemoveStrategyResult, StrategyEquity, StrategyReturn } from "@/server/engine-client";
+import type { AdminStrategies, AdminStrategy, PickMode, RemoveStrategyResult, StrategyEquity, StrategyReturn, StrategyWeeksReport } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
 
@@ -130,5 +130,14 @@ export function useStrategyLights(enabled: boolean, mode: PickMode, since: strin
       }
       return out;
     },
+  });
+}
+
+/** Strategies → Weekly: each strategy's £ by week, the last 7 days and the 28 days before. */
+export function useStrategyWeeks() {
+  return useQuery({
+    queryKey: [...KEY, "weeks"],
+    staleTime: 60_000,
+    queryFn: ({ signal }) => getJson<StrategyWeeksReport>("/api/admin/strategies/weeks", "the weekly figures", signal),
   });
 }
