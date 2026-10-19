@@ -46,7 +46,7 @@ function WeekBars({ weeks, labels }: { weeks: WeekTally[]; labels: string[] }) {
   return (
     <div className="rounded-lg bg-surface-2 p-3">
       <p className="mb-2 text-xs font-medium text-ink-muted">£ per week (Monday to Sunday), with the return per £1</p>
-      <div className="grid grid-cols-6 items-end gap-2" style={{ height: 90 }}>
+      <div className="grid items-end gap-2" style={{ height: 90, gridTemplateColumns: `repeat(${weeks.length},minmax(0,1fr))` }}>
         {weeks.map((w, i) => (
           <div key={labels[i]} className="flex h-full flex-col justify-end">
             <div
@@ -57,7 +57,7 @@ function WeekBars({ weeks, labels }: { weeks: WeekTally[]; labels: string[] }) {
           </div>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-6 gap-2 text-center text-[11px] text-ink-muted">
+      <div className="mt-1 grid gap-2 text-center text-[11px] text-ink-muted" style={{ gridTemplateColumns: `repeat(${weeks.length},minmax(0,1fr))` }}>
         {weeks.map((w, i) => (
           <span key={labels[i]}>
             {dayMonth.format(new Date(`${labels[i]}T12:00:00Z`))}
@@ -93,22 +93,28 @@ export function StrategyWeekly({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   if (!data) return <p className="text-xs text-ink-muted">Loading the weeks…</p>;
-  const grid = "grid grid-cols-[minmax(0,2.4fr)_repeat(6,minmax(0,1fr))_minmax(0,1.5fr)_minmax(0,1.4fr)] items-center gap-1";
+  // Columns start from the first week anything in this section has picks (no empty weeks before the data begins).
+  const keys = rows.flatMap((r) => [r.label.toLowerCase(), ...Object.keys(data.strategies).filter((k) => k.startsWith(`${r.label.toLowerCase()}#`))]);
+  const firstWeek = data.weeks.findIndex((_, i) => keys.some((k) => (data.strategies[k]?.weeks[i]?.[modeOf(k.split("#")[0]!)]?.picks ?? 0) > 0));
+  const from = firstWeek < 0 ? data.weeks.length - 1 : firstWeek;
+  const shownWeeks = data.weeks.slice(from);
+  const cols = { gridTemplateColumns: `minmax(0,2.4fr) repeat(${shownWeeks.length},minmax(0,1fr)) minmax(0,1.5fr) minmax(0,1.4fr)` };
+  const grid = "grid items-center gap-1";
   const line = (key: string, name: React.ReactNode, mode: Mode, total = false, slice = false) => {
     const s = data.strategies[key];
-    const weeks = data.weeks.map((_, i) => s?.weeks[i]?.[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
+    const weeks = shownWeeks.map((_, j) => s?.weeks[from + j]?.[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
     const last7 = s?.last7[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 };
     const trend = trendOf(last7, s?.prev28[mode] ?? last7);
     const isOpen = open === key && !total && !slice;
     return (
       <li key={key} className={total ? "border-t border-line pt-1" : ""}>
-        <button type="button" disabled={total || slice} aria-expanded={total || slice ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`}>
+        <button type="button" disabled={total || slice} aria-expanded={total || slice ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`} style={cols}>
           <span className={`flex min-w-0 items-center gap-1 text-sm ${total ? "font-semibold" : "font-medium"} text-ink`}>
             <span className="truncate">{name}</span>
             {!total && !slice && <ChevronDown size={13} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />}
           </span>
           {weeks.map((w, i) => (
-            <Cell key={data.weeks[i]} t={w} />
+            <Cell key={shownWeeks[i]} t={w} />
           ))}
           <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${last7.counted === 0 ? "bg-surface-2 text-ink-muted" : last7.profit >= 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss"}`}>
             {last7.counted > 0 ? money(last7.profit) : "–"}
@@ -118,7 +124,7 @@ export function StrategyWeekly({
         </button>
         {isOpen && (
           <div className="mb-2 mt-1 space-y-2">
-            <WeekBars weeks={weeks} labels={data.weeks} />
+            <WeekBars weeks={weeks} labels={shownWeeks} />
             <ul>{renderCard(key)}</ul>
           </div>
         )}
@@ -127,10 +133,10 @@ export function StrategyWeekly({
   };
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[640px]">
-        <div className={`${grid} pb-1 text-[11px] text-ink-muted`}>
+      <div className="min-w-[560px]">
+        <div className={`${grid} pb-1 text-[11px] text-ink-muted`} style={cols}>
           <span>Strategy</span>
-          {data.weeks.map((w) => (
+          {shownWeeks.map((w) => (
             <span key={w} className="text-center">
               {dayMonth.format(new Date(`${w}T12:00:00Z`))}
             </span>

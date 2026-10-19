@@ -34,7 +34,7 @@ import { startProbeOnce } from "../fixtures/probe";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { startTeamGoalsReminder } from "../model/team-goals-test";
 import { logHorseResults } from "./horse-results";
-import { loadCustomSegments, notifyGoldenSuggestions } from "./golden";
+import { loadCustomSegments, monitorGoldenBets, notifyGoldenSuggestions } from "./golden";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -115,6 +115,8 @@ async function main(): Promise<void> {
     const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
     if (hour < 8 || hour >= 22) return;
     void notifyAdvice(db).catch((err) => log.warn(`Strategy suggestions failed: ${err instanceof Error ? err.message : String(err)}`));
+    // Golden safety: a slice bet Live on its own goes back to Sim when it stops earning it (one notification each).
+    void monitorGoldenBets(db).catch((err) => log.warn(`Golden safety check failed: ${err instanceof Error ? err.message : String(err)}`));
     // Golden finder: one notification when it has new slices to suggest watching.
     void notifyGoldenSuggestions(db).catch((err) => log.warn(`Golden finder failed: ${err instanceof Error ? err.message : String(err)}`));
     // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.

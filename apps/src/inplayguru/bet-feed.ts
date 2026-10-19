@@ -128,6 +128,8 @@ export interface SegmentBet {
   /** Its own stake: a percentage of the balance, or flat pounds (one or neither; neither = the strategy's stake). */
   stakePct: number | null;
   stake: number | null;
+  /** When it was last switched Live (its own Live record, which the Golden safety check judges, counts from here). */
+  liveSince: string | null;
 }
 
 export const DEFAULT_SENDING: SendingSettings = {
@@ -230,7 +232,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     for (const [k, v] of Object.entries(raw.segmentBets)) {
       if (!v || typeof v !== "object") continue;
       const b = v as Partial<SegmentBet>;
-      segmentBets[k.toLowerCase()] = { live: b.live === true, stakePct: cleanPct(b.stakePct), stake: cleanStake(b.stake) };
+      segmentBets[k.toLowerCase()] = { live: b.live === true, stakePct: cleanPct(b.stakePct), stake: cleanStake(b.stake), liveSince: b.live === true && typeof b.liveSince === "string" ? b.liveSince : null };
     }
   }
   const stakes: Record<string, number> = {};
@@ -353,10 +355,11 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
       if (v === null) delete next.segmentBets[key];
       else if (typeof v === "object") {
         const b = v as Partial<SegmentBet>;
-        const cur = next.segmentBets[key] ?? { live: false, stakePct: null, stake: null };
+        const cur = next.segmentBets[key] ?? { live: false, stakePct: null, stake: null, liveSince: null };
         const pct = b.stakePct === undefined ? cur.stakePct : b.stakePct === null ? null : cleanPct(b.stakePct);
         const flat = b.stake === undefined ? cur.stake : b.stake === null ? null : cleanStake(b.stake);
-        next.segmentBets[key] = { live: typeof b.live === "boolean" ? b.live : cur.live, stakePct: pct, stake: pct !== null ? null : flat };
+        const live = typeof b.live === "boolean" ? b.live : cur.live;
+        next.segmentBets[key] = { live, stakePct: pct, stake: pct !== null ? null : flat, liveSince: live ? (cur.live && cur.liveSince ? cur.liveSince : new Date().toISOString()) : null };
       }
     }
   }

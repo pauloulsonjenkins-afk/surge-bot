@@ -94,6 +94,9 @@ export function SegmentBetting({
           </button>
         )}
       </div>
+      {live && cfg && (
+        <p className="mt-1 text-ink-muted">Safety: goes back to Sim by itself if it stops being Golden, or its own Live bets lose more than 5% per £1 over 30+ bets.</p>
+      )}
       {save.error && <p className="mt-1 text-destructive">{save.error.message}</p>}
     </div>
   );

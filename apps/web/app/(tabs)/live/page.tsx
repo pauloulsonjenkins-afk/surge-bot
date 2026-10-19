@@ -6,7 +6,8 @@ import { ChevronDown } from "lucide-react";
 import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useSending } from "@/queries/use-sending";
-import { GoldenBadge } from "@/components/ui/SegmentLabel";
+import { GoldenBadge, GOLD } from "@/components/ui/SegmentLabel";
+import { GoldenLine } from "@/components/admin/GoldenLine";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
@@ -285,9 +286,10 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
   const preMatch = pick.minute === null && pick.market === "FIRST_HALF_GOALS";
   const minute = pick.minute !== null ? `${pick.minute}'` : preMatch ? "Pre" : (pick.timerRaw ?? "–");
   const issue = exchangeIssue(pick);
+  const golden = admin && (pick.segments?.length ?? 0) > 0;
 
   return (
-    <li>
+    <li style={golden ? { boxShadow: `inset 3px 0 0 ${GOLD}`, background: "color-mix(in srgb, #C9A227 6%, transparent)" } : undefined}>
       <button
         type="button"
         aria-expanded={open}
@@ -366,6 +368,8 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
           {admin && pick.exchange === "off" && (pick.exchangeCandidates?.length ?? 0) > 0 && <BetfairChoices pick={pick} />}
 
           {admin && (placement?.state === "notPlaced" || placement?.state === "lapsed") && <RetryBet pickId={pick.id} />}
+
+          {golden && <GoldenLine pick={pick} />}
 
           {admin && !pick.sentAt && !placement?.manual && !waiting && pick.status !== "settled" && <BetForReal pick={pick} />}
 

@@ -14,9 +14,10 @@
  * Worked out at most every 6 hours; one notification when new suggestions appear.
  */
 import type { EngineDb } from "../storage/engine-db";
-import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
+import { getSendingSettings, saveSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
 import { computeStrategyReturns, pricingInputs } from "./winloss";
+import { isLivePlacement } from "../storage/engine-db";
 import { FEATURES, ruleLabel, ruleTest, segmentsOf, setCustomSegments, type CustomSegment, type Feature } from "./segments";
 import { sendPush } from "./push";
 import { log } from "./log";
@@ -195,7 +196,7 @@ export async function notifyGoldenSuggestions(db: EngineDb, now = new Date()): P
 export type GoldenStatus = "candidate" | "golden" | "not holding up";
 
 /** The Golden page: each watched slice since its start (Live and Sim together), the rest of its strategy over the same time, its status and its own betting. */
-export function goldenReport(db: EngineDb, now = new Date()) {
+export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?: boolean } = {}) {
   const settings = getSendingSettings(db);
   const returns = computeStrategyReturns(db, null);
   const slices = [];
@@ -206,6 +207,7 @@ export function goldenReport(db: EngineDb, now = new Date()) {
       const status: GoldenStatus =
         inn.counted < CONFIRM_FROM ? "candidate" : inn.roi !== null && inn.roi >= 0.03 && (rest.roi === null || inn.roi > rest.roi) ? "golden" : "not holding up";
       const bet = settings.segmentBets[`${key}#${s.id}`] ?? null;
+      const ownLive = bet?.live && bet.liveSince ? liveSinceRecord(db, key, s.id, bet.liveSince) : null;
       slices.push({
         strategyKey: key,
         strategy: displayName(db, key),
@@ -218,8 +220,59 @@ export function goldenReport(db: EngineDb, now = new Date()) {
         slice: { live: s.in.live, sim: s.in.sim, all: inn },
         rest: { live: s.out.live, sim: s.out.sim, all: rest },
         bet,
+        ownLive,
       });
     }
   }
-  return { slices, suggestions: goldenSuggestions(db, now), confirmFrom: CONFIRM_FROM };
+  return { slices, suggestions: opts.skipFinder ? { at: now.toISOString(), list: [] } : goldenSuggestions(db, now), confirmFrom: CONFIRM_FROM, safety: SAFETY };
+}
+
+/** The Golden safety check: a slice bet Live on its own is switched back to Sim when it stops earning its place. */
+export const SAFETY = { minBets: 30, worstRoi: -0.05 };
+
+/** A slice's own Live bets since it was switched Live (its strategy's Live bets in that slice). */
+export function liveSinceRecord(db: EngineDb, strategyKey: string, segmentId: string, since: string): { n: number; won: number; staked: number; profit: number; roi: number | null } {
+  const seg = segmentsOf(strategyKey).find((s) => s.id === segmentId);
+  const out = { n: 0, won: 0, staked: 0, profit: 0, roi: null as number | null };
+  if (!seg) return out;
+  const { price } = pricingInputs(db);
+  for (const r of db.listResultsForWinLoss(since)) {
+    if (strategyLabel(r.strategy).toLowerCase() !== strategyKey || !r.facts || !seg.test(r.facts) || !isLivePlacement(r.placement) || r.byHand) continue;
+    const { priced } = price(r);
+    if (priced.kind !== "priced") continue;
+    out.n++;
+    if (r.result === "hit") out.won++;
+    out.staked += priced.stake;
+    out.profit += priced.profit;
+  }
+  out.roi = out.staked > 0 ? out.profit / out.staked : null;
+  return out;
+}
+
+/**
+ * Hourly: every slice bet Live on its own is checked. Switched back to Sim (with a notification) when its status turns
+ * "not holding up", or its own Live bets have lost more than 5% per £1 over 30+ bets. Turning it back on is the admin's.
+ */
+export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise<string[]> {
+  const settings = getSendingSettings(db);
+  const live = Object.entries(settings.segmentBets).filter(([, c]) => c.live);
+  if (live.length === 0) return [];
+  const report = goldenReport(db, now, { skipFinder: true });
+  const off: string[] = [];
+  for (const [k, cfg] of live) {
+    const [strategyKey, id] = k.split("#") as [string, string];
+    const slice = report.slices.find((s) => s.strategyKey === strategyKey && s.id === id);
+    const rec = cfg.liveSince ? liveSinceRecord(db, strategyKey, id, cfg.liveSince) : null;
+    const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
+    let why: string | null = null;
+    if (slice?.status === "not holding up") why = `it's no longer Golden: ${pct(slice.slice.all.roi ?? 0)} per £1 over ${slice.slice.all.counted} picks against the rest's ${pct(slice.rest.all.roi ?? 0)}`;
+    else if (rec && rec.n >= SAFETY.minBets && rec.roi !== null && rec.roi < SAFETY.worstRoi) why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
+    if (!why) continue;
+    saveSendingSettings(db, { segmentBets: { [k]: { live: false } } });
+    const name = `${displayName(db, strategyKey)}, ${(slice?.label ?? "Golden").replace(/^Golden: /, "")}`;
+    off.push(name);
+    log.info(`Golden safety: ${name} switched to Sim because ${why}.`);
+    await sendPush(db, { title: "Golden switched to Sim", body: `${name}: switched to Sim because ${why}. Its alerts aren't bet until you turn it back on.`, url: "/more/admin/golden", tag: `golden-off-${k}` });
+  }
+  return off;
 }

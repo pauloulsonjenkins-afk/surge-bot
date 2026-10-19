@@ -8,6 +8,7 @@ import { computeStrategyReturns } from "./winloss";
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
 import { autoStakeQueue, visibleAdvice } from "./strategy-advice";
+import { goldenReport } from "./golden";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { ukWeekStart } from "../members/time";
@@ -44,6 +45,11 @@ export function buildWeeklyReview(db: EngineDb, now = new Date()): { title: stri
     lines.push(`To review (${advice.length}):`);
     for (const a of advice) lines.push(`• ${displayName(db, a.key)}${a.league ? ` in ${a.league.name}` : ""}: ${a.action}`);
   } else lines.push("No changes suggested this week.");
+  for (const s of goldenReport(db, now, { skipFinder: true }).slices.filter((x) => x.bet?.live)) {
+    const r = s.ownLive;
+    const pct = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
+    lines.push(`• Golden Live: ${s.strategy}, ${s.label.replace(/^Golden: /, "")}: ${r ? `${r.won}–${r.n - r.won}, ${pct(r.roi)} per £1 since on` : "no bets yet"} (${s.status})`);
+  }
   for (const q of autoStakeQueue(db, now)) lines.push(`• Automatic: ${displayName(db, q.key)}: ${q.action.toLowerCase()} on ${new Date(q.due).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" })}`);
   return { title: `GoalBrew week: Live ${money(live.profit)}`, body: lines.join("\n") };
 }

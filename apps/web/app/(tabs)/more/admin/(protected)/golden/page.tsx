@@ -90,7 +90,10 @@ export default function GoldenPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
-          <Card title="Being watched" subtitle="Bet one on its own from its strategy's card (Strategies → Cards → tap the strategy).">
+          <Card
+            title="Being watched"
+            subtitle={`Bet one on its own from its strategy's card (Strategies → Cards → tap the strategy). Safety: a slice bet Live on its own goes back to Sim by itself, with a notification, if it stops being Golden or its own Live bets lose more than ${Math.abs((data.safety?.worstRoi ?? -0.05) * 100)}% per £1 over ${data.safety?.minBets ?? 30}+ bets.`}
+          >
             {data.slices.length === 0 ? (
               <p className="text-sm text-ink-muted">Nothing settled since the watched slices started yet.</p>
             ) : (
@@ -107,6 +110,19 @@ export default function GoldenPage() {
                     <p className="text-xs text-ink-muted">
                       Of {s.strategy}&apos;s picks since then: <Record r={s.slice.all} name="this part" /> · <Record r={s.rest.all} name="the rest" />
                     </p>
+                    {s.bet?.live && (
+                      <p className="text-xs text-ink-muted">
+                        Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
+                        {s.ownLive && s.ownLive.n > 0 ? (
+                          <>
+                            {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={tone(s.ownLive.roi)}>{pct(s.ownLive.roi)}</span> on {s.ownLive.n} · {s.ownLive.profit >= 0 ? "+" : "−"}£
+                            {Math.abs(s.ownLive.profit).toFixed(2)}
+                          </>
+                        ) : (
+                          "none settled yet"
+                        )}
+                      </p>
+                    )}
                     <p className="text-xs text-ink-muted">
                       {betText(s)}{" "}
                       <Link href="/more/admin/strategies" className="text-accent underline">

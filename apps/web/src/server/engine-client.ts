@@ -361,7 +361,7 @@ export interface SendingSettings {
   /** The goal model filter per strategy (lower-case name): true = on. Send false to turn one off. Missing on an older engine. */
   modelFilter?: Record<string, boolean>;
   /** A watched slice bet on its own ("strategy#slice", e.g. Second Pour's Golden): its Live / Sim switch and stake. Null clears one. */
-  segmentBets?: Record<string, { live?: boolean; stakePct?: number | null; stake?: number | null } | null>;
+  segmentBets?: Record<string, { live?: boolean; stakePct?: number | null; stake?: number | null; liveSince?: string | null } | null>;
   /** Stake in pounds per strategy (lower-case name). Send null to clear one. */
   stakes: Record<string, number | null>;
   /** Or a stake as a percentage of the Betfair balance per strategy (lower-case name). Send null to clear one. Setting one replaces the other. */
@@ -1977,7 +1977,9 @@ export interface GoldenSlice {
   status: "candidate" | "golden" | "not holding up";
   slice: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
   rest: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
-  bet: { live: boolean; stakePct: number | null; stake: number | null } | null;
+  bet: { live: boolean; stakePct: number | null; stake: number | null; liveSince?: string | null } | null;
+  /** Its own Live bets since it was switched Live on its own (null when it isn't). */
+  ownLive?: { n: number; won: number; staked: number; profit: number; roi: number | null } | null;
 }
 export interface GoldenSuggestion {
   strategyKey: string;
@@ -1992,6 +1994,8 @@ export interface GoldenReport {
   slices: GoldenSlice[];
   suggestions: { at: string; list: GoldenSuggestion[] };
   confirmFrom: number;
+  /** The Golden safety check: back to Sim after this many own Live bets below this return. */
+  safety?: { minBets: number; worstRoi: number };
 }
 
 export function fetchGolden(): Promise<GoldenReport> {
