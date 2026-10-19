@@ -36,6 +36,26 @@ function favourite(f: AlertFacts): "home" | "away" | null {
 }
 
 export const SEGMENTS: Record<string, Segment[]> = {
+  // Wake-up Call (Time to fight), added 20 Oct 2026: over 997 bets, alerts with the sides 2+ goals apart made +6.2% per £1
+  // (265 bets); one-goal games lost -9.1% (732 bets), in both halves of the record.
+  "time to fight": [
+    {
+      id: "two-apart",
+      label: "2+ goals apart since 20 Oct",
+      since: "2026-10-20T00:00:00.000Z",
+      test: (f) => f.goalsHome !== null && f.goalsAway !== null && Math.abs(f.goalsHome - f.goalsAway) >= 2,
+    },
+  ],
+  // Comeback Roast (Losing team pushing hard), added 20 Oct 2026: with the home side one goal down it made +3.4% (128 bets),
+  // the rest lost -14.6% (175 bets).
+  "losing team pushing hard": [
+    {
+      id: "home-one-down",
+      label: "Home team 1 down since 20 Oct",
+      since: "2026-10-20T00:00:00.000Z",
+      test: (f) => f.goalsHome !== null && f.goalsAway !== null && f.goalsAway - f.goalsHome === 1,
+    },
+  ],
   "favourite pressure 2nd half": [
     {
       id: "golden",

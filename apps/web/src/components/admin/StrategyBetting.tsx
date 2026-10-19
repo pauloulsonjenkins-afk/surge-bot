@@ -14,7 +14,7 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
  */
 export type SendingStrategy = SendingState["strategies"][number];
 
-const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY", "EDGE_VALUE"]);
+const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "HOME_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY", "EDGE_VALUE"]);
 
 /** A strategy that LAYS (Away Win Lay): its stake is the liability, and it has a maximum lay price, not minimum odds. */
 const isLay = (s: SendingStrategy) => s.market === "AWAY_WIN_LAY";

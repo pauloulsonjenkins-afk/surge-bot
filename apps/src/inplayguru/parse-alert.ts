@@ -23,6 +23,8 @@ export type MarketCode =
   | "FIRST_HALF_CORNERS"
   | "UNDERDOG_DOUBLE_CHANCE"
   | "FAVOURITE_TO_WIN"
+  /** The home team to win (Match Odds), whoever is favourite. */
+  | "HOME_TO_WIN"
   | "FAVOURITE_TO_SCORE"
   | "OVER_1_5"
   /** Two more goals in the match: Over (goals at the alert + 1.5), any team. */
@@ -105,6 +107,8 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "Away Win Lay" (added 10 Oct 2026): a PRE-MATCH alert ("Kickoff: In 1 hour") laying the away side; InPlayGuru
   // tracks it as Double Chance 1X. Settled from the score, priced as a lay; laid on Betfair only by direct betting.
   { test: /away win lay/, market: "AWAY_WIN_LAY" },
+  // "Matched odds home" (added 19 Oct 2026): the home team to win, Match Odds.
+  { test: /matched odds home|\bhome (?:team )?to win\b/, market: "HOME_TO_WIN" },
   { test: /both teams to score/, market: "BOTH_TEAMS_TO_SCORE" },
   // "1st Half Corners", "First Half Corner", "1H Corners", "Corners 1st Half" ...
   { test: /\b(?:first|1st|1h)\b[^/]*\bcorners?\b|\bcorners?\b[^/]*\b(?:first|1st|1h)\b/, market: "FIRST_HALF_CORNERS" },
@@ -408,7 +412,11 @@ export function parseAlert(text: string): ParsedAlert {
   let underdog: "home" | "away" | null = null;
   let favourite: "home" | "away" | null = null;
 
-  if (market === "FAVOURITE_TO_WIN" || market === "FAVOURITE_TO_SCORE") {
+  if (market === "HOME_TO_WIN") {
+    // Priced from the alert's live home price (the "favourite" field carries the side for pricing and the bet feed).
+    favourite = "home";
+    selection = "Home to win";
+  } else if (market === "FAVOURITE_TO_WIN" || market === "FAVOURITE_TO_SCORE") {
     // The favourite is the side with the shorter live win price (1X2 line: home, draw, away).
     const live = odds.live1x2;
     if (!live) {
@@ -543,6 +551,8 @@ export function parseAlert(text: string): ParsedAlert {
     else if (market === "FAVOURITE_TO_SCORE" && favourite !== null && targetLine !== null) {
       computed = (favourite === "home" ? a : b) > targetLine ? "hit" : "miss";
     }
+    // Home to win (Match Odds): hits only on a home win. A draw loses.
+    else if (market === "HOME_TO_WIN") computed = a > b ? "hit" : "miss";
     // Away win lay: hits unless the away side won.
     else if (market === "AWAY_WIN_LAY") computed = a >= b ? "hit" : "miss";
     // Underdog win or draw: hits unless the underdog lost.

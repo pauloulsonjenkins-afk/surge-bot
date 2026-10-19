@@ -311,6 +311,19 @@ export class BetfairReader {
   }
 
   /**
+   * Horse racing (Horses page results): the day's open WIN and PLACE markets, with their runners and venue. Only open
+   * markets are listed by Betfair, so this is read before the races and the market ids kept (server/horse-results.ts).
+   */
+  async horseMarkets(fromIso: string, toIso: string): Promise<Array<{ marketId: string; marketType: string; venue: string | null; start: string | null; runners: Array<{ selectionId: number; runnerName: string }> }>> {
+    const list = await this.call<Array<MarketCatalogue & { description?: { marketType?: string }; event?: { name?: string; venue?: string }; marketStartTime?: string }>>("listMarketCatalogue", {
+      filter: { eventTypeIds: ["7"], marketTypeCodes: ["WIN", "PLACE"], marketStartTime: { from: fromIso, to: toIso } },
+      marketProjection: ["RUNNER_DESCRIPTION", "EVENT", "MARKET_START_TIME", "MARKET_DESCRIPTION"],
+      maxResults: 1000,
+    });
+    return list.map((m) => ({ marketId: m.marketId, marketType: m.description?.marketType ?? "", venue: m.event?.venue ?? null, start: m.marketStartTime ?? null, runners: m.runners ?? [] }));
+  }
+
+  /**
    * How one selection finished once its market has closed: "WINNER", "LOSER", or "REMOVED" (voided). Null while the
    * market is still open or Betfair no longer has it.
    */

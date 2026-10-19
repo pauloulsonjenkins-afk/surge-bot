@@ -651,6 +651,7 @@ function StrategyCard({
                 })()}
               </span>
             )}
+            <SegmentLines row={row} mode={pickMode} />
             {borrowed && (
               <span className="mt-1 block text-xs text-warn">
                 Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {modeOf(row) === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} priced picks there yet.
@@ -691,7 +692,6 @@ function StrategyCard({
               </span>
             )}
             <ByBetLine row={row} mode={pickMode} />
-            <SegmentLines row={row} mode={pickMode} />
             {row.returns?.byHand && row.returns.byHand.settled > 0 && (
               <span className="mt-1 block text-xs text-ink-muted" title="Sim picks you bet for real from the Live tab. They stay in this strategy's Sim record and are left out of its Live record (the stake ladder and back-to-Sim judge that), so your own picking doesn't skew it.">
                 Bet by hand: {row.returns.byHand.settled} · won {row.returns.byHand.hits ?? 0}–{row.returns.byHand.settled - (row.returns.byHand.hits ?? 0)}
@@ -700,8 +700,10 @@ function StrategyCard({
             )}
           </div>
           <div className="rounded-lg bg-surface-2 p-3">
-            <p className="mb-1 text-xs font-medium text-ink-muted">{formKind === "week" ? "Last 7 days" : "Recent form: last 20 picks"}</p>
-            <FormParagraph row={row} kind={formKind} />
+            <p className="mb-1 text-xs font-medium text-ink-muted">Recent form: last 20 picks</p>
+            <FormParagraph row={row} kind="recent" />
+            <p className="mb-1 mt-2 text-xs font-medium text-ink-muted">Last 7 days</p>
+            <FormParagraph row={row} kind="week" />
           </div>
           {modeOf(row) === "sim" && (
             <ReadyForLive row={row} check={check} hasStop={!!bet?.stopLoss && (bet.stopLoss.dailyLoss !== null || bet.stopLoss.lossRun !== null)} />
@@ -1030,7 +1032,6 @@ export default function StrategiesPage() {
       <div className="flex flex-wrap items-center gap-3">
         <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "weekly", label: "Weekly" }, { value: "cards", label: "Cards" }]} />
         {layout === "cards" && <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />}
-        <Segmented label="Form" value={formKind} onChange={setFormKind} options={FORM_OPTIONS} />
         <Segmented label="Whose figures" value={view} onChange={setView} options={VIEWS} />
         <div className="flex items-center gap-2 text-xs text-ink-muted">
           Sort by

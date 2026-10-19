@@ -534,6 +534,9 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
     const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)).padStart(2, "0"));
     return { marketType: fill(settings.firstHalfCornersMarketType), selectionName: fill(settings.firstHalfCornersSelection) };
   }
+  if (p.market === "HOME_TO_WIN") {
+    return { marketType: settings.favouriteMarketType, selectionName: settings.favouriteHomeSelection.replace(/\{home\}/g, alias(p.home ?? "")).replace(/\{away\}/g, alias(p.away ?? "")) };
+  }
   if (p.market === "FAVOURITE_TO_WIN" || p.market === "UNDERDOG_DOUBLE_CHANCE") {
     const favourite = p.market === "FAVOURITE_TO_WIN";
     const side = favourite ? (p.detail?.favourite ?? null) : (p.detail?.underdog ?? null);

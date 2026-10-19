@@ -2,7 +2,7 @@
  * Entry point for the engine's DigitalOcean web service.
  * package.json "start" runs the compiled copy: node dist/src/server/main.js
  */
-import { startBetfairPoller } from "../betfair/exchange";
+import { getExchangeReader, startBetfairPoller } from "../betfair/exchange";
 import { parseAlert } from "../inplayguru/parse-alert";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -33,6 +33,7 @@ import { startValueSettling } from "../edge/value-strategy";
 import { startProbeOnce } from "../fixtures/probe";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { startTeamGoalsReminder } from "../model/team-goals-test";
+import { logHorseResults } from "./horse-results";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -118,6 +119,15 @@ async function main(): Promise<void> {
 
   // Reads your bets from Betfair (read only) so the site knows within a minute whether a sent pick was placed.
   startBetfairPoller(db);
+
+  // Horses: results logged from Betfair after each race (horse-results.ts), every 15 minutes, 08:00-23:00 UK.
+  const horseResults = setInterval(() => {
+    const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+    const reader = getExchangeReader();
+    if (hour < 8 || hour >= 23 || !reader) return;
+    void logHorseResults(db, reader).catch((err) => log.warn(`Horse results from Betfair failed: ${err instanceof Error ? err.message : String(err)}`));
+  }, 15 * 60_000);
+  horseResults.unref();
 
   // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
   startDailySummary(db);

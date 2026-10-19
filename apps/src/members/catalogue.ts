@@ -21,6 +21,7 @@ export const MARKET_LABEL: Record<string, string> = {
   FIRST_HALF_CORNERS: "1st half corners",
   UNDERDOG_DOUBLE_CHANCE: "Underdog win or draw",
   FAVOURITE_TO_WIN: "Favourite to win",
+  HOME_TO_WIN: "Home to win",
   FAVOURITE_TO_SCORE: "Favourite to score",
   OVER_1_5: "Over 1.5 goals",
   TWO_MORE_GOALS: "Two more goals",

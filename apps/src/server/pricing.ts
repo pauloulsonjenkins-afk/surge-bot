@@ -75,7 +75,7 @@ export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "
   if (r.market === "NEXT_GOAL" || r.market === "OVER_1_5" || r.market === "TWO_MORE_GOALS") {
     return r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1 ? r.overOdds : null;
   }
-  if (r.market === "FAVOURITE_TO_WIN") return r.favouriteOdds !== null && r.favouriteOdds > 1 ? r.favouriteOdds : null;
+  if (r.market === "FAVOURITE_TO_WIN" || r.market === "HOME_TO_WIN") return r.favouriteOdds !== null && r.favouriteOdds > 1 ? r.favouriteOdds : null;
   return null;
 }
 

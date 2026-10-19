@@ -466,6 +466,7 @@ export default function HorsesPage() {
     return [...m.entries()];
   }, [bets]);
   const toMark = bets.filter((b) => b.result === "pending").length;
+  const todaySaved = bets.some((b) => b.day === todayUk());
 
   return (
     <div className="space-y-6">
@@ -489,6 +490,56 @@ export default function HorsesPage() {
         </div>
       ) : (
         <>
+          {/* Once today's bets are saved, the Daily record comes first, so the results are the next thing to fill in. */}
+          {todaySaved ? (
+            <>
+          <section className="space-y-2" aria-label="Daily record">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-base font-semibold text-ink">Daily record</h3>
+              {toMark > 0 && <span className="text-xs text-warn">{toMark} result{toMark === 1 ? "" : "s"} to mark · logged from Betfair after each race</span>}
+            </div>
+            {byDay.length === 0 ? (
+              <p className="text-sm text-ink-muted">Your saved days will appear here, with a button to mark each result.</p>
+            ) : (
+              <>
+                <ul className="space-y-2">
+                  {byDay.slice(0, showDays).map(([d, list]) => (
+                    <DayRecord
+                      key={d}
+                      day={d}
+                      bets={list}
+                      yankee={allYankees.find((y) => y.day === d) ?? null}
+                      onEdit={() => {
+                        setDay(d);
+                        entryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                    />
+                  ))}
+                </ul>
+                {byDay.length > showDays && (
+                  <button type="button" onClick={() => setShowDays((n) => n + 14)} className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2">
+                    Show older days
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+
+          <div ref={entryRef}>
+            <EntryCard
+              bets={bets}
+              days={days}
+              day={day}
+              setDay={setDay}
+              courses={data.courses}
+              knownCourses={data.knownCourses}
+              suggestions={data.suggestions.filter((s) => s.day === day)}
+            />
+          </div>
+
+            </>
+          ) : (
+            <>
           <div ref={entryRef}>
             <EntryCard
               bets={bets}
@@ -532,6 +583,8 @@ export default function HorsesPage() {
               </>
             )}
           </section>
+            </>
+          )}
 
           <p className="text-sm">
             <Link href="/more/admin/horses?tab=stats" className="font-medium text-accent">
