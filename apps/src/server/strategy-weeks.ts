@@ -9,6 +9,7 @@ import { strategyLabel } from "../inplayguru/bet-feed";
 import { pricingInputs } from "./winloss";
 import { ukDateOf } from "./uk-time";
 import { addDaysUk, ukWeekStart } from "../members/time";
+import { SEGMENTS } from "./segments";
 
 export interface WeekTally {
   /** Settled picks, and how many won and lost. */
@@ -58,7 +59,10 @@ export function computeStrategyWeeks(db: EngineDb, weekCount = 6, now = new Date
     const at = Date.parse(r.firstSeenAt);
     const w = weeks.indexOf(ukWeekStart(ukDateOf(new Date(at))));
     const buckets: WeekModes[] = [];
-    for (const k of [strategyLabel(r.strategy).toLowerCase(), "__all__"]) {
+    const sk = strategyLabel(r.strategy).toLowerCase();
+    // Watched slices get their own rows ("strategy#slice"), counted from the slice's start like on the card.
+    const segKeys = r.facts ? (SEGMENTS[sk] ?? []).filter((s) => r.firstSeenAt >= s.since && s.test(r.facts!)).map((s) => `${sk}#${s.id}`) : [];
+    for (const k of [sk, "__all__", ...segKeys]) {
       const e = entry(k);
       if (w >= 0) buckets.push(e.weeks[w]!);
       if (at >= last7From) buckets.push(e.last7);

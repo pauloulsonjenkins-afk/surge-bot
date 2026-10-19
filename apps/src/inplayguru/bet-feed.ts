@@ -46,6 +46,7 @@ import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
 import { modelVerdict } from "../model/goal-model";
 import { getLeagueBlocks, isLeagueBlocked } from "./league-blocks";
+import { SEGMENTS, type AlertFacts } from "../server/segments";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -57,6 +58,11 @@ export interface SendingSettings {
    * (model/goal-model.ts) rates it 3+ points above what the price needs. Missing = off. Applies in Live and in Sim.
    */
   modelFilter: Record<string, boolean>;
+  /**
+   * A watched slice bet on its own (server/segments.ts), keyed "strategy key#slice id", e.g. Second Pour's Golden
+   * alerts: Live or Sim regardless of the strategy's own switch, at its own stake (else the strategy's).
+   */
+  segmentBets: Record<string, SegmentBet>;
   /** Stake in pounds per strategy, keyed by lower-case strategy name. Missing (and no percentage) = cannot be sent. */
   stakes: Record<string, number>;
   /** Or a stake as a percentage of the Betfair balance (see stake.ts). A strategy has a flat stake or a percentage, not both. */
@@ -117,10 +123,18 @@ export interface SendingSettings {
   aliases: string;
 }
 
+export interface SegmentBet {
+  live: boolean;
+  /** Its own stake: a percentage of the balance, or flat pounds (one or neither; neither = the strategy's stake). */
+  stakePct: number | null;
+  stake: number | null;
+}
+
 export const DEFAULT_SENDING: SendingSettings = {
   enabled: false,
   strategies: {},
   modelFilter: {},
+  segmentBets: {},
   stakes: {},
   stakePct: {},
   minOdds: {},
@@ -211,6 +225,14 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   if (raw.modelFilter && typeof raw.modelFilter === "object") {
     for (const [k, v] of Object.entries(raw.modelFilter)) if (v === true) modelFilter[k.toLowerCase()] = true;
   }
+  const segmentBets: Record<string, SegmentBet> = {};
+  if (raw.segmentBets && typeof raw.segmentBets === "object") {
+    for (const [k, v] of Object.entries(raw.segmentBets)) {
+      if (!v || typeof v !== "object") continue;
+      const b = v as Partial<SegmentBet>;
+      segmentBets[k.toLowerCase()] = { live: b.live === true, stakePct: cleanPct(b.stakePct), stake: cleanStake(b.stake) };
+    }
+  }
   const stakes: Record<string, number> = {};
   if (raw.stakes && typeof raw.stakes === "object") {
     for (const [k, v] of Object.entries(raw.stakes)) {
@@ -243,6 +265,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     enabled: raw.enabled === true,
     strategies,
     modelFilter,
+    segmentBets,
     stakes,
     stakePct,
     minOdds,
@@ -274,10 +297,68 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   };
 }
 
+/** The alert's facts a watched slice tests (server/segments.ts). */
+export function pickFacts(p: LivePick): AlertFacts {
+  return {
+    goalsHome: p.goalsHome,
+    goalsAway: p.goalsAway,
+    stats: p.detail?.stats ?? {},
+    preMatch1x2: p.detail?.odds?.preMatch1x2 ?? null,
+    live1x2: p.detail?.odds?.live1x2 ?? null,
+  };
+}
+
+/** The watched slices this pick is in (ids and labels), whatever their start date. */
+export function pickSegments(p: LivePick): Array<{ id: string; label: string }> {
+  const segs = SEGMENTS[strategyLabel(p.strategy).toLowerCase()];
+  if (!segs) return [];
+  const f = pickFacts(p);
+  return segs.filter((s) => s.test(f)).map((s) => ({ id: s.id, label: s.label }));
+}
+
+/** The slice this pick is bet under, when that slice has its own betting set (Strategies: "Bet it separately"). */
+export function segmentBetFor(settings: SendingSettings, p: LivePick): { key: string; id: string; label: string; cfg: SegmentBet } | null {
+  const key = strategyLabel(p.strategy).toLowerCase();
+  for (const s of pickSegments(p)) {
+    const cfg = settings.segmentBets[`${key}#${s.id}`];
+    if (cfg) return { key, id: s.id, label: s.label.replace(/ since .*$/, ""), cfg };
+  }
+  return null;
+}
+
+/** Settings with a slice's own stake in place of its strategy's, for resolveStake. */
+export function withSegmentStake(settings: SendingSettings, key: string, cfg: SegmentBet): SendingSettings {
+  if (cfg.stakePct !== null) {
+    const stakes = { ...settings.stakes };
+    delete stakes[key];
+    return { ...settings, stakes, stakePct: { ...settings.stakePct, [key]: cfg.stakePct } };
+  }
+  if (cfg.stake !== null) {
+    const stakePct = { ...settings.stakePct };
+    delete stakePct[key];
+    return { ...settings, stakePct, stakes: { ...settings.stakes, [key]: cfg.stake } };
+  }
+  return settings;
+}
+
 /** Applies a partial update from the admin page and saves the merged, validated result. */
 export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>): SendingSettings {
   const current = getSendingSettings(db);
-  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds } };
+  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds }, segmentBets: { ...current.segmentBets } };
+  // A watched slice's own betting: { "strategy#slice": { live, stakePct, stake } }, or null to go back to the strategy's.
+  if (patch.segmentBets && typeof patch.segmentBets === "object") {
+    for (const [k, v] of Object.entries(patch.segmentBets as Record<string, unknown>)) {
+      const key = k.toLowerCase();
+      if (v === null) delete next.segmentBets[key];
+      else if (typeof v === "object") {
+        const b = v as Partial<SegmentBet>;
+        const cur = next.segmentBets[key] ?? { live: false, stakePct: null, stake: null };
+        const pct = b.stakePct === undefined ? cur.stakePct : b.stakePct === null ? null : cleanPct(b.stakePct);
+        const flat = b.stake === undefined ? cur.stake : b.stake === null ? null : cleanStake(b.stake);
+        next.segmentBets[key] = { live: typeof b.live === "boolean" ? b.live : cur.live, stakePct: pct, stake: pct !== null ? null : flat };
+      }
+    }
+  }
 
   if (typeof patch.enabled === "boolean") next.enabled = patch.enabled;
   if (typeof patch.ladderAuto === "boolean") next.ladderAuto = patch.ladderAuto;
@@ -645,8 +726,10 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       }
     }
 
-    if (!settings.strategies[label.toLowerCase()]) {
-      skipped.push(skip(p, "This strategy's switch is off."));
+    // A watched slice with its own betting (e.g. Second Pour's Golden alerts) is Live or Sim by its own switch.
+    const seg = segmentBetFor(settings, p);
+    if (seg ? !seg.cfg.live : !settings.strategies[label.toLowerCase()]) {
+      skipped.push(skip(p, seg ? `${seg.label} alerts are in Sim (Strategies).` : "This strategy's switch is off."));
       continue;
     }
     // A league whose matches aren't on Betfair (marked on the Leagues page) is recorded but never sent.
@@ -725,7 +808,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     }
 
     // A flat stake, or a percentage of the Betfair balance turned into pounds now (kept with the row, so it never changes).
-    const staked = resolveStake(settings, label.toLowerCase(), bank, { now, live: true });
+    const staked = resolveStake(seg ? withSegmentStake(settings, label.toLowerCase(), seg.cfg) : settings, label.toLowerCase(), bank, { now, live: true });
     if (staked.stake === null) {
       skipped.push(skip(p, staked.reason ?? "No stake set for this strategy."));
       continue;
@@ -916,10 +999,11 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     const key = strategyLabel(p.strategy).toLowerCase();
     const fresh = now.getTime() <= betableUntil(p, settings.maxAgeMinutes);
     // Stopped in this league: never bet there, so it's simulated like a Sim strategy's pick.
-    const liveNow = settings.enabled && settings.strategies[key] === true && !isLeagueBlocked(blocks, key, p.leagueKey);
+    const seg = segmentBetFor(settings, p);
+    const liveNow = settings.enabled && (seg ? seg.cfg.live : settings.strategies[key] === true) && !isLeagueBlocked(blocks, key, p.leagueKey);
     if (liveNow && fresh) continue; // the bet feed decides this one
 
-    const staked = resolveStake(settings, key, bank, { now, live: false });
+    const staked = resolveStake(seg ? withSegmentStake(settings, key, seg.cfg) : settings, key, bank, { now, live: false });
     const stake = staked.stake;
     const minPrice = settings.minOdds[key] ?? null;
     const odds = alertOddsOfPick(p);

@@ -88,7 +88,7 @@ import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { telegramHealth } from "./telegram-watchdog";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { currentStake, getBank } from "../inplayguru/stake";
-import { addMatchName, betPickNow, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
+import { addMatchName, betPickNow, pickSegments, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
@@ -301,7 +301,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           // Profit per settled pick, for the admin's Trade Log. Worked out exactly as Win/Loss does.
           const oldest = picks.reduce<string | null>((min, p) => (min === null || p.firstSeenAt < min ? p.firstSeenAt : min), null);
           const profits = oldest ? computePickProfits(db, oldest) : {};
-          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null })) };
+          // Watched slices each pick is in (e.g. Second Pour's Golden), for the Live tab's badge.
+          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p) })) };
         }),
       );
       return;

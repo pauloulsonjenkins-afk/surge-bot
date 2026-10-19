@@ -1,7 +1,7 @@
 /**
  * Horses: each day's results logged from Betfair, so the Daily record fills itself in after the races.
  *
- * Betfair only lists OPEN markets, so this works in two steps, every 15 minutes from 08:00 to 23:00 UK:
+ * Betfair only lists OPEN markets, so this works in two steps, at 11:00 UK and then hourly from 15:00 to 21:00:
  *   1. link    each pending bet (today or the last 3 days) with a horse is matched to the day's WIN market that has a
  *              runner of that name (at its course when the venue matches), and the PLACE market of the same race; the
  *              market and runner ids are kept.

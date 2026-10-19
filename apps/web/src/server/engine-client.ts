@@ -66,6 +66,8 @@ export interface LivePick {
   marketCheckDetail?: string | null;
   /** When the admin cleared it from Live's "Waiting for a result" without a result (missing on an older engine). */
   waitingClearedAt?: string | null;
+  /** Watched slices this pick is in, e.g. Second Pour's Golden (missing on an older engine). */
+  segments?: Array<{ id: string; label: string }>;
   /** Not found on Betfair: the nearest events its search returned, to choose from (missing on an older engine). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
@@ -155,6 +157,8 @@ export interface PublicPick {
   marketCheckDetail?: string | null;
   /** When the admin cleared it from Live's "Waiting for a result" without a result. */
   waitingClearedAt?: string | null;
+  /** Watched slices this pick is in, e.g. Second Pour's Golden. */
+  segments?: Array<{ id: string; label: string }>;
   /** Not found on Betfair: the nearest events its search returned (admin only). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   flags: string[];
@@ -197,6 +201,7 @@ export function toPublicPick(p: LivePick): PublicPick {
     marketCheck: p.marketCheck ?? null,
     marketCheckDetail: p.marketCheckDetail ?? null,
     waitingClearedAt: p.waitingClearedAt ?? null,
+    segments: p.segments ?? [],
     exchangeCandidates: p.exchangeCandidates ?? null,
     flags: p.flags,
     detail: p.detail
@@ -355,6 +360,8 @@ export interface SendingSettings {
   strategies: Record<string, boolean>;
   /** The goal model filter per strategy (lower-case name): true = on. Send false to turn one off. Missing on an older engine. */
   modelFilter?: Record<string, boolean>;
+  /** A watched slice bet on its own ("strategy#slice", e.g. Second Pour's Golden): its Live / Sim switch and stake. Null clears one. */
+  segmentBets?: Record<string, { live?: boolean; stakePct?: number | null; stake?: number | null } | null>;
   /** Stake in pounds per strategy (lower-case name). Send null to clear one. */
   stakes: Record<string, number | null>;
   /** Or a stake as a percentage of the Betfair balance per strategy (lower-case name). Send null to clear one. Setting one replaces the other. */

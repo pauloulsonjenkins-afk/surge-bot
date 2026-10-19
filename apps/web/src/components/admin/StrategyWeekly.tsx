@@ -3,6 +3,7 @@
 import { Fragment, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { StrategyName } from "@/components/ui/StrategyName";
+import { SegmentLabel } from "@/components/ui/SegmentLabel";
 import type { StrategyWeeksReport, WeekTally } from "@/server/engine-client";
 
 type Mode = "live" | "sim" | "all";
@@ -10,6 +11,9 @@ type Mode = "live" | "sim" | "all";
 const dayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const money = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(2)}`;
 const pct = (t: WeekTally) => (t.staked > 0 ? `${t.profit >= 0 ? "+" : "−"}${Math.abs(Math.round((t.profit / t.staked) * 1000) / 10)}%` : "–");
+
+/** Short names for watched slices' rows. */
+const SLICE_NAMES: Record<string, string> = { golden: "Golden", "two-apart": "2+ goals apart", "home-one-down": "Home team 1 down" };
 
 /** Under this many bets in the last 7 days there's no trend label. */
 const TREND_FROM = 5;
@@ -87,18 +91,18 @@ export function StrategyWeekly({
   const [open, setOpen] = useState<string | null>(null);
   if (!data) return <p className="text-xs text-ink-muted">Loading the weeks…</p>;
   const grid = "grid grid-cols-[minmax(0,2.4fr)_repeat(6,minmax(0,1fr))_minmax(0,1.5fr)_minmax(0,1.4fr)] items-center gap-1";
-  const line = (key: string, name: React.ReactNode, mode: Mode, total = false) => {
+  const line = (key: string, name: React.ReactNode, mode: Mode, total = false, slice = false) => {
     const s = data.strategies[key];
     const weeks = data.weeks.map((_, i) => s?.weeks[i]?.[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
     const last7 = s?.last7[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 };
     const trend = trendOf(last7, s?.prev28[mode] ?? last7);
-    const isOpen = open === key && !total;
+    const isOpen = open === key && !total && !slice;
     return (
       <li key={key} className={total ? "border-t border-line pt-1" : ""}>
-        <button type="button" disabled={total} aria-expanded={total ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`}>
+        <button type="button" disabled={total || slice} aria-expanded={total || slice ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`}>
           <span className={`flex min-w-0 items-center gap-1 text-sm ${total ? "font-semibold" : "font-medium"} text-ink`}>
             <span className="truncate">{name}</span>
-            {!total && <ChevronDown size={13} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />}
+            {!total && !slice && <ChevronDown size={13} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />}
           </span>
           {weeks.map((w, i) => (
             <Cell key={data.weeks[i]} t={w} />
@@ -132,7 +136,17 @@ export function StrategyWeekly({
           <span className="text-center">Trend</span>
         </div>
         <ul className="space-y-0.5">
-          {rows.map((r) => line(r.label.toLowerCase(), <StrategyName label={r.label} />, modeOf(r.label)))}
+          {rows.flatMap((r) => {
+            const key = r.label.toLowerCase();
+            // A watched slice (e.g. Second Pour's Golden) gets its own row under its strategy, from its start date.
+            const subs = Object.keys(data.strategies).filter((k) => k.startsWith(`${key}#`));
+            return [
+              line(key, <StrategyName label={r.label} />, modeOf(r.label)),
+              ...subs.map((k) =>
+                line(k, <span className="pl-3 text-xs">↳ <SegmentLabel label={SLICE_NAMES[k.split("#")[1]!] ?? k.split("#")[1]!} /></span>, modeOf(r.label), false, true),
+              ),
+            ];
+          })}
           {showTotal && line("__all__", "All strategies", modeOf("__all__"), true)}
         </ul>
       </div>

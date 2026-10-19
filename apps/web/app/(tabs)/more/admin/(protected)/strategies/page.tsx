@@ -4,6 +4,8 @@ import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
 import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, useStrategyWeeks, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
 import { StrategyWeekly, trendOf } from "@/components/admin/StrategyWeekly";
+import { SegmentLabel } from "@/components/ui/SegmentLabel";
+import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import type { WeekTally } from "@/server/engine-client";
 import { useFreshStart } from "@/queries/use-fresh-start";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
@@ -296,8 +298,8 @@ function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | "live" 
     <>
       {segs.map((s) =>
         s.in[mode].settled + s.out[mode].settled === 0 ? null : (
-          <span key={s.id} className="mt-1 block text-xs text-ink-muted" title={`Being watched: ${SAMPLE}+ priced picks on new matches before reading anything into it. Nothing is bet differently.`}>
-            {s.label}: {part(s.in[mode])} · the rest: {part(s.out[mode])}
+          <span key={s.id} className="mt-1 block text-xs text-ink-muted" title={`Being watched: ${SAMPLE}+ priced picks on new matches before reading anything into it.`}>
+            <SegmentLabel label={s.label} />: {part(s.in[mode])} · the rest: {part(s.out[mode])}
           </span>
         ),
       )}
@@ -709,6 +711,9 @@ function StrategyCard({
             <ReadyForLive row={row} check={check} hasStop={!!bet?.stopLoss && (bet.stopLoss.dailyLoss !== null || bet.stopLoss.lossRun !== null)} />
           )}
           {bet && settings && <BetSettings s={bet} settings={settings} bank={bank} />}
+          {settings && (row.returns?.segments ?? []).map((s) => (
+            <SegmentBetting key={s.id} strategyKey={row.label.toLowerCase()} strategyName={names.name(row.label)} segment={s} settings={settings} strategyLive={modeOf(row) === "live"} />
+          ))}
           <p className="text-xs text-ink-muted">
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
             {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
