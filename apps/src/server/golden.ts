@@ -18,7 +18,8 @@ import { getSendingSettings, saveSendingSettings, strategyLabel } from "../inpla
 import { displayName } from "../inplayguru/strategy-names";
 import { computeStrategyReturns, pricingInputs } from "./winloss";
 import { isLivePlacement } from "../storage/engine-db";
-import { FEATURES, ruleLabel, ruleTest, segmentsOf, setCustomSegments, type CustomSegment, type Feature } from "./segments";
+import { FEATURES, ruleLabel, ruleTest, SEGMENTS, segmentsOf, setCustomSegments, type CustomSegment, type Feature } from "./segments";
+import type { StrategyReturn } from "./winloss";
 import { sendPush } from "./push";
 import { log } from "./log";
 
@@ -221,6 +222,29 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         rest: { live: s.out.live, sim: s.out.sim, all: rest },
         bet,
         ownLive,
+      });
+    }
+  }
+  // Watched slices with nothing settled since they started (just added, or started today) still show, empty.
+  const empty = (): StrategyReturn => ({ settled: 0, hits: 0, counted: 0, staked: 0, profit: 0, roi: null } as StrategyReturn);
+  const keys = new Set([...Object.keys(SEGMENTS), ...loadCustomSegments(db).map((c) => c.strategyKey)]);
+  for (const key of keys) {
+    for (const s of segmentsOf(key)) {
+      if (slices.some((x) => x.strategyKey === key && x.id === s.id)) continue;
+      const bet = settings.segmentBets[`${key}#${s.id}`] ?? null;
+      slices.push({
+        strategyKey: key,
+        strategy: displayName(db, key),
+        strategyLive: settings.enabled && settings.strategies[key] === true,
+        id: s.id,
+        label: s.label,
+        since: s.since,
+        custom: s.custom === true,
+        status: "candidate" as GoldenStatus,
+        slice: { live: empty(), sim: empty(), all: empty() },
+        rest: { live: empty(), sim: empty(), all: empty() },
+        bet,
+        ownLive: bet?.live && bet.liveSince ? liveSinceRecord(db, key, s.id, bet.liveSince) : null,
       });
     }
   }

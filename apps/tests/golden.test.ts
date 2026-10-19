@@ -21,6 +21,7 @@ test("watching a suggestion adds a slice from today; stopping removes it; built-
   loadCustomSegments(db);
   watchSegment(db, "Blistering Momentum", ["score00"]);
   assert.ok(segmentsOf("blistering momentum").some((s) => s.label === "Golden: 0-0" && s.custom));
+  assert.ok(goldenReport(db, new Date(), { skipFinder: true }).slices.some((s) => s.strategyKey === "blistering momentum" && s.id === "f-score00"), "shows straight away, before anything settles");
   assert.throws(() => watchSegment(db, "blistering momentum", ["score00"]), /already/);
   unwatchSegment(db, "blistering momentum", "f-score00");
   assert.equal(segmentsOf("blistering momentum").length, 0);

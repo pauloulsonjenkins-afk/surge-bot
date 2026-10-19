@@ -15,6 +15,7 @@ const tone = (n: number | null | undefined) => (n == null || n === 0 ? "text-ink
 
 function Record({ r, name }: { r: StrategyReturn; name: string }) {
   const hits = r.hits ?? 0;
+  if (r.settled === 0) return <span>{name}: nothing settled yet</span>;
   return (
     <span>
       {name}: {hits}–{r.settled - hits}
@@ -95,7 +96,7 @@ export default function GoldenPage() {
             subtitle={`Bet one on its own from its strategy's card (Strategies → Cards → tap the strategy). Safety: a slice bet Live on its own goes back to Sim by itself, with a notification, if it stops being Golden or its own Live bets lose more than ${Math.abs((data.safety?.worstRoi ?? -0.05) * 100)}% per £1 over ${data.safety?.minBets ?? 30}+ bets.`}
           >
             {data.slices.length === 0 ? (
-              <p className="text-sm text-ink-muted">Nothing settled since the watched slices started yet.</p>
+              <p className="text-sm text-ink-muted">Nothing is being watched yet.</p>
             ) : (
               <ul className="divide-y divide-line">
                 {data.slices.map((s) => (
