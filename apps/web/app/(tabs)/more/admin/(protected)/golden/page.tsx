@@ -1,46 +1,46 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useDialog } from "@/components/ui/ConfirmDialog";
-import { SegmentLabel, GOLD } from "@/components/ui/SegmentLabel";
+import { GoldenBadge, sliceName } from "@/components/ui/SegmentLabel";
 import { useGolden, useGoldenAction, type GoldenSlice, type GoldenSuggestion } from "@/queries/use-golden";
 import type { StrategyReturn } from "@/server/engine-client";
 
 const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
-const pct = (n: number | null | undefined) => (n == null ? "–" : `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`);
-const tone = (n: number | null | undefined) => (n == null || n === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
+const dayTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+/** A return per £1 to one decimal place; the sign is taken after rounding, so a tiny loss reads "0%", not "−0%". */
+const round1 = (n: number) => Math.round(n * 1000) / 10;
+const pct = (n: number | null | undefined) => {
+  if (n == null) return "–";
+  const v = round1(n);
+  return v === 0 ? "0%" : `${v > 0 ? "+" : "−"}${Math.abs(v)}%`;
+};
+const tone = (n: number | null | undefined) => (n == null || round1(n) === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
+/** Buttons and links that act as buttons in a slice's row: 44px tall on a phone, the same look side by side. */
+const action = "inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium ring-1 ring-inset ring-line disabled:opacity-40";
 
-function Record({ r, name }: { r: StrategyReturn; name: string }) {
+/** One side of the comparison: its return per £1 as the figure to read, its record under it. */
+function Side({ r, name }: { r: StrategyReturn; name: string }) {
   const hits = r.hits ?? 0;
-  if (r.settled === 0) return <span>{name}: nothing settled yet</span>;
   return (
-    <span>
-      {name}: {hits}–{r.settled - hits}
-      {r.counted > 0 && (
-        <span className={tone(r.roi)}>
-          {" "}
-          {pct(r.roi)} on {r.counted}
-        </span>
+    <div className="min-w-0 rounded-md bg-surface-2 px-3 py-2">
+      <p className="text-xs text-ink-muted">{name}</p>
+      {r.settled === 0 ? (
+        <p className="mt-0.5 text-sm text-ink-muted">Nothing settled yet</p>
+      ) : (
+        <>
+          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${r.counted > 0 ? tone(r.roi) : "text-ink"}`}>{r.counted > 0 ? pct(r.roi) : "–"}</p>
+          <p className="text-xs tabular-nums text-ink-muted">
+            {hits}–{r.settled - hits}
+            {r.counted > 0 && ` · on ${r.counted} priced`}
+          </p>
+        </>
       )}
-    </span>
-  );
-}
-
-function StatusChip({ s, confirmFrom }: { s: GoldenSlice; confirmFrom: number }) {
-  if (s.status === "golden")
-    return (
-      <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ color: GOLD, background: "color-mix(in srgb, #C9A227 16%, transparent)" }}>
-        Golden
-      </span>
-    );
-  if (s.status === "not holding up") return <span className="rounded-full bg-loss/15 px-2 py-0.5 text-[11px] font-medium text-loss">Not holding up</span>;
-  return (
-    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-muted">
-      Candidate · {s.slice.all.counted} of {confirmFrom}
-    </span>
+    </div>
   );
 }
 
@@ -48,6 +48,13 @@ function betText(s: GoldenSlice): string {
   if (!s.bet) return `Bet like the rest of ${s.strategy}: ${s.strategyLive ? "Live" : "Sim"}.`;
   const stake = s.bet.stakePct != null ? `${s.bet.stakePct}% of the balance` : s.bet.stake != null ? `£${s.bet.stake}` : `${s.strategy}'s stake`;
   return `Bet on its own: ${s.bet.live ? "Live" : "Sim"} at ${stake}.`;
+}
+
+/** The slices grouped by strategy, in the order they come. */
+function byStrategy(slices: GoldenSlice[]): Array<{ strategy: string; slices: GoldenSlice[] }> {
+  const groups = new Map<string, { strategy: string; slices: GoldenSlice[] }>();
+  for (const s of slices) (groups.get(s.strategyKey) ?? groups.set(s.strategyKey, { strategy: s.strategy, slices: [] }).get(s.strategyKey)!).slices.push(s);
+  return [...groups.values()];
 }
 
 /**
@@ -58,92 +65,118 @@ export default function GoldenPage() {
   const { data, isLoading, error } = useGolden();
   const act = useGoldenAction();
   const dialog = useDialog();
+  // Fixed when the page opens: only used to tell a start date still to come from one already passed.
+  const [now] = useState(() => Date.now());
+  const confirmFrom = data?.confirmFrom ?? 50;
+  const worst = Math.abs((data?.safety?.worstRoi ?? -0.05) * 100);
+  const minBets = data?.safety?.minBets ?? 30;
 
   const watch = async (g: GoldenSuggestion) => {
     const ok = await dialog.confirm({
-      title: `Watch ${g.label.replace(/^Golden: /, "")} for ${g.strategy}?`,
+      title: `Watch ${sliceName(g.label)} for ${g.strategy}?`,
       confirmLabel: "Watch it",
       body: <p>It&apos;s counted from today, on new matches only, so the matches that suggested it can&apos;t also prove it. Nothing is bet differently.</p>,
     });
     if (ok) act.mutate({ action: "watch", strategyKey: g.strategyKey, rule: g.rule });
   };
   const stop = async (s: GoldenSlice) => {
-    const ok = await dialog.confirm({ title: `Stop watching ${s.label.replace(/^Golden: /, "")}?`, confirmLabel: "Stop watching", body: <p>Its record is kept in the strategy&apos;s figures; only this line goes.</p> });
+    const ok = await dialog.confirm({ title: `Stop watching ${sliceName(s.label)}?`, confirmLabel: "Stop watching", body: <p>Its record is kept in the strategy&apos;s figures; only this line goes.</p> });
     if (ok) act.mutate({ action: "unwatch", strategyKey: s.strategyKey, id: s.id });
   };
+  const checked = data ? new Date(data.suggestions.at) : null;
+  const golden = data?.slices.filter((s) => s.status === "golden").length ?? 0;
 
   return (
     <div className="space-y-5 px-4 py-4">
-      <PageHeader
-        title="Golden"
-        subtitle={
-          <>
-            Parts of a strategy that may be worth more than the rest, such as Second Pour at 0-0. Each is counted from the day it started being watched,
-            on new matches only. Its bets are <b>part of its strategy&apos;s bets</b>, not extra ones: the figures show that part against the rest of the same
-            strategy. It&apos;s a <b>candidate</b> until {data?.confirmFrom ?? 50} priced picks, then <b>Golden</b> if it&apos;s making +3% or more and beating the rest.
-            Live and Sim picks together.
-          </>
-        }
-      />
+      <PageHeader title="Golden" subtitle="Parts of a strategy that may be worth more than the rest. Gold means proved; an outline means still being proved." />
+
+      <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm text-ink-muted">
+        <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">How Golden works</summary>
+        <div className="space-y-2 pb-3">
+          <p>
+            Each slice is counted from the day it started being watched, on new matches only. Its bets are <b className="text-ink">part of its strategy&apos;s bets</b>, not
+            extra ones: the figures show that part against the rest of the same strategy, Live and Sim picks together.
+          </p>
+          <p>
+            It&apos;s a <b className="text-ink">candidate</b> until {confirmFrom} priced picks, then <b className="text-gold">Golden</b> if it&apos;s making +3% or more and beating the rest.
+          </p>
+          <p>
+            Bet one on its own from its strategy&apos;s card (Strategies → Cards → tap the strategy). Safety: a slice bet Live on its own goes back to Sim by itself, with a
+            notification, if it stops being Golden or its own Live bets lose more than {worst}% per £1 over {minBets}+ bets.
+          </p>
+        </div>
+      </details>
+
       {error ? (
         <QueryError error={error} next="/more/admin/golden" />
       ) : isLoading || !data ? (
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
-          <Card
-            title="Being watched"
-            subtitle={`Bet one on its own from its strategy's card (Strategies → Cards → tap the strategy). Safety: a slice bet Live on its own goes back to Sim by itself, with a notification, if it stops being Golden or its own Live bets lose more than ${Math.abs((data.safety?.worstRoi ?? -0.05) * 100)}% per £1 over ${data.safety?.minBets ?? 30}+ bets.`}
-          >
+          <Card title="Being watched" subtitle={data.slices.length > 0 ? `${data.slices.length} watched · ${golden} proved Golden` : undefined}>
             {data.slices.length === 0 ? (
               <p className="text-sm text-ink-muted">Nothing is being watched yet.</p>
             ) : (
-              <ul className="divide-y divide-line">
-                {data.slices.map((s) => (
-                  <li key={`${s.strategyKey}#${s.id}`} className="space-y-1 py-3 text-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-ink">{s.strategy}</span>
-                      <StatusChip s={s} confirmFrom={data.confirmFrom} />
-                    </div>
-                    <p className="text-ink">
-                      <SegmentLabel label={s.label} /> <span className="text-xs text-ink-muted">· since {day.format(new Date(s.since))}</span>
-                    </p>
-                    <p className="text-xs text-ink-muted">
-                      Of {s.strategy}&apos;s picks since then: <Record r={s.slice.all} name="this part" /> · <Record r={s.rest.all} name="the rest" />
-                    </p>
-                    {s.bet?.live && (
-                      <p className="text-xs text-ink-muted">
-                        Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
-                        {s.ownLive && s.ownLive.n > 0 ? (
-                          <>
-                            {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={tone(s.ownLive.roi)}>{pct(s.ownLive.roi)}</span> on {s.ownLive.n} · {s.ownLive.profit >= 0 ? "+" : "−"}£
-                            {Math.abs(s.ownLive.profit).toFixed(2)}
-                          </>
-                        ) : (
-                          "none settled yet"
-                        )}
-                      </p>
-                    )}
-                    <p className="text-xs text-ink-muted">
-                      {betText(s)}{" "}
-                      <Link href="/more/admin/strategies" className="text-accent underline">
-                        Change it
-                      </Link>
-                      {s.custom && (
-                        <button type="button" disabled={act.isPending} onClick={() => void stop(s)} className="ml-3 text-ink-muted underline">
-                          Stop watching
-                        </button>
-                      )}
-                    </p>
-                  </li>
+              <div className="space-y-5">
+                {byStrategy(data.slices).map((g) => (
+                  <section key={g.strategy}>
+                    <h3 className="text-sm font-semibold text-ink">{g.strategy}</h3>
+                    <ul className="mt-1 divide-y divide-line">
+                      {g.slices.map((s) => {
+                        const since = new Date(s.since);
+                        return (
+                          <li key={`${s.strategyKey}#${s.id}`} className="space-y-2 py-3 text-sm">
+                            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                              <p className="min-w-0 flex-1 font-medium text-ink">{sliceName(s.label)}</p>
+                              <GoldenBadge status={s.status} candidate={`Candidate · ${s.slice.all.counted} of ${confirmFrom}`} />
+                            </div>
+                            <p className="text-xs text-ink-muted">
+                              {/* A slice set up ahead of time counts from midnight; until then, say so rather than "since" a date to come. */}
+                              {since.getTime() > now ? "Counted from" : "Since"} {day.format(since)} · against the rest of {s.strategy} over the same time
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Side r={s.slice.all} name="This part" />
+                              <Side r={s.rest.all} name="The rest" />
+                            </div>
+                            {s.bet?.live && (
+                              <p className="text-xs text-ink-muted">
+                                Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
+                                {s.ownLive && s.ownLive.n > 0 ? (
+                                  <span className="tabular-nums">
+                                    {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={tone(s.ownLive.roi)}>{pct(s.ownLive.roi)}</span> on {s.ownLive.n} ·{" "}
+                                    {s.ownLive.profit >= 0 ? "+" : "−"}£{Math.abs(s.ownLive.profit).toFixed(2)}
+                                  </span>
+                                ) : (
+                                  "none settled yet"
+                                )}
+                              </p>
+                            )}
+                            <p className={`text-xs ${s.bet?.live ? "font-medium text-ink" : "text-ink-muted"}`}>{betText(s)}</p>
+                            <div className="flex flex-wrap gap-2">
+                              <Link href="/more/admin/strategies" className={`${action} text-accent`}>
+                                Change betting
+                              </Link>
+                              {s.custom && (
+                                <button type="button" disabled={act.isPending} onClick={() => void stop(s)} className={`${action} text-ink-muted`}>
+                                  Stop watching
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+              </div>
             )}
           </Card>
 
           <Card
             title="Suggested by the Golden finder"
-            subtitle={`Slices of a strategy that beat the rest in both the older and the newer half of its record. Some will be luck, so they're only ever watched from the day you add them. Checked every 6 hours (last ${new Date(data.suggestions.at).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}).`}
+            subtitle={`Slices that beat the rest in both halves of the record. Some will be luck, so each is proved on new matches from the day you watch it.${
+              checked && !Number.isNaN(checked.getTime()) ? ` Last checked ${dayTime.format(checked)}.` : ""
+            }`}
           >
             {data.suggestions.list.length === 0 ? (
               <p className="text-sm text-ink-muted">Nothing new stands out right now. You&apos;ll get a notification when it does.</p>
@@ -152,19 +185,18 @@ export default function GoldenPage() {
                 {data.suggestions.list.map((g) => (
                   <li key={`${g.strategyKey}#${g.rule.join("+")}`} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm">
                     <span className="min-w-0 flex-1">
-                      <span className="font-medium text-ink">{g.strategy}</span>
-                      <span className="block">
-                        <SegmentLabel label={g.label} />
+                      <span className="block text-xs text-ink-muted">{g.strategy}</span>
+                      <span className="block font-medium text-ink">{sliceName(g.label)}</span>
+                      <span className="mt-0.5 block text-xs tabular-nums text-ink-muted">
+                        <span className={tone(g.slice.roi)}>{pct(g.slice.roi)}</span> per £1 over {g.slice.n} picks
+                        {g.slice.n > 0 && ` (${Math.round((g.slice.hits / g.slice.n) * 100)}% won, likely ${pct(g.slice.low)} or better)`} · the rest{" "}
+                        <span className={tone(g.rest.roi)}>{pct(g.rest.roi)}</span> over {g.rest.n}
                       </span>
-                      <span className="block text-xs text-ink-muted">
-                        <span className={tone(g.slice.roi)}>{pct(g.slice.roi)}</span> per £1 over {g.slice.n} picks ({Math.round((g.slice.hits / g.slice.n) * 100)}% won, likely{" "}
-                        {pct(g.slice.low)} or better) · the rest <span className={tone(g.rest.roi)}>{pct(g.rest.roi)}</span> over {g.rest.n}
-                      </span>
-                      <span className="block text-xs text-ink-muted">
+                      <span className="block text-xs tabular-nums text-ink-muted">
                         Older half {pct(g.halves[0]?.slice)} vs {pct(g.halves[0]?.rest)} · newer half {pct(g.halves[1]?.slice)} vs {pct(g.halves[1]?.rest)}
                       </span>
                     </span>
-                    <button type="button" disabled={act.isPending} onClick={() => void watch(g)} className="shrink-0 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink">
+                    <button type="button" disabled={act.isPending} onClick={() => void watch(g)} className={`${action} shrink-0 text-ink`}>
                       Watch it
                     </button>
                   </li>

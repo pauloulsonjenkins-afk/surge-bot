@@ -29,11 +29,14 @@ const TOKENS = [
   "destructive",
   "danger-ink",
   "chart",
+  "gold",
 ] as const;
 
 export default {
   content: ["./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   darkMode: "class",
+  // hover: styles only on devices with a real pointer, so a tapped row on a phone doesn't stay highlighted.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       // Tailwind accepts colour functions at runtime, but its types only describe strings.

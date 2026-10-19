@@ -42,7 +42,7 @@ export function GoldenLine({ pick }: { pick: PublicPick }) {
               : `candidate, ${slice.slice.all.counted} of ${golden.data?.confirmFrom ?? 50}`;
         return (
           <p key={seg.id} className="text-xs text-ink-muted">
-            <SegmentLabel label={seg.label} /> · {status} · <span className={cfg?.live || (!cfg && strategyLive) ? "font-medium text-ink" : ""}>{what}</span>
+            <SegmentLabel label={seg.label} status={slice?.status} /> · {status} · <span className={cfg?.live || (!cfg && strategyLive) ? "font-medium text-ink" : ""}>{what}</span>
           </p>
         );
       })}

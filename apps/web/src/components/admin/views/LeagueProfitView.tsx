@@ -46,7 +46,7 @@ function Figures({ t }: { t: LeagueTally }) {
         {j.adjusted !== null && `adjusted ${pct(j.adjusted)}`}
         {j.low !== null && j.high !== null && t.counted >= 10 && <span className="block">likely {pct(j.low)} to {pct(j.high)}</span>}
       </span>
-      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${VERDICT[j.verdict].cls}`}>{VERDICT[j.verdict].label}</span>
+      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${VERDICT[j.verdict].cls}`}>{VERDICT[j.verdict].label}</span>
     </span>
   );
 }
@@ -262,7 +262,7 @@ export default function LeagueProfitView() {
                               <li key={s} className="flex items-start justify-between gap-3 py-2">
                                 <span className="min-w-0 text-sm">
                                   <StrategyName label={s} />
-                                  {isBlocked && <span className="ml-1.5 rounded-full bg-warn px-2 py-0.5 text-[11px] font-medium text-warn-ink">Stopped here</span>}
+                                  {isBlocked && <span className="ml-1.5 rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped here</span>}
                                   <span className="block">
                                     <RecordLine t={t} />
                                   </span>

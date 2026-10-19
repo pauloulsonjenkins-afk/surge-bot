@@ -6,12 +6,21 @@ import type { GoldenReport, GoldenSlice, GoldenSuggestion } from "@/server/engin
 
 export type { GoldenReport, GoldenSlice, GoldenSuggestion };
 
-export function useGolden() {
+/** The Golden report. Pass enabled=false where the visitor may not be the admin (the Live tab). */
+export function useGolden(enabled = true) {
   return useQuery({
     queryKey: ["golden"],
     staleTime: 60_000,
+    enabled,
     queryFn: ({ signal }) => getJson<GoldenReport>("/api/admin/golden", "Golden", signal),
   });
+}
+
+/** Looks up a watched slice's status ("strategy key", slice id), or null until the report has loaded. */
+export function useSliceStatus(enabled = true) {
+  const { data } = useGolden(enabled);
+  return (strategyKey: string, id: string): GoldenSlice["status"] | null =>
+    data?.slices.find((s) => s.strategyKey === strategyKey.toLowerCase() && s.id === id)?.status ?? null;
 }
 
 export function useGoldenAction() {

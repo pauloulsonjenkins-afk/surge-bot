@@ -28,7 +28,7 @@ export function ModeBadge({ mode, large = false }: { mode: "sim" | "live"; large
   const sim = mode === "sim";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border font-semibold uppercase tracking-wide ${large ? "px-3 py-1 text-xs" : "px-2 py-0.5 text-[0.7rem]"} ${
+      className={`inline-flex items-center gap-1 rounded-full border font-semibold uppercase tracking-wide ${large ? "px-3 py-1 text-xs" : "px-2 py-0.5 text-xs"} ${
         sim ? "border-accent/40 bg-accent/10 text-ink" : "border-loss/50 bg-loss/10 text-loss"
       }`}
     >

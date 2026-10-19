@@ -3,7 +3,8 @@
 import { Fragment, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { StrategyName } from "@/components/ui/StrategyName";
-import { SegmentLabel } from "@/components/ui/SegmentLabel";
+import { SegmentLabel, sliceName } from "@/components/ui/SegmentLabel";
+import { useSliceStatus } from "@/queries/use-golden";
 import type { StrategyWeeksReport, WeekTally } from "@/server/engine-client";
 
 type Mode = "live" | "sim" | "all";
@@ -57,7 +58,7 @@ function WeekBars({ weeks, labels }: { weeks: WeekTally[]; labels: string[] }) {
           </div>
         ))}
       </div>
-      <div className="mt-1 grid gap-2 text-center text-[11px] text-ink-muted" style={{ gridTemplateColumns: `repeat(${weeks.length},minmax(0,1fr))` }}>
+      <div className="mt-1 grid gap-2 text-center text-xs text-ink-muted" style={{ gridTemplateColumns: `repeat(${weeks.length},minmax(0,1fr))` }}>
         {weeks.map((w, i) => (
           <span key={labels[i]}>
             {dayMonth.format(new Date(`${labels[i]}T12:00:00Z`))}
@@ -92,13 +93,17 @@ export function StrategyWeekly({
   showTotal?: boolean;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const sliceStatus = useSliceStatus();
   if (!data) return <p className="text-xs text-ink-muted">Loading the weeks…</p>;
   // Columns start from the first week anything in this section has picks (no empty weeks before the data begins).
   const keys = rows.flatMap((r) => [r.label.toLowerCase(), ...Object.keys(data.strategies).filter((k) => k.startsWith(`${r.label.toLowerCase()}#`))]);
   const firstWeek = data.weeks.findIndex((_, i) => keys.some((k) => (data.strategies[k]?.weeks[i]?.[modeOf(k.split("#")[0]!)]?.picks ?? 0) > 0));
   const from = firstWeek < 0 ? data.weeks.length - 1 : firstWeek;
   const shownWeeks = data.weeks.slice(from);
-  const cols = { gridTemplateColumns: `minmax(0,2.4fr) repeat(${shownWeeks.length},minmax(0,1fr)) minmax(0,1.5fr) minmax(0,1.4fr)` };
+  // The name, then the two columns you act on (last 7 days, trend), then the weeks. The name stays put while the rest
+  // scrolls sideways on a phone.
+  const cols = { gridTemplateColumns: `minmax(0,2.4fr) minmax(0,1.5fr) minmax(0,1.5fr) repeat(${shownWeeks.length},minmax(0,1fr))` };
+  const sticky = "sticky left-0 z-10 bg-app";
   const grid = "grid items-center gap-1";
   const line = (key: string, name: React.ReactNode, mode: Mode, total = false, slice = false) => {
     const s = data.strategies[key];
@@ -109,18 +114,18 @@ export function StrategyWeekly({
     return (
       <li key={key} className={total ? "border-t border-line pt-1" : ""}>
         <button type="button" disabled={total || slice} aria-expanded={total || slice ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`} style={cols}>
-          <span className={`flex min-w-0 items-center gap-1 text-sm ${total ? "font-semibold" : "font-medium"} text-ink`}>
+          <span className={`${sticky} flex min-w-0 items-center gap-1 self-stretch text-sm ${total ? "font-semibold" : "font-medium"} text-ink`}>
             <span className="truncate">{name}</span>
             {!total && !slice && <ChevronDown size={13} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />}
           </span>
+          <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${last7.counted === 0 ? "bg-surface-2 text-ink-muted" : last7.profit >= 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss"}`}>
+            {last7.counted > 0 ? money(last7.profit) : "–"}
+            <span className="block text-xs text-ink-muted">{last7.picks} bet{last7.picks === 1 ? "" : "s"}</span>
+          </span>
+          <span className={`rounded-md px-1.5 py-0.5 text-center text-xs font-medium leading-tight ${trend.cls}`}>{trend.label}</span>
           {weeks.map((w, i) => (
             <Cell key={shownWeeks[i]} t={w} />
           ))}
-          <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${last7.counted === 0 ? "bg-surface-2 text-ink-muted" : last7.profit >= 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss"}`}>
-            {last7.counted > 0 ? money(last7.profit) : "–"}
-            <span className="block text-[10px] text-ink-muted">{last7.picks} bet{last7.picks === 1 ? "" : "s"}</span>
-          </span>
-          <span className={`rounded-full px-1.5 py-0.5 text-center text-[11px] font-medium ${trend.cls}`}>{trend.label}</span>
         </button>
         {isOpen && (
           <div className="mb-2 mt-1 space-y-2">
@@ -133,26 +138,32 @@ export function StrategyWeekly({
   };
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[560px]">
-        <div className={`${grid} pb-1 text-[11px] text-ink-muted`} style={cols}>
-          <span>Strategy</span>
+      <div className="min-w-[640px]">
+        <div className={`${grid} pb-1 text-xs text-ink-muted`} style={cols}>
+          <span className={`${sticky} self-stretch`}>Strategy</span>
+          <span className="text-center">Last 7 days</span>
+          <span className="text-center">Trend</span>
           {shownWeeks.map((w) => (
             <span key={w} className="text-center">
               {dayMonth.format(new Date(`${w}T12:00:00Z`))}
             </span>
           ))}
-          <span className="text-center">Last 7 days</span>
-          <span className="text-center">Trend</span>
         </div>
         <ul className="space-y-0.5">
           {rows.flatMap((r) => {
             const key = r.label.toLowerCase();
-            // A watched slice (e.g. Second Pour's Golden) gets its own row under its strategy, from its start date.
+            // A watched slice (e.g. Second Pour's Golden) gets its own row under its strategy, from its start date. Every slice's
+            // label starts "Golden: ", so the row is named by the slice itself (only Second Pour's own is simply "Golden"), and
+            // the word is in gold only once the slice is confirmed.
             const subs = Object.keys(data.strategies).filter((k) => k.startsWith(`${key}#`));
+            const subName = (k: string) => {
+              const id = k.split("#")[1]!;
+              return id === "golden" ? "Golden" : sliceName(sliceLabels?.[k] ?? SLICE_NAMES[id] ?? id);
+            };
             return [
               line(key, <StrategyName label={r.label} />, modeOf(r.label)),
               ...subs.map((k) =>
-                line(k, <span className="pl-3 text-xs text-ink-muted">↳ of which <SegmentLabel label={sliceLabels?.[k]?.replace(/^Golden: .*$/, "Golden") ?? SLICE_NAMES[k.split("#")[1]!] ?? "Golden"} /></span>, modeOf(r.label), false, true),
+                line(k, <span className="pl-3 text-xs text-ink-muted">↳ of which <SegmentLabel label={subName(k)} status={sliceStatus(key, k.split("#")[1]!)} /></span>, modeOf(r.label), false, true),
               ),
             ];
           })}

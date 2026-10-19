@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, useStrategyWeeks, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
 import { StrategyWeekly, trendOf } from "@/components/admin/StrategyWeekly";
 import { SegmentLabel } from "@/components/ui/SegmentLabel";
+import { useSliceStatus } from "@/queries/use-golden";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import type { WeekTally } from "@/server/engine-client";
 import { useFreshStart } from "@/queries/use-fresh-start";
@@ -283,6 +284,7 @@ function ByBetLine({ row, mode }: { row: AdminStrategy; mode: "all" | "live" | "
  * alerts. Nothing is bet differently; it's judged on new matches once it has 50+ priced picks.
  */
 function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | "live" | "sim" }) {
+  const sliceStatus = useSliceStatus();
   const segs = row.returns?.segments;
   if (!segs?.length) return null;
   const part = (m: StrategyReturn) => {
@@ -298,8 +300,8 @@ function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | "live" 
     <>
       {segs.map((s) =>
         s.in[mode].settled + s.out[mode].settled === 0 ? null : (
-          <span key={s.id} className="mt-1 block text-xs text-ink-muted" title={`Being watched: ${SAMPLE}+ priced picks on new matches before reading anything into it.`}>
-            <SegmentLabel label={s.label} />
+          <span key={s.id} className="mt-1 block text-xs text-ink-muted">
+            <SegmentLabel label={s.label} status={sliceStatus(row.label, s.id)} />
             {s.since ? ` since ${shortDay.format(new Date(s.since))}` : ""}: {part(s.in[mode])} of these picks · the rest {part(s.out[mode])}
           </span>
         ),
@@ -650,7 +652,7 @@ function StrategyCard({
                 {last7.picks === 1 ? "" : "s"}
                 {prev28 && (() => {
                   const t = trendOf(last7, prev28);
-                  return <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${t.cls}`}>{t.label}</span>;
+                  return <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${t.cls}`}>{t.label}</span>;
                 })()}
               </span>
             )}

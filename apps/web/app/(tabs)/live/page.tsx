@@ -6,7 +6,8 @@ import { ChevronDown } from "lucide-react";
 import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useSending } from "@/queries/use-sending";
-import { GoldenBadge, GOLD } from "@/components/ui/SegmentLabel";
+import { GoldenBadge, type SliceStatus } from "@/components/ui/SegmentLabel";
+import { useSliceStatus } from "@/queries/use-golden";
 import { GoldenLine } from "@/components/admin/GoldenLine";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
@@ -20,7 +21,7 @@ import { ModeBadge } from "@/components/ui/ModeToggle";
 import { Chip, WarnIcon, type ChipTone } from "@/components/ui/Chip";
 import { usePlacements, type Placement } from "@/queries/use-reconcile";
 import { useChooseBetfairMatch, useClearWaiting, useSetManualBet, useSetPickResult } from "@/queries/use-live";
-import { useStrategyNames } from "@/queries/use-strategy-names";
+import { strategyKey, useStrategyNames } from "@/queries/use-strategy-names";
 
 // An alert that has had no result edited in after this long is treated as
 // finished rather than still in play. Finished picks live on the Trade Log.
@@ -215,6 +216,18 @@ function StatusChip({ pick, admin, placement }: { pick: LivePick; admin: boolean
   return <Chip tone="muted">{pick.sentAt ? "Sent to bet" : "Captured"}</Chip>;
 }
 
+/** Whether the row's status chip is itself a warning (it carries the warning icon), mirroring StatusChip. */
+function statusChipWarns(pick: LivePick, admin: boolean, placement?: Placement): boolean {
+  if (admin && placement && (pick.sentAt || placement.manual)) return placementChip(placement).tone === "warn";
+  if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return false;
+  return pick.status === "flagged" || pick.status === "unmapped";
+}
+
+/** Of the watched slices an alert is in, the status to show: Golden first, then candidate, then not holding up. */
+function bestStatus(statuses: Array<SliceStatus | null>): SliceStatus | null {
+  return (["golden", "candidate", "not holding up"] as const).find((s) => statuses.includes(s)) ?? null;
+}
+
 /**
  * One alert as a compact row under its match: the minute, the strategy and its status on the first line, the bet
  * and the time it arrived on the second. Tapping it opens the match stats underneath.
@@ -286,10 +299,15 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
   const preMatch = pick.minute === null && pick.market === "FIRST_HALF_GOALS";
   const minute = pick.minute !== null ? `${pick.minute}'` : preMatch ? "Pre" : (pick.timerRaw ?? "–");
   const issue = exchangeIssue(pick);
-  const golden = admin && (pick.segments?.length ?? 0) > 0;
+  const segs = admin ? (pick.segments ?? []) : [];
+  const golden = segs.length > 0;
+  // Only the admin's rows ask for the Golden report (a member would be refused it).
+  const sliceStatus = useSliceStatus(golden);
+  const status = bestStatus(segs.map((s) => sliceStatus(strategyKey(pick.strategy), s.id)));
 
   return (
-    <li style={golden ? { boxShadow: `inset 3px 0 0 ${GOLD}`, background: "color-mix(in srgb, #C9A227 6%, transparent)" } : undefined}>
+    // The gold edge is kept for an alert in a slice that has proved itself; a candidate only gets the outlined badge.
+    <li className={status === "golden" ? "gold-row" : undefined}>
       <button
         type="button"
         aria-expanded={open}
@@ -308,9 +326,10 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
           <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="min-w-0 max-w-full truncate text-sm font-medium text-ink">{strategyNames.name(pick.strategy)}</span>
             <span className="flex flex-wrap items-center gap-1.5">
-              {admin && issue && <WarnIcon label={issue.label} detail={issue.detail} />}
+              {/* One warning sign per row: a chip that is itself a warning already carries it (the reason is in the opened row). */}
+              {admin && issue && !statusChipWarns(pick, admin, placement) && <WarnIcon label={issue.label} detail={issue.detail} />}
               <StatusChip pick={pick} admin={admin} placement={placement} />
-              {admin && (pick.segments?.length ?? 0) > 0 && <GoldenBadge title={pick.segments!.map((s) => s.label).join(" · ")} />}
+              {golden && <GoldenBadge status={status} />}
             </span>
           </span>
           <span className="mt-1 block truncate text-xs text-ink-muted">
@@ -504,7 +523,7 @@ function MatchGroup({
         <span className="shrink-0 text-right">
           <span className="block text-base font-semibold tabular-nums text-ink">{latestScore(latest)}</span>
           {/* The score is only ever what an alert said: say which. */}
-          <span className="block text-[11px] text-ink-muted">{latest.htScore ? "half-time" : "at alert"}</span>
+          <span className="block text-xs text-ink-muted">{latest.htScore ? "half-time" : "at alert"}</span>
         </span>
       </div>
       <ul className="divide-y divide-line">

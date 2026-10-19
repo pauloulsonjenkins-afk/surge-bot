@@ -96,7 +96,7 @@ export default function RecordPage() {
                   </span>
                   {r.why && <span className="mt-0.5 block text-xs italic text-ink-muted">Why it fired: {r.why}</span>}
                   {(r.beforeChange || r.amended) && (
-                    <span className="mt-0.5 block text-[0.7rem] text-warn">
+                    <span className="mt-0.5 block text-xs text-warn">
                       {[r.beforeChange && "Before the rule change", r.amended && "Result amended by hand"].filter(Boolean).join(" · ")}
                     </span>
                   )}
