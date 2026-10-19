@@ -887,7 +887,7 @@ export interface AdminStrategy {
     all?: StrategyReturn;
     before?: { live: StrategyReturn; sim: StrategyReturn; all?: StrategyReturn };
     /** Slices being watched (engine segments.ts), e.g. Second Pour's Golden alerts, with the rest for comparison. */
-    segments?: Array<{ id: string; label: string; in: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }; out: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn } }>;
+    segments?: Array<{ id: string; label: string; since?: string; custom?: boolean; in: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }; out: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn } }>;
     /** Sim picks bet by hand (Live: Bet this for real): their real money, kept out of the Live figures above. */
     byHand?: StrategyReturn;
     /** Best Value Cuppa only: the same figures split by bet type. */
@@ -1963,4 +1963,43 @@ export interface StrategyWeeksReport {
 
 export function fetchStrategyWeeks(): Promise<StrategyWeeksReport> {
   return engineCall<StrategyWeeksReport>("/internal/strategies/weeks", "the weekly figures", { timeoutMs: 20000 });
+}
+
+/** A watched Golden slice (engine golden.ts). */
+export interface GoldenSlice {
+  strategyKey: string;
+  strategy: string;
+  strategyLive: boolean;
+  id: string;
+  label: string;
+  since: string;
+  custom: boolean;
+  status: "candidate" | "golden" | "not holding up";
+  slice: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
+  rest: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
+  bet: { live: boolean; stakePct: number | null; stake: number | null } | null;
+}
+export interface GoldenSuggestion {
+  strategyKey: string;
+  strategy: string;
+  rule: string[];
+  label: string;
+  slice: { n: number; hits: number; roi: number; low: number };
+  rest: { n: number; roi: number };
+  halves: Array<{ slice: number; rest: number }>;
+}
+export interface GoldenReport {
+  slices: GoldenSlice[];
+  suggestions: { at: string; list: GoldenSuggestion[] };
+  confirmFrom: number;
+}
+
+export function fetchGolden(): Promise<GoldenReport> {
+  return engineCall<GoldenReport>("/internal/golden", "Golden", { timeoutMs: 30000 });
+}
+
+/** Watch a finder suggestion, or stop watching one. */
+export function goldenAction(body: { action: "watch"; strategyKey: string; rule: string[] } | { action: "unwatch"; strategyKey: string; id: string }): Promise<GoldenReport> {
+  const path = body.action === "watch" ? "/internal/golden/watch" : "/internal/golden/unwatch";
+  return engineCall<GoldenReport>(path, "Golden", { method: "POST", body, timeoutMs: 30000 });
 }

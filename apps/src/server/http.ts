@@ -12,6 +12,7 @@
  *   GET  /internal/edge/bettable · POST /internal/edge/bet {pickId, stake}   value bets to place by hand (admin site only)
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
+ *   GET  /internal/golden · POST /internal/golden/watch {strategyKey, rule} · /unwatch {strategyKey, id}   Golden (admin only)
  *   GET  /internal/strategies/weeks             each strategy's £ by week, last 7 days and the 28 before (admin only)
  *   GET  /internal/leagues/returns?since=       money by league and strategy within it, and stopped strategies (admin only)
  *   POST /internal/picks/bet-now {pickId}       bet a Sim pick for real now, with the usual safety checks (admin only)
@@ -96,6 +97,8 @@ import { log } from "./log";
 import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
 import { computeStrategyWeeks } from "./strategy-weeks";
+import { goldenReport, unwatchSegment, watchSegment } from "./golden";
+import type { Feature } from "./segments";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
 import { notPlacedReport, todaySnapshot } from "./today";
@@ -527,6 +530,32 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       send(res, 200, { leagues: db.listLeaguesForAdmin() });
+      return;
+    }
+
+    // Golden: watched slices, their status and the finder's suggestions (golden.ts); watch or stop one.
+    if (path === "/internal/golden" || path === "/internal/golden/watch" || path === "/internal/golden/unwatch") {
+      if (!process.env.ADMIN_INTERNAL_KEY) {
+        send(res, 500, { error: "not_configured" });
+        return;
+      }
+      if (!isAdminAuthorized(req)) {
+        send(res, 401, { error: "unauthorized" });
+        return;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        try {
+          if (typeof body.strategyKey !== "string") throw new Error("Which strategy?");
+          if (path === "/internal/golden/watch") watchSegment(db, body.strategyKey, body.rule as Feature[]);
+          else if (path === "/internal/golden/unwatch") unwatchSegment(db, body.strategyKey, String(body.id ?? ""));
+          else throw new Error("Not found");
+        } catch (err) {
+          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't change that." });
+          return;
+        }
+      }
+      send(res, 200, { ...goldenReport(db) });
       return;
     }
 

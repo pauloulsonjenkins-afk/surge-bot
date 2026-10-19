@@ -28,7 +28,7 @@
  */
 import { inPickMode, isLivePlacement, RECORD_FROM, type EngineDb, type PickMode, type Placement } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
-import { SEGMENTS } from "./segments";
+import { segmentsOf } from "./segments";
 import { currentStake } from "../inplayguru/stake";
 import { breakevenHitRate, hitRateRange, oddsFor, priceResult } from "./pricing";
 
@@ -559,6 +559,10 @@ type ModeReturns = { live: StrategyReturn; sim: StrategyReturn; all: StrategyRet
 export interface SegmentReturns {
   id: string;
   label: string;
+  /** Counted from here. */
+  since: string;
+  /** Added from the Golden finder. */
+  custom: boolean;
   in: ModeReturns;
   out: ModeReturns;
 }
@@ -606,8 +610,8 @@ export function computeStrategyReturns(
       targets.push(k);
     }
     // A slice being watched on the card (segments.ts): this pick's record goes to the slice, or to the rest.
-    const segs = SEGMENTS[key];
-    if (segs && r.facts && into === t.now) {
+    const segs = segmentsOf(key);
+    if (segs.length > 0 && r.facts && into === t.now) {
       t.segs ??= new Map();
       for (const seg of segs) {
         if (r.firstSeenAt < seg.since) continue;
@@ -643,7 +647,7 @@ export function computeStrategyReturns(
       ...(t.byBet ? { byBet: Object.fromEntries([...t.byBet].map(([k, v]) => [k, done(v)])) } : {}),
       ...(t.byHand ? { byHand: t.byHand.result() } : {}),
       ...(t.segs?.size
-        ? { segments: (SEGMENTS[key] ?? []).filter((s) => t.segs!.has(s.id)).map((s) => ({ id: s.id, label: s.label, in: done(t.segs!.get(s.id)!.in), out: done(t.segs!.get(s.id)!.out) })) }
+        ? { segments: segmentsOf(key).filter((s) => t.segs!.has(s.id)).map((s) => ({ id: s.id, label: s.label, since: s.since, custom: s.custom === true, in: done(t.segs!.get(s.id)!.in), out: done(t.segs!.get(s.id)!.out) })) }
         : {}),
     };
   }

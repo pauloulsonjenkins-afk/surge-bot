@@ -299,7 +299,8 @@ function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | "live" 
       {segs.map((s) =>
         s.in[mode].settled + s.out[mode].settled === 0 ? null : (
           <span key={s.id} className="mt-1 block text-xs text-ink-muted" title={`Being watched: ${SAMPLE}+ priced picks on new matches before reading anything into it.`}>
-            <SegmentLabel label={s.label} />: {part(s.in[mode])} · the rest: {part(s.out[mode])}
+            <SegmentLabel label={s.label} />
+            {s.since ? ` since ${shortDay.format(new Date(s.since))}` : ""}: {part(s.in[mode])} of these picks · the rest {part(s.out[mode])}
           </span>
         ),
       )}
@@ -1186,6 +1187,7 @@ export default function StrategiesPage() {
                     modeOf={(label) => (label === "__all__" ? (view === "own" ? "all" : view) : view === "own" ? ownMode(byKey.get(label.toLowerCase())!).mode : view)}
                     renderCard={(key) => (byKey.has(key) ? renderCard(byKey.get(key)!) : null)}
                     showTotal={m === "sim"}
+                    sliceLabels={Object.fromEntries(strategies.flatMap((x) => (x.returns?.segments ?? []).map((s) => [`${x.label.toLowerCase()}#${s.id}`, s.label])))}
                   />
                 ) : (
                 <ul className="space-y-2">{group.filter((r) => hasPicks(r, m)).map(renderCard)}</ul>

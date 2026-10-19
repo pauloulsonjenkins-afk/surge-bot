@@ -2221,7 +2221,7 @@ export class EngineDb {
     byHand: boolean;
     simShadow: SimRecord | null;
     /** The alert's score, stats and prices when it fired, for the slices watched on a strategy's card (server/segments.ts). */
-    facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null } | null;
+    facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null; minute: number | null } | null;
   }> {
     const rows = this.db
       .prepare(
@@ -2267,7 +2267,7 @@ export class EngineDb {
       let favouriteOdds: number | null = null;
       let layOdds: number | null = null;
       let edgeBet: { market: string; pick: string } | null = null;
-      let facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null } | null = null;
+      let facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null; minute: number | null } | null = null;
       try {
         const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert> & { edge?: { bet?: { market?: unknown; pick?: unknown } } };
         facts = {
@@ -2276,6 +2276,7 @@ export class EngineDb {
           stats: p.stats && typeof p.stats === "object" ? p.stats : {},
           preMatch1x2: p.odds?.preMatch1x2 ?? null,
           live1x2: p.odds?.live1x2 ?? null,
+          minute: typeof p.minute === "number" ? p.minute : null,
         };
         const eb = p.edge?.bet;
         if (eb && typeof eb.market === "string" && typeof eb.pick === "string") edgeBet = { market: eb.market, pick: eb.pick };

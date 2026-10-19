@@ -46,7 +46,7 @@ import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
 import { modelVerdict } from "../model/goal-model";
 import { getLeagueBlocks, isLeagueBlocked } from "./league-blocks";
-import { SEGMENTS, type AlertFacts } from "../server/segments";
+import { segmentsOf, type AlertFacts } from "../server/segments";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -305,13 +305,14 @@ export function pickFacts(p: LivePick): AlertFacts {
     stats: p.detail?.stats ?? {},
     preMatch1x2: p.detail?.odds?.preMatch1x2 ?? null,
     live1x2: p.detail?.odds?.live1x2 ?? null,
+    minute: p.minute,
   };
 }
 
 /** The watched slices this pick is in (ids and labels), whatever their start date. */
 export function pickSegments(p: LivePick): Array<{ id: string; label: string }> {
-  const segs = SEGMENTS[strategyLabel(p.strategy).toLowerCase()];
-  if (!segs) return [];
+  const segs = segmentsOf(strategyLabel(p.strategy).toLowerCase());
+  if (segs.length === 0) return [];
   const f = pickFacts(p);
   return segs.filter((s) => s.test(f)).map((s) => ({ id: s.id, label: s.label }));
 }
@@ -321,7 +322,7 @@ export function segmentBetFor(settings: SendingSettings, p: LivePick): { key: st
   const key = strategyLabel(p.strategy).toLowerCase();
   for (const s of pickSegments(p)) {
     const cfg = settings.segmentBets[`${key}#${s.id}`];
-    if (cfg) return { key, id: s.id, label: s.label.replace(/ since .*$/, ""), cfg };
+    if (cfg) return { key, id: s.id, label: s.label, cfg };
   }
   return null;
 }

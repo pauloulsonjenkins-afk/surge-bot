@@ -34,6 +34,7 @@ import { startProbeOnce } from "../fixtures/probe";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { startTeamGoalsReminder } from "../model/team-goals-test";
 import { logHorseResults } from "./horse-results";
+import { loadCustomSegments, notifyGoldenSuggestions } from "./golden";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -58,6 +59,8 @@ async function main(): Promise<void> {
   let telegramClient: ReturnType<typeof createTelegramClient> | null = null;
   let backups: BackupScheduler | null = null;
   const db = new EngineDb(env.dbPath, () => backups?.markDirty());
+  // Golden slices added from the finder (segments.ts), before anything prices or bets a pick.
+  loadCustomSegments(db);
   backups = new BackupScheduler(db, sync, join(dirname(env.dbPath), "snapshot-upload.db"), 5_000, 60_000, instanceId, () => {
     // Two containers on one Telegram session can get the session revoked, and both would store alerts.
     stopTelegramListener();
@@ -112,6 +115,8 @@ async function main(): Promise<void> {
     const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
     if (hour < 8 || hour >= 22) return;
     void notifyAdvice(db).catch((err) => log.warn(`Strategy suggestions failed: ${err instanceof Error ? err.message : String(err)}`));
+    // Golden finder: one notification when it has new slices to suggest watching.
+    void notifyGoldenSuggestions(db).catch((err) => log.warn(`Golden finder failed: ${err instanceof Error ? err.message : String(err)}`));
     // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.
     void notifyLeagueMilestones(db).catch((err) => log.warn(`League milestones failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3_600_000);

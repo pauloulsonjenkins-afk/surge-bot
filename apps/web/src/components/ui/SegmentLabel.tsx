@@ -20,9 +20,9 @@ export function SegmentLabel({ label }: { label: string }) {
 }
 
 /** The small badge a Golden alert carries on Live. */
-export function GoldenBadge() {
+export function GoldenBadge({ title }: { title?: string }) {
   return (
-    <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ color: GOLD, background: "color-mix(in srgb, #C9A227 16%, transparent)" }}>
+    <span title={title} className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ color: GOLD, background: "color-mix(in srgb, #C9A227 16%, transparent)" }}>
       Golden
     </span>
   );

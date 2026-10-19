@@ -308,7 +308,7 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
             <span className="flex flex-wrap items-center gap-1.5">
               {admin && issue && <WarnIcon label={issue.label} detail={issue.detail} />}
               <StatusChip pick={pick} admin={admin} placement={placement} />
-              {admin && pick.segments?.some((s) => s.id === "golden") && <GoldenBadge />}
+              {admin && (pick.segments?.length ?? 0) > 0 && <GoldenBadge title={pick.segments!.map((s) => s.label).join(" · ")} />}
             </span>
           </span>
           <span className="mt-1 block truncate text-xs text-ink-muted">

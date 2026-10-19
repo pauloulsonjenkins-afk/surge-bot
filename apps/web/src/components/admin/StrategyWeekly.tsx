@@ -79,7 +79,10 @@ export function StrategyWeekly({
   modeOf,
   renderCard,
   showTotal = false,
+  sliceLabels,
 }: {
+  /** "strategy#slice" -> its label, for the slice rows. */
+  sliceLabels?: Record<string, string>;
   rows: Array<{ label: string }>;
   data: StrategyWeeksReport | undefined;
   /** Whose figures each row shows (Own mode / Live / Sim / All). */
@@ -143,7 +146,7 @@ export function StrategyWeekly({
             return [
               line(key, <StrategyName label={r.label} />, modeOf(r.label)),
               ...subs.map((k) =>
-                line(k, <span className="pl-3 text-xs">↳ <SegmentLabel label={SLICE_NAMES[k.split("#")[1]!] ?? k.split("#")[1]!} /></span>, modeOf(r.label), false, true),
+                line(k, <span className="pl-3 text-xs text-ink-muted">↳ of which <SegmentLabel label={sliceLabels?.[k]?.replace(/^Golden: .*$/, "Golden") ?? SLICE_NAMES[k.split("#")[1]!] ?? "Golden"} /></span>, modeOf(r.label), false, true),
               ),
             ];
           })}

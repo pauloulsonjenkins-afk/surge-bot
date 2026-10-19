@@ -18,6 +18,7 @@ export const ADMIN_GROUPS = [
       { href: "/more/admin/today", label: "Today", description: "One glance: betting on or off, today's result, money out, limits, alert health, speed and why picks weren't placed." },
       { href: "/more/admin/strategies", label: "Strategies", description: "Each strategy's results, Live / Sim, stake, minimum odds and stop loss." },
       { href: "/more/admin/sending", label: "Betting", description: "Bets placed on Betfair, the on / off switch and safety limits, and the check against Betfair's real results." },
+      { href: "/more/admin/golden", label: "Golden", description: "Parts of a strategy that may be worth more than the rest: being watched, confirmed, and new ones the finder suggests." },
     ],
   },
   {
