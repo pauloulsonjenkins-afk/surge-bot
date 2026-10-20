@@ -25,6 +25,11 @@ export function SegmentLabel({ label, status }: { label: string; status?: SliceS
   );
 }
 
+/** Of the watched slices an alert is in, the status to show: Golden first, then candidate, then not holding up. */
+export function bestStatus(statuses: Array<SliceStatus | null>): SliceStatus | null {
+  return (["golden", "candidate", "not holding up"] as const).find((s) => statuses.includes(s)) ?? null;
+}
+
 /** A slice's name without the engine's "Golden: " in front, for places that show its status separately. */
 export function sliceName(label: string): string {
   return label.replace(/^Golden: /, "");

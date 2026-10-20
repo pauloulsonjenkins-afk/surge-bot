@@ -91,7 +91,7 @@ export function RateBarChart({
                 type="category"
                 dataKey="label"
                 width={124}
-                tick={{ fill: "var(--ink-muted)", fontSize: 11 }}
+                tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
                 tickFormatter={(v: string) => truncate(v, 20)}
                 tickLine={false}
                 axisLine={false}
@@ -101,17 +101,17 @@ export function RateBarChart({
                 {data.map((d) => (
                   <Cell key={d.label} fill="var(--chart)" fillOpacity={d.settled >= SOLID_FROM ? 1 : 0.4} />
                 ))}
-                <LabelList dataKey="value" position="right" formatter={pctLabel} fill="var(--ink)" fontSize={11} />
+                <LabelList dataKey="value" position="right" formatter={pctLabel} fill="var(--ink)" fontSize={12} />
               </Bar>
             </BarChart>
           ) : (
             <BarChart data={data} margin={{ top: 18, right: 4, bottom: 0, left: -18 }}>
-              <XAxis dataKey="label" tick={{ fill: "var(--ink-muted)", fontSize: 11 }} tickLine={false} axisLine={false} />
+              <XAxis dataKey="label" tick={{ fill: "var(--ink-muted)", fontSize: 12 }} tickLine={false} axisLine={false} />
               <YAxis
                 domain={[0, 100]}
                 ticks={[0, 50, 100]}
                 tickFormatter={(v: number) => `${v}%`}
-                tick={{ fill: "var(--ink-muted)", fontSize: 11 }}
+                tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
               />
@@ -120,7 +120,7 @@ export function RateBarChart({
                 {data.map((d) => (
                   <Cell key={d.label} fill="var(--chart)" fillOpacity={d.settled >= SOLID_FROM ? 1 : 0.4} />
                 ))}
-                <LabelList dataKey="value" position="top" formatter={pctLabel} fill="var(--ink)" fontSize={11} />
+                <LabelList dataKey="value" position="top" formatter={pctLabel} fill="var(--ink)" fontSize={12} />
               </Bar>
             </BarChart>
           )}

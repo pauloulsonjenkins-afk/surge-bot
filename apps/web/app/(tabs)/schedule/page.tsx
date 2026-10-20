@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useSchedule, type ScheduleFixture, type ScheduleWhen } from "@/queries/use-schedule";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 /** Countries shown first, then everything else by number of games. */
 const PINNED_COUNTRIES = ["England", "Scotland", "Wales", "World"];
@@ -143,6 +144,8 @@ export default function SchedulePage() {
       (a, b) => rank(a) - rank(b) || a.timestamp - b.timestamp || a.league.localeCompare(b.league) || a.home.localeCompare(b.home),
     );
   }, [shownFixtures, nowSec]);
+  // 40 games at a time in time order: a full day made the page about 11,000 px tall on a phone. A search starts again.
+  const { shown: shownByTime, more: moreByTime } = useShowMore(byTime, 40, `${query}|${hideStarted}`);
 
   const isOpen = (country: string, index: number) => open[country] ?? (query !== "" || index < OPEN_BY_DEFAULT);
   const allOpen = groups.length > 0 && groups.every((g, i) => isOpen(g.country, i));
@@ -284,7 +287,7 @@ export default function SchedulePage() {
             <p className="py-6 text-center text-sm text-ink-muted">No games match.</p>
           ) : view === "time" ? (
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-              {byTime.map((f, i) => {
+              {shownByTime.map((f, i) => {
                 const phase = phaseOf(f, nowSec);
                 const previous = i > 0 ? byTime[i - 1] : undefined;
                 const startsNewBlock = previous !== undefined && phaseOf(previous, nowSec) === "upcoming" && phase !== "upcoming";
@@ -310,6 +313,7 @@ export default function SchedulePage() {
                   </li>
                 );
               })}
+              {moreByTime && <li className="p-2">{moreByTime}</li>}
             </ul>
           ) : groups.length === 0 ? (
             <p className="py-6 text-center text-sm text-ink-muted">No games match.</p>

@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { BetfairCoverage } from "@/components/admin/BetfairCoverage";
 import { LeagueReview } from "@/components/admin/LeagueReview";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 type Filter = "all" | "shown" | "hidden";
 
@@ -247,6 +248,8 @@ export default function LeaguesPage() {
   }, [data, filter, search]);
 
   const hiddenCount = (data ?? []).filter((r) => r.hidden || r.noSend).length;
+  // 25 at a time: all of them made the page about 31,000 px tall on a phone. A search or filter starts from the top.
+  const { shown: shownRows, more } = useShowMore(rows, 25, `${filter}|${search}`);
 
   return (
     <div className="space-y-4">
@@ -323,7 +326,7 @@ export default function LeaguesPage() {
             </p>
           ) : (
             <ul className="space-y-2">
-              {rows.map((r) => (
+              {shownRows.map((r) => (
                 <LeagueCard
                   key={r.key}
                   row={r}
@@ -332,6 +335,7 @@ export default function LeaguesPage() {
                   onChange={(patch) => update.mutate({ key: r.key, patch })}
                 />
               ))}
+              {more && <li>{more}</li>}
             </ul>
           )}
         </>

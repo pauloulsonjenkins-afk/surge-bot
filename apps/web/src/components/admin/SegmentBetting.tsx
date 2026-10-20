@@ -11,7 +11,7 @@ const MIN_PCT = 0.1;
 const MAX_PCT = 10;
 
 /** The stake box's text as a stake: null = the strategy's own stake (left empty), undefined = not a usable number. */
-function parseStake(text: string): number | null | undefined {
+export function parseStake(text: string): number | null | undefined {
   const t = text.trim();
   if (!t) return null;
   const n = Number(t);

@@ -97,14 +97,14 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
             <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="label"
-              tick={{ fill: "var(--ink-muted)", fontSize: 10 }}
+              tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
               tickLine={false}
               axisLine={false}
               interval="preserveStartEnd"
               minTickGap={28}
             />
             <YAxis
-              tick={{ fill: "var(--ink-muted)", fontSize: 10 }}
+              tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v: number) => `${v < 0 ? "\u2212" : ""}\u00a3${Math.abs(v)}`}

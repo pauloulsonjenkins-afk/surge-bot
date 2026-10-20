@@ -9,6 +9,7 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { betText } from "@/lib/markets";
 import { usePickDays, useAdminPicksWindow, useDiscrepancies, useReviewResult, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -227,6 +228,9 @@ function SettledPicks() {
     if (ok) setExcluded.mutate({ id: pick.id, excluded: !pick.excluded });
   }
 
+  // 25 cards at a time: a busy day made this page about 22,000 px tall on a phone. Another day starts from the top.
+  const { shown: shownPicks, more: morePicks } = useShowMore(data ?? [], 25, `${mode}|${chosenDate ?? ""}`);
+
   if (error) return <QueryError error={error} next="/more/admin/results" />;
   const rows = data ?? [];
   const counted = rows.filter((p) => !p.excluded);
@@ -322,9 +326,12 @@ function SettledPicks() {
           {mode === "recent" ? "No picks in the last 24 hours. Use By date to look further back." : "No picks on that day."}
         </p>
       ) : (
-        data.map((p) => (
-          <PickCard key={p.id} p={p} onChange={change} onToggleExcluded={toggleExcluded} busyResult={setResult.isPending} busyExcluded={setExcluded.isPending} />
-        ))
+        <>
+          {shownPicks.map((p) => (
+            <PickCard key={p.id} p={p} onChange={change} onToggleExcluded={toggleExcluded} busyResult={setResult.isPending} busyExcluded={setExcluded.isPending} />
+          ))}
+          {morePicks}
+        </>
       )}
     </div>
   );

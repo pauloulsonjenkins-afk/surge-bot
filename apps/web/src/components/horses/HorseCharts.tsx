@@ -4,7 +4,7 @@ import { Bar, BarChart, Cell, Line, LineChart, ReferenceLine, ResponsiveContaine
 import { gbp } from "@/lib/format";
 import { RANK_COLOUR, RANK_LABEL, RANKS, type Point, type Summary } from "@/lib/horses";
 
-const axisTick = { fill: "var(--ink-muted)", fontSize: 10 };
+const axisTick = { fill: "var(--ink-muted)", fontSize: 12 };
 const money = (v: number) => `${v < 0 ? "−" : ""}£${Math.abs(v)}`;
 /** About six labels along the bottom however many points there are. */
 const every = (n: number) => Math.max(0, Math.ceil(n / 6) - 1);
@@ -182,7 +182,7 @@ export function ByChoiceChart({ points }: { points: Point[] }) {
                 isAnimationActive={false}
                 label={(props: { index?: number; x?: number | string; y?: number | string }) =>
                   props.index === points.length - 1 && props.x !== undefined && props.y !== undefined ? (
-                    <text key={`end-${r}`} x={Number(props.x) + 6} y={Number(props.y)} dy={3} fontSize={10} fill="var(--ink)">
+                    <text key={`end-${r}`} x={Number(props.x) + 6} y={Number(props.y)} dy={3} fontSize={12} fill="var(--ink)">
                       {RANK_LABEL[r]}
                     </text>
                   ) : (

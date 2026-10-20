@@ -16,6 +16,15 @@ const pct = (t: WeekTally) => (t.staked > 0 ? `${t.profit >= 0 ? "+" : "−"}${M
 /** Short names for watched slices' rows. */
 const SLICE_NAMES: Record<string, string> = { golden: "Golden", "two-apart": "2+ goals apart", "home-one-down": "Home team 1 down" };
 
+/**
+ * A watched slice's row name ("strategy#slice"): Second Pour's own slice is simply "Golden"; any other is named by the
+ * slice itself, since every slice's label starts "Golden: " (until 20 Oct 2026 all of them read "Golden").
+ */
+export function sliceRowName(key: string, sliceLabels?: Record<string, string>): string {
+  const id = key.split("#")[1]!;
+  return id === "golden" ? "Golden" : sliceName(sliceLabels?.[key] ?? SLICE_NAMES[id] ?? id);
+}
+
 /** Under this many bets in the last 7 days there's no trend label. */
 const TREND_FROM = 5;
 
@@ -156,14 +165,10 @@ export function StrategyWeekly({
             // label starts "Golden: ", so the row is named by the slice itself (only Second Pour's own is simply "Golden"), and
             // the word is in gold only once the slice is confirmed.
             const subs = Object.keys(data.strategies).filter((k) => k.startsWith(`${key}#`));
-            const subName = (k: string) => {
-              const id = k.split("#")[1]!;
-              return id === "golden" ? "Golden" : sliceName(sliceLabels?.[k] ?? SLICE_NAMES[id] ?? id);
-            };
             return [
               line(key, <StrategyName label={r.label} />, modeOf(r.label)),
               ...subs.map((k) =>
-                line(k, <span className="pl-3 text-xs text-ink-muted">↳ of which <SegmentLabel label={subName(k)} status={sliceStatus(key, k.split("#")[1]!)} /></span>, modeOf(r.label), false, true),
+                line(k, <span className="pl-3 text-xs text-ink-muted">↳ of which <SegmentLabel label={sliceRowName(k, sliceLabels)} status={sliceStatus(key, k.split("#")[1]!)} /></span>, modeOf(r.label), false, true),
               ),
             ];
           })}

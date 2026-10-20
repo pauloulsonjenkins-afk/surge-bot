@@ -66,13 +66,13 @@ export function DailyPnlChart({ days }: { days: DailyBar[] }) {
           <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -8 }} barCategoryGap="18%">
             <XAxis
               dataKey="name"
-              tick={{ fill: "var(--ink-muted)", fontSize: 10 }}
+              tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
               tickLine={false}
               axisLine={false}
               interval={labelEvery}
             />
             <YAxis
-              tick={{ fill: "var(--ink-muted)", fontSize: 10 }}
+              tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v: number) => `${v < 0 ? "\u2212" : ""}\u00a3${Math.abs(v)}`}

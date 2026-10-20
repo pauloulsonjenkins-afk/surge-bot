@@ -86,9 +86,9 @@ export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) 
       <div className="h-48 w-full" role="img" aria-label={`Running profit for ${label} over ${data.points.length} priced picks, ending at ${gbp(data.summary.profit)}`}>
         <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: 192 }}>
           <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
-            <XAxis dataKey="n" tick={{ fill: "var(--ink-muted)", fontSize: 10 }} tickLine={false} axisLine={false} minTickGap={24} />
+            <XAxis dataKey="n" tick={{ fill: "var(--ink-muted)", fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis
-              tick={{ fill: "var(--ink-muted)", fontSize: 10 }}
+              tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v: number) => `${v < 0 ? "−" : ""}£${Math.abs(v)}`}

@@ -38,3 +38,5 @@ jobs:
       - run: npx tsc --noEmit -p tsconfig.json
       # The deploy's build lints too and stops on an error, so catch it here first.
       - run: npx eslint .
+      # The website's tests (money and return formats, Golden badges, the weekly table, the slice stake box).
+      - run: npm test

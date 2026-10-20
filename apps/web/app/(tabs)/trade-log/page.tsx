@@ -14,6 +14,7 @@ import { gbp } from "@/lib/format";
 import { useMe } from "@/queries/use-me";
 import { useAdminLivePicks, useLivePicks, type LivePick, type PublicPick } from "@/queries/use-live";
 import { strategyKey, useStrategyNames } from "@/queries/use-strategy-names";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
 
@@ -96,8 +97,6 @@ export default function TradeLogPage() {
   const adm = useAdminLivePicks(ADMIN_LIMIT, admin, 24 * 7);
   const { data, isLoading, error } = admin ? adm : pub;
 
-  if (meLoading || isLoading) return <ListSkeleton />;
-
   const loaded = (data ?? []) as Row[];
   // A list cut off by the limit may hold only part of its oldest day: leave that day out rather than show a wrong total.
   const cutDay = admin && loaded.length >= ADMIN_LIMIT ? dayFmt.format(new Date(loaded[loaded.length - 1]!.firstSeenAt)) : null;
@@ -128,6 +127,10 @@ export default function TradeLogPage() {
       last.priced += 1;
     }
   }
+  // Three days at a time: a week of picks made the page about 16,000 px tall on a phone. A new filter starts again.
+  const { shown: shownDays, more: moreDays } = useShowMore(groups, 3, `${mode}|${strategy}`);
+
+  if (meLoading || isLoading) return <ListSkeleton />;
 
   return (
     <div className="space-y-6 px-4 py-4">
@@ -176,7 +179,7 @@ export default function TradeLogPage() {
           detail={settledAll.length === 0 ? "Results appear here once matches finish." : "Try All, or another strategy."}
         />
       ) : (
-        groups.map((g) => {
+        shownDays.map((g) => {
           const misses = g.picks - g.hits;
           const profit = Math.round(g.profit * 100) / 100;
           const showMoney = admin && g.priced > 0;
@@ -224,6 +227,7 @@ export default function TradeLogPage() {
           );
         })
       )}
+      {!error && settled.length > 0 && moreDays}
 
       {admin && (
         <p className="text-center text-xs text-ink-muted">

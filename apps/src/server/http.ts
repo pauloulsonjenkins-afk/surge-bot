@@ -175,6 +175,22 @@ function parseUtcOffset(v: unknown): number | null {
   return Number.isInteger(n) && n >= -720 && n <= 840 ? n : null;
 }
 
+/**
+ * The check every admin route makes, in one place (it was written out 46 times): answers 500 when the engine has no
+ * admin key set, 401 without the right key, and returns false; true when the caller is the admin site.
+ */
+function requireAdmin(req: IncomingMessage, res: ServerResponse): boolean {
+  if (!process.env.ADMIN_INTERNAL_KEY) {
+    send(res, 500, { error: "not_configured" });
+    return false;
+  }
+  if (!isAdminAuthorized(req)) {
+    send(res, 401, { error: "unauthorized" });
+    return false;
+  }
+  return true;
+}
+
 function isAdminAuthorized(req: IncomingMessage): boolean {
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!internalKey) return false;
@@ -331,14 +347,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "GET" && path === "/internal/live/days") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       send(res, 200, { days: db.listPickDays() });
       return;
     }
@@ -391,14 +400,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "GET" && path === "/internal/schedule") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const url = new URL(rawUrl, "http://internal");
       const today = ukDateOf(new Date());
       const asked = url.searchParams.get("date") ?? "";
@@ -426,14 +428,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/fresh-start" && (req.method === "GET" || req.method === "POST")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (req.method === "POST") {
         const body = await readJsonBody(req);
         if (typeof body.start !== "boolean") {
@@ -449,14 +444,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Bet a Sim pick for real now (Live: Bet this for real).
     if (req.method === "POST" && path === "/internal/picks/bet-now") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       try {
         const row = betPickNow(db, Number(body.pickId), { directLive: effectiveMode(getDirectSettings(db)) === "live" });
@@ -471,14 +459,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Retry a bet that wasn't placed (Live: Retry bet).
     if (req.method === "POST" && path === "/internal/direct/retry") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       try {
         const d = retryDirectBet(db, Number(body.pickId));
@@ -491,14 +472,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Best Value Cuppa picks still bettable by hand, and the Bet button (edge/value-strategy.ts).
     if ((req.method === "GET" && path === "/internal/edge/bettable") || (req.method === "POST" && path === "/internal/edge/bet")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (req.method === "POST") {
         const body = await readJsonBody(req);
         try {
@@ -515,14 +489,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // A strategy suggestion carried out (the admin pressed Apply on Today): stake ladder, Live or Sim (strategy-advice.ts).
     if (req.method === "POST" && path === "/internal/strategy-advice/apply") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const kinds = ["try-live", "back-to-sim", "stake-up", "stake-down", "league-block"] as const;
       const kind = kinds.find((k) => k === body.kind);
@@ -540,28 +507,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "GET" && path === "/internal/leagues") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       send(res, 200, { leagues: db.listLeaguesForAdmin() });
       return;
     }
 
     // Golden: watched slices, their status and the finder's suggestions (golden.ts); watch or stop one.
     if (path === "/internal/golden" || path === "/internal/golden/watch" || path === "/internal/golden/unwatch") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (req.method === "POST") {
         const body = await readJsonBody(req);
         try {
@@ -586,14 +539,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Strategies → Weekly: each strategy's £ week by week, the last 7 days and the 4 weeks before (strategy-weeks.ts).
     if (req.method === "GET" && path === "/internal/strategies/weeks") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       send(
         res,
         200,
@@ -609,14 +555,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Leagues → Profit: money by league and by strategy within each, plus which strategies are stopped where.
     if (req.method === "GET" && path === "/internal/leagues/returns") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const sinceParam = new URL(rawUrl, "http://internal").searchParams.get("since");
       const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
       const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
@@ -626,14 +565,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Stop or restart one strategy in one league (Leagues → Profit).
     if (req.method === "POST" && path === "/internal/leagues/block") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       if (typeof body.strategy !== "string" || typeof body.leagueKey !== "string" || typeof body.league !== "string" || typeof body.blocked !== "boolean") {
         send(res, 400, { error: "strategy, leagueKey, league and blocked are needed" });
@@ -645,14 +577,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "POST" && path === "/internal/leagues/update") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const key = typeof body.key === "string" ? body.key.trim() : "";
       if (!key || key.length > 200) {
@@ -706,14 +631,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/betfair/import" && req.method === "POST") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       let body: Record<string, unknown>;
       try {
         body = await readJsonBody(req, MAX_IMPORT_BYTES);
@@ -741,14 +659,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/strategy-names") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (req.method === "GET") {
         send(res, 200, { names: listStrategyNames(db) });
         return;
@@ -769,14 +680,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/betfair/unplaced" || path === "/internal/betfair/unplaced/clear" || path === "/internal/betfair/unplaced/fix" || path === "/internal/push" || path.startsWith("/internal/push/")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (path === "/internal/betfair/unplaced" && req.method === "GET") {
         const link = getBetfairLinkStatus();
         send(res, 200, { afterMinutes: UNPLACED_AFTER_MS / 60_000, configured: link.configured, picks: listUnplaced(db, link.lastOkAt) });
@@ -840,14 +744,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if ((path === "/internal/picks/manual-bet" || path === "/internal/picks/review") && req.method === "POST") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const id = Number(body.id);
       if (!Number.isInteger(id) || id <= 0) {
@@ -887,27 +784,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "GET" && path === "/internal/picks/discrepancies") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       send(res, 200, { picks: db.listResultDiscrepancies() });
       return;
     }
 
     if (path === "/internal/betfair/coverage" && (req.method === "GET" || req.method === "POST")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const competitions = db.listBetfairCompetitions();
       const latest = competitions.reduce<string | null>((m, c) => (m === null || c.lastSeen > m ? c.lastSeen : m), null);
       const base = { competitionCount: competitions.length, competitionsUpdatedAt: latest };
@@ -929,14 +812,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if ((path === "/internal/betfair/use-match" || path === "/internal/betfair/coverage/override") && req.method === "POST") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       try {
         if (path === "/internal/betfair/use-match") {
@@ -955,14 +831,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/betfair/match-name" && req.method === "POST") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       try {
         const line = addMatchName(db, body.from, body.to);
@@ -977,14 +846,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/betfair/acknowledge" && req.method === "POST") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const ids = Array.isArray(body.betIds) ? body.betIds.filter((x): x is string => typeof x === "string").slice(0, 5000) : [];
       if (ids.length === 0 || typeof body.acknowledged !== "boolean") {
@@ -1001,42 +863,21 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Edge cards for the admin's own Fixtures page (members read them through the members routes).
     if (req.method === "GET" && path === "/internal/edge") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       send(res, 200, { cards: edgeCards(db) });
       return;
     }
 
     // The one-off API-Football plan check (fixtures/probe.ts), for the admin.
     if (req.method === "GET" && path === "/internal/api-football-probe") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       send(res, 200, { probe: getProbe(db) });
       return;
     }
 
     // Research: GoalBrew's own goal model, tested against the market on picks it never saw (model/goal-model.ts).
     if (req.method === "GET" && path === "/internal/goal-model") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const refresh = new URL(rawUrl, "http://internal").searchParams.get("refresh") === "1";
       const goalModel = () => {
         const { timed, done } = reportTimings("Goal model page data");
@@ -1051,14 +892,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
     // Freezes a new model version now (it also happens by itself each week).
     if (req.method === "POST" && path === "/internal/goal-model/publish") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const m = publishModel(db);
       send(res, m ? 200 : 400, m ? { version: m.version } : { error: "not_enough_data", message: "Not enough settled next-goal picks to train on yet." });
       return;
@@ -1066,14 +900,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // The Today page (server/today.ts), and the not-placed picks grouped by reason.
     if (req.method === "GET" && (path === "/internal/today" || path === "/internal/not-placed")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (path === "/internal/today") {
         send(res, 200, { ...todaySnapshot(db) });
         return;
@@ -1085,14 +912,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Price check: whether each strategy's alert price beats Betfair's price a few minutes later (betfair/price-check.ts).
     if (req.method === "GET" && path === "/internal/price-check") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const days = Math.min(365, Math.max(1, Number(new URL(rawUrl, "http://internal").searchParams.get("days")) || 30));
       send(res, 200, { ...priceCheckReport(db, days) });
       return;
@@ -1100,14 +920,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // Past results and prices (football-data.co.uk): league profiles, and testing Away Win Lay on past seasons.
     if (path.startsWith("/internal/history")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const url = new URL(rawUrl, "http://internal");
       const st = historyStatus();
       // The first visit starts the download; the page shows progress until it's ready.
@@ -1143,14 +956,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path.startsWith("/internal/horses")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       try {
         if (req.method === "GET" && path === "/internal/horses") {
           send(res, 200, {
@@ -1201,14 +1007,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/betfair/placements" && req.method === "GET") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const link = getBetfairLinkStatus();
       // Without the Betfair check, only bets logged as placed by hand are known (they don't need Betfair).
       const all = pickPlacements(db, link);
@@ -1218,14 +1017,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/betfair/reconcile" && req.method === "GET") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       send(res, 200, {
         ...computeReconcile(db),
         importTokenConfigured: Boolean(process.env.BETFAIR_IMPORT_TOKEN),
@@ -1237,14 +1029,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/winloss" && (req.method === "GET" || req.method === "PUT")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (req.method === "PUT") {
         const before = getWinLossSettings(db);
         const after = saveWinLossSettings(db, await readJsonBody(req));
@@ -1274,14 +1059,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path.startsWith("/internal/members/")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       await handleMembersRoute({
         req,
         method: req.method ?? "GET",
@@ -1297,14 +1075,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/users" || path.startsWith("/internal/users/")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       await handleUsersRoute({
         method: req.method ?? "GET",
         path,
@@ -1318,14 +1089,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/access" && (req.method === "GET" || req.method === "PUT")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (req.method === "PUT") {
         const body = await readJsonBody(req);
         if (typeof body.publicView !== "boolean") {
@@ -1340,14 +1104,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "POST" && path === "/internal/picks/result") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : null;
       const result = body.result === "hit" || body.result === "miss" ? body.result : body.result === null ? null : undefined;
@@ -1365,14 +1122,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "POST" && path === "/internal/picks/clear-waiting") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : null;
       if (id === null || typeof body.cleared !== "boolean") {
@@ -1389,14 +1139,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "POST" && path === "/internal/picks/exclude") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const id = typeof body.id === "number" && Number.isInteger(body.id) ? body.id : null;
       if (id === null || typeof body.excluded !== "boolean") {
@@ -1413,14 +1156,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "GET" && path === "/internal/strategies") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const sinceParam = new URL(rawUrl, "http://internal").searchParams.get("since");
       const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
       const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
@@ -1455,14 +1191,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
 
     // One pick in detail for the admin's Trade Log: times, goals after the alert, stats at the alert (pick-detail.ts).
     if (req.method === "GET" && path === "/internal/picks/detail") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const id = Number(new URL(rawUrl, "http://internal").searchParams.get("id"));
       const d = Number.isInteger(id) && id > 0 ? pickDetail(db, id) : null;
       if (!d) {
@@ -1474,14 +1203,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "GET" && path === "/internal/strategies/equity") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const url = new URL(rawUrl, "http://internal");
       const label = url.searchParams.get("label")?.trim().slice(0, 120) ?? "";
       if (!label) {
@@ -1493,14 +1215,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "POST" && path === "/internal/strategies/ignore") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const label = typeof body.label === "string" ? body.label.trim() : "";
       if (!label || typeof body.ignored !== "boolean") {
@@ -1514,14 +1229,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "POST" && path === "/internal/strategies/merge") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const from = typeof body.from === "string" ? body.from.trim() : "";
       const into = typeof body.into === "string" ? body.into.trim() : null;
@@ -1540,14 +1248,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (req.method === "POST" && path === "/internal/strategies/remove") {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       const label = typeof body.label === "string" ? body.label.trim() : "";
       if (!label) {
@@ -1652,14 +1353,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     if (path === "/internal/sending" && (req.method === "GET" || req.method === "PUT")) {
-      if (!process.env.ADMIN_INTERNAL_KEY) {
-        send(res, 500, { error: "not_configured" });
-        return;
-      }
-      if (!isAdminAuthorized(req)) {
-        send(res, 401, { error: "unauthorized" });
-        return;
-      }
+      if (!requireAdmin(req, res)) return;
       if (req.method === "PUT") {
         try {
           const before = getSendingSettings(db);

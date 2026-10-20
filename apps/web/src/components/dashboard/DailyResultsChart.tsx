@@ -28,10 +28,10 @@ export function DailyResultsChart({ stats, isLoading }: { stats: HitRateStats | 
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-              <XAxis dataKey="label" tick={{ fill: "var(--ink-muted)", fontSize: 11 }} tickLine={false} axisLine={false} />
+              <XAxis dataKey="label" tick={{ fill: "var(--ink-muted)", fontSize: 12 }} tickLine={false} axisLine={false} />
               <YAxis
                 allowDecimals={false}
-                tick={{ fill: "var(--ink-muted)", fontSize: 11 }}
+                tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
               />

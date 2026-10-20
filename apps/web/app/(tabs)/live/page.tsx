@@ -6,7 +6,7 @@ import { ChevronDown } from "lucide-react";
 import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useSending } from "@/queries/use-sending";
-import { GoldenBadge, type SliceStatus } from "@/components/ui/SegmentLabel";
+import { bestStatus, GoldenBadge } from "@/components/ui/SegmentLabel";
 import { useSliceStatus } from "@/queries/use-golden";
 import { GoldenLine } from "@/components/admin/GoldenLine";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -220,11 +220,6 @@ function statusChipWarns(pick: LivePick, admin: boolean, placement?: Placement):
   if (admin && placement && (pick.sentAt || placement.manual)) return placementChip(placement).tone === "warn";
   if (admin && !pick.sentAt && pick.status !== "flagged" && pick.status !== "unmapped") return false;
   return pick.status === "flagged" || pick.status === "unmapped";
-}
-
-/** Of the watched slices an alert is in, the status to show: Golden first, then candidate, then not holding up. */
-function bestStatus(statuses: Array<SliceStatus | null>): SliceStatus | null {
-  return (["golden", "candidate", "not holding up"] as const).find((s) => statuses.includes(s)) ?? null;
 }
 
 /**
@@ -544,6 +539,8 @@ export default function LivePage() {
   const [showCleared, setShowCleared] = useState(false);
   // Admin: open games' picks by Live (money staked), Sim, or both.
   const [show, setShow] = useState<"all" | "live" | "sim">("all");
+  // Which picks are still in play moves on with the clock (every half minute), read here rather than mid-render.
+  const now = useNow();
 
   if (isLoading) return <ListSkeleton />;
 
@@ -567,7 +564,6 @@ export default function LivePage() {
     );
   }
 
-  const now = Date.now();
   const isLive = (p: LivePick) => !!p.sentAt || !!placements[String(p.id)]?.manual;
   const inPlay = (data ?? []).filter(
     (p) => p.status !== "settled" && now - startOf(p) < STILL_LIVE_MS && (!admin || show === "all" || (show === "live") === isLive(p)),

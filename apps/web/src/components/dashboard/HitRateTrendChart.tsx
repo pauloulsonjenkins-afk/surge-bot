@@ -31,12 +31,12 @@ export function HitRateTrendChart({ stats, isLoading }: { stats: HitRateStats | 
         <div className="h-52 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
-              <XAxis dataKey="label" tick={{ fill: "var(--ink-muted)", fontSize: 11 }} tickLine={false} axisLine={false} />
+              <XAxis dataKey="label" tick={{ fill: "var(--ink-muted)", fontSize: 12 }} tickLine={false} axisLine={false} />
               <YAxis
                 domain={[0, 100]}
                 ticks={[0, 25, 50, 75, 100]}
                 tickFormatter={(v: number) => `${v}%`}
-                tick={{ fill: "var(--ink-muted)", fontSize: 11 }}
+                tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
               />
