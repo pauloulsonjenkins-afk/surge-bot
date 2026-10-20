@@ -183,8 +183,22 @@ function Tiles({ d }: { d: TodaySnapshot }) {
   const names = useStrategyNames();
   const bankAge = d.bank.at ? Date.parse(d.at) - Date.parse(d.bank.at) : null;
   const tg = d.alerts.telegram;
+  // Devices that get GoalBrew's notifications. On 20 Oct 2026 there were none, so "Telegram alerts have stopped",
+  // the daily results and every safety notice reached nobody (a 14-hour outage went unnoticed overnight).
+  const push = useQuery({ queryKey: ["push"], queryFn: ({ signal }) => getJson<{ devices: unknown[] }>("/api/admin/push", "notification settings", signal), staleTime: 5 * 60_000 });
+  const noDevices = push.data !== undefined && push.data.devices.length === 0;
   return (
     <>
+      {noDevices && (
+        <p className="rounded-xl border border-warn/60 bg-warn/10 p-3 text-sm text-ink">
+          <strong>No phone gets GoalBrew&apos;s notifications.</strong> Warnings such as &ldquo;Telegram alerts have stopped&rdquo; reach nobody. Turn them on
+          on your phone:{" "}
+          <Link href="/more/admin/sending" className="font-medium text-accent underline">
+            Betting → Limits and switches → Notifications
+          </Link>
+          , then &ldquo;Send a test&rdquo;.
+        </p>
+      )}
       {d.betting.breaker.open && (
         <p className="rounded-xl border border-loss/60 bg-loss/10 p-3 text-sm text-ink">
           <strong>New bets paused.</strong> {d.betting.breaker.reason} They resume by themselves once Betfair answers again.

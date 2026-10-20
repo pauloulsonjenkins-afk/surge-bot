@@ -31,6 +31,17 @@ const KEEP = new Set([
 ]);
 
 type Snapshot = Record<string, { at: number; data: unknown }>;
+
+/**
+ * Lists longer than this aren't kept: a site may store about 5 MB in all, and the Trade Log's week of picks alone was
+ * 2 MB, so once full nothing more could be saved for any page.
+ */
+const MAX_KEPT_ITEMS = 300;
+const tooBig = (data: unknown): boolean => {
+  if (Array.isArray(data)) return data.length > MAX_KEPT_ITEMS;
+  const picks = (data as { picks?: unknown })?.picks;
+  return Array.isArray(picks) && picks.length > MAX_KEPT_ITEMS;
+};
 let memory: Snapshot | null = null;
 
 function read(): Snapshot {
@@ -77,8 +88,10 @@ export function keepCache(client: QueryClient): () => void {
     changed = false;
     try {
       const snapshot: Snapshot = { ...read() };
+      // A big list kept before the limit above goes now, freeing the space.
+      for (const [hash, entry] of Object.entries(snapshot)) if (tooBig(entry.data)) delete snapshot[hash];
       for (const q of client.getQueryCache().getAll()) {
-        if (q.state.status === "success" && q.state.data !== undefined && KEEP.has(String(q.queryKey[0]))) {
+        if (q.state.status === "success" && q.state.data !== undefined && KEEP.has(String(q.queryKey[0])) && !tooBig(q.state.data)) {
           snapshot[q.queryHash] = { at: q.state.dataUpdatedAt, data: q.state.data };
         }
       }

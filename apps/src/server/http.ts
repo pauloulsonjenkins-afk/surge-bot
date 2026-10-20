@@ -283,7 +283,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         webhooksStored: db.countWebhooks(),
         livePicks: db.countLivePicks(),
         backup: backups.getStatus(),
-        telegram: getListenerStatus(),
+        // Public: whether alerts are being listened for, not which chat (the admin's Telegram status has the detail).
+        telegram: (({ watching, lastAlertAt, lastSyncAt, connectError, sessionDead }) => ({ connected: watching !== null, lastAlertAt, lastSyncAt, connectError, sessionDead }))(
+          getListenerStatus(),
+        ),
         feedLastFetchedAt: getLastFeedFetchAt(),
       });
       return;

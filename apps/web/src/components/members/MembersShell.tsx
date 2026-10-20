@@ -11,12 +11,44 @@ import { useState } from "react";
 import { ArrowLeft, Bell, MoreHorizontal, LogOut, X } from "lucide-react";
 import { MEMBERS_NAV } from "@/lib/members/nav";
 import { useMembersMe } from "@/queries/use-members";
+import { ApiFetchError } from "@/queries/fetch-json";
 import { useMe, useSignOut } from "@/queries/use-me";
 import { TierBadge } from "./ui";
 
+/** Member pages a signed-out visitor can open; every other one asks them to sign in or join. */
+const OPEN_PAGES = new Set(["/members", "/members/join", "/members/login"]);
+
+/**
+ * In place of a members-only page for a signed-out visitor. Those pages waited for the member's details, which never
+ * come without a sign-in, so a visitor tapping Strategies or Upcoming saw a grey box for good (20 Oct 2026).
+ */
+function SignInPrompt({ pathname }: { pathname: string }) {
+  return (
+    <section className="mx-auto max-w-md rounded-xl border border-line bg-surface p-5 text-center">
+      <h1 className="font-display text-title font-bold text-ink [font-stretch:115%]">Members only</h1>
+      <p className="mt-2 text-sm text-ink-muted">
+        Sign in, or create a free account to see the house strategies, their results and what&apos;s coming up. No card needed.
+      </p>
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <Link href="/members/join" className="inline-flex min-h-11 items-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-ink">
+          Create free account
+        </Link>
+        <Link
+          href={`/members/login?next=${encodeURIComponent(pathname)}`}
+          className="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm font-medium text-ink"
+        >
+          Sign in
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export default function MembersShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { data: me, isPending } = useMembersMe();
+  const { data: me, isPending, error: meError } = useMembersMe();
+  // Known to be signed out (not just still loading): the engine answered 401.
+  const signedOut = !me && meError instanceof ApiFetchError && meError.status === 401;
   const signOut = useSignOut();
   const siteAdmin = useMe().data?.admin === true;
   const [more, setMore] = useState(false);
@@ -89,7 +121,7 @@ export default function MembersShell({ children }: { children: React.ReactNode }
             )}
           </nav>
         )}
-        <main className="min-w-0 flex-1 px-4 py-5 pb-[calc(80px+env(safe-area-inset-bottom,0px))] lg:px-8 lg:pb-10">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-5 pb-[calc(80px+env(safe-area-inset-bottom,0px))] lg:px-8 lg:pb-10">{signedOut && !OPEN_PAGES.has(pathname) ? <SignInPrompt pathname={pathname} /> : children}</main>
       </div>
 
       {signedIn && (
