@@ -100,6 +100,7 @@ import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
+import { setGoldenNotify } from "./golden-notify";
 import type { Feature } from "./segments";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
@@ -516,13 +517,19 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     // Golden: watched slices, their status and the finder's suggestions (golden.ts); watch or stop one.
-    if (path === "/internal/golden" || path === "/internal/golden/watch" || path === "/internal/golden/unwatch") {
+    if (path === "/internal/golden" || path === "/internal/golden/watch" || path === "/internal/golden/unwatch" || path === "/internal/golden/notify") {
       if (!requireAdmin(req, res)) return;
       if (req.method === "POST") {
         const body = await readJsonBody(req);
         try {
-          if (typeof body.strategyKey !== "string") throw new Error("Which strategy?");
-          if (path === "/internal/golden/watch") watchSegment(db, body.strategyKey, body.rule as Feature[]);
+          if (path === "/internal/golden/notify") {
+            // { strategyKey, id, on } for one slice's notifications, and/or { quiet } for quiet hours (golden-notify.ts).
+            const slice = typeof body.strategyKey === "string" && typeof body.id === "string" && typeof body.on === "boolean" ? { strategyKey: body.strategyKey, id: body.id, on: body.on } : undefined;
+            const quiet = typeof body.quiet === "boolean" ? body.quiet : undefined;
+            if (!slice && quiet === undefined) throw new Error("What should change?");
+            setGoldenNotify(db, { slice, quiet });
+          } else if (typeof body.strategyKey !== "string") throw new Error("Which strategy?");
+          else if (path === "/internal/golden/watch") watchSegment(db, body.strategyKey, body.rule as Feature[]);
           else if (path === "/internal/golden/unwatch") unwatchSegment(db, body.strategyKey, String(body.id ?? ""));
           else throw new Error("Not found");
         } catch (err) {

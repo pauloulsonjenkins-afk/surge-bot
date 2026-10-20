@@ -1451,6 +1451,12 @@ export class EngineDb {
     return changed;
   }
 
+  /** The pick stored for a Telegram message, or null. */
+  getLivePickByMessage(chatId: string, messageId: number): LivePick | null {
+    const row = this.db.prepare(`SELECT id FROM live_picks WHERE chat_id = ? AND message_id = ?`).get(chatId, messageId) as { id: number } | undefined;
+    return row ? this.getLivePick(row.id) : null;
+  }
+
   getLivePick(id: number): LivePick | null {
     const r = this.db.prepare(`SELECT * FROM live_picks WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
     return r ? this.toLivePick(r) : null;

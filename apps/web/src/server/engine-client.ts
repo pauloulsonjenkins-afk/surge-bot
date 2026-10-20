@@ -1981,6 +1981,8 @@ export interface GoldenSlice {
   bet: { live: boolean; stakePct: number | null; stake: number | null; liveSince?: string | null } | null;
   /** Its own Live bets since it was switched Live on its own (null when it isn't). */
   ownLive?: { n: number; won: number; staked: number; profit: number; roi: number | null } | null;
+  /** A phone notification for each new alert in this slice (golden-notify.ts). */
+  notify?: boolean;
 }
 export interface GoldenSuggestion {
   strategyKey: string;
@@ -1997,6 +1999,8 @@ export interface GoldenReport {
   confirmFrom: number;
   /** The Golden safety check: back to Sim after this many own Live bets below this return. */
   safety?: { minBets: number; worstRoi: number };
+  /** Golden alert notifications: none between 23:00 and 07:00 UK while on. */
+  notifyQuiet?: boolean;
 }
 
 export function fetchGolden(): Promise<GoldenReport> {
@@ -2004,7 +2008,13 @@ export function fetchGolden(): Promise<GoldenReport> {
 }
 
 /** Watch a finder suggestion, or stop watching one. */
-export function goldenAction(body: { action: "watch"; strategyKey: string; rule: string[] } | { action: "unwatch"; strategyKey: string; id: string }): Promise<GoldenReport> {
-  const path = body.action === "watch" ? "/internal/golden/watch" : "/internal/golden/unwatch";
+export type GoldenActionBody =
+  | { action: "watch"; strategyKey: string; rule: string[] }
+  | { action: "unwatch"; strategyKey: string; id: string }
+  | { action: "notify"; strategyKey: string; id: string; on: boolean }
+  | { action: "quiet"; quiet: boolean };
+
+export function goldenAction(body: GoldenActionBody): Promise<GoldenReport> {
+  const path = { watch: "/internal/golden/watch", unwatch: "/internal/golden/unwatch", notify: "/internal/golden/notify", quiet: "/internal/golden/notify" }[body.action];
   return engineCall<GoldenReport>(path, "Golden", { method: "POST", body, timeoutMs: 30000 });
 }

@@ -113,6 +113,25 @@ export default function GoldenPage() {
       ) : (
         <>
           <Card title="Being watched" subtitle={data.slices.length > 0 ? `${data.slices.length} watched · ${golden} proved Golden` : undefined}>
+            {data.slices.length > 0 && (
+              <div className="mb-4 rounded-md bg-surface-2 p-3 text-xs text-ink-muted">
+                <p>
+                  <span className="font-medium text-ink">Alert notifications.</span> Switch &ldquo;Notify me&rdquo; on for a slice to get a notification on
+                  your phone the moment one of its alerts arrives: the match, the bet, the price and whether GoalBrew bets it. One per alert, even if
+                  it&apos;s in several slices. Each notification has a &ldquo;Mute these&rdquo; button.{" "}
+                  {data.slices.filter((s) => s.notify).length} switched on.
+                </p>
+                <button
+                  type="button"
+                  aria-pressed={data.notifyQuiet !== false}
+                  disabled={act.isPending}
+                  onClick={() => act.mutate({ action: "quiet", quiet: data.notifyQuiet === false })}
+                  className={`${action} mt-2 text-ink`}
+                >
+                  Quiet 23:00–07:00: {data.notifyQuiet === false ? "off" : "on"}
+                </button>
+              </div>
+            )}
             {data.slices.length === 0 ? (
               <p className="text-sm text-ink-muted">Nothing is being watched yet.</p>
             ) : (
@@ -153,6 +172,15 @@ export default function GoldenPage() {
                             )}
                             <p className={`text-xs ${s.bet?.live ? "font-medium text-ink" : "text-ink-muted"}`}>{betText(s)}</p>
                             <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                aria-pressed={s.notify === true}
+                                disabled={act.isPending}
+                                onClick={() => act.mutate({ action: "notify", strategyKey: s.strategyKey, id: s.id, on: !s.notify })}
+                                className={`${action} ${s.notify ? "gold-chip-outline font-semibold" : "text-ink"}`}
+                              >
+                                {s.notify ? "🔔 Notify me: on" : "Notify me: off"}
+                              </button>
                               <Link href="/more/admin/strategies" className={`${action} text-accent`}>
                                 Change betting
                               </Link>

@@ -35,6 +35,7 @@ import { isRealAlert, parseAlert } from "../inplayguru/parse-alert";
 import { recordSimBets } from "../inplayguru/bet-feed";
 import { requestExchangeCheck } from "../betfair/exchange";
 import { wakeMembers } from "../members/runner";
+import { notifyGoldenAlert } from "../server/golden-notify";
 import { log } from "../server/log";
 
 const SYNC_EVERY_MS = 2 * 60 * 1000;
@@ -181,6 +182,11 @@ function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boo
     // Find the match on Betfair now, so the bet feed can send Betfair's own event name.
     requestExchangeCheck();
     wakeMembers();
+    // A new alert in a Golden slice the admin asked to hear about: a phone notification (golden-notify.ts).
+    if (what === "inserted") {
+      const stored = db.getLivePickByMessage(m.chatKey, m.messageId);
+      if (stored) void notifyGoldenAlert(db, stored);
+    }
     // Record the simulated bet straight away, so it uses the stake and limits in force when the alert arrived.
     try {
       recordSimBets(db);

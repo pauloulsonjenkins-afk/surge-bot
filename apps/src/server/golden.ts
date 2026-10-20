@@ -22,6 +22,7 @@ import { FEATURES, ruleLabel, ruleTest, SEGMENTS, segmentsOf, setCustomSegments,
 import type { StrategyReturn } from "./winloss";
 import { sendPush } from "./push";
 import { log } from "./log";
+import { getGoldenNotify } from "./golden-notify";
 
 const CUSTOM_KEY = "custom_segments";
 const FOUND_KEY = "golden_suggestions";
@@ -199,6 +200,7 @@ export type GoldenStatus = "candidate" | "golden" | "not holding up";
 /** The Golden page: each watched slice since its start (Live and Sim together), the rest of its strategy over the same time, its status and its own betting. */
 export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?: boolean } = {}) {
   const settings = getSendingSettings(db);
+  const notify = getGoldenNotify(db);
   const returns = computeStrategyReturns(db, null);
   const slices = [];
   for (const [key, r] of Object.entries(returns)) {
@@ -222,6 +224,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         rest: { live: s.out.live, sim: s.out.sim, all: rest },
         bet,
         ownLive,
+        notify: notify.slices[`${key}#${s.id}`] === true,
       });
     }
   }
@@ -245,10 +248,18 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         rest: { live: empty(), sim: empty(), all: empty() },
         bet,
         ownLive: bet?.live && bet.liveSince ? liveSinceRecord(db, key, s.id, bet.liveSince) : null,
+        notify: notify.slices[`${key}#${s.id}`] === true,
       });
     }
   }
-  return { slices, suggestions: opts.skipFinder ? { at: now.toISOString(), list: [] } : goldenSuggestions(db, now), confirmFrom: CONFIRM_FROM, safety: SAFETY };
+  return {
+    slices,
+    suggestions: opts.skipFinder ? { at: now.toISOString(), list: [] } : goldenSuggestions(db, now),
+    confirmFrom: CONFIRM_FROM,
+    safety: SAFETY,
+    // Golden alert notifications: quiet hours on or off (each slice's own switch is on the slice).
+    notifyQuiet: notify.quiet,
+  };
 }
 
 /** The Golden safety check: a slice bet Live on its own is switched back to Sim when it stops earning its place. */

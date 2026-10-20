@@ -71,6 +71,8 @@ export interface PushMessage {
   tag?: string;
   /** A Not placed pick whose team Betfair spells differently: the notification offers "Add name & send" for it. */
   fixPickId?: number;
+  /** A Golden alert: the notification offers "Mute" for the slice it came from (golden-notify.ts). */
+  muteSlice?: { strategyKey: string; id: string; name: string };
 }
 
 /**

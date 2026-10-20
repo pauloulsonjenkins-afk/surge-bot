@@ -14,15 +14,41 @@ self.addEventListener("push", (event) => {
       renotify: Boolean(data.tag),
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      data: { url: data.url || "/", fixPickId: data.fixPickId },
-      // A pick not placed because Betfair spells a team differently can be fixed from the notification itself.
-      actions: data.fixPickId ? [{ action: "fix", title: "Add name & send" }] : [],
+      data: { url: data.url || "/", fixPickId: data.fixPickId, muteSlice: data.muteSlice },
+      // A pick not placed because Betfair spells a team differently can be fixed from the notification itself; a
+      // Golden alert's slice can be muted from it.
+      actions: data.fixPickId ? [{ action: "fix", title: "Add name & send" }] : data.muteSlice ? [{ action: "mute", title: "Mute these" }] : [],
     }),
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const muteSlice = event.notification.data && event.notification.data.muteSlice;
+  if (event.action === "mute" && muteSlice) {
+    // Switches that Golden slice's alert notifications off (signed-in cookie included); switch it back on from Golden.
+    event.waitUntil(
+      fetch("/api/admin/golden", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ action: "notify", strategyKey: muteSlice.strategyKey, id: muteSlice.id, on: false }),
+      })
+        .then((res) =>
+          self.registration.showNotification(res.ok ? "Muted" : "Couldn't mute it", {
+            body: res.ok ? `No more alerts for ${muteSlice.name}. Switch them back on from Golden.` : "Open Golden to switch it off there.",
+            tag: "golden-mute",
+            icon: "/icons/icon-192.png",
+            badge: "/icons/icon-192.png",
+            data: { url: "/more/admin/golden" },
+          }),
+        )
+        .catch(() =>
+          self.registration.showNotification("Couldn't mute it", { body: "No connection. Open Golden to switch it off there.", tag: "golden-mute", data: { url: "/more/admin/golden" } }),
+        ),
+    );
+    return;
+  }
   const fixPickId = event.notification.data && event.notification.data.fixPickId;
   if (event.action === "fix" && fixPickId) {
     // Adds Betfair's spelling to Match names and re-sends the bet, then says how it went (signed-in cookie included).
