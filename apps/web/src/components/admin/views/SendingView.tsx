@@ -282,7 +282,8 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
             <ul className="mt-1 space-y-1">
               {data.preview.skipped.map((k) => (
                 <li key={k.pickId} className="text-xs text-ink-muted">
-                  <span className="text-ink">{k.match}</span> — {k.reason}
+                  {/* Which strategy, so "This strategy's switch is off" says whose. */}
+                  <span className="text-ink">{k.match}</span> · <span className="text-ink">{strategyNames.name(k.strategy)}</span> — {k.reason}
                 </li>
               ))}
             </ul>
