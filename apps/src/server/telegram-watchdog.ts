@@ -35,8 +35,22 @@ export interface WatchdogInput {
   now: Date;
   startedAt: Date;
   configured: boolean;
-  listener: Pick<ListenerStatus, "watching" | "lastSyncAt" | "lastSyncError">;
+  listener: Pick<ListenerStatus, "watching" | "lastSyncAt" | "lastSyncError"> & Partial<Pick<ListenerStatus, "connectError" | "nextTryAt" | "sessionDead">>;
   lastPickAt: string | null;
+}
+
+const ukClock = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
+
+/** Why the listener isn't connected, in plain words, with what to do when it's the saved login (supervisor.ts). */
+function notConnected(l: WatchdogInput["listener"]): string {
+  if (l.sessionDead && l.connectError) {
+    return `Telegram has stopped accepting GoalBrew's saved login (${l.connectError}). Log in again on Admin > Settings > Telegram, then save the new session in DigitalOcean as TELEGRAM_SESSION.`;
+  }
+  if (l.connectError) {
+    const next = l.nextTryAt ? ` Trying again at ${ukClock.format(new Date(l.nextTryAt))}.` : "";
+    return `The Telegram listener isn't connected to the alerts chat: the last try failed (${l.connectError}).${next}`;
+  }
+  return "The Telegram listener isn't connected to the alerts chat.";
 }
 
 function ukHour(d: Date): number {
@@ -49,7 +63,7 @@ export function telegramProblems(i: WatchdogInput): string[] {
   const out: string[] = [];
   const now = i.now.getTime();
   const settled = now - i.startedAt.getTime() >= START_GRACE_MS;
-  if (settled && !i.listener.watching) out.push("The Telegram listener isn't connected to the alerts chat.");
+  if (settled && !i.listener.watching) out.push(notConnected(i.listener));
   if (settled && i.listener.lastSyncError) {
     const lastOk = i.listener.lastSyncAt ? Date.parse(i.listener.lastSyncAt) : i.startedAt.getTime();
     if (now - lastOk >= SYNC_FAIL_MS) out.push(`Telegram catch-up has been failing for over 30 minutes (${i.listener.lastSyncError}).`);

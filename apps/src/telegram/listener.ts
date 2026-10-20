@@ -61,6 +61,11 @@ export interface ListenerStatus {
   lastSyncError: string | null;
   /** Alerts the catch-up sync found that live updates had missed, since start. */
   recoveredBySync: number;
+  /** Why connecting from the saved session last failed (null once connected), and when it's tried again (supervisor.ts). */
+  connectError: string | null;
+  nextTryAt: string | null;
+  /** Telegram refused the saved session itself: retrying won't help, a new login will. */
+  sessionDead: boolean;
 }
 
 const status: ListenerStatus = {
@@ -69,19 +74,37 @@ const status: ListenerStatus = {
   lastSyncAt: null,
   lastSyncError: null,
   recoveredBySync: 0,
+  connectError: null,
+  nextTryAt: null,
+  sessionDead: false,
 };
 
 export function getListenerStatus(): ListenerStatus {
   return { ...status };
 }
 
-let attachedFor: string | null = null;
-let stopped = false;
+/** How the last attempt to connect from the saved session went (supervisor.ts). */
+export function setConnectState(s: { error: string | null; nextTryAt: string | null; dead: boolean }): void {
+  status.connectError = s.error;
+  status.nextTryAt = s.nextTryAt;
+  status.sessionDead = s.dead;
+}
 
-/** Stops storing and syncing (another container has taken over). The Telegram client itself is disconnected by the caller. */
+let attachedFor: string | null = null;
+/**
+ * Which attachment is current. A listener can be stopped (another container took over, or a reconnect) and attached
+ * again on a new client: the old client's handlers and catch-up timer see a different number and do nothing.
+ */
+let generation = 0;
+let syncTimer: NodeJS.Timeout | null = null;
+
+/** Stops storing and syncing (another container has taken over, or before a reconnect). The caller disconnects the client. */
 export function stopTelegramListener(): void {
-  stopped = true;
+  generation++;
+  attachedFor = null;
   status.watching = null;
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = null;
 }
 
 interface IncomingText {
@@ -184,6 +207,8 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
   }
   attachedFor = chatId;
   status.watching = chatId;
+  const mine = ++generation;
+  const stopped = () => mine !== generation;
   const target = BigInt(chatId);
 
   // message.chatId is worked out locally from the message itself, so non-matching chats are
@@ -196,7 +221,7 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
 
   async function handle(event: NewMessageEvent | EditedMessageEvent, isEdit: boolean): Promise<void> {
     try {
-      if (stopped) return;
+      if (stopped()) return;
       const message = event.message;
       if (!isOurs(message)) return;
       const text = message.message ?? "";
@@ -229,7 +254,7 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
   let backfilled = false;
   let syncCount = 0;
   const sync = async () => {
-    if (syncing || stopped) return;
+    if (syncing || stopped()) return;
     syncing = true;
     try {
       if (!client.connected) {
@@ -284,5 +309,7 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
   };
 
   void sync();
-  setInterval(() => void sync(), SYNC_EVERY_MS).unref();
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => void sync(), SYNC_EVERY_MS);
+  syncTimer.unref();
 }

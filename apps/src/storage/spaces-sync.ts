@@ -85,25 +85,27 @@ export class SpacesSync {
     return posix.join(dir === "." ? "" : dir, "lease.json");
   }
 
-  /** Who holds the backup lease and when they last refreshed it; null if there is no lease yet. */
-  async readLease(): Promise<{ owner: string; at: number } | null> {
+  /** Who holds the backup lease, when they last refreshed it and when that container started; null if there is no lease yet. */
+  async readLease(): Promise<Lease | null> {
     try {
       const res = await this.s3.send(new GetObjectCommand({ Bucket: this.cfg.bucket, Key: this.leaseKey }));
       const text = res.Body ? await res.Body.transformToString() : "";
-      const lease = JSON.parse(text) as { owner?: unknown; at?: unknown };
-      return typeof lease.owner === "string" && typeof lease.at === "number" ? { owner: lease.owner, at: lease.at } : null;
+      const lease = JSON.parse(text) as { owner?: unknown; at?: unknown; born?: unknown };
+      return typeof lease.owner === "string" && typeof lease.at === "number"
+        ? { owner: lease.owner, at: lease.at, born: typeof lease.born === "number" ? lease.born : 0 }
+        : null;
     } catch (err) {
       if (err instanceof S3ServiceException && err.name === "NoSuchKey") return null;
       throw err;
     }
   }
 
-  async writeLease(owner: string): Promise<void> {
+  async writeLease(owner: string, born: number): Promise<void> {
     await this.s3.send(
       new PutObjectCommand({
         Bucket: this.cfg.bucket,
         Key: this.leaseKey,
-        Body: JSON.stringify({ owner, at: Date.now() }),
+        Body: JSON.stringify({ owner, at: Date.now(), born }),
         ContentType: "application/json",
         ACL: "private",
       }),
@@ -130,6 +132,24 @@ export interface BackupStatus {
 /** A lease not refreshed for this long is treated as abandoned. */
 const LEASE_STALE_MS = 3 * 60 * 1000;
 
+/** The backup lease: who holds it, when they last refreshed it, and when that container started (0 = before 20 Oct 2026). */
+export interface Lease {
+  owner: string;
+  at: number;
+  born: number;
+}
+
+/**
+ * Whether this container should hand over to the lease's holder: another container, still refreshing it, that started
+ * LATER than this one. Reading the lease and writing it are two steps, so an outgoing container can rewrite its own
+ * lease just after the new one wrote its; before 20 Oct 2026 the new one then took that for a newer container and
+ * switched its own Telegram listener off for good. Now the newest container always keeps it.
+ */
+export function shouldHandOver(lease: Lease | null, me: { owner: string; born: number }, now: number): boolean {
+  if (!lease || lease.owner === me.owner || now - lease.at >= LEASE_STALE_MS) return false;
+  return lease.born > me.born || (lease.born === me.born && lease.owner > me.owner);
+}
+
 export class BackupScheduler {
   private dirty = false;
   private owner = true;
@@ -149,13 +169,16 @@ export class BackupScheduler {
     private readonly instanceId: string = "single",
     /** Called once when another container takes over the backup (a newer deploy). */
     private readonly onLostOwnership: () => void = () => {},
+    /** Called when this container takes the backup back after handing it over (the newer one stopped refreshing it). */
+    private readonly onRegainedOwnership: () => void = () => {},
+    /** When this container started: the newest container keeps the lease (shouldHandOver). */
+    private readonly born: number = Date.now(),
   ) {}
 
   /** Checks the lease before an upload. Returns true if this container may upload. */
   private async holdLease(): Promise<boolean> {
     const lease = await this.sync.readLease();
-    const foreignAndLive = lease !== null && lease.owner !== this.instanceId && Date.now() - lease.at < LEASE_STALE_MS;
-    if (foreignAndLive) {
+    if (shouldHandOver(lease, { owner: this.instanceId, born: this.born }, Date.now())) {
       if (this.owner) {
         this.owner = false;
         log.warn("A newer container holds the backup lease: this container stops uploading and hands over.");
@@ -163,9 +186,12 @@ export class BackupScheduler {
       }
       return false;
     }
-    if (!this.owner) log.warn("The backup lease was abandoned by the newer container; this container is taking it back.");
-    this.owner = true;
-    await this.sync.writeLease(this.instanceId);
+    if (!this.owner) {
+      log.warn("The backup lease was abandoned by the newer container; this container is taking it back.");
+      this.owner = true;
+      this.onRegainedOwnership();
+    }
+    await this.sync.writeLease(this.instanceId, this.born);
     return true;
   }
 

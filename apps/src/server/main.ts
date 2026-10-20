@@ -12,7 +12,8 @@ import { createEngineHttpServer } from "./http";
 import { EngineDb } from "../storage/engine-db";
 import { BackupScheduler, SpacesSync } from "../storage/spaces-sync";
 import { createTelegramClient } from "../telegram/client";
-import { startTelegramListener, stopTelegramListener } from "../telegram/listener";
+import { getListenerStatus, setConnectState, startTelegramListener, stopTelegramListener } from "../telegram/listener";
+import { superviseTelegram, type Supervisor } from "../telegram/supervisor";
 import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 import { recordSimBets } from "../inplayguru/bet-feed";
@@ -54,20 +55,54 @@ async function main(): Promise<void> {
   // Claims the backup for this container, so an older container still running during a deploy stops
   // uploading instead of overwriting this one's database with its own last copy.
   const instanceId = randomUUID();
-  await sync.writeLease(instanceId);
+  const born = Date.now();
+  await sync.writeLease(instanceId, born);
 
-  let telegramClient: ReturnType<typeof createTelegramClient> | null = null;
+  let telegram: Supervisor | null = null;
   let backups: BackupScheduler | null = null;
   const db = new EngineDb(env.dbPath, () => backups?.markDirty());
   // Golden slices added from the finder (segments.ts), before anything prices or bets a pick.
   loadCustomSegments(db);
-  backups = new BackupScheduler(db, sync, join(dirname(env.dbPath), "snapshot-upload.db"), 5_000, 60_000, instanceId, () => {
-    // Two containers on one Telegram session can get the session revoked, and both would store alerts.
-    stopTelegramListener();
-    void telegramClient?.disconnect().catch(() => {});
-    log.warn("Telegram listener disconnected: the newer container has taken over.");
-  });
+  backups = new BackupScheduler(
+    db,
+    sync,
+    join(dirname(env.dbPath), "snapshot-upload.db"),
+    5_000,
+    60_000,
+    instanceId,
+    () => {
+      // Two containers on one Telegram session can get the session revoked, and both would store alerts.
+      void telegram?.stop();
+      log.warn("Telegram listener disconnected: the newer container has taken over.");
+    },
+    () => {
+      // The newer container went away (its deploy failed or was rolled back): this one listens again.
+      telegram?.start();
+      log.warn("Telegram listener starting again: this container has taken the backup back.");
+    },
+    born,
+  );
   backups.start();
+
+  // Stopping (a deploy, a restart): set up before anything below can wait on the network, so the last changes are
+  // always backed up (it used to come after the Telegram connection, which could wait for ever).
+  let stopping = false;
+  let httpServer: ReturnType<typeof createEngineHttpServer> | null = null;
+  const shutdown = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    log.info(`${signal} received: finishing requests and uploading the final backup.`);
+    httpServer?.close();
+    await telegram?.stop().catch(() => {});
+    try {
+      await backups?.flush();
+    } finally {
+      db.close();
+      process.exit(0);
+    }
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 
   // Correct any stored results using the current rules (hit/miss from the final score).
   try {
@@ -169,6 +204,7 @@ async function main(): Promise<void> {
   startMembers(db, memberTrader ? { trading: memberTrader, account: () => memberTrader.account() } : null);
 
   const server = createEngineHttpServer(env, db, backups);
+  httpServer = server;
   server.listen(env.port, "0.0.0.0", () => log.info(`Engine web service listening on port ${env.port}.`));
 
   // Daily fixtures for the Schedule tab. Nothing happens until the key is set.
@@ -192,36 +228,34 @@ async function main(): Promise<void> {
   const tgSession = process.env.TELEGRAM_SESSION;
   const tgChatId = process.env.TELEGRAM_SOURCE_CHAT_ID;
   if (tgApiId && tgApiHash && tgSession && tgChatId) {
-    try {
-      const client = createTelegramClient(Number(tgApiId), tgApiHash, tgSession);
-      telegramClient = client;
-      await client.connect();
-      await startTelegramListener(client, db, tgChatId);
-      log.info("Telegram listener resumed from saved session.");
-    } catch (err) {
-      log.error(
-        `Failed to resume the Telegram listener from the saved session: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    // Connected in the background and kept connected: a failed attempt is tried again (telegram/supervisor.ts).
+    telegram = superviseTelegram({
+      connect: () => {
+        const client = createTelegramClient(Number(tgApiId), tgApiHash, tgSession);
+        // Only this attempt's own listener is stopped on closing, never one attached from the admin's Telegram tab.
+        let attached = false;
+        const ready = (async () => {
+          await client.connect();
+          await startTelegramListener(client, db, tgChatId);
+          attached = true;
+          log.info("Telegram listener resumed from saved session.");
+        })();
+        return {
+          ready,
+          close: async () => {
+            if (attached) stopTelegramListener();
+            await client.destroy().catch(() => client.disconnect());
+          },
+        };
+      },
+      onState: (s) => setConnectState(s),
+      // Logged in again from the admin's Telegram tab meanwhile: that listener is the one in use.
+      attachedElsewhere: () => getListenerStatus().watching !== null,
+    });
+    telegram.start();
   } else {
     log.info("Telegram env vars not fully set yet; log in via the admin Telegram tab first.");
   }
-
-  let stopping = false;
-  const shutdown = async (signal: string) => {
-    if (stopping) return;
-    stopping = true;
-    log.info(`${signal} received: finishing requests and uploading the final backup.`);
-    server.close();
-    try {
-      await backups?.flush();
-    } finally {
-      db.close();
-      process.exit(0);
-    }
-  };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((err) => {
