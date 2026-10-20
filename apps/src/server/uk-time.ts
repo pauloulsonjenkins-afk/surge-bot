@@ -10,6 +10,24 @@ export function ukDateOf(d: Date): string {
   return ukDay.format(d);
 }
 
+/**
+ * ukDateOf for a stored time (ISO), kept for each hour: a UK day starts on the hour (midnight GMT or BST) and the clocks
+ * change on the hour, so every moment in one hour has the same UK day. For reports that date every pick: working it out
+ * afresh for each was a sixth of their time.
+ */
+const dayByHour = new Map<number, string>();
+export function ukDateOfIso(at: string): string {
+  const ms = Date.parse(at);
+  if (!Number.isFinite(ms)) return ukDay.format(new Date(at));
+  const hour = Math.floor(ms / 3_600_000);
+  let day = dayByHour.get(hour);
+  if (day === undefined) {
+    if (dayByHour.size > 50_000) dayByHour.clear();
+    dayByHour.set(hour, (day = ukDay.format(hour * 3_600_000)));
+  }
+  return day;
+}
+
 /** The moment a UK day starts (00:00 UK time) as a UTC instant. */
 function startOfUkDay(date: string): number {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];

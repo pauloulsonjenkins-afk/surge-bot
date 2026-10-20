@@ -92,8 +92,10 @@ import { currentStake, getBank } from "../inplayguru/stake";
 import { addMatchName, betPickNow, pickSegments, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
-import { computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
+import { ALL_TIME, computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
+import { cachedReport, clearReportCache } from "./report-cache";
+import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
 import { computeStrategyWeeks } from "./strategy-weeks";
@@ -230,6 +232,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const rawUrl = req.url ?? "/";
     const path = rawUrl.split("?")[0] ?? "/";
+
+    // Anything that may change data (an admin action, an alert, an import) starts the reused reports afresh: before it,
+    // and again once it has finished, so a report worked out while it was under way isn't kept (report-cache.ts).
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      clearReportCache(db);
+      res.once("close", () => clearReportCache(db));
+    }
 
     // For an outside uptime monitor: 503 while Telegram alerts aren't arriving (see telegram-watchdog.ts). Not used as
     // DigitalOcean's health check, which must stay on /health.
@@ -555,7 +564,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           return;
         }
       }
-      send(res, 200, { ...goldenReport(db) });
+      const golden = () => {
+        const { timed, done } = reportTimings("Golden page data");
+        const report = timed("golden", () => goldenReport(db));
+        return { ...report, timings: done(), at: new Date().toISOString() };
+      };
+      // After a change, worked out anew; otherwise reused for up to a minute (report-cache.ts).
+      send(res, 200, req.method === "GET" ? cachedReport(db, "golden", golden) : golden());
       return;
     }
 
@@ -569,7 +584,16 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 401, { error: "unauthorized" });
         return;
       }
-      send(res, 200, { ...computeStrategyWeeks(db) });
+      send(
+        res,
+        200,
+        // The UK day is in the key, so a new week starts at midnight on Monday even with no new results.
+        cachedReport(db, `strategy-weeks:${ukDateOf(new Date())}`, () => {
+          const { timed, done } = reportTimings("Strategies weekly data");
+          const weeks = timed("weeks", () => computeStrategyWeeks(db));
+          return { ...weeks, timings: done(), at: new Date().toISOString() };
+        }),
+      );
       return;
     }
 
@@ -1211,8 +1235,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
       }
       const winLossMode = parsePickMode(new URL(rawUrl, "http://internal").searchParams.get("mode"));
-      // The UK day is in the key, so "today" and the month roll over at midnight even with no new data.
-      send(res, 200, memoized(db, `winloss:${winLossMode}:${ukDateOf(new Date())}`, () => ({ ...computeWinLoss(db, new Date(), winLossMode) })));
+      const winLoss = () => {
+        const { timed, done } = reportTimings("Profit page data");
+        const state = timed("winloss", () => computeWinLoss(db, new Date(), winLossMode));
+        return { ...state, timings: done(), at: new Date().toISOString() };
+      };
+      // After a change, worked out anew; otherwise reused for up to a minute (report-cache.ts). The UK day is in the key,
+      // so "today" and the month roll over at midnight even with no new data.
+      send(res, 200, req.method === "GET" ? cachedReport(db, `winloss:${winLossMode}:${ukDateOf(new Date())}`, winLoss) : winLoss());
       return;
     }
 
@@ -1373,26 +1403,35 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         send(res, 401, { error: "unauthorized" });
         return;
       }
-      const settings = getSendingSettings(db);
       const sinceParam = new URL(rawUrl, "http://internal").searchParams.get("since");
       const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
       const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
-      // Money counts from a rule change like the record does; the figures from before come back as `before`.
-      const returns = computeStrategyReturns(db, since, { fromRuleChange: true });
-      const form = computeStrategyForm(db);
-      send(res, 200, {
-        ignored: Object.values(db.getIgnoredStrategies()).sort(),
-        since,
-        strategies: db.listStrategiesForAdmin(since).map((x) => ({
-          ...x,
-          returns: returns[x.label.toLowerCase()] ?? null,
-          form: form[x.label.toLowerCase()] ?? null,
-          sendingOn: settings.strategies[x.label.toLowerCase()] === true,
-          // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
-          mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
-          stake: currentStake(db, settings, x.label.toLowerCase()),
-        })),
-      });
+      // Reused for up to a minute (report-cache.ts).
+      send(
+        res,
+        200,
+        cachedReport(db, `strategies:${since}`, () => {
+          const { timed, done } = reportTimings("Strategies page data");
+          const settings = getSendingSettings(db);
+          // Every settled pick, read once for both the money figures and the recent form.
+          const rows = timed("read", () => db.listResultsForWinLoss(ALL_TIME));
+          // Money counts from a rule change like the record does; the figures from before come back as `before`.
+          const returns = timed("returns", () => computeStrategyReturns(db, since, { fromRuleChange: true, rows }));
+          const form = timed("form", () => computeStrategyForm(db, new Date(), rows));
+          const strategies = timed("list", () =>
+            db.listStrategiesForAdmin(since).map((x) => ({
+              ...x,
+              returns: returns[x.label.toLowerCase()] ?? null,
+              form: form[x.label.toLowerCase()] ?? null,
+              sendingOn: settings.strategies[x.label.toLowerCase()] === true,
+              // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
+              mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
+              stake: currentStake(db, settings, x.label.toLowerCase()),
+            })),
+          );
+          return { ignored: Object.values(db.getIgnoredStrategies()).sort(), since, strategies, timings: done(), at: new Date().toISOString() };
+        }),
+      );
       return;
     }
 

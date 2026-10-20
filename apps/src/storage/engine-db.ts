@@ -577,6 +577,8 @@ export interface AppUserRow {
 export class EngineDb {
   private readonly db: Database.Database;
   private readonly onChange: () => void;
+  /** See resultsVersion(). */
+  private resultWrites = 0;
 
   constructor(path: string, onChange: () => void) {
     mkdirSync(dirname(path), { recursive: true });
@@ -1053,7 +1055,7 @@ export class EngineDb {
          WHERE pick_id IS NULL AND bet_id IN (SELECT bet_id FROM direct_bets WHERE bet_id IS NOT NULL)`,
       )
       .run();
-    if (r.changes > 0) this.onChange();
+    if (r.changes > 0) this.resultsChanged();
     return r.changes;
   }
 
@@ -1269,6 +1271,8 @@ export class EngineDb {
         leagueCountryFromText(rawText),
       );
 
+    // A new alert waiting for its result doesn't change any money figure yet; a result, or a change to a stored pick, does.
+    if (settled || existing) this.resultWrites++;
     this.onChange();
     return existing ? "updated" : "inserted";
   }
@@ -1798,7 +1802,7 @@ export class EngineDb {
          WHERE (exchange IS NULL OR exchange <> 'on') AND EXISTS (SELECT 1 FROM betfair_bets b WHERE b.pick_id = live_picks.id)`,
       )
       .run();
-    if (r.changes > 0) this.onChange();
+    if (r.changes > 0) this.resultsChanged();
     return r.changes;
   }
 
@@ -1965,7 +1969,7 @@ export class EngineDb {
     this.db.transaction(() => {
       for (const id of ids) upd.run(id);
     })();
-    if (ids.length > 0) this.onChange();
+    if (ids.length > 0) this.resultsChanged();
     return ids.length;
   }
 
@@ -1990,7 +1994,7 @@ export class EngineDb {
         del.run(r.id);
       }
     })();
-    if (mine.length > 0) this.onChange();
+    if (mine.length > 0) this.resultsChanged();
     return mine.length;
   }
 
@@ -2096,7 +2100,7 @@ export class EngineDb {
       // Telegram only ever re-delivers recent messages, so old notes can go.
       this.db.prepare(`DELETE FROM deleted_picks WHERE deleted_at < ?`).run(new Date(Date.now() - 60 * 24 * 3_600_000).toISOString());
     })();
-    if (deletable.length > 0) this.onChange();
+    if (deletable.length > 0) this.resultsChanged();
     return { removed: deletable.length, keptBecauseSent: mine.length - deletable.length };
   }
 
@@ -2108,7 +2112,7 @@ export class EngineDb {
   /** Marks (or unmarks) a pick as "didn't actually bet". Excluded picks are left out of stats and Win/Loss. */
   setPickExcluded(id: number, excluded: boolean): boolean {
     const info = this.db.prepare(`UPDATE live_picks SET excluded = ? WHERE id = ?`).run(excluded ? 1 : 0, id);
-    if (info.changes > 0) this.onChange();
+    if (info.changes > 0) this.resultsChanged();
     return info.changes > 0;
   }
 
@@ -2136,7 +2140,7 @@ export class EngineDb {
     const info = this.db
       .prepare(`UPDATE live_picks SET result_override = ?, result_override_at = ? WHERE id = ?`)
       .run(result, result === null ? null : new Date().toISOString(), id);
-    if (info.changes > 0) this.onChange();
+    if (info.changes > 0) this.resultsChanged();
     return info.changes > 0;
   }
 
@@ -2169,7 +2173,7 @@ export class EngineDb {
         // leave this row as it was
       }
     }
-    if (rows.length > 0) this.onChange();
+    if (rows.length > 0) this.resultsChanged();
     return changed;
   }
 
@@ -2358,7 +2362,7 @@ export class EngineDb {
   setManualBet(id: number, bet: { stake: number; odds: number } | null): boolean {
     const value = bet ? JSON.stringify({ stake: bet.stake, odds: bet.odds, at: new Date().toISOString() }) : null;
     const changed = this.db.prepare(`UPDATE live_picks SET manual_bet = ? WHERE id = ?`).run(value, id).changes;
-    if (changed > 0) this.onChange();
+    if (changed > 0) this.resultsChanged();
     return changed > 0;
   }
 
@@ -2748,7 +2752,7 @@ export class EngineDb {
         }
       }
     })();
-    if (changed > 0) this.onChange();
+    if (changed > 0) this.resultsChanged();
     return { added, updated, changed };
   }
 
@@ -2792,7 +2796,7 @@ export class EngineDb {
     this.db.transaction(() => {
       for (const l of links) upd.run(l.pickId, l.betId);
     })();
-    if (links.length > 0) this.onChange();
+    if (links.length > 0) this.resultsChanged();
   }
 
   /** Every pick ever handed to the bet feed, with the row it was sent as. */
@@ -2954,6 +2958,22 @@ export class EngineDb {
   }
 
   /**
+   * Goes up whenever something the money figures are worked out from changes: a pick settles, its result is amended,
+   * it is excluded, removed or bet by hand, or a Betfair bet is saved or linked to it. Unlike changeCount it stays the
+   * same while alerts only wait for results and background checks write, so the admin's reports can be reused between
+   * results (server/report-cache.ts). Settings are checked there separately. Not saved: it starts again with the engine.
+   */
+  resultsVersion(): number {
+    return this.resultWrites;
+  }
+
+  /** A money figure's input changed: counted for resultsVersion, and saved in the next backup like any change. */
+  private resultsChanged(): void {
+    this.resultWrites++;
+    this.onChange();
+  }
+
+  /**
    * The SQLite connection, for modules that keep their own tables in the same file (the Members platform, see
    * src/members/store.ts), so they are backed up with everything else. Call `changed()` after writing.
    */
@@ -3051,7 +3071,7 @@ export class EngineDb {
   /** Settles an Edge value pick from Betfair's result. */
   settleEdgePick(id: number, result: "hit" | "miss", at: string): void {
     this.db.prepare(`UPDATE live_picks SET result = ?, status = 'settled', updated_at = ? WHERE id = ? AND chat_id = ?`).run(result, at, id, EDGE_CHAT);
-    this.onChange();
+    this.resultsChanged();
   }
 
   /** When simulated bets that would have been placed were recorded, from roughly the last day and a half (for the daily limit). */

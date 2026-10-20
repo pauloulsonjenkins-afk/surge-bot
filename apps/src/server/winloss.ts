@@ -31,6 +31,7 @@ import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { segmentsOf } from "./segments";
 import { currentStake } from "../inplayguru/stake";
 import { breakevenHitRate, hitRateRange, oddsFor, priceResult } from "./pricing";
+import { ukDateOfIso as ukDayOf } from "./uk-time";
 
 export interface WinLossSettings {
   /** Betfair commission on winnings, in percent. */
@@ -199,6 +200,20 @@ function addDays(iso: string, n: number): string {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Each strategy's stake today, worked out once per report: it depends on the settings and the balance, never on the
+ * pick. Reading the balance for every pick took about half of each report's time.
+ */
+function stakeLookup(db: EngineDb, sending: ReturnType<typeof getSendingSettings>): (key: string) => number | null {
+  const known = new Map<string, number | null>();
+  return (key) => {
+    let s = known.get(key);
+    if (s === undefined) known.set(key, (s = currentStake(db, sending, key)));
+    return s;
+  };
+}
+
+
 export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = "all"): WinLossState {
   const settings = getWinLossSettings(db);
   const sending = getSendingSettings(db);
@@ -215,23 +230,26 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
   /** The line a strategy is reported on: its own name, or the one it was merged into. */
   const reportedAs = (key: string, label: string): string => merges[key] ?? label;
 
-  // gkey = the reported line; key = the original strategy, which still decides the stake and odds.
+  // gkey = the reported line; key = the original strategy, which still decides the stake and odds. time: the UK time of
+  // day, for the one-day graph, so only today's picks need it.
   interface Priced { day: string; time: string; key: string; gkey: string; profit: number }
+  const timeOf = (day: string, at: string) => (day === today ? ukTime.format(new Date(at)) : "");
   const priced: Priced[] = [];
   const tally = new Map<string, WinLossStrategy>();
   /** Strategies with at least one settled pick in the chosen mode; only these get a line of their own. */
   const inMode = new Set<string>();
   const commission = settings.commission / 100;
+  const stakeOf = stakeLookup(db, sending);
 
   for (const r of rows) {
-    const day = ukDay.format(new Date(r.firstSeenAt));
+    const day = ukDayOf(r.firstSeenAt);
     if (day < earliest || day > today) continue;
     // Before this year (January's 30-day view only): priced for that view, but not in the year's table.
     if (day < start.ytd) {
       if (!inPickMode(r.placement, mode)) continue;
       const k = strategyLabel(r.strategy).toLowerCase();
-      const out = priceResult(r, { strategyStake: currentStake(db, sending, k), assumedOdds: settings.assumedOdds[k] ?? null, commission: settings.commission / 100 });
-      if (out.kind === "priced") priced.push({ day, time: ukTime.format(new Date(r.firstSeenAt)), key: k, gkey: reportedAs(k, strategyLabel(r.strategy)).toLowerCase(), profit: out.profit });
+      const out = priceResult(r, { strategyStake: stakeOf(k), assumedOdds: settings.assumedOdds[k] ?? null, commission: settings.commission / 100 });
+      if (out.kind === "priced") priced.push({ day, time: timeOf(day, r.firstSeenAt), key: k, gkey: reportedAs(k, strategyLabel(r.strategy)).toLowerCase(), profit: out.profit });
       continue;
     }
 
@@ -243,7 +261,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
         label,
         key,
         market: r.market,
-        stake: currentStake(db, sending, key),
+        stake: stakeOf(key),
         assumedOdds: settings.assumedOdds[key] ?? null,
         settled: 0,
         counted: 0,
@@ -258,7 +276,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     t.settled++;
     inMode.add(key);
 
-    const out = priceResult(r, { strategyStake: currentStake(db, sending, key), assumedOdds: settings.assumedOdds[key] ?? null, commission });
+    const out = priceResult(r, { strategyStake: stakeOf(key), assumedOdds: settings.assumedOdds[key] ?? null, commission });
     if (out.kind === "noStake") {
       t.noStake++;
       continue;
@@ -273,7 +291,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     }
     t.counted++;
     if (out.usedAlertOdds) t.usedAlertOdds++;
-    priced.push({ day, time: ukTime.format(new Date(r.firstSeenAt)), key, gkey: reportedAs(key, label).toLowerCase(), profit: out.profit });
+    priced.push({ day, time: timeOf(day, r.firstSeenAt), key, gkey: reportedAs(key, label).toLowerCase(), profit: out.profit });
   }
 
   // ---- expenditure: months charged in a period ----
@@ -428,7 +446,19 @@ export interface EquityPoint {
   total: number;
 }
 
-type ResultRow = ReturnType<EngineDb["listResultsForWinLoss"]>[number];
+export type ResultRow = ReturnType<EngineDb["listResultsForWinLoss"]>[number];
+
+export const ALL_TIME = "1970-01-01T00:00:00.000Z";
+
+/**
+ * The settled picks from `sinceIso` on (null = all time). With `shared` (every settled pick, as
+ * db.listResultsForWinLoss(ALL_TIME) gives them), the same picks are taken from it instead of being read again: one
+ * read can then serve several reports worked out together. Those rows are only ever read, never changed.
+ */
+export function settledSince(db: EngineDb, sinceIso: string | null, shared?: ResultRow[]): ResultRow[] {
+  if (!shared) return db.listResultsForWinLoss(sinceIso ?? ALL_TIME);
+  return sinceIso === null ? shared : shared.filter((r) => r.firstSeenAt >= sinceIso);
+}
 
 /** Builds a StrategyReturn pick by pick, in time order. */
 /**
@@ -470,7 +500,7 @@ class ReturnTally {
   }
 
   add(r: ResultRow, priced: ReturnType<typeof priceResult>, odds: number | null): void {
-    const day = ukDay.format(new Date(r.firstSeenAt));
+    const day = ukDayOf(r.firstSeenAt);
     this.settled++;
     if (r.result === "hit") this.hits++;
     if (odds !== null) {
@@ -540,13 +570,14 @@ export function pricingInputs(db: EngineDb) {
   const settings = getWinLossSettings(db);
   const sending = getSendingSettings(db);
   const commission = settings.commission / 100;
+  const stakeOf = stakeLookup(db, sending);
   return {
     commission,
     /** With `estimate`, the app's own estimate even for a pick with a real Betfair bet (Reconcile compares the two). */
     price: (r: ResultRow, opts: { estimate?: boolean } = {}) => {
       const key = strategyLabel(r.strategy).toLowerCase();
       const assumed = settings.assumedOdds[key] ?? null;
-      const priced = priceResult(r, { strategyStake: currentStake(db, sending, key), assumedOdds: assumed, commission, estimate: opts.estimate });
+      const priced = priceResult(r, { strategyStake: stakeOf(key), assumedOdds: assumed, commission, estimate: opts.estimate });
       // The odds it is judged at: the price it was actually priced at, else the best price known for it.
       return { key, priced, odds: priced.kind === "priced" ? priced.odds : oddsFor(r, assumed) };
     },
@@ -582,11 +613,12 @@ export function edgeBetKind(bet: { market: string; pick: string }): EdgeBetKind 
  *
  * With `fromRuleChange`, a strategy whose rules changed (RECORD_FROM) counts its money from the change too, like its
  * win / loss record, and its picks from before go to `before` instead (shown smaller, so nothing is hidden).
+ * `rows`: every settled pick, already read (see settledSince).
  */
 export function computeStrategyReturns(
   db: EngineDb,
   sinceIso: string | null = null,
-  opts: { fromRuleChange?: boolean } = {},
+  opts: { fromRuleChange?: boolean; rows?: ResultRow[] } = {},
 ): Record<string, ModeReturns & { before?: ModeReturns; byBet?: Partial<Record<EdgeBetKind, ModeReturns>>; byHand?: StrategyReturn; segments?: SegmentReturns[] }> {
   const { commission, price } = pricingInputs(db);
   const fresh = () => ({ live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) });
@@ -594,7 +626,7 @@ export function computeStrategyReturns(
     string,
     { now: ReturnType<typeof fresh>; before: ReturnType<typeof fresh> | null; byBet?: Map<EdgeBetKind, ReturnType<typeof fresh>>; byHand?: ReturnTally; segs?: Map<string, { in: ReturnType<typeof fresh>; out: ReturnType<typeof fresh> }> }
   >();
-  for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
+  for (const r of settledSince(db, sinceIso, opts.rows)) {
     const { key, priced, odds } = price(r);
     let t = tallies.get(key);
     if (!t) tallies.set(key, (t = { now: fresh(), before: null }));
@@ -818,15 +850,15 @@ export const RECENT_PICKS = 20;
 /**
  * Recent form for every strategy (keyed by lower-case name): its last 20 settled picks, and its last 7 days, each with
  * the window before for comparison. Priced exactly as computeStrategyReturns. A strategy whose rules changed
- * (RECORD_FROM) counts only picks from the change.
+ * (RECORD_FROM) counts only picks from the change. `rows`: every settled pick, already read (see settledSince).
  */
-export function computeStrategyForm(db: EngineDb, now = new Date()): Record<string, StrategyForm> {
+export function computeStrategyForm(db: EngineDb, now = new Date(), rows?: ResultRow[]): Record<string, StrategyForm> {
   const { commission, price } = pricingInputs(db);
   const since = new Date(now.getTime() - 60 * 86_400_000).toISOString();
   const byKey = new Map<string, Array<{ r: ResultRow; priced: ReturnType<typeof priceResult>; odds: number | null }>>();
   // Picks in the week before a rule change, to compare with the picks since.
   const beforeChange = new Map<string, Array<{ r: ResultRow; priced: ReturnType<typeof priceResult>; odds: number | null }>>();
-  for (const r of db.listResultsForWinLoss(since)) {
+  for (const r of settledSince(db, since, rows)) {
     const p = price(r);
     const from = RECORD_FROM[p.key];
     if (from && r.firstSeenAt < from) {

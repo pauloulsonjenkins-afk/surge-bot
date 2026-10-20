@@ -15,7 +15,7 @@
  * picks there are recorded in Sim instead, so the block can be judged and undone.
  */
 import { isLivePlacement, leagueIdentity, type EngineDb } from "../storage/engine-db";
-import { pricingInputs } from "./winloss";
+import { pricingInputs, settledSince, type ResultRow } from "./winloss";
 import { strategyLabel } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
 import { sendPush } from "./push";
@@ -69,11 +69,11 @@ function add(t: Tally, hit: boolean, priced: { stake: number; profit: number } |
   }
 }
 
-/** Every league's figures since `sinceIso` (null = all time), busiest first. */
-export function computeLeagueReturns(db: EngineDb, sinceIso: string | null = null): LeagueReturn[] {
+/** Every league's figures since `sinceIso` (null = all time), busiest first. `rows`: every settled pick, already read (see settledSince). */
+export function computeLeagueReturns(db: EngineDb, sinceIso: string | null = null, rows?: ResultRow[]): LeagueReturn[] {
   const { price } = pricingInputs(db);
   const out = new Map<string, LeagueReturn>();
-  for (const r of db.listResultsForWinLoss(sinceIso ?? "1970-01-01T00:00:00.000Z")) {
+  for (const r of settledSince(db, sinceIso, rows)) {
     const id = leagueIdentity(r.competition, r.country);
     let l = out.get(id.key);
     if (!l) out.set(id.key, (l = { key: id.key, league: id.league, country: id.country, modes: modes(), byStrategy: {} }));

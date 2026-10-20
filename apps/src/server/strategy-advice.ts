@@ -29,7 +29,7 @@
  * and "Back to Sim" are never automatic.
  */
 import type { EngineDb } from "../storage/engine-db";
-import { computeStrategyReturns, type StrategyReturn } from "./winloss";
+import { ALL_TIME, computeStrategyReturns, type StrategyReturn } from "./winloss";
 import { getSendingSettings, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getStopLossRules } from "../inplayguru/stop-loss";
 import { priceCheckReport } from "../betfair/price-check";
@@ -93,10 +93,12 @@ function beatsBreakeven(r: StrategyReturn): boolean {
 export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
   const settings = getSendingSettings(db);
   const stops = getStopLossRules(db);
-  const all = computeStrategyReturns(db, null);
+  // Every settled pick, read once for all four sets of figures below (the same picks each would read for itself).
+  const rows = db.listResultsForWinLoss(ALL_TIME);
+  const all = computeStrategyReturns(db, null, { rows });
   // The ladder judges a strategy's current rules only: from its rule change, like its card.
-  const sinceChange = computeStrategyReturns(db, null, { fromRuleChange: true });
-  const recent = computeStrategyReturns(db, new Date(now.getTime() - 30 * 86_400_000).toISOString(), { fromRuleChange: true });
+  const sinceChange = computeStrategyReturns(db, null, { fromRuleChange: true, rows });
+  const recent = computeStrategyReturns(db, new Date(now.getTime() - 30 * 86_400_000).toISOString(), { fromRuleChange: true, rows });
   const checks = priceCheckReport(db, 30, now);
   const out: Advice[] = [];
   for (const [key, r] of Object.entries(all)) {
@@ -167,7 +169,7 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
   }
   // Stop in a league: a Live strategy clearly losing in one league over 100+ picks.
   const blocks = getLeagueBlocks(db);
-  for (const l of computeLeagueReturns(db)) {
+  for (const l of computeLeagueReturns(db, null, rows)) {
     for (const [key, m] of Object.entries(l.byStrategy)) {
       if (!(settings.enabled && settings.strategies[key] === true) || isLeagueBlocked(blocks, key, l.key)) continue;
       const t = m.all;

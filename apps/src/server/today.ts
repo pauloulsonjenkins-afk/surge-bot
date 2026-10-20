@@ -16,7 +16,7 @@ import { reasonFor } from "../betfair/unplaced";
 import { telegramHealth } from "./telegram-watchdog";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { autoStakeQueue, visibleAdvice } from "./strategy-advice";
-import { log } from "./log";
+import { reportTimings } from "./report-timings";
 
 // --------------------------------------------------------------------------- not placed, by reason
 
@@ -166,15 +166,8 @@ export function speedReport(db: EngineDb, sinceIso: string): SpeedReport {
 // --------------------------------------------------------------------------- the Today page
 
 export function todaySnapshot(db: EngineDb, now = new Date()) {
-  // How long each part takes (ms). The engine reads alerts and places bets on the same thread, so a slow part here holds
-  // them up: shown on the page's data as "timings", and logged when the whole call takes over a second.
-  const timings: Record<string, number> = {};
-  const timed = <T>(part: string, work: () => T): T => {
-    const t = performance.now();
-    const out = work();
-    timings[part] = Math.round(performance.now() - t);
-    return out;
-  };
+  // How long each part takes (ms): shown on the page's data as "timings", and logged when the whole takes over a second.
+  const { timed, done } = reportTimings("Today page data");
   const sending = getSendingSettings(db);
   const direct = getDirectSettings(db);
   const live = timed("liveToday", () => accountToday(db, now, "live"));
@@ -206,8 +199,7 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
   const speed = timed("speed", () => ({ today: speedReport(db, dayFrom), week: speedReport(db, new Date(now.getTime() - 7 * 86_400_000).toISOString()) }));
   const advice = timed("advice", () => visibleAdvice(db, now));
   const autoStakes = timed("autoStakes", () => autoStakeQueue(db, now));
-  const total = Object.values(timings).reduce((a, b) => a + b, 0);
-  if (total > 1000) log.warn(`Today page data took ${total} ms: ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(", ")}.`);
+  const timings = done();
 
   return {
     at: now.toISOString(),
