@@ -106,8 +106,9 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   return (
-    // A set of toggle buttons (one pressed), not tabs: they filter what's shown, they don't switch between panels.
-    <div role="group" aria-label={label} className={`inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5 ${className}`}>
+    // A set of toggle buttons (one pressed), not tabs: they filter what's shown, they don't switch between panels. Too
+    // many to fit a phone's width (Horses: six periods), they wrap onto a second line rather than run off the screen.
+    <div role="group" aria-label={label} className={`inline-flex max-w-full flex-wrap gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5 ${className}`}>
       {options.map((o) => (
         <button
           key={o.value}

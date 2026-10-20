@@ -206,7 +206,7 @@ function StatusStrip({ pending }: { pending: number }) {
   const on = s.settings.enabled;
   const live = s.strategies.filter((x) => x.enabled).length;
   const notPlaced = unplaced.data?.configured ? unplaced.data.picks.length : null;
-  const pill = "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium";
+  const pill = "tap-target inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium";
   return (
     <nav aria-label="Status" className="flex flex-wrap gap-2">
       <Link href="/more/admin/sending" className={`${pill} ${on ? "border-line text-ink" : "border-warn/40 bg-warn/10 text-warn"}`}>

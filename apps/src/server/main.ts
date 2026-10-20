@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   // always backed up (it used to come after the Telegram connection, which could wait for ever).
   let stopping = false;
   let httpServer: ReturnType<typeof createEngineHttpServer> | null = null;
-  const shutdown = async (signal: string) => {
+  const shutdown = async (signal: string, exitCode = 0) => {
     if (stopping) return;
     stopping = true;
     log.info(`${signal} received: finishing requests and uploading the final backup.`);
@@ -105,11 +105,22 @@ async function main(): Promise<void> {
       await backups?.flush();
     } finally {
       db.close();
-      process.exit(0);
+      process.exit(exitCode);
     }
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+
+  // A failed background task nothing caught (a promise with no .catch): Node would stop the whole engine for it, pausing
+  // alerts and bets until DigitalOcean restarts it. Logged instead, and the engine carries on.
+  process.on("unhandledRejection", (reason) => {
+    log.error(`A background task failed and nothing caught it (the engine carries on): ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
+  });
+  // A thrown error nothing caught can leave things half done: back up, let go of Telegram and stop, so it restarts clean.
+  process.on("uncaughtException", (err) => {
+    log.error(`Unexpected error, stopping so the engine restarts cleanly: ${err.stack ?? err.message}`);
+    void shutdown("uncaughtException", 1);
+  });
 
   // Correct any stored results using the current rules (hit/miss from the final score).
   try {

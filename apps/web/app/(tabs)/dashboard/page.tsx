@@ -109,7 +109,7 @@ export default function DashboardPage() {
               {me && !me.user && (
                 <Link
                   href={me.admin ? "/more/admin/today" : "/more/admin/login"}
-                  className={`flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink ${me.admin ? "lg:hidden" : ""}`}
+                  className={`tap-target flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink ${me.admin ? "lg:hidden" : ""}`}
                 >
                   <Lock size={13} />
                   {me.admin ? "Admin" : "Admin sign in"}

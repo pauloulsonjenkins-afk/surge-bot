@@ -162,7 +162,7 @@ function DownloadCard() {
       <a
         href="/api/admin/picks/export"
         download
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink"
+        className="tap-target mt-3 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink"
       >
         <Download size={16} aria-hidden />
         Download for Excel

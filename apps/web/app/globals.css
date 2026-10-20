@@ -120,6 +120,16 @@ html {
   button:has(> svg:only-child) {
     min-width: 2.75rem;
   }
+  /* A fold-out's heading ("By strategy", "Acknowledged"): the same 44px to tap. Lowest priority, so a heading with its
+     own size keeps it. */
+  :where(summary) {
+    min-height: 2.75rem;
+    padding-block: 0.625rem;
+  }
+  /* A link that acts as a button (a chip, "All fixtures", "Download for Excel"): add tap-target to it. */
+  .tap-target {
+    min-height: 2.75rem;
+  }
 }
 
 /*

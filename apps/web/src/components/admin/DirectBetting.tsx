@@ -421,7 +421,7 @@ export function Activity({ bets }: { bets: DirectBetRow[] }) {
         <a
           href="/api/admin/direct/export"
           download
-          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2"
+          className="tap-target inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2"
         >
           <Download size={14} aria-hidden />
           Download for Excel

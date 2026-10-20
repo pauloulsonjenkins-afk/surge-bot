@@ -7,12 +7,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Bell, MoreHorizontal, LogOut, X } from "lucide-react";
 import { MEMBERS_NAV } from "@/lib/members/nav";
 import { useMembersMe } from "@/queries/use-members";
 import { useMe, useSignOut } from "@/queries/use-me";
 import { TierBadge } from "./ui";
+
+/** Titles for member pages that aren't in the menu. */
+const EXTRA_TITLES: Record<string, string> = {
+  "/members/login": "Sign in",
+  "/members/join": "Join free",
+  "/members/trial": "Free trial",
+  "/members/notifications": "Notifications",
+};
 
 export default function MembersShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -24,6 +32,15 @@ export default function MembersShell({ children }: { children: React.ReactNode }
   const signedIn = Boolean(me);
   const selling = me?.flags.selling === true;
   const nav = MEMBERS_NAV.filter((n) => selling || !("sales" in n));
+
+  // Each page names itself in the browser tab and history (they all read "GoalBrew Members" before): its menu name, or
+  // the sign-in and join pages' own.
+  useEffect(() => {
+    const page = EXTRA_TITLES[pathname] ?? [...MEMBERS_NAV].sort((a, b) => b.href.length - a.href.length).find((n) => isActive(n.href))?.label;
+    document.title = page && pathname !== "/members" ? `${page} · GoalBrew` : "GoalBrew Members";
+    // isActive only reads pathname.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   return (
     <div className="flex min-h-dvh flex-col bg-app text-ink">

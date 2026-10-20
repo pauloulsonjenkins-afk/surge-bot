@@ -1038,7 +1038,15 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       const refresh = new URL(rawUrl, "http://internal").searchParams.get("refresh") === "1";
-      send(res, 200, { ...cachedModelReport(db, refresh), shadow: shadowReport(db), teamGoals: teamGoalsReport(db) });
+      const goalModel = () => {
+        const { timed, done } = reportTimings("Goal model page data");
+        const model = timed("model", () => cachedModelReport(db, refresh));
+        const shadow = timed("shadow", () => shadowReport(db));
+        const teamGoals = timed("teamGoals", () => teamGoalsReport(db));
+        return { ...model, shadow, teamGoals, timings: done() };
+      };
+      // Reused for up to a minute (report-cache.ts), like the other reports: it took about a second on every open.
+      send(res, 200, refresh ? goalModel() : cachedReport(db, `goal-model:${ukDateOf(new Date())}`, goalModel));
       return;
     }
     // Freezes a new model version now (it also happens by itself each week).

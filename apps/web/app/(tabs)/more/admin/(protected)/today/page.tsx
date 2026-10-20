@@ -165,7 +165,7 @@ function EdgeBox() {
       title="Edge: next few hours"
       subtitle="The top pre-match opportunity kicking off in the next 6 hours. Check the live price before you bet."
       actions={
-        <Link href="/more/admin/edge" className="text-xs text-accent underline">
+        <Link href="/more/admin/edge" className="tap-target inline-flex items-center text-xs text-accent underline">
           All fixtures
         </Link>
       }
