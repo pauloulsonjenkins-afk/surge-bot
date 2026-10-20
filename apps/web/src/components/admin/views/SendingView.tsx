@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
-import { useSaveSending, useSending, type SendingSettings } from "@/queries/use-sending";
+import { useSaveSending, useSending, useUndoLearnedName, type LearnedName, type SendingSettings } from "@/queries/use-sending";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { NotPlacedCard } from "@/components/admin/NotPlacedCard";
 import { NotificationsCard } from "@/components/admin/NotificationsCard";
@@ -97,12 +97,21 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
   const strategyNames = useStrategyNames();
   const direct = useDirect();
   const [form, setForm] = useState<Form | null>(null);
+  // Match names as the form last loaded them: names the engine learns meanwhile come in unless the box was edited.
+  const [aliasesBase, setAliasesBase] = useState<string | null>(null);
+  const undoLearned = useUndoLearnedName();
   const [saved, setSaved] = useState(false);
   // Which settings tab is showing.
   const [tab, setTab] = useState<SettingsTab>("limits");
 
   // Fill the form once. Later refreshes must not overwrite what is being typed.
-  if (data && form === null) setForm(toForm(data.settings));
+  if (data && form === null) {
+    setForm(toForm(data.settings));
+    setAliasesBase(data.settings.aliases);
+  } else if (data && form && aliasesBase !== null && data.settings.aliases !== aliasesBase && form.aliases === aliasesBase) {
+    setForm({ ...form, aliases: data.settings.aliases });
+    setAliasesBase(data.settings.aliases);
+  }
 
   if (error) return <QueryError error={error} next="/more/admin/sending" />;
   if (isLoading || !data || !form) {
@@ -163,11 +172,13 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
         favouriteScoresHomeMarketType: form!.favouriteScoresHomeMarketType,
         favouriteScoresAwayMarketType: form!.favouriteScoresAwayMarketType,
         favouriteScoresSelection: form!.favouriteScoresSelection,
-        aliases: form!.aliases,
+        // Only when the box was edited, so a save can't drop a name learned since the page loaded.
+        ...(form!.aliases !== aliasesBase ? { aliases: form!.aliases } : {}),
       },
       {
         onSuccess: (d) => {
           setForm(toForm(d.settings));
+          setAliasesBase(d.settings.aliases);
           setSaved(true);
           setTimeout(() => setSaved(false), 2500);
         },
@@ -411,6 +422,12 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                 value={form.aliases}
                 onChange={(e) => setForm({ ...form, aliases: e.target.value })}
               />
+              <LearnedNames
+                names={data.learnedNames ?? []}
+                undo={(n) => undoLearned.mutate(n)}
+                busy={undoLearned.isPending ? undoLearned.variables : null}
+                error={undoLearned.error?.message ?? null}
+              />
             </>
           )}
 
@@ -613,5 +630,56 @@ function LadderCard({ on }: { on: boolean }) {
       </div>
       {save.error && <p className="mt-2 text-xs text-destructive">{save.error.message}</p>}
     </Card>
+  );
+}
+
+/** Team names GoalBrew learned by itself (one team spelled differently, but plainly the same match), each with Undo. */
+function LearnedNames({
+  names,
+  undo,
+  busy,
+  error,
+}: {
+  names: LearnedName[];
+  undo: (n: { from: string; to: string }) => void;
+  busy: { from: string; to: string } | null | undefined;
+  error: string | null;
+}) {
+  if (names.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <p className="text-xs font-medium text-ink">Learned automatically</p>
+      <p className="mt-0.5 text-xs text-ink-muted">
+        Added when Betfair listed the match at the same kick-off with one team spelled differently. Undo takes the line out; a bet
+        already placed stays.
+      </p>
+      {error && <p className="mt-1 text-xs text-loss">{error}</p>}
+      <ul className="mt-2 divide-y divide-line">
+        {names.map((n) => (
+          <li key={`${n.from}|${n.at}`} className="flex items-center justify-between gap-3 py-2">
+            <div className="min-w-0 text-xs">
+              <p className={`font-mono ${n.undoneAt ? "text-ink-muted line-through" : "text-ink"}`}>
+                {n.from} = {n.to}
+              </p>
+              <p className="truncate text-ink-muted">
+                {n.match} → {n.event} · {whenFmt.format(new Date(n.at))}
+              </p>
+            </div>
+            {n.undoneAt ? (
+              <span className="shrink-0 text-xs text-ink-muted">Undone</span>
+            ) : (
+              <button
+                type="button"
+                className="tap-target shrink-0 rounded-md border border-line px-3 py-1 text-xs text-ink hover:bg-surface-2 disabled:opacity-50"
+                disabled={busy?.from === n.from && busy?.to === n.to}
+                onClick={() => undo({ from: n.from, to: n.to })}
+              >
+                Undo
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

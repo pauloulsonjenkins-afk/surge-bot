@@ -29,6 +29,7 @@ import { betableUntil, exchangeNamer, feedMarket, getSendingSettings, kickoffAt,
 import { log } from "../server/log";
 import { notifyUnplaced, UNPLACED_AFTER_MS } from "./unplaced";
 import { runPriceChecks } from "./price-check";
+import { learnName, nameToLearn, notifyLearned } from "./name-learning";
 
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
 const API_URL = "https://api.betfair.com/exchange/betting/rest/v1.0/";
@@ -248,17 +249,17 @@ export class BetfairReader {
   }
 
   /** Football events on Betfair whose names contain this text, starting from 8 hours ago to 36 hours ahead of `at`. */
-  async searchEvents(text: string, at: Date): Promise<Array<{ id: string; name: string }>> {
+  async searchEvents(text: string, at: Date): Promise<Array<{ id: string; name: string; openDate?: string }>> {
     const query = text.replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
     if (!query) return [];
-    const r = await this.call<Array<{ event: { id: string; name: string } }>>("listEvents", {
+    const r = await this.call<Array<{ event: { id: string; name: string; openDate?: string } }>>("listEvents", {
       filter: {
         eventTypeIds: ["1"],
         textQuery: query,
         marketStartTime: { from: new Date(at.getTime() - 8 * 3_600_000).toISOString(), to: new Date(at.getTime() + 36 * 3_600_000).toISOString() },
       },
     });
-    return r.map((e) => ({ id: e.event.id, name: e.event.name }));
+    return r.map((e) => ({ id: e.event.id, name: e.event.name, openDate: e.event.openDate }));
   }
 
   /** The corner markets Betfair offers for an event: name, market code, selections (and ids, for reading a price). */
@@ -570,7 +571,7 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
     if (!found || now - found.at > 30 * 60 * 1000) {
       const at = new Date(p.firstSeenAt);
       // Every event the searches return, kept to offer the nearest ones if the match isn't found.
-      const seen: Array<{ id: string; name: string }> = [];
+      const seen: Array<{ id: string; name: string; openDate?: string }> = [];
       const search = async (text: string) => {
         const events = await reader.searchEvents(text, at);
         seen.push(...events);
@@ -586,6 +587,14 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
         if (judged.result !== "off") break;
         const byName = judgeExchange(home, away, await search(name));
         if (byName.result !== "off") judged = byName;
+      }
+      // One team spelled differently, but it can only be this match: learn the name and bet it under Betfair's.
+      const full = judged.result === "nameDiffers" ? db.getLivePick(p.id) : null;
+      const name = full ? nameToLearn(full, home, away, judged, seen) : null;
+      const learned = full && name ? learnName(db, full, name, judged.event!) : null;
+      if (learned) {
+        judged = { ...judged, result: "on" };
+        void notifyLearned(db, learned);
       }
       found = { ...judged, candidates: judged.result === "off" ? nearMatches(home, away, seen) : [], at: now };
       cache.set(key, found);

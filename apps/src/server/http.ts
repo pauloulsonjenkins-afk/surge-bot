@@ -113,6 +113,7 @@ import { edgeCards } from "../edge/edge";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
+import { learnedNames, undoLearnedName } from "../betfair/name-learning";
 import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
 import { checkLeague, coverageOfAlertLeagues, fixtureLeagueChecker, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
@@ -843,6 +844,15 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (path === "/internal/betfair/match-name" && req.method === "POST") {
       if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
+      if (body.undo === true) {
+        // A team name learned by itself, taken out again (Undo on its notification or on Match names).
+        try {
+          send(res, 200, { message: undoLearnedName(db, body.from, body.to) });
+        } catch (err) {
+          send(res, 400, { error: "invalid", message: err instanceof Error ? err.message : String(err) });
+        }
+        return;
+      }
       try {
         const line = addMatchName(db, body.from, body.to);
         // Bets on picks sent under the old spelling can link now.
@@ -1441,6 +1451,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         // The Betfair balance percentage stakes work from (null until it has been read).
         bank: getBank(db),
         preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), csv: preview.csv, blockedReason: preview.blockedReason },
+        // Team names learned by themselves (name-learning.ts), newest first, with Undo on Betting -> Limits -> Match names.
+        learnedNames: learnedNames(db).slice(0, 20),
       });
       return;
     }

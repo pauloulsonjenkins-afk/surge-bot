@@ -14,10 +14,16 @@ self.addEventListener("push", (event) => {
       renotify: Boolean(data.tag),
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      data: { url: data.url || "/", fixPickId: data.fixPickId, muteSlice: data.muteSlice },
+      data: { url: data.url || "/", fixPickId: data.fixPickId, muteSlice: data.muteSlice, undoName: data.undoName },
       // A pick not placed because Betfair spells a team differently can be fixed from the notification itself; a
-      // Golden alert's slice can be muted from it.
-      actions: data.fixPickId ? [{ action: "fix", title: "Add name & send" }] : data.muteSlice ? [{ action: "mute", title: "Mute these" }] : [],
+      // Golden alert's slice can be muted from it; a team name learned by itself can be undone from it.
+      actions: data.fixPickId
+        ? [{ action: "fix", title: "Add name & send" }]
+        : data.muteSlice
+          ? [{ action: "mute", title: "Mute these" }]
+          : data.undoName
+            ? [{ action: "undo", title: "Undo" }]
+            : [],
     }),
   );
 });
@@ -45,6 +51,36 @@ self.addEventListener("notificationclick", (event) => {
         )
         .catch(() =>
           self.registration.showNotification("Couldn't mute it", { body: "No connection. Open Golden to switch it off there.", tag: "golden-mute", data: { url: "/more/admin/golden" } }),
+        ),
+    );
+    return;
+  }
+  const undoName = event.notification.data && event.notification.data.undoName;
+  if (event.action === "undo" && undoName) {
+    // Takes the learned Match names line out again (signed-in cookie included).
+    event.waitUntil(
+      fetch("/api/admin/betfair/match-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ undo: true, from: undoName.from, to: undoName.to }),
+      })
+        .then((res) => res.json().then((b) => ({ ok: res.ok, b })))
+        .then(({ ok, b }) =>
+          self.registration.showNotification(ok ? "Name undone" : "Couldn't undo it", {
+            body: ok ? b.message || "Taken out of Match names." : b.error || "Undo it on Betting → Limits → Match names.",
+            tag: "learned-undo",
+            icon: "/icons/icon-192.png",
+            badge: "/icons/icon-192.png",
+            data: { url: "/more/admin/sending" },
+          }),
+        )
+        .catch(() =>
+          self.registration.showNotification("Couldn't undo it", {
+            body: "No connection. Undo it on Betting → Limits → Match names.",
+            tag: "learned-undo",
+            data: { url: "/more/admin/sending" },
+          }),
         ),
     );
     return;

@@ -436,6 +436,19 @@ export interface SendingState {
     csv: string;
     blockedReason: string | null;
   };
+  /** Team names learned by themselves, newest first (missing on an older engine). */
+  learnedNames?: LearnedName[];
+}
+
+export interface LearnedName {
+  from: string;
+  to: string;
+  match: string;
+  event: string;
+  pickId: number;
+  strategy: string;
+  at: string;
+  undoneAt: string | null;
 }
 
 export type SendingPatch = Partial<SendingSettings> & { stopLoss?: Record<string, StopLossPatch> };
@@ -1220,6 +1233,11 @@ export function chooseBetfairMatch(id: number, event: string): Promise<{ added: 
 /** Which Betfair competition a league is ("none": not on Betfair; null: back to matching by name). */
 export function setLeagueOverride(league: string, competition: string | null): Promise<{ ok: true }> {
   return engineCall("/internal/betfair/coverage/override", "matching the league", { method: "POST", body: { league, competition } });
+}
+
+/** Takes a learned team name out of Match names again. */
+export function undoLearnedName(from: string, to: string): Promise<{ message: string }> {
+  return engineCall("/internal/betfair/match-name", "undoing the learned name", { method: "POST", body: { undo: true, from, to } });
 }
 
 export function addMatchName(from: string, to: string): Promise<{ line: string; linked: number }> {

@@ -73,6 +73,8 @@ export interface PushMessage {
   fixPickId?: number;
   /** A Golden alert: the notification offers "Mute" for the slice it came from (golden-notify.ts). */
   muteSlice?: { strategyKey: string; id: string; name: string };
+  /** A team name learned by itself (name-learning.ts): the notification offers "Undo" for it. */
+  undoName?: { from: string; to: string };
 }
 
 /**

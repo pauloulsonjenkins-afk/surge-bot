@@ -399,6 +399,39 @@ export function couldBeSameMatch(betEvent: string, pickEvent: string): boolean {
   return (sameTeam(a[0], b[0]) || closeName(a[0], b[0])) && (sameTeam(a[1], b[1]) || closeName(a[1], b[1]));
 }
 
+/** Reserve and second sides ("Tenerife B", "Bayern II"): sameTeam takes "Tenerife" for "Tenerife B", so these must agree. */
+function reserveOf(team: string[]): string {
+  return team.filter((t) => t === "b" || t === "ii" || t === "iii" || t === "res" || t === "reserve" || t === "reserves").sort().join(" ");
+}
+
+/**
+ * The one team name Betfair spells differently, when a Betfair event is plainly the alert's match under another name:
+ * the same squad, one team the same in the same place, the other a close name for the same club ("Celta Fortuna" /
+ * "Celta Vigo B" beside Tenerife), and the same team not a reserve side of the other. Null for anything less sure (both or neither team
+ * differing, teams swapped round). Returns the names as written, to save as a Match names line.
+ */
+export function learnableName(betEvent: string, pickEvent: string): { from: string; to: string } | null {
+  if (!couldBeSameMatch(betEvent, pickEvent)) return null;
+  const split = (e: string) => /^(.*?)\s+(?:v|vs|v\.)\s+(.*)$/i.exec(e.trim());
+  const bet = split(betEvent);
+  const pick = split(pickEvent);
+  if (!bet || !pick) return null;
+  let differs: number | null = null;
+  for (const i of [1, 2]) {
+    const a = tokens(bet[i]!);
+    const b = tokens(pick[i]!);
+    // The team taken as the same must be the same side ("Tenerife" isn't "Tenerife B"); the other is often written with
+    // a different reserve name ("Celta Fortuna" is "Celta Vigo B").
+    if (sameTeam(a, b)) {
+      if (reserveOf(a) !== reserveOf(b)) return null;
+      continue;
+    }
+    if (differs !== null || !closeName(a, b)) return null;
+    differs = i;
+  }
+  return differs === null ? null : { from: pick[differs]!.trim(), to: bet[differs]!.trim() };
+}
+
 /** How well a bet's event matches a pick's: 2 = both teams, 1 = one team, 0 = neither. */
 export function eventScore(betEvent: string, pickEvent: string): number {
   const a = teamsOf(betEvent);

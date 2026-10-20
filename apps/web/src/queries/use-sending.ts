@@ -1,11 +1,11 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus } from "@/server/engine-client";
+import type { LearnedName, SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
 
-export type { SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus };
+export type { LearnedName, SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus };
 
 const KEY = ["sending"];
 
@@ -62,5 +62,22 @@ export function useSaveSending() {
       // The Strategies page groups strategies by Live / Sim and shows their stakes.
       void qc.invalidateQueries({ queryKey: ["admin-strategies"] });
     },
+  });
+}
+/** Takes a team name learned by itself back out of Match names. */
+export function useUndoLearnedName() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (n: { from: string; to: string }): Promise<string> => {
+      const res = await fetch("/api/admin/betfair/match-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...n, undo: true }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!res.ok) throw new ApiFetchError(body.error ?? `Couldn't undo it (${res.status})`, res.status);
+      return body.message ?? "Undone.";
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: KEY }),
   });
 }
