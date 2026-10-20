@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { EdgeCard, EdgeTrend } from "@/lib/members/edge";
+import { useShowMore } from "@/components/ui/ShowMore";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "long", day: "numeric", month: "long" });
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
@@ -237,6 +238,22 @@ export function TopOpportunity({ cards, hours = 6 }: { cards: EdgeCard[]; hours?
  * The Edge fixture list (shared by Members > Fixtures and the admin's Fixtures page): a league filter, then each day's
  * fixtures with their headline trend, opening to the ranked trends.
  */
+/** One day's fixture cards, 12 at a time: all three days' cards made the page about 13,000 px tall on a phone. */
+function DaySection({ cards, league }: { cards: EdgeCard[]; league: string }) {
+  const { shown, more } = useShowMore(cards, 12, league);
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-semibold text-ink">{dayFmt.format(new Date(cards[0]!.fixture.kickoff))}</h2>
+      <ul className="space-y-2">
+        {shown.map((c) => (
+          <FixtureCard key={`${c.fixture.div}-${c.fixture.home}-${c.fixture.away}`} c={c} />
+        ))}
+        {more && <li>{more}</li>}
+      </ul>
+    </section>
+  );
+}
+
 export function EdgeList({ cards }: { cards: EdgeCard[] }) {
   const [league, setLeague] = useState("all");
   const leagues = useMemo(() => {
@@ -273,14 +290,7 @@ export function EdgeList({ cards }: { cards: EdgeCard[] }) {
             </label>
           )}
           {days.map(([day, cards]) => (
-            <section key={day} className="space-y-2">
-              <h2 className="text-sm font-semibold text-ink">{dayFmt.format(new Date(cards[0]!.fixture.kickoff))}</h2>
-              <ul className="space-y-2">
-                {cards.map((c) => (
-                  <FixtureCard key={`${c.fixture.div}-${c.fixture.home}-${c.fixture.away}`} c={c} />
-                ))}
-              </ul>
-            </section>
+            <DaySection key={day} cards={cards} league={league} />
           ))}
           <p className="text-xs text-ink-muted">
             Trends describe what has happened, not what will: past results don&apos;t guarantee future ones. 18+. Bet only what you can afford to lose.

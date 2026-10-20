@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { useUiStore } from "@/state/ui.store";
+import { useHydrated } from "@/queries/use-me";
 
 /** A small day/night button. It shows the mode you would switch TO: a sun in dark mode, a moon in light mode. */
 export default function ThemeToggle() {
@@ -10,8 +10,7 @@ export default function ThemeToggle() {
   const setTheme = useUiStore((s) => s.setTheme);
 
   // The saved theme is only known in the browser, so wait until mounted before choosing an icon.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
   const isLight = mounted && theme === "light";
 
   return (

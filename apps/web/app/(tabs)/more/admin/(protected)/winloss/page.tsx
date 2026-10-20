@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { StrategyName } from "@/components/ui/StrategyName";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Card, PageHeader } from "@/components/ui/Card";
@@ -118,10 +118,13 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
   const lines = state.reported ?? strategies;
 
   // Keep the expenditure boxes in step with what the engine has saved (e.g. the start month it filled in on first tick).
-  useEffect(() => {
+  const savedCost = `${ex.monthly}|${ex.startMonth ?? ""}`;
+  const [costFor, setCostFor] = useState(savedCost);
+  if (costFor !== savedCost) {
+    setCostFor(savedCost);
     setMonthly(String(ex.monthly));
     setStartMonth(ex.startMonth ?? "");
-  }, [ex.monthly, ex.startMonth]);
+  }
 
   const anyMoney = strategies.some((s) => s.counted > 0);
   const points = state.series[period];

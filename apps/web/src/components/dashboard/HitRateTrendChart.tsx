@@ -13,13 +13,14 @@ function shortDate(iso: string): string {
 
 /** Running hit rate: at each day, every settled pick up to and including that day. */
 export function HitRateTrendChart({ stats, isLoading }: { stats: HitRateStats | undefined; isLoading: boolean }) {
+  const data: Array<{ label: string; rate: number; settled: number }> = [];
   let hits = 0;
   let misses = 0;
-  const data = (stats?.daily ?? []).map((d) => {
+  for (const d of stats?.daily ?? []) {
     hits += d.hits;
     misses += d.misses;
-    return { label: shortDate(d.date), rate: Math.round((hits / (hits + misses)) * 1000) / 10, settled: hits + misses };
-  });
+    data.push({ label: shortDate(d.date), rate: Math.round((hits / (hits + misses)) * 1000) / 10, settled: hits + misses });
+  }
 
   return (
     <ChartCard title="Hit rate over time" subtitle="Running hit rate, all settled picks to date">

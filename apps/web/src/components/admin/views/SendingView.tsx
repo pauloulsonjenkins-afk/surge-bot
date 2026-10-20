@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
@@ -102,9 +102,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
   const [tab, setTab] = useState<SettingsTab>("limits");
 
   // Fill the form once. Later refreshes must not overwrite what is being typed.
-  useEffect(() => {
-    if (data && form === null) setForm(toForm(data.settings));
-  }, [data, form]);
+  if (data && form === null) setForm(toForm(data.settings));
 
   if (error) return <QueryError error={error} next="/more/admin/sending" />;
   if (isLoading || !data || !form) {

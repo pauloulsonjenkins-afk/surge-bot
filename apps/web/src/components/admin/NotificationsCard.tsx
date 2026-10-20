@@ -45,9 +45,12 @@ export function NotificationsCard() {
       }
       const reg = await navigator.serviceWorker.getRegistration("/");
       const sub = await reg?.pushManager.getSubscription();
-      setDevice(sub ? "on" : "off");
+      // "On" only when the engine has this phone too: a sign-up the push service dropped is removed by the engine on
+      // the next send, while the phone still holds it (20 Oct 2026: the card said On, and no device got anything).
+      const known = !!sub && !!data && data.devices.some((d) => (d.tail ? sub.endpoint.endsWith(d.tail) : true));
+      setDevice(known ? "on" : "off");
     })().catch(() => setDevice("unsupported"));
-  }, []);
+  }, [data]);
 
   async function turnOn() {
     if (!data) return;
@@ -61,9 +64,14 @@ export function NotificationsCard() {
       }
       const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(data.publicKey) }));
+      // Always a fresh sign-up: one kept on the phone from before may have expired at the push service (or been made
+      // with older keys), and reusing it meant the engine dropped it again on the first send.
+      const old = await reg.pushManager.getSubscription();
+      if (old) {
+        await post({ action: "unsubscribe", endpoint: old.endpoint }).catch(() => {});
+        await old.unsubscribe().catch(() => false);
+      }
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(data.publicKey) });
       await post({ action: "subscribe", subscription: sub.toJSON(), label: deviceLabel() });
       setDevice("on");
       setNote("On. Use “Send a test” to check it arrives.");

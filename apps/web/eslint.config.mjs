@@ -1,6 +1,6 @@
 import nextVitals from "eslint-config-next/core-web-vitals";
 
-export default [
+const config = [
   ...nextVitals,
   {
     // New React Compiler rules in Next 16's config. They flag patterns the app
@@ -13,3 +13,5 @@ export default [
   },
   { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
 ];
+
+export default config;

@@ -1465,7 +1465,8 @@ export function clearUnplaced(ids: number[]): Promise<{ ok: true; cleared: numbe
 export interface PushState {
   /** The key a browser subscribes with. */
   publicKey: string;
-  devices: Array<{ label: string | null; createdAt: string }>;
+  /** tail: the end of the device's push address, so a phone can tell whether the engine knows it. */
+  devices: Array<{ label: string | null; createdAt: string; tail?: string }>;
 }
 
 export function fetchPushState(): Promise<PushState> {

@@ -106,7 +106,12 @@ export default function SchedulePage() {
   }, []);
 
   // A new day's list starts with the default sections open.
-  useEffect(() => setOpen({}), [when, data?.date]);
+  const listKey = `${when}|${data?.date ?? ""}`;
+  const [openFor, setOpenFor] = useState(listKey);
+  if (openFor !== listKey) {
+    setOpenFor(listKey);
+    setOpen({});
+  }
 
   const all = useMemo(() => data?.fixtures ?? [], [data]);
   const summary = useMemo(() => {

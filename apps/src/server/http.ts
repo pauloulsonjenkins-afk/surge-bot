@@ -690,7 +690,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       if (path === "/internal/push" && req.method === "GET") {
-        send(res, 200, { publicKey: pushPublicKey(db), devices: db.listPushSubscriptions().map((s) => ({ label: s.label, createdAt: s.createdAt })) });
+        send(res, 200, { publicKey: pushPublicKey(db), devices: db.listPushSubscriptions().map((s) => ({ label: s.label, createdAt: s.createdAt, tail: s.endpoint.slice(-16) })) });
         return;
       }
       if (req.method === "POST") {

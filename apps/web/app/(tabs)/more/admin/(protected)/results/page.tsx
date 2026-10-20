@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader, Segmented } from "@/components/ui/Card";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RawAlerts } from "@/components/admin/RawAlerts";
 import { QueryError } from "@/components/ui/QueryError";
@@ -10,6 +10,7 @@ import { betText } from "@/lib/markets";
 import { usePickDays, useAdminPicksWindow, useDiscrepancies, useReviewResult, useSetPickExcluded, useSetPickResult, type LivePick, type ResultsWindow } from "@/queries/use-live";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useShowMore } from "@/components/ui/ShowMore";
+import { useHydrated } from "@/queries/use-me";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -344,10 +345,13 @@ function SettledPicks() {
 export default function AmendResultsPage() {
   const [view, setView] = useState<"settled" | "raw">("settled");
 
-  // The old Picks page sends people here with ?view=raw.
-  useEffect(() => {
+  // The old Picks page sends people here with ?view=raw: read once the page is in the browser.
+  const hydrated = useHydrated();
+  const [readUrl, setReadUrl] = useState(false);
+  if (hydrated && !readUrl) {
+    setReadUrl(true);
     if (new URLSearchParams(window.location.search).get("view") === "raw") setView("raw");
-  }, []);
+  }
 
   return (
     <div className="space-y-6">

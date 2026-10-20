@@ -16,9 +16,13 @@ const dayTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", da
 /** Buttons and links that act as buttons in a slice's row: 44px tall on a phone, the same look side by side. */
 const action = "inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium ring-1 ring-inset ring-line disabled:opacity-40";
 
+/** Below this many priced picks a return is noise: shown, but not in green or red ("−100%" on one pick looked like news). */
+const FEW = 10;
+
 /** One side of the comparison: its return per £1 as the figure to read, its record under it. */
 function Side({ r, name }: { r: StrategyReturn; name: string }) {
   const hits = r.hits ?? 0;
+  const few = r.counted < FEW;
   return (
     <div className="min-w-0 rounded-md bg-surface-2 px-3 py-2">
       <p className="text-xs text-ink-muted">{name}</p>
@@ -26,10 +30,11 @@ function Side({ r, name }: { r: StrategyReturn; name: string }) {
         <p className="mt-0.5 text-sm text-ink-muted">Nothing settled yet</p>
       ) : (
         <>
-          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${r.counted > 0 ? toneOf(r.roi) : "text-ink"}`}>{r.counted > 0 ? signedPct(r.roi) : "–"}</p>
+          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${few ? "text-ink-muted" : toneOf(r.roi)}`}>{r.counted > 0 ? signedPct(r.roi) : "–"}</p>
           <p className="text-xs tabular-nums text-ink-muted">
             {hits}–{r.settled - hits}
             {r.counted > 0 && ` · ${r.counted} priced`}
+            {r.counted > 0 && few && " · too few to judge"}
           </p>
         </>
       )}
