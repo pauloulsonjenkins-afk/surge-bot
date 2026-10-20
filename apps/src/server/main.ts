@@ -8,12 +8,12 @@ import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { loadServerEnv } from "./server-env";
-import { createEngineHttpServer } from "./http";
+import { createEngineHttpServer, disconnectLoginClient } from "./http";
 import { EngineDb } from "../storage/engine-db";
-import { BackupScheduler, SpacesSync } from "../storage/spaces-sync";
+import { BackupScheduler, leaseIsLive, SpacesSync } from "../storage/spaces-sync";
 import { createTelegramClient } from "../telegram/client";
 import { getListenerStatus, setConnectState, startTelegramListener, stopTelegramListener } from "../telegram/listener";
-import { superviseTelegram, type Supervisor } from "../telegram/supervisor";
+import { HANDOVER_WAIT_MS, superviseTelegram, type Supervisor } from "../telegram/supervisor";
 import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 import { recordSimBets } from "../inplayguru/bet-feed";
@@ -56,6 +56,10 @@ async function main(): Promise<void> {
   // uploading instead of overwriting this one's database with its own last copy.
   const instanceId = randomUUID();
   const born = Date.now();
+  // Another container still holding the lease (a deploy under way): it's still connected to Telegram, so this one waits
+  // before connecting (HANDOVER_WAIT_MS). Read before this container's own lease is written over it.
+  const previous = await sync.readLease().catch(() => null);
+  const handover = leaseIsLive(previous, born);
   await sync.writeLease(instanceId, born);
 
   let telegram: Supervisor | null = null;
@@ -73,6 +77,8 @@ async function main(): Promise<void> {
     () => {
       // Two containers on one Telegram session can get the session revoked, and both would store alerts.
       void telegram?.stop();
+      stopTelegramListener();
+      void disconnectLoginClient();
       log.warn("Telegram listener disconnected: the newer container has taken over.");
     },
     () => {
@@ -94,6 +100,7 @@ async function main(): Promise<void> {
     log.info(`${signal} received: finishing requests and uploading the final backup.`);
     httpServer?.close();
     await telegram?.stop().catch(() => {});
+    await disconnectLoginClient().catch(() => {});
     try {
       await backups?.flush();
     } finally {
@@ -252,7 +259,7 @@ async function main(): Promise<void> {
       // Logged in again from the admin's Telegram tab meanwhile: that listener is the one in use.
       attachedElsewhere: () => getListenerStatus().watching !== null,
     });
-    telegram.start();
+    telegram.start(handover ? HANDOVER_WAIT_MS : 0);
   } else {
     log.info("Telegram env vars not fully set yet; log in via the admin Telegram tab first.");
   }

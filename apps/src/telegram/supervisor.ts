@@ -38,9 +38,17 @@ export interface Attempt {
 }
 
 export interface Supervisor {
-  start(): void;
+  /** Starts connecting, after `delayMs` (a deploy: the outgoing container needs time to let go of the session). */
+  start(delayMs?: number): void;
   stop(): Promise<void>;
 }
+
+/**
+ * How long a new container waits before connecting while an older one is still running. The older one lets go within a
+ * minute of seeing the new lease (or at once when it's stopped); both on one session at once makes Telegram cancel it
+ * for good (AUTH_KEY_DUPLICATED, 20 Oct 2026, after four deploys in two hours).
+ */
+export const HANDOVER_WAIT_MS = 90_000;
 
 const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -108,11 +116,18 @@ export function superviseTelegram(opts: {
   };
 
   return {
-    start() {
+    start(delayMs = 0) {
       if (running) return;
       running = true;
       attempt = 0;
-      void tryOnce(++run);
+      const mine = ++run;
+      if (delayMs <= 0) {
+        void tryOnce(mine);
+        return;
+      }
+      log.info(`Telegram listener: waiting ${Math.round(delayMs / 1000)} s for the previous container to let go of the session.`);
+      timer = setTimeout(() => void tryOnce(mine), delayMs);
+      timer.unref();
     },
     async stop() {
       running = false;

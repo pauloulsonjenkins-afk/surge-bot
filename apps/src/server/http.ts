@@ -189,6 +189,16 @@ function isAdminAuthorized(req: IncomingMessage): boolean {
 let activeTelegramClient: TelegramClient | null = null;
 
 /**
+ * Disconnects a session logged in from the admin's Telegram tab (main.ts: when a newer container takes over, and when
+ * stopping). Two containers on one session at once make Telegram cancel it for good (AUTH_KEY_DUPLICATED).
+ */
+export async function disconnectLoginClient(): Promise<void> {
+  const client = activeTelegramClient;
+  activeTelegramClient = null;
+  if (client) await client.destroy().catch(() => client.disconnect());
+}
+
+/**
  * The last answer to the same request, reused while nothing in the database has changed (and for at most a minute,
  * so figures that move with the clock still roll on). The Dashboard, Strategies and Win/Loss poll every 15-30 seconds,
  * and each answer re-reads every settled pick: between alerts and results the data is the same, so is the answer.

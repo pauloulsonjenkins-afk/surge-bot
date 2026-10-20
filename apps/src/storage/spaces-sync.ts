@@ -145,6 +145,11 @@ export interface Lease {
  * lease just after the new one wrote its; before 20 Oct 2026 the new one then took that for a newer container and
  * switched its own Telegram listener off for good. Now the newest container always keeps it.
  */
+/** Whether a lease is still being refreshed, so the container holding it is still running. */
+export function leaseIsLive(lease: Lease | null, now: number): boolean {
+  return lease !== null && now - lease.at < LEASE_STALE_MS;
+}
+
 export function shouldHandOver(lease: Lease | null, me: { owner: string; born: number }, now: number): boolean {
   if (!lease || lease.owner === me.owner || now - lease.at >= LEASE_STALE_MS) return false;
   return lease.born > me.born || (lease.born === me.born && lease.owner > me.owner);
