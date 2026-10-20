@@ -63,6 +63,16 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
         <Tile label="Hit rate" value={pct(s.hitRate)} sub={`${s.wins}W / ${s.losses}L`} />
         <Tile label="Bets" value={String(s.bets)} sub={s.open ? `${s.open} open` : undefined} />
       </section>
+      {sim.bank && sim.bank.start > 0 && sim.bank.now < sim.bank.start * 0.05 && (
+        // Below 5% of where it started, almost no bet fits, so the simulation has in effect stopped: say so.
+        <p className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm text-ink">
+          <strong>Your practice bank has run out</strong>, so new bets can&apos;t be simulated. Start a new simulation in{" "}
+          <Link href="/members/settings" className="font-medium text-accent underline">
+            Settings
+          </Link>
+          ; your past bets stay in your history.
+        </p>
+      )}
       {data.live && (
         <section aria-label="Live" className="space-y-2">
           <ModeBanner mode="live" />
@@ -75,8 +85,9 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
         </section>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Upcoming opportunities" actions={<Link href="/members/upcoming" className="text-xs text-accent">All</Link>}>
+      {/* Each card may shrink to the screen (a grid column otherwise grows to its widest content: 70 px past a phone's edge). */}
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        <Card title="Upcoming opportunities" actions={<Link href="/members/upcoming" className="tap-target inline-flex items-center text-xs text-accent">All</Link>}>
           {data.upcoming.open.length === 0 && data.upcoming.locked.length === 0 ? (
             <p className="text-sm text-ink-muted">Nothing live right now. Alerts arrive as matches unfold.</p>
           ) : (
@@ -100,12 +111,12 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
           )}
         </Card>
 
-        <Card title="House performance" subtitle="Official strategies, last 30 days. Separate from your own results." actions={<Link href="/members/strategies" className="text-xs text-accent">All</Link>}>
+        <Card title="House performance" subtitle="Official strategies, last 30 days. Separate from your own results." actions={<Link href="/members/strategies" className="tap-target inline-flex items-center text-xs text-accent">All</Link>}>
           <ul className="divide-y divide-line">
             {data.house.map((h) => (
               <li key={h.key} className="flex items-center justify-between gap-2 py-2 text-sm">
-                <Link href={`/members/strategies/${encodeURIComponent(h.key)}`} className="min-w-0 truncate text-ink">
-                  {h.name}
+                <Link href={`/members/strategies/${encodeURIComponent(h.key)}`} className="tap-target flex min-w-0 flex-1 items-center text-ink">
+                  <span className="truncate">{h.name}</span>
                 </Link>
                 <span className="shrink-0 text-xs">
                   <WinLossText wl={h.last30} />
@@ -115,7 +126,7 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
           </ul>
         </Card>
 
-        <Card title="Recent bets" actions={<Link href="/members/history" className="text-xs text-accent">History</Link>}>
+        <Card title="Recent bets" actions={<Link href="/members/history" className="tap-target inline-flex items-center text-xs text-accent">History</Link>}>
           {data.recent.length === 0 ? (
             data.automation.following > 0 ? (
               <p className="text-sm text-ink-muted">No bets yet. They appear here when the strategies you follow next send an alert.</p>
@@ -144,7 +155,7 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
           )}
         </Card>
 
-        <Card title="Automation" actions={<Link href="/members/automation" className="text-xs text-accent">Manage</Link>}>
+        <Card title="Automation" actions={<Link href="/members/automation" className="tap-target inline-flex items-center text-xs text-accent">Manage</Link>}>
           <p className="text-sm text-ink">
             Following <strong>{data.automation.following}</strong> strateg{data.automation.following === 1 ? "y" : "ies"}: {data.automation.sim} in simulation
             {data.automation.live > 0 ? `, ${data.automation.live} live` : ""}.

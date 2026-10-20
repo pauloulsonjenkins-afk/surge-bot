@@ -20,7 +20,7 @@ export default function StrategyPage({ params }: { params: Promise<{ key: string
   const max = Math.max(1, ...s.daily.map((d) => d.wins + d.losses));
   return (
     <div className="space-y-5">
-      <Link href="/members/strategies" className="inline-flex items-center gap-1 text-xs text-ink-muted hover:text-ink">
+      <Link href="/members/strategies" className="tap-target inline-flex items-center gap-1 text-xs text-ink-muted hover:text-ink">
         <ArrowLeft size={14} /> House strategies
       </Link>
       <PageHeader title={s.name} subtitle={s.type === "pre-match" ? "Pre-match strategy" : "In-play strategy"} actions={<FollowControl s={s} />} />
