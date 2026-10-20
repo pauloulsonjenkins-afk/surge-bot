@@ -2,7 +2,7 @@
  * Entry point for the engine's DigitalOcean web service.
  * package.json "start" runs the compiled copy: node dist/src/server/main.js
  */
-import { getExchangeReader, startBetfairPoller } from "../betfair/exchange";
+import { getExchangeReader, startBetfairPoller, whenPicksReady } from "../betfair/exchange";
 import { parseAlert } from "../inplayguru/parse-alert";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -19,7 +19,7 @@ import { recordSimBets } from "../inplayguru/bet-feed";
 import { startDailySummary } from "./daily-summary";
 import { startWeeklyReview } from "./weekly-review";
 import { startTelegramWatchdog } from "./telegram-watchdog";
-import { BetfairTrader, startDirectBetting } from "../betfair/direct";
+import { BetfairTrader, startDirectBetting, wake as wakeDirect } from "../betfair/direct";
 import { readCredentials } from "../betfair/exchange";
 import { startMembers } from "../members/runner";
 import { startHistoryRefresh } from "../history/football-data";
@@ -146,6 +146,9 @@ async function main(): Promise<void> {
   startTelegramWatchdog(db);
   db.markExistingNoSendLeaguesDone();
   startDirectBetting(db);
+  // A pick ready to bet (its Betfair match found, or its price risen to the minimum) is bet straight away, not at the
+  // next 4-second pass.
+  whenPicksReady(wakeDirect);
   // Past results for the League history page: downloaded a few minutes after start, refreshed daily.
   startHistoryRefresh();
   // The day's horse tips, fetched at a random time between 10:00 and 14:00 UK (needs the TIPS_* settings).

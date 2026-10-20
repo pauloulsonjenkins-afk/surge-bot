@@ -660,9 +660,10 @@ const REPRICE_PER_POLL = 10;
  * Picks held back because Betfair's price was below their strategy's minimum odds (see buildFeed): reads the price
  * again, so a pick goes out as soon as its price reaches the minimum, while its match can still be bet.
  */
-async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<void> {
+/** Reads the price of picks held for their minimum (or maximum lay) odds again. Returns how many prices moved. */
+async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<number> {
   const settings = getSendingSettings(db);
-  if (!settings.enabled) return;
+  if (!settings.enabled) return 0;
   const namer = exchangeNamer(db);
   const now = Date.now();
   const held = db
@@ -680,12 +681,17 @@ async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<void> {
       return min !== undefined && p.exchangeOdds < min;
     })
     .slice(0, REPRICE_PER_POLL);
+  let moved = 0;
   for (const p of held) {
     const market = feedMarket(p, settings, namer);
     if ("error" in market) continue;
     const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName).catch(() => null);
-    if (bet?.price != null && bet.price !== p.exchangeOdds) db.setPickExchangeOdds(p.id, bet.price);
+    if (bet?.price != null && bet.price !== p.exchangeOdds) {
+      db.setPickExchangeOdds(p.id, bet.price);
+      moved++;
+    }
   }
+  return moved;
 }
 
 // ---------------------------------------------------------------------------
@@ -720,6 +726,16 @@ export function getBetfairLinkStatus(): BetfairLinkStatus {
 
 /** Runs the new-alert match check now (set while the poller runs). */
 let checkNow: (() => void) | null = null;
+
+/**
+ * Called once new alerts' matches have been looked up, or a held pick's price has moved: direct betting's wake (set in
+ * main.ts; this module can't import direct.ts, which imports it). Without it a pick ready to bet waited for direct
+ * betting's next 4-second pass, about 2 seconds on average (20 Oct 2026: 3.2 s from alert to bet, median).
+ */
+let onReady: (() => void) | null = null;
+export function whenPicksReady(fn: () => void): void {
+  onReady = fn;
+}
 
 /**
  * Looks up a new alert's match on Betfair straight away, rather than at the next 45-second poll, so the bet feed can
@@ -763,6 +779,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
     } finally {
       looking = false;
     }
+    // A new pick waits for this check before it can be bet: bet it now rather than at the next pass.
+    onReady?.();
   };
   checkNow = () => void lookup();
   const tick = async () => {
@@ -797,8 +815,12 @@ export function startBetfairPoller(db: EngineDb): () => void {
       }
       // Then look up any new alerts' matches; a failure here leaves them to try again next time.
       await lookup();
-      // And read again the price of picks waiting for it to reach their minimum odds.
-      await repriceHeld(db, reader).catch((err: unknown) => log.warn(`Betfair re-pricing failed: ${err instanceof Error ? err.message : String(err)}`));
+      // And read again the price of picks waiting for it to reach their minimum odds; one that moved may be ready to bet.
+      const repriced = await repriceHeld(db, reader).catch((err: unknown) => {
+        log.warn(`Betfair re-pricing failed: ${err instanceof Error ? err.message : String(err)}`);
+        return 0;
+      });
+      if (repriced > 0) onReady?.();
       // And read the price of recent picks' bets again a few minutes later (Strategies: price check).
       await runPriceChecks(db, reader).catch((err: unknown) => log.warn(`Price check failed: ${err instanceof Error ? err.message : String(err)}`));
     } catch (err) {
