@@ -36,7 +36,7 @@ function Side({ r, name }: { r: StrategyReturn; name: string }) {
           <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${r.counted > 0 ? tone(r.roi) : "text-ink"}`}>{r.counted > 0 ? pct(r.roi) : "–"}</p>
           <p className="text-xs tabular-nums text-ink-muted">
             {hits}–{r.settled - hits}
-            {r.counted > 0 && ` · on ${r.counted} priced`}
+            {r.counted > 0 && ` · ${r.counted} priced`}
           </p>
         </>
       )}
@@ -87,7 +87,8 @@ export default function GoldenPage() {
   const golden = data?.slices.filter((s) => s.status === "golden").length ?? 0;
 
   return (
-    <div className="space-y-5 px-4 py-4">
+    // The admin layout already gives the page its side margins, so none here (they were doubled before).
+    <div className="space-y-5">
       <PageHeader title="Golden" subtitle="Parts of a strategy that may be worth more than the rest. Gold means proved; an outline means still being proved." />
 
       <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm text-ink-muted">
@@ -126,17 +127,18 @@ export default function GoldenPage() {
                         const since = new Date(s.since);
                         return (
                           <li key={`${s.strategyKey}#${s.id}`} className="space-y-2 py-3 text-sm">
-                            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-                              <p className="min-w-0 flex-1 font-medium text-ink">{sliceName(s.label)}</p>
+                            {/* Badge and date first, so the slice's name gets the full width on a phone. */}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <GoldenBadge status={s.status} candidate={`Candidate · ${s.slice.all.counted} of ${confirmFrom}`} />
+                              <span className="text-xs text-ink-muted">
+                                {/* A slice set up ahead of time counts from midnight; until then, say so rather than "since" a date to come. */}
+                                {since.getTime() > now ? "counted from" : "since"} {day.format(since)}
+                              </span>
                             </div>
-                            <p className="text-xs text-ink-muted">
-                              {/* A slice set up ahead of time counts from midnight; until then, say so rather than "since" a date to come. */}
-                              {since.getTime() > now ? "Counted from" : "Since"} {day.format(since)} · against the rest of {s.strategy} over the same time
-                            </p>
+                            <p className="font-medium text-ink">{sliceName(s.label)}</p>
                             <div className="grid grid-cols-2 gap-2">
                               <Side r={s.slice.all} name="This part" />
-                              <Side r={s.rest.all} name="The rest" />
+                              <Side r={s.rest.all} name={`Rest of ${s.strategy}`} />
                             </div>
                             {s.bet?.live && (
                               <p className="text-xs text-ink-muted">
