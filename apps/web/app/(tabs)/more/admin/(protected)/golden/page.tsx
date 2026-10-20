@@ -130,6 +130,8 @@ export default function GoldenPage() {
                 >
                   Quiet 23:00–07:00: {data.notifyQuiet === false ? "off" : "on"}
                 </button>
+                {/* A switch that couldn't be saved says so here, by the switches, not only at the foot of the page. */}
+                {act.error && <p className="mt-2 text-destructive">Couldn&apos;t save that: {act.error.message}</p>}
               </div>
             )}
             {data.slices.length === 0 ? (

@@ -52,6 +52,16 @@ test("an alert in two switched-on slices is one notification naming both; a swit
   assert.deepEqual(getGoldenNotify(db).slices, { [`${KEY}#two-apart`]: true });
 });
 
+test("a finder slice whose id has capitals (f-closeMatch+homeDown1) stays switched on", () => {
+  const { db, p } = pick(new Date(NOON.getTime() - 60_000));
+  const finder = { id: "f-closeMatch+homeDown1", label: "Golden: home team 1 down, close match" };
+  setGoldenNotify(db, { slice: { strategyKey: "Time To Fight", id: finder.id, on: true } });
+  assert.deepEqual(getGoldenNotify(db).slices, { [`${KEY}#f-closeMatch+homeDown1`]: true });
+  assert.ok(goldenNotification(db, p, [finder], NOON), "notified");
+  setGoldenNotify(db, { slice: { strategyKey: KEY, id: finder.id, on: false } });
+  assert.deepEqual(getGoldenNotify(db).slices, {});
+});
+
 test("quiet hours: nothing 23:00-07:00 UK unless switched off", () => {
   const late = new Date("2026-10-20T22:30:00Z"); // 23:30 UK
   assert.equal(isQuietHour(late), true);

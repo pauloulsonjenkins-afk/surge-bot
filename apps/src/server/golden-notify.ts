@@ -30,7 +30,12 @@ export function getGoldenNotify(db: EngineDb): GoldenNotifySettings {
   try {
     const raw = JSON.parse(db.getSetting(KEY) ?? "{}") as Partial<GoldenNotifySettings>;
     const slices: Record<string, true> = {};
-    for (const [k, v] of Object.entries(raw.slices ?? {})) if (v === true) slices[k.toLowerCase()] = true;
+    // The strategy part is lower case; the slice id keeps its own case (finder slices are named like "f-closeMatch+homeDown1").
+    for (const [k, v] of Object.entries(raw.slices ?? {})) {
+      if (v !== true) continue;
+      const at = k.indexOf("#");
+      slices[at < 0 ? k : `${k.slice(0, at).toLowerCase()}${k.slice(at)}`] = true;
+    }
     return { slices, quiet: raw.quiet !== false };
   } catch {
     return { slices: {}, quiet: true };
