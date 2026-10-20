@@ -4,7 +4,7 @@ import { Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tool
 import { useStrategyEquity, type StrategyEquity } from "@/queries/use-strategies";
 import type { PickMode } from "@/server/engine-client";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { gbp } from "./WinLossLines";
+import { gbp } from "@/lib/format";
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short" });

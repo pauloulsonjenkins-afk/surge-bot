@@ -3,6 +3,7 @@ import { Archivo, Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "@/queries/Providers";
 import ThemeSync from "@/components/ui/ThemeSync";
+import TouchTips from "@/components/ui/TouchTips";
 
 // Runs before the page is painted, so a saved light theme never flashes dark first.
 const THEME_BOOT = `try{var s=JSON.parse(localStorage.getItem("surge-ui")||"{}");var t=s&&s.state&&s.state.theme;document.documentElement.setAttribute("data-theme",t==="light"?"light":"dark");}catch(e){}`;
@@ -44,6 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-app font-sans text-ink antialiased">
         <ThemeSync />
         <Providers>{children}</Providers>
+        {/* Phones: hover tips shown on a tap or long-press. */}
+        <TouchTips />
       </body>
     </html>
   );

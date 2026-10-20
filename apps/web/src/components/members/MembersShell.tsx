@@ -29,7 +29,7 @@ export default function MembersShell({ children }: { children: React.ReactNode }
     <div className="flex min-h-dvh flex-col bg-app text-ink">
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-          <Link href="/members" className="flex min-w-0 items-center gap-2">
+          <Link href="/members" className="flex min-h-11 min-w-0 items-center gap-2">
             <Image unoptimized priority src="/brand/goalbrew-logo-dark.svg" alt="GoalBrew" width={120} height={20} className="h-5 w-auto [[data-theme=light]_&]:hidden" />
             <Image unoptimized src="/brand/goalbrew-logo-light.svg" alt="GoalBrew" width={120} height={20} className="hidden h-5 w-auto [[data-theme=light]_&]:block" />
             {/* On phones the logo, membership badge, bell and sign-out fill the bar, so the words wait for wider screens. */}
@@ -39,7 +39,7 @@ export default function MembersShell({ children }: { children: React.ReactNode }
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {me && <TierBadge tier={me.tier} selling={selling} />}
             {me && (
-              <Link href="/members/notifications" aria-label={`Notifications${me.unread ? `, ${me.unread} unread` : ""}`} className="relative rounded-md p-1.5 text-ink-muted hover:text-ink">
+              <Link href="/members/notifications" aria-label={`Notifications${me.unread ? `, ${me.unread} unread` : ""}`} className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-ink-muted hover:text-ink">
                 <Bell size={18} />
                 {me.unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-loss px-1 text-center text-[0.65rem] font-bold text-white">{me.unread > 9 ? "9+" : me.unread}</span>}
               </Link>
@@ -50,13 +50,13 @@ export default function MembersShell({ children }: { children: React.ReactNode }
               </Link>
             )}
             {signedIn ? (
-              <button type="button" onClick={() => signOut.mutate()} className="rounded-md p-1.5 text-ink-muted hover:text-ink" aria-label="Sign out">
+              <button type="button" onClick={() => signOut.mutate()} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-ink-muted hover:text-ink" aria-label="Sign out">
                 <LogOut size={18} />
               </button>
             ) : (
               // Only once we know nobody is signed in (not while the page is still loading).
               !isPending && pathname !== "/members/login" && (
-                <Link href="/members/login" className="text-xs font-medium text-accent">
+                <Link href="/members/login" className="inline-flex min-h-11 items-center px-2 text-sm font-medium text-accent">
                   Sign in
                 </Link>
               )

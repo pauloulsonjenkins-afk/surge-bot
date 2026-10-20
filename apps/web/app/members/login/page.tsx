@@ -66,6 +66,7 @@ function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
+            aria-label="Password"
             className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           />
 

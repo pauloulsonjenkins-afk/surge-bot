@@ -27,6 +27,7 @@ const KEEP = new Set([
   "schedule",
   "sending",
   "unplaced",
+  "golden",
 ]);
 
 type Snapshot = Record<string, { at: number; data: unknown }>;

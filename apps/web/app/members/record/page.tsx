@@ -6,11 +6,12 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useMembersRecord } from "@/queries/use-members";
 import { btn, odds, pct, when } from "@/components/members/ui";
 import type { RecordSummary } from "@/lib/members/types";
+import { toneOf, gbp } from "@/lib/format";
 
 const sel = "rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink";
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric" });
-const units = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}£${Math.abs(n).toFixed(2)}`;
-const tone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink-muted");
+const units = (n: number) => gbp(n);
+const tone = (n: number) => toneOf(n, "text-ink-muted");
 
 function Figures({ s }: { s: RecordSummary }) {
   return (

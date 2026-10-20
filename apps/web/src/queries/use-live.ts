@@ -103,12 +103,13 @@ export function useClearWaiting() {
   });
 }
 
-export function useLivePicks(limit = 50, enabled = true) {
+/** The latest picks; open = only those still without a result (from the last two days), all the Live tab shows. */
+export function useLivePicks(limit = 50, enabled = true, open = false) {
   return usePersistedQuery({
-    queryKey: ["live-picks", limit],
+    queryKey: ["live-picks", limit, open],
     enabled,
     queryFn: async ({ signal }): Promise<PublicPick[]> => {
-      const data = await getJson<{ picks: PublicPick[] }>(`/api/live?limit=${limit}`, "live picks", signal);
+      const data = await getJson<{ picks: PublicPick[] }>(`/api/live?limit=${limit}${open ? "&open=1" : ""}`, "live picks", signal);
       return data.picks;
     },
     // Alerts arrive, and get their result edited in, in real time.

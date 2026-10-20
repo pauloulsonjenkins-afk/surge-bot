@@ -36,3 +36,22 @@ export function gbp(n: number, signed = true): string {
   const sign = n < 0 ? "−" : signed && n > 0 ? "+" : "";
   return `${sign}£${Math.abs(n).toFixed(2)}`;
 }
+
+/**
+ * A return per £1 (0.032 = 3.2%) as the app shows it: "+3.2%", "−1.5%" (a true minus sign), "0%", or "–" when there
+ * isn't one. The sign is taken after rounding, so a tiny loss reads "0%", never "−0%".
+ */
+export function signedPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "–";
+  const v = Math.round(n * 1000) / 10;
+  return v === 0 ? "0%" : `${v > 0 ? "+" : "−"}${Math.abs(v)}%`;
+}
+
+/**
+ * The text colour for a figure that wins or loses (money or a return): green above zero, red below, and `zero` at zero
+ * or with nothing to show. Anything that would round to 0.0% or £0.00 counts as zero, so its colour matches its sign.
+ */
+export function toneOf(n: number | null | undefined, zero = "text-ink"): string {
+  if (n == null || !Number.isFinite(n) || Math.abs(n) < 0.0005) return zero;
+  return n > 0 ? "text-hit" : "text-loss";
+}

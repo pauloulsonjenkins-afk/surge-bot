@@ -5,9 +5,9 @@ import { Card, PageHeader, Segmented } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useAwayLayTest, useLeagueHistory, useRefreshHistory, type HistoryStatus, type LeagueProfile } from "@/queries/use-history";
+import { toneOf } from "@/lib/format";
 
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm text-ink";
-const tone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink");
 const signed = (n: number, suffix = "") => `${n > 0 ? "+" : ""}${n}${suffix}`;
 /** Fewer bets than this and a league's return is mostly luck. */
 const ENOUGH = 100;
@@ -93,8 +93,8 @@ function AwayLayTest({ seasons, ready }: { seasons: number; ready: boolean }) {
             {[
               ["Bets", data.total.bets.toLocaleString("en-GB"), "text-ink"],
               ["Won", data.total.bets ? `${Math.round((1000 * data.total.won) / data.total.bets) / 10}%` : "–", "text-ink"],
-              ["Profit (£1 risked each)", `£${data.total.profit.toFixed(2)}`, tone(data.total.profit)],
-              ["Return per £1 risked", signed(data.total.roi, "%"), tone(data.total.roi)],
+              ["Profit (£1 risked each)", `£${data.total.profit.toFixed(2)}`, toneOf(data.total.profit)],
+              ["Return per £1 risked", signed(data.total.roi, "%"), toneOf(data.total.roi)],
             ].map(([label, value, cls]) => (
               <div key={label} className="rounded-xl border border-line bg-surface-2 p-3 text-center">
                 <p className={`text-lg font-semibold tabular-nums ${cls}`}>{value}</p>
@@ -109,7 +109,7 @@ function AwayLayTest({ seasons, ready }: { seasons: number; ready: boolean }) {
               <ul className="mt-1 flex flex-wrap gap-1.5 text-xs">
                 {data.bySeason.map((s) => (
                   <li key={s.season} className="rounded-md border border-line px-2 py-1">
-                    {s.season}/{String((s.season + 1) % 100).padStart(2, "0")} <span className={`tabular-nums ${tone(s.roi)}`}>{signed(s.roi, "%")}</span>{" "}
+                    {s.season}/{String((s.season + 1) % 100).padStart(2, "0")} <span className={`tabular-nums ${toneOf(s.roi)}`}>{signed(s.roi, "%")}</span>{" "}
                     <span className="text-ink-muted">· {s.bets}</span>
                   </li>
                 ))}
@@ -148,7 +148,7 @@ function AwayLayTest({ seasons, ready }: { seasons: number; ready: boolean }) {
                           {l.bets < ENOUGH && " · too few to trust"}
                         </span>
                       </span>
-                      <span className={`shrink-0 text-sm font-semibold tabular-nums ${tone(l.roi)}`}>{signed(l.roi, "%")}</span>
+                      <span className={`shrink-0 text-sm font-semibold tabular-nums ${toneOf(l.roi)}`}>{signed(l.roi, "%")}</span>
                     </button>
                   </li>
                 );

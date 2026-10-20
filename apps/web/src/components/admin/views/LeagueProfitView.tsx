@@ -13,6 +13,7 @@ import { resolveLeague } from "@/lib/performance/leagues";
 import { TIER_LABEL } from "@/domain/performance";
 import { addTally, EMPTY_TALLY, judgeTally, useLeagueReturns, useSetLeagueBlock, type LeagueTally } from "@/queries/use-league-returns";
 import type { LeagueModes, LeagueReturnRow } from "@/server/engine-client";
+import { toneOf, signedPct } from "@/lib/format";
 
 type Period = "ALL" | "30D" | "7D";
 type Mode = "all" | "live" | "sim";
@@ -20,8 +21,6 @@ type Group = "league" | "country" | "tier";
 type Sort = "picks" | "adjusted" | "roi";
 
 const MILESTONES = [50, 100, 250, 500];
-const pct = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
-const tone = (n: number | null) => (n === null || n === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
 
 const VERDICT: Record<ReturnType<typeof judgeTally>["verdict"], { label: string; cls: string }> = {
   early: { label: "Too early", cls: "bg-surface-2 text-ink-muted" },
@@ -41,10 +40,10 @@ function Figures({ t }: { t: LeagueTally }) {
   const early = j.verdict === "early";
   return (
     <span className={`shrink-0 text-right ${early ? "opacity-70" : ""}`}>
-      <span className={`block text-base font-semibold tabular-nums ${early ? "text-ink" : tone(j.roi)}`}>{pct(j.roi)}</span>
+      <span className={`block text-base font-semibold tabular-nums ${early ? "text-ink" : toneOf(j.roi)}`}>{signedPct(j.roi)}</span>
       <span className="block text-xs text-ink-muted">
-        {j.adjusted !== null && `adjusted ${pct(j.adjusted)}`}
-        {j.low !== null && j.high !== null && t.counted >= 10 && <span className="block">likely {pct(j.low)} to {pct(j.high)}</span>}
+        {j.adjusted !== null && `adjusted ${signedPct(j.adjusted)}`}
+        {j.low !== null && j.high !== null && t.counted >= 10 && <span className="block">likely {signedPct(j.low)} to {signedPct(j.high)}</span>}
       </span>
       <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${VERDICT[j.verdict].cls}`}>{VERDICT[j.verdict].label}</span>
     </span>

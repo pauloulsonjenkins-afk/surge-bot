@@ -11,7 +11,7 @@ import { useSliceStatus } from "@/queries/use-golden";
 import { GoldenLine } from "@/components/admin/GoldenLine";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, gbp } from "@/lib/format";
 import { QueryError } from "@/components/ui/QueryError";
 import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
@@ -95,7 +95,6 @@ function matchClock(pick: LivePick, now: number): string | null {
   return `~${Math.min(90, Math.floor(m))}'`;
 }
 
-const money = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}£${Math.abs(n).toFixed(2)}`;
 
 /** The admin's view of a sent pick: what Betfair says happened to it (see pickPlacements in the engine). */
 function placementChip(p: Placement): { label: string; tone: ChipTone; title: string } {
@@ -103,9 +102,9 @@ function placementChip(p: Placement): { label: string; tone: ChipTone; title: st
     case "matched":
       return { label: `Matched £${p.matched.toFixed(2)} @ ${p.odds?.toFixed(2) ?? "–"}`, tone: "neutral", title: "The bet is on Betfair and matched." };
     case "won":
-      return { label: `Won ${money(p.profit ?? 0)}`, tone: "hit", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
+      return { label: `Won ${gbp(p.profit ?? 0)}`, tone: "hit", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
     case "lost":
-      return { label: `Lost ${money(p.profit ?? 0)}`, tone: "loss", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
+      return { label: `Lost ${gbp(p.profit ?? 0)}`, tone: "loss", title: `Settled on Betfair at ${p.odds?.toFixed(2) ?? "–"}.` };
     case "waiting":
       return { label: "Placed, not matched yet", tone: "muted", title: "The bet is on Betfair, waiting for someone to match it." };
     case "lapsed":
@@ -536,8 +535,9 @@ function MatchGroup({
 }
 
 export default function LivePage() {
-  // Enough for a busy day: the waiting list goes back 24 hours.
-  const { data, isLoading, error, dataUpdatedAt } = useLivePicks(200);
+  // Enough for a busy day: the waiting list goes back 24 hours. Only picks without a result are sent: settled ones are
+  // on the Trade Log, and they were most of the download every 15 seconds.
+  const { data, isLoading, error, dataUpdatedAt } = useLivePicks(200, true, true);
   const admin = useMe().data?.admin === true;
   // Admin only: whether each sent pick was actually placed and matched on Betfair.
   const placements = usePlacements(admin).data?.picks ?? {};

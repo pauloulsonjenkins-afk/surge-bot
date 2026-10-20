@@ -1,14 +1,18 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getJson } from "./fetch-json";
+import { usePersistedQuery } from "./persist";
 import type { GoldenReport, GoldenSlice, GoldenSuggestion } from "@/server/engine-client";
 
 export type { GoldenReport, GoldenSlice, GoldenSuggestion };
 
-/** The Golden report. Pass enabled=false where the visitor may not be the admin (the Live tab). */
+/**
+ * The Golden report, opening on the figures from the last visit while fresh ones load. Pass enabled=false where the
+ * visitor may not be the admin (the Live tab).
+ */
 export function useGolden(enabled = true) {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: ["golden"],
     staleTime: 60_000,
     enabled,

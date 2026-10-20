@@ -44,6 +44,20 @@ test("without automatic stakes, a raise is a suggestion", () => {
   assert.deepEqual(autoStakeQueue(db), []);
 });
 
+test("the suggestions shown are reused for two minutes, and worked out again when a setting changes or time is up", () => {
+  const db = winner();
+  const now = new Date();
+  const first = visibleAdvice(db, now);
+  assert.ok(first.some((a) => a.kind === "stake-up"));
+  assert.equal(visibleAdvice(db, new Date(now.getTime() + 60_000)).length, first.length, "same answer a minute later");
+  // A setting it depends on: the stake. The raise from £1 now goes to the step after £2.
+  saveSendingSettings(db, { stakes: { [KEY]: 2 } });
+  const after = visibleAdvice(db, new Date(now.getTime() + 61_000)).find((a) => a.kind === "stake-up");
+  assert.equal(after?.action, "Raise to £3", "worked out again after the stake changed");
+  // Two minutes on with nothing changed: worked out again (the same here, as no results changed).
+  assert.ok(visibleAdvice(db, new Date(now.getTime() + 3 * 60_000)).some((a) => a.kind === "stake-up"));
+});
+
 test("with automatic stakes, the raise happens, and the next step waits a week as a note, not a suggestion", () => {
   const db = winner();
   saveSendingSettings(db, { ladderAuto: true });

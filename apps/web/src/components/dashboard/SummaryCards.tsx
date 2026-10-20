@@ -5,7 +5,7 @@ import type { HitRateStats } from "@/queries/use-stats";
 import { moneyTone } from "@/components/ui/Card";
 import { formatNumber } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { gbp } from "@/components/admin/WinLossLines";
+import { gbp } from "@/lib/format";
 import type { Timeframe } from "./TimeframeToggle";
 import type { PickMode } from "@/server/engine-client";
 import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";

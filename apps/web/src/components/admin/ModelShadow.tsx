@@ -4,16 +4,16 @@ import type { ShadowGroup, ShadowReport } from "@/server/engine-client";
 import { Card } from "@/components/ui/Card";
 import { StrategyName } from "@/components/ui/StrategyName";
 import { usePublishGoalModel } from "@/queries/use-goal-model";
+import { toneOf } from "@/lib/format";
 
 const signed = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${n}%`);
-const tone = (n: number | null) => (n === null || n === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–");
 
 function GroupTile({ label, g }: { label: string; g: ShadowGroup }) {
   return (
     <div className="rounded-xl border border-line bg-surface-2 p-3">
       <p className="text-xs text-ink-muted">{label}</p>
-      <p className={`text-lg font-semibold tabular-nums ${tone(g.roi)}`}>{signed(g.roi)}</p>
+      <p className={`text-lg font-semibold tabular-nums ${toneOf(g.roi)}`}>{signed(g.roi)}</p>
       <p className="text-xs text-ink-muted">
         {g.settled} settled of {g.picks}
         {g.hitRate !== null ? ` · hit ${g.hitRate}%` : ""}
@@ -86,8 +86,8 @@ export function ModelShadow({ s }: { s: ShadowReport }) {
                   <StrategyName label={b.strategy} />
                 </span>
                 <span className="text-xs tabular-nums text-ink-muted">
-                  bet <span className={tone(b.wouldBet.roi)}>{signed(b.wouldBet.roi)}</span> ({b.wouldBet.settled}) · skip{" "}
-                  <span className={tone(b.wouldSkip.roi)}>{signed(b.wouldSkip.roi)}</span> ({b.wouldSkip.settled})
+                  bet <span className={toneOf(b.wouldBet.roi)}>{signed(b.wouldBet.roi)}</span> ({b.wouldBet.settled}) · skip{" "}
+                  <span className={toneOf(b.wouldSkip.roi)}>{signed(b.wouldSkip.roi)}</span> ({b.wouldSkip.settled})
                 </span>
               </li>
             ))}

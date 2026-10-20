@@ -134,8 +134,9 @@ export function useStrategyLights(enabled: boolean, mode: PickMode, since: strin
 }
 
 /** Strategies → Weekly: each strategy's £ by week, the last 7 days and the 28 days before. */
+/** The weekly figures, opening on the last visit's while fresh ones load (they take a second or so to work out). */
 export function useStrategyWeeks() {
-  return useQuery({
+  return usePersistedQuery({
     queryKey: [...KEY, "weeks"],
     staleTime: 60_000,
     queryFn: ({ signal }) => getJson<StrategyWeeksReport>("/api/admin/strategies/weeks", "the weekly figures", signal),

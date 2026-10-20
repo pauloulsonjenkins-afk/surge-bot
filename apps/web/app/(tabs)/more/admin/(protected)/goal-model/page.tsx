@@ -7,9 +7,9 @@ import { QueryError } from "@/components/ui/QueryError";
 import { useGoalModel } from "@/queries/use-goal-model";
 import { ModelShadow } from "@/components/admin/ModelShadow";
 import { TeamGoalsTest } from "@/components/admin/TeamGoalsTest";
+import { toneOf } from "@/lib/format";
 
 const signed = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${n}%`);
-const tone = (n: number | null) => (n === null || n === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "–");
 
 /** Research: does GoalBrew's own model of InPlayGuru's stats know something the price doesn't? */
@@ -81,7 +81,7 @@ export default function GoalModelPage() {
                       <li key={label as string} className="flex items-baseline justify-between gap-3 py-2">
                         <span className="min-w-0 text-ink">{label as string}</span>
                         <span className="shrink-0 tabular-nums">
-                          <span className={`font-semibold ${tone(v.roi)}`}>{signed(v.roi)}</span> <span className="text-xs text-ink-muted">· {v.bets} bets</span>
+                          <span className={`font-semibold ${toneOf(v.roi)}`}>{signed(v.roi)}</span> <span className="text-xs text-ink-muted">· {v.bets} bets</span>
                         </span>
                       </li>
                     );
@@ -118,7 +118,7 @@ export default function GoalModelPage() {
                 {data.weights.map((w) => (
                   <li key={w.feature} className="flex items-baseline justify-between gap-3 py-2">
                     <span className="text-ink">{w.feature}</span>
-                    <span className={`tabular-nums ${tone(w.weight)}`}>{w.weight > 0 ? "+" : ""}{w.weight.toFixed(2)}</span>
+                    <span className={`tabular-nums ${toneOf(w.weight)}`}>{w.weight > 0 ? "+" : ""}{w.weight.toFixed(2)}</span>
                   </li>
                 ))}
               </ul>

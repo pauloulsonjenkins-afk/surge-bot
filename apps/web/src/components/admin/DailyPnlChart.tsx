@@ -1,7 +1,7 @@
 "use client";
 
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { gbp } from "./WinLossLines";
+import { gbp } from "@/lib/format";
 
 const GAIN = "var(--hit)";
 const LOSS = "var(--loss)";

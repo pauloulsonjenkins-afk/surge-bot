@@ -1,4 +1,5 @@
 import type { TodaySnapshot } from "@/server/engine-client";
+import { gbp } from "@/lib/format";
 
 /**
  * The phone widget's summary of the Today page (served by /api/widget): every value ready to show as it is, text and
@@ -9,7 +10,6 @@ export const RED = "#E86B55";
 export const AMBER = "#E6CF4F";
 export const CREAM = "#F1E9DF";
 
-const money = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}£${Math.abs(n).toFixed(2)}`;
 const colour = (n: number) => (n > 0 ? GREEN : n < 0 ? RED : CREAM);
 
 export function widgetSummary(d: TodaySnapshot) {
@@ -32,10 +32,10 @@ export function widgetSummary(d: TodaySnapshot) {
   return {
     status,
     statusColor: status === "On" ? GREEN : status === "Paused" ? AMBER : RED,
-    livePL: money(d.today.liveNet),
+    livePL: gbp(d.today.liveNet),
     livePLColor: colour(d.today.liveNet),
     liveSettled: String(d.today.liveSettled),
-    simPL: money(d.today.simNet),
+    simPL: gbp(d.today.simNet),
     balance,
     exposure: `£${Math.abs(d.bank.exposure ?? 0).toFixed(2)}`,
     moneyOut: `£${d.exposure.openStake.toFixed(2)}`,
@@ -49,7 +49,7 @@ export function widgetSummary(d: TodaySnapshot) {
     suggestions: String(d.advice?.length ?? 0),
     updated,
     // Two ready-made lines, for the simplest widget.
-    line1: `Betting ${status} · Today ${money(d.today.liveNet)}`,
+    line1: `Betting ${status} · Today ${gbp(d.today.liveNet)}`,
     line2: warning || `Balance ${balance} · ${d.alerts.lastHour} alerts/hr · ${updated}`,
     // The raw numbers, for anyone building their own.
     raw: {

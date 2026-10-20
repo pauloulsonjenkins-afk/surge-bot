@@ -4,16 +4,16 @@ import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import type { TeamGoalsGroup, TeamGoalsReport } from "@/server/engine-client";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { toneOf } from "@/lib/format";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/London" });
 const signed = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${n}%`);
-const tone = (n: number | null) => (n === null || n === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
 
 function Box({ label, g }: { label: string; g: TeamGoalsGroup }) {
   return (
     <div className="rounded-xl border border-line bg-surface-2 p-3">
       <p className="text-xs text-ink-muted">{label}</p>
-      <p className={`mt-0.5 text-xl font-bold tabular-nums ${tone(g.roi)}`}>{signed(g.roi)}</p>
+      <p className={`mt-0.5 text-xl font-bold tabular-nums ${toneOf(g.roi)}`}>{signed(g.roi)}</p>
       <p className="text-xs text-ink-muted">
         {g.picks} pick{g.picks === 1 ? "" : "s"}
         {g.hitRate !== null ? ` · hit ${g.hitRate}%` : ""}
@@ -58,7 +58,7 @@ export function TeamGoalsTest({ r }: { r: TeamGoalsReport }) {
               <li key={s.strategy} className="py-2">
                 <span className="text-ink">{names.name(s.strategy)}</span>
                 <span className="block text-xs text-ink-muted">
-                  passes <span className={tone(s.pass.roi)}>{signed(s.pass.roi)}</span> ({s.pass.picks}) · fails <span className={tone(s.fail.roi)}>{signed(s.fail.roi)}</span> ({s.fail.picks})
+                  passes <span className={toneOf(s.pass.roi)}>{signed(s.pass.roi)}</span> ({s.pass.picks}) · fails <span className={toneOf(s.fail.roi)}>{signed(s.fail.roi)}</span> ({s.fail.picks})
                 </span>
               </li>
             ))}

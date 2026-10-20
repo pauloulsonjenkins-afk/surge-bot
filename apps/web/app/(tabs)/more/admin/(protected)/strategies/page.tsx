@@ -11,13 +11,12 @@ import type { WeekTally } from "@/server/engine-client";
 import { useFreshStart } from "@/queries/use-fresh-start";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 import { marketName } from "@/lib/markets";
-import { gbp } from "@/lib/format";
+import { gbp, signedPct } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
-import { EquityCurve } from "@/components/admin/EquityCurve";
 import { strategyKey, useSaveStrategyName, useStrategyNames } from "@/queries/use-strategy-names";
 import { ChevronDown } from "lucide-react";
 import { BreakevenBar } from "@/components/ui/BreakevenBar";
@@ -26,10 +25,17 @@ import { ukMidnightIso } from "@/lib/uk-time";
 import { useSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
 import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { PriceCheck } from "@/components/admin/PriceCheck";
 import { usePriceCheck } from "@/queries/use-price-check";
 import { useToday } from "@/queries/use-today";
 import type { StrategyAdvice } from "@/server/engine-client";
+
+// The chart library is about a tenth of the app's code: loaded only when an equity curve is opened, not with the page.
+const EquityCurve = dynamic(() => import("@/components/admin/EquityCurve").then((m) => m.EquityCurve), {
+  ssr: false,
+  loading: () => <Skeleton className="h-48 w-full" />,
+});
 
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
@@ -41,7 +47,7 @@ const FORM_OPTIONS: Array<{ value: FormKind; label: string }> = [
 ];
 
 const pctOf = (hits: number, n: number) => Math.round((100 * hits) / n);
-const money = (r: StrategyReturn) => `${r.profit >= 0 ? "+" : "−"}£${Math.abs(r.profit).toFixed(2)}${r.roi !== null ? ` (${r.roi >= 0 ? "+" : ""}${Math.round(r.roi * 100)}%)` : ""}`;
+const money = (r: StrategyReturn) => `${gbp(r.profit)}${r.roi !== null ? ` (${signedPct(r.roi)})` : ""}`;
 
 /** Before and after a rule change: the 7 days before it against everything since, side by side. */
 function ChangeCompare({ c }: { c: NonNullable<NonNullable<AdminStrategy["form"]>["change"]> }) {

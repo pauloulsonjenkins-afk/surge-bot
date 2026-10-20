@@ -16,9 +16,8 @@ import { getJson } from "@/queries/fetch-json";
 import { TopOpportunity } from "@/components/edge/EdgeList";
 import { ValueBets } from "@/components/edge/ValueBets";
 import type { EdgeCard } from "@/lib/members/edge";
+import { toneOf, gbp } from "@/lib/format";
 
-const gbp = (n: number) => `${n < 0 ? "−" : ""}£${Math.abs(n).toFixed(2)}`;
-const tone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink");
 
 function ago(iso: string | null): string {
   if (!iso) return "never";
@@ -205,7 +204,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
-        <Tile label="Live today" value={<span className={tone(d.today.liveNet)}>{gbp(d.today.liveNet)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet)} (${d.today.simSettled})`} />
+        <Tile label="Live today" value={<span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
         <Tile
           label="Betfair balance"
           value={d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`}
@@ -231,7 +230,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Tile
           label="Daily loss stop"
           value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}
-          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet)} of it used today` : "None used: Live isn't down today") : undefined}
+          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet, false)} of it used today` : "None used: Live isn't down today") : undefined}
           warn={d.limits.dailyLossLimit === 0 || d.limits.lossStop !== null}
         >
           {d.limits.dailyLossLimit === 0 && (

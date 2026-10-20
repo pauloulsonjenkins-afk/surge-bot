@@ -213,11 +213,31 @@ const LABEL: Record<AdviceKind, string> = {
 };
 
 /**
+ * How long the suggestions may be reused for showing. Working them out reads every past result three times over (about
+ * 2-3 seconds on the live database), and the engine can't read alerts or place bets while it does; the Today page asks
+ * every 15 seconds. A change to any setting they depend on (betting, stakes, stop losses, league stops) starts afresh,
+ * and Apply always works them out anew.
+ */
+const VIEW_TTL_MS = 2 * 60_000;
+const viewCache = new WeakMap<EngineDb, { at: number; stamp: string; advice: Advice[] }>();
+
+/** strategyAdvice for showing: the same answer for up to two minutes while its settings are unchanged. */
+function adviceForView(db: EngineDb, now: Date): Advice[] {
+  const stamp = JSON.stringify([getSendingSettings(db), getStopLossRules(db), getLeagueBlocks(db)]);
+  const hit = viewCache.get(db);
+  const age = hit ? now.getTime() - hit.at : -1;
+  if (hit && hit.stamp === stamp && age >= 0 && age < VIEW_TTL_MS) return hit.advice;
+  const advice = strategyAdvice(db, now);
+  viewCache.set(db, { at: now.getTime(), stamp, advice });
+  return advice;
+}
+
+/**
  * The suggestions to show and notify: with automatic stakes on, stake raises and cuts aren't suggestions (they happen
  * by themselves, one step a week), so only Live / Sim and league stops are left for the admin to decide.
  */
 export function visibleAdvice(db: EngineDb, now = new Date()): Advice[] {
-  const all = strategyAdvice(db, now);
+  const all = adviceForView(db, now);
   return getSendingSettings(db).ladderAuto ? all.filter((a) => a.kind !== "stake-up" && a.kind !== "stake-down") : all;
 }
 
@@ -225,7 +245,7 @@ export function visibleAdvice(db: EngineDb, now = new Date()): Advice[] {
 export function autoStakeQueue(db: EngineDb, now = new Date()): Array<{ key: string; action: string; due: string }> {
   if (!getSendingSettings(db).ladderAuto) return [];
   const last = lastSteps(db);
-  return strategyAdvice(db, now)
+  return adviceForView(db, now)
     .filter((a) => a.kind === "stake-up" || a.kind === "stake-down")
     .map((a) => {
       const prev = last[a.key] ? Date.parse(last[a.key]!) : NaN;

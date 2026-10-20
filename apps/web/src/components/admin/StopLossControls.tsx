@@ -3,12 +3,10 @@
 import { useState } from "react";
 import type { StopLossPatch, StopLossStatus } from "@/queries/use-sending";
 import { useDialog } from "@/components/ui/ConfirmDialog";
+import { gbp } from "@/lib/format";
 
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink";
 
-function money(n: number): string {
-  return `${n < 0 ? "−" : n > 0 ? "+" : ""}£${Math.abs(n).toFixed(2)}`;
-}
 
 /**
  * The stop loss for one strategy: a daily loss limit and a losing-run limit. When either is reached, new
@@ -61,7 +59,7 @@ export function StopLossControls({
       tone: "money",
       confirmLabel: "Resume sending today",
       details: [
-        { label: "Today so far", value: money(status.todayNet) },
+        { label: "Today so far", value: gbp(status.todayNet) },
         { label: "Stopped because", value: status.reason ?? "–" },
         { label: "Daily loss limit", value: status.dailyLoss !== null ? `£${status.dailyLoss.toFixed(2)}` : "None" },
         { label: "Losing run limit", value: status.lossRun !== null ? `${status.lossRun} in a row` : "None" },
@@ -139,7 +137,7 @@ export function StopLossControls({
             ? `Stopped: ${status.reason}`
             : status.settledToday === 0
               ? "Today: nothing settled yet from picks sent to bet."
-              : `Today: ${money(status.todayNet)} from ${status.settledToday} settled pick${status.settledToday === 1 ? "" : "s"}${
+              : `Today: ${gbp(status.todayNet)} from ${status.settledToday} settled pick${status.settledToday === 1 ? "" : "s"}${
                   status.todayRun > 0 ? ` · ${status.todayRun} losing in a row` : ""
                 }.`}
         </p>

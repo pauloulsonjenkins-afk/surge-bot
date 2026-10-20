@@ -3,11 +3,11 @@
 import { useMemo, useState } from "react";
 import { usePriceCheck, type PriceCheckRow } from "@/queries/use-price-check";
 import { StrategyName } from "@/components/ui/StrategyName";
+import { toneOf } from "@/lib/format";
 
 /** Fewer checks than this and an average says little. */
 const ENOUGH = 20;
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
-const tone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink");
 
 /**
  * Price check, folded away on Strategies: for each strategy, how its alert price compares with Betfair's price for the
@@ -32,7 +32,7 @@ export function PriceCheck() {
     const v = relative && typical !== undefined ? r.edge - typical : r.edge;
     return (
       <span className={r.picks < ENOUGH ? "opacity-60" : ""}>
-        <span className={`font-medium tabular-nums ${tone(v)}`}>{signed(Math.round(v * 10) / 10)}</span>
+        <span className={`font-medium tabular-nums ${toneOf(v)}`}>{signed(Math.round(v * 10) / 10)}</span>
         <span className="text-xs text-ink-muted"> · {r.picks}</span>
       </span>
     );

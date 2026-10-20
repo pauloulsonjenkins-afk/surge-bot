@@ -13,9 +13,10 @@ import { Chip, type ChipTone } from "@/components/ui/Chip";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useDirect, useSaveDirect } from "@/queries/use-direct";
 import type { DirectBetRow, DirectMode, DirectSettings, DirectStatus } from "@/server/engine-client";
+import { gbp } from "@/lib/format";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const money = (n: number) => `£${n.toFixed(2)}`;
+const money = (n: number) => gbp(n, false);
 
 const MODES: ReadonlyArray<{ value: DirectMode; label: string }> = [
   { value: "off", label: "Off" },

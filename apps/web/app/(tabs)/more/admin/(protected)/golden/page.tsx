@@ -9,17 +9,10 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { GoldenBadge, sliceName } from "@/components/ui/SegmentLabel";
 import { useGolden, useGoldenAction, type GoldenSlice, type GoldenSuggestion } from "@/queries/use-golden";
 import type { StrategyReturn } from "@/server/engine-client";
+import { signedPct, toneOf, gbp } from "@/lib/format";
 
 const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 const dayTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-/** A return per £1 to one decimal place; the sign is taken after rounding, so a tiny loss reads "0%", not "−0%". */
-const round1 = (n: number) => Math.round(n * 1000) / 10;
-const pct = (n: number | null | undefined) => {
-  if (n == null) return "–";
-  const v = round1(n);
-  return v === 0 ? "0%" : `${v > 0 ? "+" : "−"}${Math.abs(v)}%`;
-};
-const tone = (n: number | null | undefined) => (n == null || round1(n) === 0 ? "text-ink" : n > 0 ? "text-hit" : "text-loss");
 /** Buttons and links that act as buttons in a slice's row: 44px tall on a phone, the same look side by side. */
 const action = "inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium ring-1 ring-inset ring-line disabled:opacity-40";
 
@@ -33,7 +26,7 @@ function Side({ r, name }: { r: StrategyReturn; name: string }) {
         <p className="mt-0.5 text-sm text-ink-muted">Nothing settled yet</p>
       ) : (
         <>
-          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${r.counted > 0 ? tone(r.roi) : "text-ink"}`}>{r.counted > 0 ? pct(r.roi) : "–"}</p>
+          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${r.counted > 0 ? toneOf(r.roi) : "text-ink"}`}>{r.counted > 0 ? signedPct(r.roi) : "–"}</p>
           <p className="text-xs tabular-nums text-ink-muted">
             {hits}–{r.settled - hits}
             {r.counted > 0 && ` · ${r.counted} priced`}
@@ -145,8 +138,8 @@ export default function GoldenPage() {
                                 Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
                                 {s.ownLive && s.ownLive.n > 0 ? (
                                   <span className="tabular-nums">
-                                    {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={tone(s.ownLive.roi)}>{pct(s.ownLive.roi)}</span> on {s.ownLive.n} ·{" "}
-                                    {s.ownLive.profit >= 0 ? "+" : "−"}£{Math.abs(s.ownLive.profit).toFixed(2)}
+                                    {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={toneOf(s.ownLive.roi)}>{signedPct(s.ownLive.roi)}</span> on {s.ownLive.n} ·{" "}
+                                    {gbp(s.ownLive.profit)}
                                   </span>
                                 ) : (
                                   "none settled yet"
@@ -190,12 +183,12 @@ export default function GoldenPage() {
                       <span className="block text-xs text-ink-muted">{g.strategy}</span>
                       <span className="block font-medium text-ink">{sliceName(g.label)}</span>
                       <span className="mt-0.5 block text-xs tabular-nums text-ink-muted">
-                        <span className={tone(g.slice.roi)}>{pct(g.slice.roi)}</span> per £1 over {g.slice.n} picks
-                        {g.slice.n > 0 && ` (${Math.round((g.slice.hits / g.slice.n) * 100)}% won, likely ${pct(g.slice.low)} or better)`} · the rest{" "}
-                        <span className={tone(g.rest.roi)}>{pct(g.rest.roi)}</span> over {g.rest.n}
+                        <span className={toneOf(g.slice.roi)}>{signedPct(g.slice.roi)}</span> per £1 over {g.slice.n} picks
+                        {g.slice.n > 0 && ` (${Math.round((g.slice.hits / g.slice.n) * 100)}% won, likely ${signedPct(g.slice.low)} or better)`} · the rest{" "}
+                        <span className={toneOf(g.rest.roi)}>{signedPct(g.rest.roi)}</span> over {g.rest.n}
                       </span>
                       <span className="block text-xs tabular-nums text-ink-muted">
-                        Older half {pct(g.halves[0]?.slice)} vs {pct(g.halves[0]?.rest)} · newer half {pct(g.halves[1]?.slice)} vs {pct(g.halves[1]?.rest)}
+                        Older half {signedPct(g.halves[0]?.slice)} vs {signedPct(g.halves[0]?.rest)} · newer half {signedPct(g.halves[1]?.slice)} vs {signedPct(g.halves[1]?.rest)}
                       </span>
                     </span>
                     <button type="button" disabled={act.isPending} onClick={() => void watch(g)} className={`${action} shrink-0 text-ink`}>

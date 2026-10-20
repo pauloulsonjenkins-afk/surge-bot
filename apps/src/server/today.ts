@@ -16,6 +16,7 @@ import { reasonFor } from "../betfair/unplaced";
 import { telegramHealth } from "./telegram-watchdog";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { autoStakeQueue, visibleAdvice } from "./strategy-advice";
+import { log } from "./log";
 
 // --------------------------------------------------------------------------- not placed, by reason
 
@@ -165,10 +166,19 @@ export function speedReport(db: EngineDb, sinceIso: string): SpeedReport {
 // --------------------------------------------------------------------------- the Today page
 
 export function todaySnapshot(db: EngineDb, now = new Date()) {
+  // How long each part takes (ms). The engine reads alerts and places bets on the same thread, so a slow part here holds
+  // them up: shown on the page's data as "timings", and logged when the whole call takes over a second.
+  const timings: Record<string, number> = {};
+  const timed = <T>(part: string, work: () => T): T => {
+    const t = performance.now();
+    const out = work();
+    timings[part] = Math.round(performance.now() - t);
+    return out;
+  };
   const sending = getSendingSettings(db);
   const direct = getDirectSettings(db);
-  const live = accountToday(db, now, "live");
-  const sim = accountToday(db, now, "sim");
+  const live = timed("liveToday", () => accountToday(db, now, "live"));
+  const sim = timed("simToday", () => accountToday(db, now, "sim"));
   const dayFrom = ukDayBounds(ukDateOf(now)).from;
   const recent = db.listLivePicks(200);
   const lastHour = recent.filter((p) => now.getTime() - Date.parse(p.firstSeenAt) < 3_600_000).length;
@@ -190,9 +200,14 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
   }
   const biggest = [...onMatch.values()].sort((a, b) => b.stake - a.stake)[0] ?? null;
   const openStake = [...onMatch.values()].reduce((t, e) => t + e.stake, 0);
-  const stopped = [...computeStopLoss(db, now).values()].filter((s) => s.stopped).map((s) => ({ strategy: s.key, reason: s.reason }));
+  const stopped = timed("stopLoss", () => [...computeStopLoss(db, now).values()].filter((s) => s.stopped).map((s) => ({ strategy: s.key, reason: s.reason })));
   const open = db.listOpenDirectBets();
-  const notPlacedToday = notPlacedReport(db, 1, now);
+  const notPlacedToday = timed("notPlaced", () => notPlacedReport(db, 1, now));
+  const speed = timed("speed", () => ({ today: speedReport(db, dayFrom), week: speedReport(db, new Date(now.getTime() - 7 * 86_400_000).toISOString()) }));
+  const advice = timed("advice", () => visibleAdvice(db, now));
+  const autoStakes = timed("autoStakes", () => autoStakeQueue(db, now));
+  const total = Object.values(timings).reduce((a, b) => a + b, 0);
+  if (total > 1000) log.warn(`Today page data took ${total} ms: ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(", ")}.`);
 
   return {
     at: now.toISOString(),
@@ -217,9 +232,10 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
     alerts: { lastHour, telegram: telegramHealth(db, now) },
     queue: { waiting: open.filter((d) => d.state === "waiting").length, placing: open.filter((d) => d.state === "placing").length, notPlacedToday: notPlacedToday.notPlaced, sentToday: notPlacedToday.sent },
     stopped,
-    speed: { today: speedReport(db, dayFrom), week: speedReport(db, new Date(now.getTime() - 7 * 86_400_000).toISOString()) },
-    advice: visibleAdvice(db, now),
+    speed,
+    advice,
     // Automatic stakes: the next step for each strategy and when it's due (shown, not suggested).
-    autoStakes: autoStakeQueue(db, now),
+    autoStakes,
+    timings,
   };
 }

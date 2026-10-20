@@ -78,8 +78,8 @@ export default function JoinPage() {
             3 to 20 letters, numbers or underscores. You can sign in with it instead of your email.
           </p>
         </div>
-        <input className={input} type="email" autoComplete="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input className={input} type="password" autoComplete="new-password" placeholder="Password (10+ characters)" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input className={input} type="email" autoComplete="email" placeholder="Email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className={input} type="password" autoComplete="new-password" placeholder="Password (10+ characters)" aria-label="Password, 10 or more characters" value={password} onChange={(e) => setPassword(e.target.value)} />
         <label className="flex items-start gap-2 text-xs text-ink-muted">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5" />I am 18 or over and understand GoalBrew shows betting information, not advice.
         </label>
