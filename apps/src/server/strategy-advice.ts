@@ -15,6 +15,8 @@
  *     - Raise one step: 50+ priced Live bets, a return of +5% or more, its priced picks hitting above the break-even
  *       its winners actually paid, and still making money over the last 30 days.
  *     - Lower one step: 30+ priced Live bets and losing, but not badly enough for "back to Sim".
+ *     - Lower one step at once after a raise: its Live bets since that raise losing 15% or more per £1 over 15+ bets.
+ *       With automatic stakes this doesn't wait for the 7 days, and it isn't raised again for 14 days.
  *     Steps: 1, 1.5, 2, 3, 4, 5 (% of the balance), or £1, £2, £3, £5 for a flat stake. The highest-stake limit on
  *     Sending still caps every bet.
  *
@@ -25,7 +27,8 @@
  * One notification per change: the same suggestion isn't sent again until it has gone away and come back.
  *
  * AUTOMATIC STAKES (Sending: ladderAuto): stake raises and cuts are applied by the hourly check instead of waiting,
- * one step per strategy at most every 7 days (counting manual Applies too), each with its own notification. "Try Live"
+ * one step per strategy at most every 7 days (counting manual Applies too; a cut after a raise that went wrong doesn't
+ * wait), each with its own notification. "Try Live"
  * and "Back to Sim" are never automatic.
  */
 import type { EngineDb } from "../storage/engine-db";
@@ -43,6 +46,22 @@ const STATE_KEY = "strategy_advice_state";
 /** When each strategy's stake last moved on the ladder (manually or automatically), so automatic steps are 7 days apart. */
 const LAST_STEP_KEY = "stake_ladder_last_step";
 export const AUTO_GAP_MS = 7 * 86_400_000;
+/** Each strategy's last raise on the ladder, and when it was cut again because the bets since went badly. */
+const RAISES_KEY = "stake_ladder_raises";
+/** A raise is undone at once when its Live bets since lose this much per £1... */
+export const FAST_CUT_ROI = -0.15;
+/** ...over at least this many. */
+export const FAST_CUT_BETS = 15;
+/** After such a cut, no raise for this long. */
+export const NO_RAISE_AFTER_CUT_MS = 14 * 86_400_000;
+
+function raises(db: EngineDb): Record<string, { at: string; cutAt?: string }> {
+  try {
+    return JSON.parse(db.getSetting(RAISES_KEY) ?? "{}") as Record<string, { at: string; cutAt?: string }>;
+  } catch {
+    return {};
+  }
+}
 
 function lastSteps(db: EngineDb): Record<string, string> {
   try {
@@ -66,6 +85,8 @@ export interface Advice {
   to?: { pct: number } | { flat: number };
   /** league-block: the league it would be stopped in. */
   league?: { key: string; name: string };
+  /** stake-down: undoing a raise whose bets since went badly (not held back by the 7 days between automatic steps). */
+  fast?: boolean;
 }
 
 /** One suggestion's identity: a strategy can have one per kind, and one league-block per league. */
@@ -100,6 +121,7 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
   const sinceChange = computeStrategyReturns(db, null, { fromRuleChange: true, rows });
   const recent = computeStrategyReturns(db, new Date(now.getTime() - 30 * 86_400_000).toISOString(), { fromRuleChange: true, rows });
   const checks = priceCheckReport(db, 30, now);
+  const raised = raises(db);
   const out: Advice[] = [];
   for (const [key, r] of Object.entries(all)) {
     const live = settings.enabled && settings.strategies[key] === true;
@@ -149,8 +171,27 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
     }
     const l = sinceChange[key]?.live;
     if (!l || !stake) continue;
+    // A raise that went wrong straight away: back down a step now, rather than waiting for the whole record to turn.
+    const raise = raised[key];
+    if (raise && !raise.cutAt) {
+      const since = computeStrategyReturns(db, raise.at, { rows })[key]?.live;
+      const to = ladderStep(stake, -1);
+      if (since && since.counted >= FAST_CUT_BETS && since.roi !== null && since.roi <= FAST_CUT_ROI && to) {
+        out.push({
+          key,
+          kind: "stake-down",
+          fast: true,
+          action: `Lower to ${stakeWords(to)}`,
+          to,
+          reason: `${pct(since.roi)} per £1 over ${since.counted} Live bets since it was raised on ${new Date(raise.at).toISOString().slice(0, 10)}.`,
+        });
+        continue;
+      }
+    }
+    const cutRecently = !!raise?.cutAt && now.getTime() - Date.parse(raise.cutAt) < NO_RAISE_AFTER_CUT_MS;
     const recentOk = !!rec && rec.live.counted > 0 && rec.live.roi !== null && rec.live.roi > 0;
     if (l.counted >= SAMPLE && l.roi !== null && l.roi >= 0.05 && beatsBreakeven(l) && recentOk) {
+      if (cutRecently) continue;
       const to = ladderStep(stake, 1);
       if (to) {
         const be = l.breakevenEffective ?? l.breakeven;
@@ -201,7 +242,15 @@ export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = n
     const stake = "pct" in to ? { stakePct: { [k]: to.pct } } : { stakes: { [k]: to.flat } };
     saveSendingSettings(db, { ...stake, ...(a.kind === "try-live" ? { strategies: { [k]: true } } : {}) });
   }
-  if (a.kind === "stake-up" || a.kind === "stake-down") db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
+  if (a.kind === "stake-up" || a.kind === "stake-down") {
+    db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
+    // Raises are watched for a quick cut; a cut after one blocks raising for a while; any other cut ends the watch.
+    const r = raises(db);
+    if (a.kind === "stake-up") r[k] = { at: now.toISOString() };
+    else if (a.fast && r[k]) r[k] = { ...r[k]!, cutAt: now.toISOString() };
+    else delete r[k];
+    db.setSetting(RAISES_KEY, JSON.stringify(r));
+  }
   log.info(`Strategy suggestion applied: ${displayName(db, k)}: ${a.action}.`);
   return a;
 }
@@ -264,7 +313,7 @@ export function autoApplyStakes(db: EngineDb, now = new Date()): Advice[] {
   for (const a of strategyAdvice(db, now)) {
     if (a.kind !== "stake-up" && a.kind !== "stake-down") continue;
     const prev = last[a.key];
-    if (prev && now.getTime() - Date.parse(prev) < AUTO_GAP_MS) continue;
+    if (!a.fast && prev && now.getTime() - Date.parse(prev) < AUTO_GAP_MS) continue;
     try {
       done.push(applyAdvice(db, a.key, a.kind, now));
     } catch (err) {

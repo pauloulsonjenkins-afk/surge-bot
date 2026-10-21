@@ -44,3 +44,43 @@ test("automatic stakes: off by default, saved by its switch, and nothing moves w
   assert.deepEqual(autoApplyStakes(db), []);
   assert.equal(getSendingSettings(db).stakePct["favourite pressure 2nd half"], 2);
 });
+
+/** A Live strategy at £2 a bet, raised an hour ago, with `n` Live bets since, all lost. */
+async function raisedThenLosing(n: number) {
+  const { buildFeed } = await import("../src/inplayguru/bet-feed");
+  const { parseAlert } = await import("../src/inplayguru/parse-alert");
+  const S = "Blistering Momentum";
+  const KEY = S.toLowerCase();
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, ladderAuto: true, stakes: { [KEY]: 2 }, strategies: { [KEY]: true }, dailyCap: 100 });
+  const now = new Date();
+  db.setSetting("stake_ladder_raises", JSON.stringify({ [KEY]: { at: new Date(now.getTime() - 3_600_000).toISOString() } }));
+  // Its last step was yesterday: the usual 7 days between automatic steps hasn't passed.
+  db.setSetting("stake_ladder_last_step", JSON.stringify({ [KEY]: new Date(now.getTime() - 86_400_000).toISOString() }));
+  const alert = (i: number, done: boolean) =>
+    [`🔔 ${S}`, "", "🇫🇷 France Ligue 1", `Lyon${i} vs Nantes${i}`, "", "Timer: 60'", "Goals: 0 - 0", "Over/Under 0.50 Odds:", "2.00 1.80",
+      ...(done ? ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", "Full-Time Score: 0-0", "", "❌ Miss"] : [])].join("\n");
+  const posted = new Date(now.getTime() - 60_000).toISOString();
+  for (let i = 1; i <= n; i++) {
+    db.upsertLivePick("chat", i, alert(i, false), parseAlert(alert(i, false)), posted);
+    buildFeed(db, { markSent: true, now });
+  }
+  for (let i = 1; i <= n; i++) db.upsertLivePick("chat", i, alert(i, true), parseAlert(alert(i, true)), posted);
+  return { db, KEY, now };
+}
+
+test("a raise that loses at once is cut a step straight away, without waiting the 7 days, and not raised again for 14", async () => {
+  const { autoApplyStakes } = await import("../src/server/strategy-advice");
+  const few = await raisedThenLosing(10);
+  assert.equal(strategyAdvice(few.db, few.now).filter((a) => a.fast).length, 0, "10 bets since the raise: too few to judge");
+
+  const { db, KEY, now } = await raisedThenLosing(15);
+  const cut = strategyAdvice(db, now).find((a) => a.key === KEY && a.kind === "stake-down");
+  assert.ok(cut?.fast);
+  assert.match(cut!.reason, /since it was raised/);
+  assert.deepEqual(autoApplyStakes(db, now).map((a) => a.action), ["Lower to £1"]);
+  assert.equal(getSendingSettings(db).stakes[KEY], 1);
+  // Cut once: the same bets don't cut it again.
+  assert.equal(strategyAdvice(db, now).filter((a) => a.fast).length, 0);
+  assert.ok(JSON.parse(db.getSetting("stake_ladder_raises")!)[KEY].cutAt);
+});
