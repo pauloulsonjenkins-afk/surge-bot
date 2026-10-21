@@ -4,8 +4,11 @@
  *
  * STATUS, from the slice's priced picks since its start (Live and Sim together):
  *   candidate        fewer than 50 so far
- *   golden           50+, making +3% or more per £1, and ahead of the rest of its strategy over the same time
- *   not holding up   50+, but not both of those
+ *   golden           50+, making +3% or more per £1, and ahead of the rest of its strategy over the same time, AND
+ *                    its last 30 priced picks not losing more than 5% per £1 (it has to keep earning it)
+ *   not holding up   50+, but not all of those
+ * A slice that loses the badge (the hourly check notes when, with a notification) only gets it back by proving itself
+ * again on picks after that: 30+ of them at +3% or more per £1, on top of the rest.
  *
  * THE FINDER looks through each strategy with 150+ priced settled picks for a slice that did clearly better than the
  * rest: one or two FEATURES (from different groups) that held 40+ picks, made +4% or more per £1, and beat the rest by
@@ -30,6 +33,33 @@ const TOLD_KEY = "golden_suggestions_told";
 const SIX_HOURS = 6 * 3_600_000;
 
 export const CONFIRM_FROM = 50;
+/** Keeping the badge: the last `recent` priced picks may not lose more than `worstRoi`; once lost, `regainFrom` picks
+ * after the loss at `regainRoi` or better win it back. */
+export const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0.03 };
+const BADGES_KEY = "golden_badges";
+
+interface Badge {
+  golden: boolean;
+  /** When it last lost the badge; cleared when it wins it back. */
+  lostAt?: string;
+}
+function badges(db: EngineDb): Record<string, Badge> {
+  try {
+    return JSON.parse(db.getSetting(BADGES_KEY) ?? "{}") as Record<string, Badge>;
+  } catch {
+    return {};
+  }
+}
+
+interface Tally {
+  n: number;
+  won: number;
+  roi: number | null;
+}
+function tally(list: Array<{ stake: number; profit: number; won: boolean }>): Tally {
+  const staked = list.reduce((a, p) => a + p.stake, 0);
+  return { n: list.length, won: list.filter((p) => p.won).length, roi: staked > 0 ? list.reduce((a, p) => a + p.profit, 0) / staked : null };
+}
 const MIN_PICKS = 150;
 const MIN_IN = 40;
 
@@ -202,13 +232,49 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
   const settings = getSendingSettings(db);
   const notify = getGoldenNotify(db);
   const returns = computeStrategyReturns(db, null);
+  const held = badges(db);
+  // Each slice's priced picks in time order (Live and Sim, as its record), for the recent-form test.
+  const { price } = pricingInputs(db);
+  const segs = Object.keys(returns).flatMap((key) => segmentsOf(key).map((seg) => ({ key, seg })));
+  const earliest = segs.reduce((m, x) => (x.seg.since < m ? x.seg.since : m), now.toISOString());
+  const picksOf = new Map<string, Array<{ at: string; stake: number; profit: number; won: boolean }>>();
+  if (segs.length > 0) {
+    for (const r of db.listResultsForWinLoss(earliest)) {
+      if (!r.facts) continue;
+      const key = strategyLabel(r.strategy).toLowerCase();
+      for (const { seg } of segs.filter((x) => x.key === key)) {
+        if (r.firstSeenAt < seg.since || !seg.test(r.facts)) continue;
+        const { priced } = price(r);
+        if (priced.kind !== "priced") continue;
+        const k = `${key}#${seg.id}`;
+        (picksOf.get(k) ?? picksOf.set(k, []).get(k)!).push({ at: r.firstSeenAt, stake: priced.stake, profit: priced.profit, won: r.result === "hit" });
+      }
+    }
+    for (const list of picksOf.values()) list.sort((a, b) => a.at.localeCompare(b.at));
+  }
   const slices = [];
   for (const [key, r] of Object.entries(returns)) {
     for (const s of r.segments ?? []) {
       const inn = s.in.all;
       const rest = s.out.all;
-      const status: GoldenStatus =
-        inn.counted < CONFIRM_FROM ? "candidate" : inn.roi !== null && inn.roi >= 0.03 && (rest.roi === null || inn.roi > rest.roi) ? "golden" : "not holding up";
+      const picks = picksOf.get(`${key}#${s.id}`) ?? [];
+      const recent = tally(picks.slice(-KEEP.recent));
+      const lostAt = held[`${key}#${s.id}`]?.lostAt ?? null;
+      const regain = lostAt ? tally(picks.filter((p) => p.at >= lostAt)) : null;
+      const pctOf = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
+      let status: GoldenStatus = "golden";
+      let why: string | null = null;
+      if (inn.counted < CONFIRM_FROM) status = "candidate";
+      else if (!(inn.roi !== null && inn.roi >= 0.03 && (rest.roi === null || inn.roi > rest.roi))) {
+        status = "not holding up";
+        why = `${pctOf(inn.roi)} per £1 since it started, against ${pctOf(rest.roi)} for the rest`;
+      } else if (recent.n >= KEEP.recent && recent.roi !== null && recent.roi < KEEP.worstRoi) {
+        status = "not holding up";
+        why = `its last ${recent.n} picks are ${pctOf(recent.roi)} per £1`;
+      } else if (regain && !(regain.n >= KEEP.regainFrom && regain.roi !== null && regain.roi >= KEEP.regainRoi)) {
+        status = "not holding up";
+        why = `re-proving after losing the badge: ${regain.n} of ${KEEP.regainFrom} picks, ${pctOf(regain.roi)} per £1 (needs ${pctOf(KEEP.regainRoi)})`;
+      }
       const bet = settings.segmentBets[`${key}#${s.id}`] ?? null;
       const ownLive = bet?.live && bet.liveSince ? liveSinceRecord(db, key, s.id, bet.liveSince) : null;
       slices.push({
@@ -220,6 +286,9 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         since: s.since,
         custom: s.custom,
         status,
+        why,
+        recent,
+        lostAt,
         slice: { live: s.in.live, sim: s.in.sim, all: inn },
         rest: { live: s.out.live, sim: s.out.sim, all: rest },
         bet,
@@ -244,6 +313,9 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         since: s.since,
         custom: s.custom === true,
         status: "candidate" as GoldenStatus,
+        why: null,
+        recent: { n: 0, won: 0, roi: null } as Tally,
+        lostAt: null,
         slice: { live: empty(), sim: empty(), all: empty() },
         rest: { live: empty(), sim: empty(), all: empty() },
         bet,
@@ -291,8 +363,9 @@ export function liveSinceRecord(db: EngineDb, strategyKey: string, segmentId: st
 export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise<string[]> {
   const settings = getSendingSettings(db);
   const live = Object.entries(settings.segmentBets).filter(([, c]) => c.live);
-  if (live.length === 0) return [];
   const report = goldenReport(db, now, { skipFinder: true });
+  await updateBadges(db, report.slices, now);
+  if (live.length === 0) return [];
   const off: string[] = [];
   for (const [k, cfg] of live) {
     const [strategyKey, id] = k.split("#") as [string, string];
@@ -300,7 +373,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
     const rec = cfg.liveSince ? liveSinceRecord(db, strategyKey, id, cfg.liveSince) : null;
     const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
     let why: string | null = null;
-    if (slice?.status === "not holding up") why = `it's no longer Golden: ${pct(slice.slice.all.roi ?? 0)} per £1 over ${slice.slice.all.counted} picks against the rest's ${pct(slice.rest.all.roi ?? 0)}`;
+    if (slice?.status === "not holding up") why = `it's no longer Golden: ${slice.why ?? `${pct(slice.slice.all.roi ?? 0)} per £1 over ${slice.slice.all.counted} picks`}`;
     else if (rec && rec.n >= SAFETY.minBets && rec.roi !== null && rec.roi < SAFETY.worstRoi) why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
     if (!why) continue;
     saveSendingSettings(db, { segmentBets: { [k]: { live: false } } });
@@ -310,4 +383,38 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
     await sendPush(db, { title: "Golden switched to Sim", body: `${name}: switched to Sim because ${why}. Its alerts aren't bet until you turn it back on.`, url: "/more/admin/golden", tag: `golden-off-${k}` });
   }
   return off;
+}
+
+/**
+ * Hourly, before the Live check: notes which slices hold the badge. One that loses it gets its date (so it has to prove
+ * itself again on later picks) and a notification; one that wins it back, or wins it the first time, a notification too.
+ * The first run only records where things stand, so nothing is announced for slices that were already Golden.
+ */
+export async function updateBadges(
+  db: EngineDb,
+  slices: Array<{ strategyKey: string; id: string; label: string; status: GoldenStatus; why: string | null }>,
+  now = new Date(),
+): Promise<void> {
+  const first = db.getSetting(BADGES_KEY) === null;
+  const held = badges(db);
+  const tell: Array<{ title: string; body: string; tag: string }> = [];
+  for (const s of slices) {
+    const k = `${s.strategyKey}#${s.id}`;
+    const was = held[k];
+    const name = `${displayName(db, s.strategyKey)}, ${s.label.replace(/^Golden: /, "")}`;
+    if (s.status === "golden") {
+      if (!first && !was?.golden) tell.push({ title: was?.lostAt ? "Golden again" : "Proved Golden", body: `${name} has ${was?.lostAt ? "won its Golden badge back" : "proved itself Golden"}.`, tag: `golden-badge-${k}` });
+      held[k] = { golden: true };
+    } else if (s.status === "not holding up") {
+      if (was?.golden) {
+        held[k] = { golden: false, lostAt: now.toISOString() };
+        if (!first) tell.push({ title: "Golden badge lost", body: `${name} has lost its Golden badge: ${s.why ?? "it stopped beating the rest"}. It has to prove itself again on new picks.`, tag: `golden-badge-${k}` });
+      } else held[k] = { golden: false, ...(was?.lostAt ? { lostAt: was.lostAt } : {}) };
+    }
+  }
+  db.setSetting(BADGES_KEY, JSON.stringify(held));
+  for (const t of tell) {
+    log.info(`Golden: ${t.body}`);
+    await sendPush(db, { title: t.title, body: t.body, url: "/more/admin/golden", tag: t.tag });
+  }
 }

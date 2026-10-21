@@ -1912,6 +1912,12 @@ export interface GoldenSlice {
   since: string;
   custom: boolean;
   status: "candidate" | "golden" | "not holding up";
+  /** Why it isn't (or is no longer) Golden, in words; null when it is, or is still a candidate. */
+  why?: string | null;
+  /** Its last 30 priced picks: once Golden, these must not lose more than 5% per £1. */
+  recent?: { n: number; won: number; roi: number | null };
+  /** When it last lost the badge (it must re-prove itself on picks after this); null if never. */
+  lostAt?: string | null;
   slice: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
   rest: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
   bet: { live: boolean; stakePct: number | null; stake: number | null; liveSince?: string | null } | null;

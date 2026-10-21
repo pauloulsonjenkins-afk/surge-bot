@@ -102,6 +102,8 @@ export default function GoldenPage() {
           </p>
           <p>
             It&apos;s a <b className="text-ink">candidate</b> until {confirmFrom} priced picks, then <b className="text-gold">Golden</b> if it&apos;s making +3% or more and beating the rest.
+            It has to keep earning it: if its last 30 picks lose more than 5% per £1, the badge goes at once (with a notification), and it only comes back after 30
+            more picks at +3% or better.
           </p>
           <p>
             Bet one on its own with its &ldquo;Change betting&rdquo; button below (or from its strategy&apos;s card on Strategies). Safety: a slice bet Live on its own goes back to Sim by itself, with a
@@ -176,6 +178,13 @@ export default function GoldenPage() {
                                 )}
                               </p>
                             )}
+                            {s.recent && s.recent.n > 0 && s.status !== "candidate" && (
+                              <p className="text-xs tabular-nums text-ink-muted">
+                                Last {s.recent.n} picks: {s.recent.won}–{s.recent.n - s.recent.won}{" "}
+                                <span className={toneOf(s.recent.roi)}>{signedPct(s.recent.roi)}</span>
+                              </p>
+                            )}
+                            {s.why && <p className="text-xs text-destructive">Not Golden: {s.why}.</p>}
                             <p className={`text-xs ${s.bet?.live ? "font-medium text-ink" : "text-ink-muted"}`}>{betText(s)}</p>
                             <div className="flex flex-wrap gap-2">
                               <button

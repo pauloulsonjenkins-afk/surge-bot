@@ -43,3 +43,36 @@ test("left Live while it's winning, or before 30 bets", async () => {
   assert.deepEqual(await monitorGoldenBets(setup(Array.from({ length: 32 }, (_, i) => (i % 3 === 0 ? "miss" : "hit")))), []);
   assert.deepEqual(await monitorGoldenBets(setup(Array.from({ length: 10 }, () => "miss"))), []);
 });
+
+test("Golden has to keep earning it: a bad last 30 loses the badge at once, and only 30 good picks after win it back", async () => {
+  const { goldenReport } = await import("../src/server/golden");
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "time to fight": 1 }, strategies: { "time to fight": false }, dailyCap: 1000, maxAgeMinutes: 60 });
+  const T = Date.now();
+  let n = 0;
+  const add = (results: Array<"hit" | "miss">, fromSecsAgo: number) =>
+    results.forEach((r, i) => {
+      n++;
+      const at = new Date(T - (fromSecsAgo - i) * 1000).toISOString();
+      db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), at, at);
+      buildFeed(db, { markSent: true });
+      db.upsertLivePick("chat", n, alert(n, r), parseAlert(alert(n, r)), at, at);
+    });
+  const status = () => goldenReport(db, new Date(), { skipFinder: true }).slices.find((s) => s.id === "two-apart")!;
+  // 60 picks, two wins in three at 2.00: Golden.
+  add(Array.from({ length: 60 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 900);
+  assert.equal(status().status, "golden");
+  await monitorGoldenBets(db, new Date(T - 700_000)); // first run: records it, says nothing
+  // The next 30 lose badly: still well up overall (+10%), but the badge goes.
+  add(Array.from({ length: 30 }, (_, i) => (i % 3 === 0 ? "hit" : "miss")), 600);
+  assert.equal(status().status, "not holding up");
+  assert.match(status().why!, /last 30 picks/);
+  await monitorGoldenBets(db, new Date(T - 400_000)); // notes when it lost it
+  // 20 good picks after: the last 30 look fine again, but it hasn't re-proved itself yet.
+  add(Array.from({ length: 20 }, () => "hit"), 300);
+  assert.equal(status().status, "not holding up");
+  assert.match(status().why!, /re-proving/);
+  // 30 good picks after the loss: Golden again.
+  add(Array.from({ length: 10 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 100);
+  assert.equal(status().status, "golden");
+});
