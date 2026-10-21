@@ -94,3 +94,40 @@ test("each result is looked for from 5 minutes after its race's off until it's i
   assert.deepEqual(asked, ["W1:1", "W1:1", "W1:1"]);
   assert.equal(listHorseBets(db).find((b) => b.horse === "Frankel")!.result, "won");
 });
+
+test("a horse the tipster spelled a little differently is found in its own race only", async () => {
+  const { closeRunner, editDistance } = await import("../src/server/horse-results");
+  const { saveHorseSuggestions } = await import("../src/server/horses");
+  assert.equal(editDistance("buccaybay", "buccabay"), 1);
+  assert.equal(editDistance("mottazen", "motazzen"), 2);
+  const db = new EngineDb(":memory:", () => {});
+  const now = new Date();
+  const today = ukDateOf(now);
+  // 19:30 UK today as an ISO time (whatever the clocks are doing).
+  const at = (hhmm: string) => {
+    for (let m = -26 * 60; m <= 26 * 60; m++) {
+      const d = new Date(Date.parse(`${today}T12:00:00Z`) + m * 60_000);
+      const uk = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+      if (uk === hhmm && ukDateOf(d) === today) return d.toISOString();
+    }
+    throw new Error("no such time");
+  };
+  const markets = [
+    { marketId: "W1", marketType: "WIN", venue: "Kempton", start: at("19:30"), runners: [{ selectionId: 1, runnerName: "Buccabay" }, { selectionId: 2, runnerName: "Other One" }] },
+    { marketId: "P1", marketType: "PLACE", venue: "Kempton", start: at("19:30"), runners: [{ selectionId: 1, runnerName: "Buccabay" }, { selectionId: 2, runnerName: "Other One" }] },
+    // Another race at the same course with a name as close: not the tip's race, so not taken.
+    { marketId: "W2", marketType: "WIN", venue: "Kempton", start: at("20:00"), runners: [{ selectionId: 9, runnerName: "Buccaybey" }] },
+  ];
+  assert.equal(closeRunner(markets, "Buccaybay", "Kempton", "19:30")?.runner.runnerName, "Buccabay");
+  assert.equal(closeRunner(markets, "Buccaybay", "Kempton", null), null, "without the race time two races are as close: left alone");
+  assert.equal(closeRunner(markets, "Something Else", "Kempton", "19:30"), null);
+
+  saveHorseSuggestions(db, today, [{ horse: "Buccaybay", course: "Kempton", raceTime: "19:30", odds: "5/1", betType: "ew", ewPlaces: 3 }]);
+  saveHorseDay(db, today, [{ rank: 1, horse: "Buccaybay", course: "Kempton", stake: 2, odds: "5/1", betType: "ew", ewFraction: 4, ewPlaces: 3 }]);
+  const r: HorseResultsReader = {
+    horseMarkets: async () => markets,
+    runnerResult: async (m, s) => (m === "W1" && s === 1 ? "LOSER" : m === "P1" && s === 1 ? "WINNER" : null),
+  };
+  assert.equal(await logHorseResults(db, r, new Date(Date.parse(at("19:30")) + 10 * 60_000)), 1);
+  assert.equal(listHorseBets(db)[0]!.result, "placed");
+});
