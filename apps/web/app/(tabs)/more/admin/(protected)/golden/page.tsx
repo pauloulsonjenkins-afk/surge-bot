@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui/Card";
+import { SegmentBetting } from "@/components/admin/SegmentBetting";
+import { useSending } from "@/queries/use-sending";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useDialog } from "@/components/ui/ConfirmDialog";
@@ -63,6 +64,9 @@ export default function GoldenPage() {
   const { data, isLoading, error } = useGolden();
   const act = useGoldenAction();
   const dialog = useDialog();
+  const sending = useSending(60_000);
+  // The slice whose betting switch is open ("strategyKey#id").
+  const [betting, setBetting] = useState<string | null>(null);
   // Fixed when the page opens: only used to tell a start date still to come from one already passed.
   const [now] = useState(() => Date.now());
   const confirmFrom = data?.confirmFrom ?? 50;
@@ -100,7 +104,7 @@ export default function GoldenPage() {
             It&apos;s a <b className="text-ink">candidate</b> until {confirmFrom} priced picks, then <b className="text-gold">Golden</b> if it&apos;s making +3% or more and beating the rest.
           </p>
           <p>
-            Bet one on its own from its strategy&apos;s card (Strategies → Cards → tap the strategy). Safety: a slice bet Live on its own goes back to Sim by itself, with a
+            Bet one on its own with its &ldquo;Change betting&rdquo; button below (or from its strategy&apos;s card on Strategies). Safety: a slice bet Live on its own goes back to Sim by itself, with a
             notification, if it stops being Golden or its own Live bets lose more than {worst}% per £1 over {minBets}+ bets.
           </p>
         </div>
@@ -183,15 +187,35 @@ export default function GoldenPage() {
                               >
                                 {s.notify ? "🔔 Notify me: on" : "Notify me: off"}
                               </button>
-                              <Link href="/more/admin/strategies" className={`${action} text-accent`}>
+                              <button
+                                type="button"
+                                aria-expanded={betting === `${s.strategyKey}#${s.id}`}
+                                onClick={() => setBetting(betting === `${s.strategyKey}#${s.id}` ? null : `${s.strategyKey}#${s.id}`)}
+                                className={`${action} text-accent`}
+                              >
                                 Change betting
-                              </Link>
+                              </button>
                               {s.custom && (
                                 <button type="button" disabled={act.isPending} onClick={() => void stop(s)} className={`${action} text-ink-muted`}>
                                   Stop watching
                                 </button>
                               )}
                             </div>
+                            {/* The slice's own Live / Sim switch and stake, here rather than a trip to Strategies. */}
+                            {betting === `${s.strategyKey}#${s.id}` &&
+                              (sending.data ? (
+                                <SegmentBetting
+                                  strategyKey={s.strategyKey}
+                                  strategyName={s.strategy}
+                                  segment={{ id: s.id, label: s.label }}
+                                  settings={sending.data.settings}
+                                  strategyLive={s.strategyLive}
+                                />
+                              ) : sending.error ? (
+                                <p className="text-xs text-destructive">Couldn&apos;t load the betting settings: {sending.error.message}</p>
+                              ) : (
+                                <Skeleton className="h-20 w-full" />
+                              ))}
                           </li>
                         );
                       })}

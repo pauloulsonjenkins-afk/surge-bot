@@ -61,9 +61,12 @@ export function useSaveSending() {
       qc.setQueryData(KEY, data);
       // The Strategies page groups strategies by Live / Sim and shows their stakes.
       void qc.invalidateQueries({ queryKey: ["admin-strategies"] });
+      // Golden shows how each slice is bet.
+      void qc.invalidateQueries({ queryKey: ["golden"] });
     },
   });
 }
+
 /** Takes a team name learned by itself back out of Match names. */
 export function useUndoLearnedName() {
   const qc = useQueryClient();
