@@ -3,7 +3,7 @@
  * admin row and the More page:
  * - Every day: today at a glance, each strategy, and the betting itself (bets placed, limits, the Betfair check).
  * - Money: profit and loss.
- * - Research: leagues (ours and their past seasons), pre-match value, the goal model. Opened now and then.
+ * - Research: leagues (ours and their past seasons), pre-match value. Opened now and then.
  * - Site: members, settings, and fixing a result.
  * - Horses: the separate racing log, one page with tabs.
  * On phones only "Every day" sits in the admin row; the rest are a tap away on More (see AdminNav).
@@ -32,7 +32,6 @@ export const ADMIN_GROUPS = [
     items: [
       { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier, and how each league played over past seasons." },
       { href: "/more/admin/edge", label: "Fixtures and value bets", short: "Fixtures", description: "Pre-match insight and value bets for every fixture in the next 48 hours." },
-      { href: "/more/admin/goal-model", label: "Goal model", short: "Model", description: "Our own model of the in-play stats, in shadow: does it beat the market price? You get a notification once it's proved." },
     ],
   },
   {

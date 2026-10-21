@@ -25,7 +25,6 @@ import { readCredentials } from "../betfair/exchange";
 import { startMembers } from "../members/runner";
 import { startHistoryRefresh } from "../history/football-data";
 import { startDailyTips } from "./daily-tips";
-import { notifyIfProved, shadowTick } from "../model/goal-model";
 import { notifyAdvice } from "./strategy-advice";
 import { notifyLeagueMilestones } from "./league-returns";
 import { startEdge } from "../edge/edge";
@@ -33,7 +32,6 @@ import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startValueSettling } from "../edge/value-strategy";
 import { startProbeOnce } from "../fixtures/probe";
 import { startGoalTimes } from "../fixtures/goal-times";
-import { startTeamGoalsReminder } from "../model/team-goals-test";
 import { logHorseResults } from "./horse-results";
 import { loadCustomSegments, monitorGoldenBets, notifyGoldenSuggestions } from "./golden";
 
@@ -148,20 +146,6 @@ async function main(): Promise<void> {
   }, 60_000);
   simSweep.unref();
 
-  // Goal model in shadow: scores each new next-goal pick (never changes a bet); retrains itself weekly.
-  const modelSweep = setInterval(() => {
-    try {
-      shadowTick(db);
-    } catch (err) {
-      log.warn(`Goal model scoring failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }, 20_000);
-  modelSweep.unref();
-  // Once an hour: has the shadow test met the rule for turning the model on? One notification when it first does.
-  const provedCheck = setInterval(() => {
-    void notifyIfProved(db).catch((err) => log.warn(`Goal model check failed: ${err instanceof Error ? err.message : String(err)}`));
-  }, 3_600_000);
-  provedCheck.unref();
   // Once an hour in the daytime (08:00-22:00 UK): any strategy now worth putting Live, or back to Sim? One
   // notification per new suggestion; they're also listed on the Today page.
   const adviceCheck = setInterval(() => {
@@ -210,8 +194,6 @@ async function main(): Promise<void> {
   startEdge(db, () => void priceEdgeNow(db));
   // ...and the Betfair price of each card's bets in the next 24 hours, every two hours (read-only).
   startEdgePrices(db);
-  // GoalSignal's "lively teams" filter, tested on next-goal picks (Sim only); a push on 18 Oct to review it.
-  startTeamGoalsReminder(db);
   // Best Value Cuppa (Sim only): settles its picks from Betfair's results.
   startValueSettling(db);
 

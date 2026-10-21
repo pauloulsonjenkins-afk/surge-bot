@@ -358,8 +358,6 @@ export async function fetchHitRateStats(days: number | null, strategy: string | 
 export interface SendingSettings {
   enabled: boolean;
   strategies: Record<string, boolean>;
-  /** The goal model filter per strategy (lower-case name): true = on. Send false to turn one off. Missing on an older engine. */
-  modelFilter?: Record<string, boolean>;
   /** A watched slice bet on its own ("strategy#slice", e.g. Second Pour's Golden): its Live / Sim switch and stake. Null clears one. */
   segmentBets?: Record<string, { live?: boolean; stakePct?: number | null; stake?: number | null; liveSince?: string | null } | null>;
   /** Stake in pounds per strategy (lower-case name). Send null to clear one. */
@@ -1727,67 +1725,6 @@ export function fetchNotPlaced(days: number): Promise<NotPlacedReport> {
   return engineCall(`/internal/not-placed?days=${days}`, "the not-placed report", { timeoutMs: 15_000 });
 }
 
-// ---- Goal model research (mirrors model/goal-model.ts in the engine) ----
-
-export interface ModelRoi {
-  bets: number;
-  roi: number | null;
-}
-
-export interface GoalModelReport {
-  rows: number;
-  enough: boolean;
-  train: { n: number; from: string | null; to: string | null };
-  test: {
-    n: number;
-    from: string | null;
-    to: string | null;
-    hitRate: number;
-    marketChance: number;
-    logLossMarket: number;
-    logLossModel: number;
-    improvement: number;
-    betEvery: ModelRoi;
-    modelBets: ModelRoi;
-    modelSkips: ModelRoi;
-    calibration: Array<{ band: string; n: number; predicted: number; actual: number }>;
-  } | null;
-  weights: Array<{ feature: string; weight: number }>;
-  trainCheck: { modelBets: ModelRoi; modelSkips: ModelRoi } | null;
-  verdict: string;
-  /** Live shadow scoring (missing on an older engine). */
-  shadow?: ShadowReport;
-  /** The Sim-only test of GoalSignal's "lively teams" filter (model/team-goals-test.ts in the engine). */
-  teamGoals?: TeamGoalsReport;
-}
-
-export interface ShadowGroup {
-  picks: number;
-  settled: number;
-  hitRate: number | null;
-  roi: number | null;
-}
-
-export interface ShadowReport {
-  model: { version: string; trainedAt: string; rows: number } | null;
-  since: string | null;
-  scored: number;
-  betfairShare: number | null;
-  wouldBet: ShadowGroup;
-  wouldSkip: ShadowGroup;
-  byStrategy: Array<{ strategy: string; wouldBet: ShadowGroup; wouldSkip: ShadowGroup }>;
-  recent: Array<{ pickId: number; strategy: string; match: string; minute: number | null; pModel: number; pNeeded: number; price: number; priceFrom: string; wouldBet: boolean; result: string | null }>;
-  ready: { met: boolean; reasons: string[] };
-}
-
-export function publishGoalModel(): Promise<{ version: string }> {
-  return engineCall("/internal/goal-model/publish", "training a new model version", { method: "POST", body: {}, timeoutMs: 30_000 });
-}
-
-export function fetchGoalModel(refresh: boolean): Promise<GoalModelReport> {
-  return engineCall(`/internal/goal-model${refresh ? "?refresh=1" : ""}`, "the goal model", { timeoutMs: 30_000 });
-}
-
 /** The one-off API-Football plan check (fixtures/probe.ts in the engine); null until it has run. */
 export function fetchApiFootballProbe(): Promise<{ probe: unknown }> {
   return engineCall("/internal/api-football-probe", "the API-Football check");
@@ -1820,25 +1757,6 @@ export interface PickDetail {
 
 export function fetchPickDetail(id: number): Promise<{ detail: PickDetail }> {
   return engineCall(`/internal/picks/detail?id=${id}`, "the pick's detail");
-}
-
-export interface TeamGoalsGroup {
-  picks: number;
-  settled: number;
-  hits: number;
-  hitRate: number | null;
-  roi: number | null;
-}
-
-export interface TeamGoalsReport {
-  start: string;
-  reviewAt: string;
-  rule: string;
-  checked: number;
-  covered: number;
-  sinceStart: { pass: TeamGoalsGroup; fail: TeamGoalsGroup };
-  backfilled: { pass: TeamGoalsGroup; fail: TeamGoalsGroup };
-  byStrategy: Array<{ strategy: string; pass: TeamGoalsGroup; fail: TeamGoalsGroup }>;
 }
 
 /** A strategy suggestion (engine strategy-advice.ts): Live / Sim, or one step on the stake ladder. */

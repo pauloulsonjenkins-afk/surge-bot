@@ -757,20 +757,6 @@ export class EngineDb {
         PRIMARY KEY (pick_id, kind)
       );
 
-      -- Goal model in SHADOW (model/goal-model.ts): each next-goal pick scored as it arrives, by a frozen model version.
-      -- Nothing is bet on it; the picks it "would bet" and "would skip" are compared once they settle.
-      CREATE TABLE IF NOT EXISTS pick_model_scores (
-        pick_id     INTEGER PRIMARY KEY,
-        version     TEXT NOT NULL,
-        p_model     REAL NOT NULL,
-        p_market    REAL NOT NULL,
-        price       REAL NOT NULL,
-        price_from  TEXT NOT NULL,
-        p_needed    REAL NOT NULL,
-        edge        REAL NOT NULL,
-        scored_at   TEXT NOT NULL
-      );
-
       -- Edge (edge/edge.ts): the pre-match insight card for each upcoming fixture, worked out a few times a day and
       -- read by the Members Fixtures page. Read-only for betting: nothing here is used to bet.
       CREATE TABLE IF NOT EXISTS edge_cards (
@@ -2561,84 +2547,6 @@ export class EngineDb {
     return rows.map((r) => ({ id: r.id, strategy: r.strategy, postedAt: r.message_at, receivedAt: r.first_seen_at, sentAt: r.sent_at, placedAt: r.placed_at }));
   }
 
-  /** Next-goal picks from the last day not scored by the goal model yet (newest first). */
-  unscoredForModel(sinceIso: string): LivePick[] {
-    const ids = (
-      this.db
-        .prepare(`SELECT id FROM live_picks WHERE first_seen_at >= ? AND market = 'NEXT_GOAL' AND excluded = 0 AND id NOT IN (SELECT pick_id FROM pick_model_scores) ORDER BY id DESC LIMIT 100`)
-        .all(sinceIso) as Array<{ id: number }>
-    ).map((r) => r.id);
-    return ids.map((id) => this.getLivePick(id)).filter((p): p is LivePick => p !== null);
-  }
-
-  saveModelScore(s: { pickId: number; version: string; pModel: number; pMarket: number; price: number; priceFrom: string; pNeeded: number; edge: number; at: string }): void {
-    this.db
-      .prepare(
-        `INSERT OR IGNORE INTO pick_model_scores (pick_id, version, p_model, p_market, price, price_from, p_needed, edge, scored_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(s.pickId, s.version, s.pModel, s.pMarket, s.price, s.priceFrom, s.pNeeded, s.edge, s.at);
-    this.onChange();
-  }
-
-  /** A shadow score re-priced (e.g. a stale Betfair price replaced by the alert's): price, where from, chance needed, edge. */
-  repriceModelScore(pickId: number, s: { price: number; priceFrom: string; pNeeded: number; edge: number }): void {
-    this.db.prepare(`UPDATE pick_model_scores SET price = ?, price_from = ?, p_needed = ?, edge = ? WHERE pick_id = ?`).run(s.price, s.priceFrom, s.pNeeded, s.edge, pickId);
-    this.onChange();
-  }
-
-  getModelScore(pickId: number): { version: string; pModel: number; pNeeded: number; edge: number; price: number; priceFrom: string } | null {
-    const r = this.db.prepare(`SELECT version, p_model, p_needed, edge, price, price_from FROM pick_model_scores WHERE pick_id = ?`).get(pickId) as
-      | { version: string; p_model: number; p_needed: number; edge: number; price: number; price_from: string }
-      | undefined;
-    return r ? { version: r.version, pModel: r.p_model, pNeeded: r.p_needed, edge: r.edge, price: r.price, priceFrom: r.price_from } : null;
-  }
-
-  /** Scored picks with how they turned out (result null while unsettled), newest first. */
-  listModelScores(limit = 5000): Array<{
-    pickId: number;
-    version: string;
-    pModel: number;
-    pMarket: number;
-    price: number;
-    priceFrom: string;
-    pNeeded: number;
-    edge: number;
-    scoredAt: string;
-    strategy: string;
-    home: string | null;
-    away: string | null;
-    minute: number | null;
-    status: string;
-    result: string | null;
-    excluded: boolean;
-  }> {
-    const rows = this.db
-      .prepare(
-        `SELECT s.*, p.strategy, p.home, p.away, p.minute, p.status, p.result, p.excluded
-           FROM pick_model_scores s JOIN live_picks p ON p.id = s.pick_id
-          ORDER BY s.pick_id DESC LIMIT ?`,
-      )
-      .all(limit) as Array<Record<string, unknown>>;
-    return rows.map((r) => ({
-      pickId: Number(r.pick_id),
-      version: String(r.version),
-      pModel: Number(r.p_model),
-      pMarket: Number(r.p_market),
-      price: Number(r.price),
-      priceFrom: String(r.price_from),
-      pNeeded: Number(r.p_needed),
-      edge: Number(r.edge),
-      scoredAt: String(r.scored_at),
-      strategy: String(r.strategy),
-      home: (r.home as string | null) ?? null,
-      away: (r.away as string | null) ?? null,
-      minute: typeof r.minute === "number" ? r.minute : null,
-      status: String(r.status),
-      result: (r.result as string | null) ?? null,
-      excluded: r.excluded === 1,
-    }));
-  }
-
   /** Replaces the Edge cards: the given ones are written, and cards for fixtures that kicked off before `dropBefore` go. */
   replaceEdgeCards(cards: Array<{ key: string; kickoff: string; json: string }>, dropBefore: string): void {
     const put = this.db.prepare(`INSERT INTO edge_cards (fixture_key, kickoff, card_json) VALUES (?, ?, ?) ON CONFLICT(fixture_key) DO UPDATE SET kickoff = excluded.kickoff, card_json = excluded.card_json`);
@@ -2655,22 +2563,6 @@ export class EngineDb {
       kickoff: string;
       json: string;
     }>);
-  }
-
-  /** Every settled pick still counted (not excluded), with its parsed alert: the goal model's training data. */
-  listSettledForModel(): Array<{ id: number; at: string; strategy: string; result: string | null; detail: ParsedAlert }> {
-    const rows = this.db
-      .prepare(`SELECT id, COALESCE(message_at, first_seen_at) AS at, strategy, result, parsed_json FROM live_picks WHERE status = 'settled' AND excluded = 0`)
-      .all() as Array<{ id: number; at: string; strategy: string; result: string | null; parsed_json: string }>;
-    const out: Array<{ id: number; at: string; strategy: string; result: string | null; detail: ParsedAlert }> = [];
-    for (const r of rows) {
-      try {
-        out.push({ id: r.id, at: r.at, strategy: r.strategy, result: r.result, detail: JSON.parse(r.parsed_json) as ParsedAlert });
-      } catch {
-        // an unreadable alert is left out
-      }
-    }
-    return out;
   }
 
   /** Which price checks are already stored for these picks, as "pickId:kind". */

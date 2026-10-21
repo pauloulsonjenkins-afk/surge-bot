@@ -105,10 +105,8 @@ import type { Feature } from "./segments";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
 import { notPlacedReport, todaySnapshot } from "./today";
-import { cachedModelReport, publishModel, shadowReport } from "../model/goal-model";
 import { getProbe } from "../fixtures/probe";
 import { pickDetail } from "./pick-detail";
-import { teamGoalsReport } from "../model/team-goals-test";
 import { edgeCards } from "../edge/edge";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
@@ -892,29 +890,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (req.method === "GET" && path === "/internal/api-football-probe") {
       if (!requireAdmin(req, res)) return;
       send(res, 200, { probe: getProbe(db) });
-      return;
-    }
-
-    // Research: GoalBrew's own goal model, tested against the market on picks it never saw (model/goal-model.ts).
-    if (req.method === "GET" && path === "/internal/goal-model") {
-      if (!requireAdmin(req, res)) return;
-      const refresh = new URL(rawUrl, "http://internal").searchParams.get("refresh") === "1";
-      const goalModel = () => {
-        const { timed, done } = reportTimings("Goal model page data");
-        const model = timed("model", () => cachedModelReport(db, refresh));
-        const shadow = timed("shadow", () => shadowReport(db));
-        const teamGoals = timed("teamGoals", () => teamGoalsReport(db));
-        return { ...model, shadow, teamGoals, timings: done() };
-      };
-      // Reused for up to a minute (report-cache.ts), like the other reports: it took about a second on every open.
-      send(res, 200, refresh ? goalModel() : cachedReport(db, `goal-model:${ukDateOf(new Date())}`, goalModel));
-      return;
-    }
-    // Freezes a new model version now (it also happens by itself each week).
-    if (req.method === "POST" && path === "/internal/goal-model/publish") {
-      if (!requireAdmin(req, res)) return;
-      const m = publishModel(db);
-      send(res, m ? 200 : 400, m ? { version: m.version } : { error: "not_enough_data", message: "Not enough settled next-goal picks to train on yet." });
       return;
     }
 
