@@ -51,3 +51,40 @@ test("a result marked by hand is never overwritten", async () => {
   assert.equal(await logHorseResults(db, reader({ "W1:1": "WINNER" })), 0);
   assert.equal(listHorseBets(db)[0]!.result, "lost");
 });
+
+test("each result is looked for just after its race's off, not before; a bet not found is tried again 10 minutes on", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const now = new Date();
+  const today = ukDateOf(now);
+  const at = (min: number) => new Date(now.getTime() + min * 60_000);
+  saveHorseDay(db, today, [
+    { rank: 1, horse: "Frankel", course: "Newmarket", stake: 5, odds: "5/2" },
+    { rank: 2, horse: "Dancing Brave", course: "Newmarket", stake: 2, odds: "4/1" },
+  ]);
+  const asked: string[] = [];
+  let listed = 0;
+  const runners = [{ selectionId: 1, runnerName: "Frankel" }];
+  const r: HorseResultsReader = {
+    horseMarkets: async () => {
+      listed++;
+      return [{ marketId: "W1", marketType: "WIN", venue: "Newmarket", start: at(30).toISOString(), runners }];
+    },
+    runnerResult: async (m, s) => {
+      asked.push(`${m}:${s}`);
+      return "WINNER";
+    },
+  };
+  // Race off in 30 minutes: linked now, its result not asked for.
+  assert.equal(await logHorseResults(db, r, now), 0);
+  assert.deepEqual(asked, []);
+  // Dancing Brave isn't in Betfair's list: not looked up again within 10 minutes.
+  await logHorseResults(db, r, at(5));
+  assert.equal(listed, 1);
+  await logHorseResults(db, r, at(11));
+  assert.equal(listed, 2);
+  // Off at +30; asked from 3 minutes after.
+  assert.equal(await logHorseResults(db, r, at(31)), 0);
+  assert.equal(await logHorseResults(db, r, at(34)), 1);
+  assert.deepEqual(asked, ["W1:1"]);
+  assert.equal(listHorseBets(db).find((b) => b.horse === "Frankel")!.result, "won");
+});

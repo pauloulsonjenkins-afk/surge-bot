@@ -180,15 +180,15 @@ async function main(): Promise<void> {
   // Reads your bets from Betfair (read only) so the site knows within a minute whether a sent pick was placed.
   startBetfairPoller(db);
 
-  // Horses: results logged from Betfair (horse-results.ts). Once at 11:00 UK to find the day's races while their markets
-  // are open, then hourly from 15:00 to 21:00 to log results (later bets are found on those runs too).
-  const HORSE_HOURS = new Set([11, 15, 16, 17, 18, 19, 20, 21]);
+  // Horses: results logged from Betfair (horse-results.ts). Every 3 minutes from 10:00 to 23:00 UK: a new bet is matched
+  // to its race within minutes, and each result is logged a few minutes after its race's off. A pass with nothing due
+  // asks Betfair nothing.
   const horseResults = setInterval(() => {
     const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
     const reader = getExchangeReader();
-    if (!HORSE_HOURS.has(hour) || !reader) return;
+    if (hour < 10 || hour > 22 || !reader) return;
     void logHorseResults(db, reader).catch((err) => log.warn(`Horse results from Betfair failed: ${err instanceof Error ? err.message : String(err)}`));
-  }, 60 * 60_000);
+  }, 3 * 60_000);
   horseResults.unref();
 
   // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
