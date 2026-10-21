@@ -187,6 +187,14 @@ function rate(hits: number, misses: number): number | null {
 /** The chat id Edge value picks (Best Value Cuppa) are stored under: they come from GoalBrew, not a Telegram chat. */
 export const EDGE_CHAT = "edge";
 
+/** In the alert upsert: the stored pick has a result from API-Football and the alert still brings none. */
+const KEEP_FALLBACK = "live_picks.score_source IS NOT NULL AND excluded.ft_score IS NULL AND excluded.result IS NULL";
+
+/** The match summary lines an alert's full-time edit carries, for a score from elsewhere (parsed like the real thing). */
+export function withScoreSummary(rawText: string, ft: string, ht: string | null): string {
+  return `${rawText}\n\n${ht ? `Half-Time Score: ${ht}\n` : ""}Full-Time Score: ${ft}`;
+}
+
 /**
  * Strategies whose bet changed: their hit/miss record on the Strategies page counts only alerts from this time, so it
  * describes the bet made now. Money figures still count every real bet. Keyed by lower-case strategy name.
@@ -890,6 +898,11 @@ export class EngineDb {
       // Betfair's id for the match found, so the price can be read again while a pick waits for it to rise.
       this.db.exec(`ALTER TABLE live_picks ADD COLUMN exchange_event_id TEXT`);
     }
+    if (!liveCols.some((c) => c.name === "score_source")) {
+      // "api-football" when the full-time score came from API-Football because InPlayGuru's full-time edit never did
+      // (fixtures/result-fallback.ts); null when it came from the alert itself.
+      this.db.exec(`ALTER TABLE live_picks ADD COLUMN score_source TEXT`);
+    }
     const horseCols = this.db.prepare(`PRAGMA table_info(horse_bets)`).all() as Array<{ name: string }>;
     if (!horseCols.some((c) => c.name === "course")) {
       // The racecourse of each horse bet (Horses page: results by racecourse).
@@ -1232,13 +1245,16 @@ export class EngineDb {
            timer_raw   = COALESCE(live_picks.timer_raw, excluded.timer_raw),
            goals_home  = excluded.goals_home,
            goals_away  = excluded.goals_away,
-           ht_score    = excluded.ht_score,
-           ft_score    = excluded.ft_score,
-           result      = excluded.result,
-           status      = excluded.status,
-           sendable    = excluded.sendable,
+           -- A result from API-Football stays until the alert itself brings one (a re-read of the unchanged alert
+           -- must not wipe it).
+           ht_score    = CASE WHEN ${KEEP_FALLBACK} THEN live_picks.ht_score ELSE excluded.ht_score END,
+           ft_score    = CASE WHEN ${KEEP_FALLBACK} THEN live_picks.ft_score ELSE excluded.ft_score END,
+           result      = CASE WHEN ${KEEP_FALLBACK} THEN live_picks.result ELSE excluded.result END,
+           status      = CASE WHEN ${KEEP_FALLBACK} THEN live_picks.status ELSE excluded.status END,
+           sendable    = CASE WHEN ${KEEP_FALLBACK} THEN 0 ELSE excluded.sendable END,
            flags_json  = excluded.flags_json,
-           parsed_json = excluded.parsed_json,
+           parsed_json = CASE WHEN ${KEEP_FALLBACK} THEN live_picks.parsed_json ELSE excluded.parsed_json END,
+           score_source = CASE WHEN ${KEEP_FALLBACK} THEN live_picks.score_source ELSE NULL END,
            raw_text    = excluded.raw_text,
            message_at  = COALESCE(live_picks.message_at, excluded.message_at),
            country     = excluded.country`,
@@ -2142,6 +2158,22 @@ export class EngineDb {
     this.onChange();
   }
 
+  /**
+   * Settles a pick from a score found elsewhere (API-Football) when the alert never brought its own: the alert's text
+   * stays as InPlayGuru sent it. Only a pick still without a result; returns false otherwise.
+   */
+  settleFromScore(id: number, parsed: ParsedAlert, source: string): boolean {
+    if (!parsed.ftScore || parsed.result === null) return false;
+    const r = this.db
+      .prepare(
+        `UPDATE live_picks SET ft_score = ?, ht_score = ?, result = ?, status = 'settled', sendable = 0, parsed_json = ?, score_source = ?, updated_at = ?
+         WHERE id = ? AND ft_score IS NULL AND result IS NULL AND result_override IS NULL`,
+      )
+      .run(parsed.ftScore, parsed.htScore, parsed.result, JSON.stringify(parsed), source, new Date().toISOString(), id);
+    if (r.changes > 0) this.resultsChanged();
+    return r.changes > 0;
+  }
+
   setResultOverride(id: number, result: "hit" | "miss" | null): boolean {
     const info = this.db
       .prepare(`UPDATE live_picks SET result_override = ?, result_override_at = ? WHERE id = ?`)
@@ -2161,15 +2193,19 @@ export class EngineDb {
     // (First Half Goal, First Half Corner Race), which never get one.
     const rows = this.db
       // Edge picks (Best Value Cuppa) aren't alerts: their text is a note, and Betfair settles them.
-      .prepare(`SELECT id, raw_text, result, market, selection, ft_score FROM live_picks WHERE (ft_score IS NOT NULL OR result IS NOT NULL) AND chat_id <> '${EDGE_CHAT}'`)
-      .all() as Array<{ id: number; raw_text: string; result: string | null; market: string | null; selection: string | null; ft_score: string | null }>;
+      .prepare(
+        `SELECT id, raw_text, result, market, selection, ft_score, ht_score, score_source FROM live_picks
+         WHERE (ft_score IS NOT NULL OR result IS NOT NULL) AND chat_id <> '${EDGE_CHAT}'`,
+      )
+      .all() as Array<{ id: number; raw_text: string; result: string | null; market: string | null; selection: string | null; ft_score: string | null; ht_score: string | null; score_source: string | null }>;
     const upd = this.db.prepare(`UPDATE live_picks SET result = ?, parsed_json = ? WHERE id = ?`);
     // When a rule change moves a strategy to a different bet or line, the stored market and wording follow it.
     const updMarket = this.db.prepare(`UPDATE live_picks SET market = ?, selection = ? WHERE id = ?`);
     let changed = 0;
     for (const r of rows) {
       try {
-        const p = parse(r.raw_text);
+        // A score from API-Football isn't in the alert's text: read with it added, as when it was settled.
+        const p = parse(r.score_source && r.ft_score ? withScoreSummary(r.raw_text, r.ft_score, r.ht_score) : r.raw_text);
         // With a full-time score the rules decide; without one, a result the text no longer gives is kept.
         const result = r.ft_score !== null ? p.result : (p.result ?? r.result);
         upd.run(result, JSON.stringify({ ...p, result }), r.id);

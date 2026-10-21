@@ -16,6 +16,7 @@ import { judgeExchange } from "../betfair/exchange";
 import { kickoffAt } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 import { addDays, ukDateOf } from "./daily-pull";
+import { settleFromApiFootball } from "./result-fallback";
 
 const BASE = "https://v3.football.api-sports.io";
 export const MAX_CALLS_PER_DAY = 30;
@@ -221,7 +222,7 @@ export function goalsForPick(db: EngineDb, pickId: number): { linked: "no" | "no
 
 let running = false;
 
-/** Every 20 minutes: link new alerts (free), then fetch due goal times (within the budget). */
+/** Every 20 minutes: link new alerts (free), fetch due goal times (within the budget), then settle alerts left without a result. */
 export function startGoalTimes(db: EngineDb, apiKey: string): void {
   const run = async () => {
     if (running) return;
@@ -230,6 +231,8 @@ export function startGoalTimes(db: EngineDb, apiKey: string): void {
       linkPicks(db);
       const calls = await fetchGoalTimes(db, apiKey);
       if (calls > 0) log.info(`Goal times: ${calls} API-Football call${calls === 1 ? "" : "s"} (${goalTimesUsage(db).calls} of ${MAX_CALLS_PER_DAY} today).`);
+      // Alerts InPlayGuru never sent a full-time result for: settled from the scores just fetched (no extra calls).
+      settleFromApiFootball(db);
     } catch (err) {
       log.warn(`Goal times: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
