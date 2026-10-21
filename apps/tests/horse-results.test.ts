@@ -52,7 +52,7 @@ test("a result marked by hand is never overwritten", async () => {
   assert.equal(listHorseBets(db)[0]!.result, "lost");
 });
 
-test("each result is looked for just after its race's off, not before; a bet not found is tried again 10 minutes on", async () => {
+test("each result is looked for from 5 minutes after its race's off until it's in; a bet not found is tried again 10 minutes on", async () => {
   const db = new EngineDb(":memory:", () => {});
   const now = new Date();
   const today = ukDateOf(now);
@@ -63,6 +63,7 @@ test("each result is looked for just after its race's off, not before; a bet not
   ]);
   const asked: string[] = [];
   let listed = 0;
+  let result: "WINNER" | null = null;
   const runners = [{ selectionId: 1, runnerName: "Frankel" }];
   const r: HorseResultsReader = {
     horseMarkets: async () => {
@@ -71,7 +72,7 @@ test("each result is looked for just after its race's off, not before; a bet not
     },
     runnerResult: async (m, s) => {
       asked.push(`${m}:${s}`);
-      return "WINNER";
+      return result;
     },
   };
   // Race off in 30 minutes: linked now, its result not asked for.
@@ -82,9 +83,14 @@ test("each result is looked for just after its race's off, not before; a bet not
   assert.equal(listed, 1);
   await logHorseResults(db, r, at(11));
   assert.equal(listed, 2);
-  // Off at +30; asked from 3 minutes after.
-  assert.equal(await logHorseResults(db, r, at(31)), 0);
-  assert.equal(await logHorseResults(db, r, at(34)), 1);
-  assert.deepEqual(asked, ["W1:1"]);
+  // Off at +30; asked from 5 minutes after, and again on each pass until Betfair has the result.
+  assert.equal(await logHorseResults(db, r, at(34)), 0);
+  assert.deepEqual(asked, []);
+  result = null;
+  assert.equal(await logHorseResults(db, r, at(36)), 0);
+  assert.equal(await logHorseResults(db, r, at(39)), 0);
+  result = "WINNER";
+  assert.equal(await logHorseResults(db, r, at(42)), 1);
+  assert.deepEqual(asked, ["W1:1", "W1:1", "W1:1"]);
   assert.equal(listHorseBets(db).find((b) => b.horse === "Frankel")!.result, "won");
 });

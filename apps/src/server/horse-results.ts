@@ -29,7 +29,7 @@ interface Link {
 }
 
 /** How long after the off a race's result is first looked for, then on every pass until Betfair has settled it. */
-const AFTER_OFF_MS = 3 * 60_000;
+const AFTER_OFF_MS = 5 * 60_000;
 /** While a bet's race isn't found, Betfair's race list is read again at most this often. */
 const LINK_RETRY_MS = 10 * 60_000;
 const lastLinkTry = new WeakMap<EngineDb, number>();
