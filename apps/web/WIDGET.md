@@ -9,7 +9,7 @@ A home-screen widget showing the most important figures from the **Today** page:
 - picks not placed
 - any warning
 
-It reads a small read-only summary from GoalBrew. Tapping it opens the full Today page.
+It reads a small read-only summary from GoalBrew. Tap the left half to refresh it, the right half to open GoalBrew.
 
 ## 1. Make a widget key (once)
 
@@ -52,7 +52,13 @@ From the Play Store: **KWGT Kustom Widget Maker**, plus **KWGT Pro Key** (about 
    - status text: `$wg(gv(gb), json, ".statusColor")$`, which is green when On, amber when Paused and red when Off
    - P/L text: `$wg(gv(gb), json, ".livePLColor")$`, which is green when up and red when down
    - warning text: `$wg(gv(gb), json, ".warningColor")$`
-6. **Tap to open Today:** select the whole widget (the root) → **Touch** → **+** → action **Open Link** → `https://seashell-app-z8xl5.ondigitalocean.app/more/admin/today`
+6. **Tap the left half to refresh, the right half to open GoalBrew.** Two invisible tap areas, one over each half:
+   1. If the root has a Touch action from an older version of this guide, remove it (root → **Touch** → swipe it away), or it takes every tap.
+   2. **+** → **Shape** (a rectangle). In **Shape**, set width to half the widget's width and height to its full height. In **Paint**, set the colour to fully transparent (`#00000000`). In **Position**, set the anchor to **Left**.
+   3. Its **Touch** → **+** → action **Kustom Action** → **Refresh**. A tap there fetches the figures again straight away.
+   4. **+** → another **Shape**, the same size and transparent, anchored **Right**.
+   5. Its **Touch** → **+** → action **Launch App** → **GoalBrew** (the app installed from Chrome's "Add to home screen"). If GoalBrew isn't in the list, use **Open Link** → `https://seashell-app-z8xl5.ondigitalocean.app/more/admin/today` instead.
+   6. Keep both shapes at the **bottom of the items list** (drag them down), so they sit on top of the text and catch the taps.
 7. Save (the disk icon, top right).
 
 **Want something simpler?** Use one text item with two lines:
@@ -64,6 +70,6 @@ $wg(gv(gb), json, ".line2")$
 
 ## Good to know
 
-- **How often it updates:** KWGT fetches web data on its own timer, usually every 15–30 minutes, and Android may stretch that when the phone is idle. For up-to-the-minute figures, tap the widget to open Today, which refreshes every 15 seconds.
+- **How often it updates:** KWGT fetches web data on its own timer, usually every 15–30 minutes, and Android may stretch that when the phone is idle. For up-to-the-minute figures, tap the left half to refresh, or the right half to open Today, which refreshes every 15 seconds.
 - **"Unknown" or blank figures:** check the address in the `gb` global, and that `WIDGET_KEY` is set and the web component has redeployed.
 - **Other fields:** you can also show `betsToday` (bets placed on Betfair today), `simPL`, `exposure`, `waiting`, `suggestions` (how many strategy suggestions there are) and `liveSettled`. Open the address in a browser to see them all.
