@@ -10,7 +10,8 @@
  *              so its result can be marked by hand. Tried within minutes of a bet being added (at most every
  *              10 minutes while one isn't found), so it's linked before its race and its market closes.
  *   2. settle  from a few minutes after the race's start time, until its WIN market has closed: REMOVED (non-runner) =
- *              void, WINNER = won; LOSER = placed for an each-way bet whose runner won the PLACE market, otherwise lost.
+ *              void, WINNER = won; LOSER = placed when its runner won the PLACE market (each-way or win: a win single still
+ *              loses, but the day's EW Yankee counts the place), otherwise lost.
  * Only the result is set. The odds, stakes and anything else typed in are never changed, and a result marked by hand
  * is never overwritten (only "pending" bets are looked at).
  */
@@ -166,7 +167,8 @@ export async function logHorseResults(db: EngineDb, reader: HorseResultsReader, 
     let result: HorseBet["result"];
     if (win === "REMOVED") result = "void";
     else if (win === "WINNER") result = "won";
-    else if (b.betType === "ew" && l.placeMarketId && l.placeSelectionId !== null) {
+    // Placed is checked for win bets too: the single still loses, but a Yankee's place part pays on it.
+    else if (l.placeMarketId && l.placeSelectionId !== null) {
       const place = await reader.runnerResult(l.placeMarketId, l.placeSelectionId);
       if (place === null) continue;
       result = place === "WINNER" ? "placed" : "lost";

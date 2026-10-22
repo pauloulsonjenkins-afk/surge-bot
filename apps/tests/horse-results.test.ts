@@ -131,3 +131,16 @@ test("a horse the tipster spelled a little differently is found in its own race 
   assert.equal(await logHorseResults(db, r, new Date(Date.parse(at("19:30")) + 10 * 60_000)), 1);
   assert.equal(listHorseBets(db)[0]!.result, "placed");
 });
+
+test("a win bet whose horse placed is logged as placed (its single still loses; a Yankee's place part counts it)", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const today = ukDateOf(new Date());
+  saveHorseDay(db, today, [
+    { rank: 1, horse: "Frankel", course: "Newmarket", stake: 5, odds: "5/2", ewFraction: 4 },
+    { rank: 2, horse: "Sea the stars", course: "Newmarket", stake: 2, odds: "4/1", ewFraction: 4 },
+  ]);
+  await logHorseResults(db, reader({}));
+  assert.equal(await logHorseResults(db, reader({ "W1:1": "LOSER", "P1:1": "WINNER", "W1:2": "LOSER", "P1:2": "LOSER" })), 2);
+  const bets = listHorseBets(db).sort((a, b) => a.rank - b.rank);
+  assert.deepEqual(bets.map((b) => [b.betType, b.result]), [["win", "placed"], ["win", "lost"]]);
+});
