@@ -9,7 +9,6 @@
  *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
- *   GET  /internal/edge/bettable · POST /internal/edge/bet {pickId, stake}   value bets to place by hand (admin site only)
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   GET  /internal/golden · POST /internal/golden/watch {strategyKey, rule} · /unwatch {strategyKey, id}   Golden (admin only)
@@ -103,11 +102,9 @@ import { goldenReport, unwatchSegment, watchSegment } from "./golden";
 import { setGoldenNotify } from "./golden-notify";
 import type { Feature } from "./segments";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
-import { betValuePick, bettableValuePicks } from "../edge/value-strategy";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { getProbe } from "../fixtures/probe";
 import { pickDetail } from "./pick-detail";
-import { edgeCards } from "../edge/edge";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
@@ -470,23 +467,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       } catch (err) {
         send(res, 400, { error: err instanceof Error ? err.message : "Couldn't retry that." });
       }
-      return;
-    }
-
-    // Best Value Cuppa picks still bettable by hand, and the Bet button (edge/value-strategy.ts).
-    if ((req.method === "GET" && path === "/internal/edge/bettable") || (req.method === "POST" && path === "/internal/edge/bet")) {
-      if (!requireAdmin(req, res)) return;
-      if (req.method === "POST") {
-        const body = await readJsonBody(req);
-        try {
-          betValuePick(db, Number(body.pickId), Number(body.stake), { directLive: effectiveMode(getDirectSettings(db)) === "live" });
-          wakeDirect();
-        } catch (err) {
-          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't place that." });
-          return;
-        }
-      }
-      send(res, 200, { picks: bettableValuePicks(db) });
       return;
     }
 
@@ -876,13 +856,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (!body.acknowledged) matchBets(db);
       log.info(`Reconcile: ${changed} unlinked bet(s) ${body.acknowledged ? "acknowledged" : "restored"} from the admin page.`);
       send(res, 200, { changed });
-      return;
-    }
-
-    // Edge cards for the admin's own Fixtures page (members read them through the members routes).
-    if (req.method === "GET" && path === "/internal/edge") {
-      if (!requireAdmin(req, res)) return;
-      send(res, 200, { cards: edgeCards(db) });
       return;
     }
 

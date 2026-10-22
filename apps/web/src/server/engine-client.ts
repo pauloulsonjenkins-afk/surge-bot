@@ -1730,11 +1730,6 @@ export function fetchApiFootballProbe(): Promise<{ probe: unknown }> {
   return engineCall("/internal/api-football-probe", "the API-Football check");
 }
 
-/** Edge cards for the admin's Fixtures page (edge/edge.ts in the engine). */
-export function fetchAdminEdge(): Promise<{ cards: unknown[] }> {
-  return engineCall("/internal/edge", "the Edge cards");
-}
-
 /** One pick in detail for the Trade Log (server/pick-detail.ts in the engine). Admin only. */
 export interface PickDetail {
   id: number;
@@ -1785,39 +1780,6 @@ export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kin
   const data = (await res.json().catch(() => ({}))) as { advice?: StrategyAdvice[]; error?: string };
   if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
   return { advice: data.advice ?? [] };
-}
-
-/** A Best Value Cuppa pick that can still be bet by hand (engine edge/value-strategy.ts). */
-export interface BettableValuePick {
-  id: number;
-  home: string | null;
-  away: string | null;
-  league: string | null;
-  selection: string | null;
-  kickoff: string;
-  price: number;
-  trend: string;
-  /** The chance the price needs to pay, and the trend's edge over it (0.16 = 16 points). Missing from an older engine. */
-  needed?: number | null;
-  edge?: number | null;
-  sent: { at: string; state: string | null; reason: string | null; matched: number | null; avgPrice: number | null } | null;
-}
-
-/** The value picks still bettable by hand; with `bet`, hands one to direct betting first (the Bet button). */
-export async function valueBets(bet?: { pickId: number; stake: number }): Promise<{ picks: BettableValuePick[] }> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  const res = await fetch(`${baseUrl}/internal/edge/${bet ? "bet" : "bettable"}`, {
-    method: bet ? "POST" : "GET",
-    headers: { Authorization: `Bearer ${internalKey}`, ...(bet ? { "Content-Type": "application/json" } : {}) },
-    body: bet ? JSON.stringify(bet) : undefined,
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  const data = (await res.json().catch(() => ({}))) as { picks?: BettableValuePick[]; error?: string };
-  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
-  return { picks: data.picks ?? [] };
 }
 
 /** Retries a bet GoalBrew didn't get placed (Live: Retry bet). */

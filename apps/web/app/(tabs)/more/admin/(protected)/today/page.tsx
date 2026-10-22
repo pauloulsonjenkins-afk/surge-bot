@@ -13,8 +13,6 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { getJson } from "@/queries/fetch-json";
-import { TopOpportunity } from "@/components/edge/EdgeList";
-import { ValueBets } from "@/components/edge/ValueBets";
 import type { EdgeCard } from "@/lib/members/edge";
 import { toneOf, gbp } from "@/lib/format";
 
@@ -153,32 +151,6 @@ function NotPlaced() {
   );
 }
 
-/** The top Edge opportunity kicking off in the next few hours (read-only; nothing here bets). */
-function EdgeBox() {
-  const { data, error } = useQuery({
-    queryKey: ["admin-edge"],
-    queryFn: ({ signal }) => getJson<{ cards: EdgeCard[] }>("/api/admin/edge", "the Edge cards", signal),
-    refetchInterval: 10 * 60_000,
-  });
-  return (
-    <Card
-      title="Edge: next few hours"
-      subtitle="The top pre-match opportunity kicking off in the next 6 hours. Check the live price before you bet."
-      actions={
-        <Link href="/more/admin/edge" className="tap-target inline-flex items-center text-xs text-accent underline">
-          All fixtures
-        </Link>
-      }
-    >
-      {error ? <p className="text-sm text-destructive">{error.message}</p> : !data ? <Skeleton className="h-14 w-full" /> : <TopOpportunity cards={data.cards} />}
-      <div className="mt-3 border-t border-line pt-2">
-        <p className="text-xs font-medium text-ink-muted">Value bets to place (Best Value Cuppa, next 6 hours)</p>
-        <ValueBets withinHours={6} empty="None in the next 6 hours." />
-      </div>
-    </Card>
-  );
-}
-
 function Tiles({ d }: { d: TodaySnapshot }) {
   const names = useStrategyNames();
   const bankAge = d.bank.at ? Date.parse(d.at) - Date.parse(d.bank.at) : null;
@@ -306,7 +278,6 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         </Card>
       )}
 
-      <EdgeBox />
 
       <Card title="Speed: alert to bet" subtitle="In-play prices move by the second. The slowest step is the one to fix.">
         <div className="space-y-1.5">

@@ -13,7 +13,6 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: n
   "/more/admin/sending": Send,
   "/more/admin/strategies": Bot,
   "/more/admin/leagues": Trophy,
-  "/more/admin/edge": CalendarDays,
   "/more/admin/winloss": TrendingUp,
   "/more/admin/results": PencilLine,
   "/more/admin/horses": HorseHeadIcon,

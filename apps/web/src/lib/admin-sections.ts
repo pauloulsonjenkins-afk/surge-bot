@@ -31,7 +31,6 @@ export const ADMIN_GROUPS = [
     daily: false,
     items: [
       { href: "/more/admin/leagues", label: "Leagues", description: "Hide leagues, reset stats, set country and tier, and how each league played over past seasons." },
-      { href: "/more/admin/edge", label: "Fixtures and value bets", short: "Fixtures", description: "Pre-match insight and value bets for every fixture in the next 48 hours." },
     ],
   },
   {
