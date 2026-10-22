@@ -83,7 +83,8 @@ const ruleId = (rule: Feature[]) => [...rule].sort().join("+");
 
 /** Starts watching a suggested slice from now. */
 export function watchSegment(db: EngineDb, strategyKey: string, rule: Feature[], now = new Date()): CustomSegment {
-  if (!Array.isArray(rule) || rule.length === 0 || rule.length > 2 || !rule.every((r) => r in FEATURES)) throw new Error("That isn't a rule the finder makes.");
+  // The finder makes one or two parts; a slice set up by hand may add a third (e.g. leaving out some countries).
+  if (!Array.isArray(rule) || rule.length === 0 || rule.length > 3 || !rule.every((r) => r in FEATURES)) throw new Error("That isn't a rule the finder makes.");
   const key = strategyKey.toLowerCase();
   const id = `f-${ruleId(rule)}`;
   const list = loadCustomSegments(db);
@@ -145,7 +146,7 @@ export function findGolden(db: EngineDb): GoldenSuggestion[] {
     const key = strategyLabel(r.strategy).toLowerCase();
     (by.get(key) ?? by.set(key, []).get(key)!).push({ at: r.firstSeenAt, hit: r.result === "hit", stake: priced.stake, profit: priced.profit, facts: r.facts });
   }
-  const feats = Object.keys(FEATURES) as Feature[];
+  const feats = (Object.keys(FEATURES) as Feature[]).filter((f) => !("manual" in FEATURES[f]));
   const rules: Feature[][] = feats.map((f) => [f]);
   for (let i = 0; i < feats.length; i++)
     for (let j = i + 1; j < feats.length; j++) if (FEATURES[feats[i]!].group !== FEATURES[feats[j]!].group) rules.push([feats[i]!, feats[j]!]);

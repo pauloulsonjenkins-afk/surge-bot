@@ -25,6 +25,8 @@ export interface AlertFacts {
   live1x2: [number, number, number] | null;
   /** The alert's minute (null for pre-match alerts). */
   minute?: number | null;
+  /** The league's country, from the alert's flag (null for international competitions or when unknown). */
+  country?: string | null;
 }
 
 export interface Segment {
@@ -113,6 +115,9 @@ export const FEATURES = {
       return !!o && Math.min(o[0], o[2]) > 2.2;
     },
   },
+  // Added by hand only (the finder doesn't try it): next-goal picks there lost heavily in both halves of the record
+  // to 22 Oct 2026 (Japan -28.7% over 60, Brazil -23.7% over 60).
+  notJapanBrazil: { group: "league", label: "not Japan or Brazil", manual: true, test: (f: AlertFacts) => !/^(japan|brazil)$/i.test((f.country ?? "").trim()) },
 } as const;
 export type Feature = keyof typeof FEATURES;
 

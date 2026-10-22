@@ -40,7 +40,7 @@
  * pick it already has, which could otherwise place a second bet.
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
-import { kickoffMinutes } from "./parse-alert";
+import { kickoffMinutes, leagueCountryFromText } from "./parse-alert";
 import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
@@ -296,6 +296,7 @@ export function pickFacts(p: LivePick): AlertFacts {
     preMatch1x2: p.detail?.odds?.preMatch1x2 ?? null,
     live1x2: p.detail?.odds?.live1x2 ?? null,
     minute: p.minute,
+    country: leagueCountryFromText(p.rawText),
   };
 }
 
