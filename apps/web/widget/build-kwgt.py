@@ -73,7 +73,6 @@ def tap_area(title, anchor, event):
 
 
 ROW = 26.0  # text size of the right-hand rows
-RIGHT_VALUES_WIDTH = 160  # room left for the values column (labels sit to its left)
 SIM_COLOR = '$if(wg(gv(gb), json, ".raw.simNet") > 0, "#FF5CC48F", wg(gv(gb), json, ".raw.simNet") < 0, "#FFE86B55", "#FFF1E9DF")$'
 RIGHT_ROWS = [
     ("Bets today", field("betsToday"), ("#FFF1E9DF", None)),
@@ -84,12 +83,12 @@ RIGHT_ROWS = [
 ]
 
 
-def stack(title, stacking, anchor, offset_x, children):
+def stack(title, stacking, anchor, offset_x, children, margin=4.0):
     return {
         "internal_type": "StackLayerModule",
         "internal_title": title,
         "config_stacking": stacking,
-        "config_margin": 4.0,
+        "config_margin": margin,
         "position_anchor": anchor,
         "position_offset_x": float(offset_x),
         "viewgroup_items": children,
@@ -127,9 +126,24 @@ items = [
         "$si(rheight)$",
     ),
     lines,
-    # The right half: a column of labels and a column of values beside it, the same size and spacing so the rows line up.
-    stack("Right labels", "VERTICAL_LEFT", "CENTERRIGHT", RIGHT_VALUES_WIDTH + 70, [text(k, k, ROW, "TOPLEFT", color="#B3FFFFFF") for k, _, _ in RIGHT_ROWS]),
-    stack("Right values", "VERTICAL_RIGHT", "CENTERRIGHT", 40, [text(k, v, ROW, "TOPRIGHT", color=c, color_formula=cf) for k, v, (c, cf) in RIGHT_ROWS]),
+    # The right half, kept together in one row so it can't drift: a thin divider line, a column of labels, and a column
+    # of values (the same size and spacing as the labels, so the rows line up).
+    stack(
+        "Right column",
+        "HORIZONTAL_CENTER",
+        "CENTERRIGHT",
+        40,
+        [
+            sized(
+                {"internal_type": "ShapeModule", "internal_title": "Divider", "shape_type": "RECT", "shape_width": 3.0, "shape_height": 200.0, "paint_color": "#FF30383E"},
+                "3",
+                "$si(rheight) * 0.6$",
+            ),
+            stack("Right labels", "VERTICAL_LEFT", "CENTER", 0, [text(k, k, ROW, "TOPLEFT", color="#B3FFFFFF") for k, _, _ in RIGHT_ROWS]),
+            stack("Right values", "VERTICAL_RIGHT", "CENTER", 0, [text(k, v, ROW, "TOPRIGHT", color=c, color_formula=cf) for k, v, (c, cf) in RIGHT_ROWS]),
+        ],
+        margin=28.0,
+    ),
     text("Updated", f"↻ {field('updated')}", 26, "TOPRIGHT", 40, 36, color="#B3FFFFFF"),
     text("Open hint", "Open GoalBrew ›", 22, "BOTTOMRIGHT", 40, 26, color="#FFD6AA50"),
     # Last in the list, so they sit on top of everything and catch the taps.
