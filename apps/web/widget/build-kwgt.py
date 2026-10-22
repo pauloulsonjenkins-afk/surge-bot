@@ -72,6 +72,30 @@ def tap_area(title, anchor, event):
     )
 
 
+ROW = 26.0  # text size of the right-hand rows
+RIGHT_VALUES_WIDTH = 160  # room left for the values column (labels sit to its left)
+SIM_COLOR = '$if(wg(gv(gb), json, ".raw.simNet") > 0, "#FF5CC48F", wg(gv(gb), json, ".raw.simNet") < 0, "#FFE86B55", "#FFF1E9DF")$'
+RIGHT_ROWS = [
+    ("Bets today", field("betsToday"), ("#FFF1E9DF", None)),
+    ("Settled", field("liveSettled"), ("#FFF1E9DF", None)),
+    ("Waiting", field("waiting"), ("#FFF1E9DF", None)),
+    ("Exposure", field("exposure"), ("#FFF1E9DF", None)),
+    ("Sim today", field("simPL"), ("#FFF1E9DF", SIM_COLOR)),
+]
+
+
+def stack(title, stacking, anchor, offset_x, children):
+    return {
+        "internal_type": "StackLayerModule",
+        "internal_title": title,
+        "config_stacking": stacking,
+        "config_margin": 4.0,
+        "position_anchor": anchor,
+        "position_offset_x": float(offset_x),
+        "viewgroup_items": children,
+    }
+
+
 lines = {
     "internal_type": "StackLayerModule",
     "internal_title": "Figures",
@@ -103,7 +127,11 @@ items = [
         "$si(rheight)$",
     ),
     lines,
+    # The right half: a column of labels and a column of values beside it, the same size and spacing so the rows line up.
+    stack("Right labels", "VERTICAL_LEFT", "CENTERRIGHT", RIGHT_VALUES_WIDTH + 70, [text(k, k, ROW, "TOPLEFT", color="#B3FFFFFF") for k, _, _ in RIGHT_ROWS]),
+    stack("Right values", "VERTICAL_RIGHT", "CENTERRIGHT", 40, [text(k, v, ROW, "TOPRIGHT", color=c, color_formula=cf) for k, v, (c, cf) in RIGHT_ROWS]),
     text("Updated", f"↻ {field('updated')}", 26, "TOPRIGHT", 40, 36, color="#B3FFFFFF"),
+    text("Open hint", "Open GoalBrew ›", 22, "BOTTOMRIGHT", 40, 26, color="#FFD6AA50"),
     # Last in the list, so they sit on top of everything and catch the taps.
     tap_area("Tap left: refresh", "CENTERLEFT", {"type": "SINGLE_TAP", "action": "KUSTOM_ACTION", "kustom_action": "TEXT_UPDATE"}),
     tap_area("Tap right: open GoalBrew", "CENTERRIGHT", {"type": "SINGLE_TAP", "action": "OPEN_LINK", "url": TODAY}),
