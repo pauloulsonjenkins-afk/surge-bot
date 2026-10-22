@@ -72,7 +72,7 @@ def tap_area(title, anchor, event):
     )
 
 
-ROW = 26.0  # text size of the right-hand rows
+ROW = 30.0  # text size of the right-hand rows (the same as the Balance line)
 SIM_COLOR = '$if(wg(gv(gb), json, ".raw.simNet") > 0, "#FF5CC48F", wg(gv(gb), json, ".raw.simNet") < 0, "#FFE86B55", "#FFF1E9DF")$'
 RIGHT_ROWS = [
     ("Bets today", field("betsToday"), ("#FFF1E9DF", None)),
@@ -132,17 +132,24 @@ items = [
         "Right column",
         "HORIZONTAL_CENTER",
         "CENTERRIGHT",
-        40,
+        48,
         [
-            sized(
-                {"internal_type": "ShapeModule", "internal_title": "Divider", "shape_type": "RECT", "shape_width": 3.0, "shape_height": 200.0, "paint_color": "#FF30383E"},
-                "3",
-                "$si(rheight) * 0.6$",
-            ),
+            # A soft line: white at a third strength reads on the dark background without shouting.
+            {
+                "internal_type": "ShapeModule",
+                "internal_title": "Divider",
+                "shape_type": "RECT",
+                "shape_width": 4.0,
+                "shape_height": 200.0,
+                "shape_corners": 2.0,
+                "paint_color": "#55FFFFFF",
+                "internal_toggles": {"shape_height": 10},
+                "internal_formulas": {"shape_height": "$si(rheight) * 0.62$"},
+            },
             stack("Right labels", "VERTICAL_LEFT", "CENTER", 0, [text(k, k, ROW, "TOPLEFT", color="#B3FFFFFF") for k, _, _ in RIGHT_ROWS]),
             stack("Right values", "VERTICAL_RIGHT", "CENTER", 0, [text(k, v, ROW, "TOPRIGHT", color=c, color_formula=cf) for k, v, (c, cf) in RIGHT_ROWS]),
         ],
-        margin=28.0,
+        margin=56.0,
     ),
     text("Updated", f"↻ {field('updated')}", 26, "TOPRIGHT", 40, 36, color="#B3FFFFFF"),
     text("Open hint", "Open GoalBrew ›", 22, "BOTTOMRIGHT", 40, 26, color="#FFD6AA50"),
