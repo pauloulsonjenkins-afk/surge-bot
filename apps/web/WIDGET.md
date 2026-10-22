@@ -30,7 +30,19 @@ What the key can and can't do:
 
 From the Play Store: **KWGT Kustom Widget Maker**, plus **KWGT Pro Key** (about £5, one-off). The Pro key is needed to show data from a web address.
 
-## 3. Build the widget
+## Quick way: import the ready-made widget
+
+`widget/GoalBrew-Today.kwgt` is the whole widget, ready made: status, today's Live P/L, balance, money out, alerts, warning and the time, with the colours. Tap the left half to refresh it, the right half to open GoalBrew.
+
+1. Put the file on your phone (send it to yourself, or download it).
+2. Long-press the home screen → **Widgets** → **KWGT** → drag a **4×2** widget on, then tap it to open the editor.
+3. Tap the folder icon (top right) → **Import** → choose `GoalBrew-Today.kwgt`. (Or open the file from your Downloads and pick KWGT.)
+4. Open **Globals** (the globe tab) → **gb** → paste your widget address from step 1 (`…/api/widget?key=YOUR_KEY`).
+5. Save (the disk icon). The key isn't in the file, so the file is safe to keep.
+
+If a tap does nothing, open that tap area (the last two items, "Tap left: refresh" and "Tap right: open GoalBrew") → **Touch** and pick the action again. KWGT versions name them slightly differently. To rebuild the file after a change: `python widget/build-kwgt.py`.
+
+## 3. Build the widget by hand
 
 1. Long-press your home screen → **Widgets** → **KWGT** → drag a **4×2** widget onto the screen, then tap it to open the editor.
 2. Choose **Create** (start empty).
