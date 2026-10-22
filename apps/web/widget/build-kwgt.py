@@ -42,6 +42,7 @@ def text(title, expr, size, anchor, x=0.0, y=0.0, color="#FFFFFFFF", color_formu
     if width:
         t["text_size_type"] = "FIXED_WIDTH"
         t["text_width"] = float(width)
+        t["text_lines"] = 1.0
     if color_formula:
         t["internal_toggles"] = {"paint_color": 10}
         t["internal_formulas"] = {"paint_color": color_formula}
@@ -72,7 +73,9 @@ def tap_area(title, anchor, event):
     )
 
 
-ROW = 30.0  # text size of the right-hand rows (the same as the Balance line)
+ROW = 30.0  # text size of the right-hand rows
+LABEL_W = 210  # fixed column widths, so every row lines up and the gap between the columns is the same
+VALUE_W = 170
 SIM_COLOR = '$if(wg(gv(gb), json, ".raw.simNet") > 0, "#FF5CC48F", wg(gv(gb), json, ".raw.simNet") < 0, "#FFE86B55", "#FFF1E9DF")$'
 RIGHT_ROWS = [
     ("Bets today", field("betsToday"), ("#FFF1E9DF", None)),
@@ -103,11 +106,11 @@ lines = {
     "position_anchor": "CENTERLEFT",
     "position_offset_x": 40.0,
     "viewgroup_items": [
-        text("Betting status", f"Betting {field('status')}", 40, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".statusColor\")$"),
-        text("Today's Live P/L", f"Today {field('livePL')}", 58, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".livePLColor\")$"),
-        text("Balance and money out", f"Balance {field('balance')} · Out {field('moneyOut')}", 30, "TOPLEFT"),
-        text("Alerts and not placed", f"{field('alertsHour')} alerts/hr · Not placed {field('notPlaced')}", 28, "TOPLEFT", color="#B3FFFFFF"),
-        text("Warning", field("warning"), 28, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".warningColor\")$"),
+        text("Betting status", f"Betting {field('status')}", 44, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".statusColor\")$"),
+        text("Today's Live P/L", f"Today {field('livePL')}", 66, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".livePLColor\")$"),
+        text("Balance and money out", f"Balance {field('balance')} · Out {field('moneyOut')}", 32, "TOPLEFT"),
+        text("Alerts and not placed", f"{field('alertsHour')} alerts/hr · Not placed {field('notPlaced')}", 30, "TOPLEFT", color="#B3FFFFFF"),
+        text("Warning", field("warning"), 30, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".warningColor\")$"),
     ],
 }
 
@@ -132,7 +135,7 @@ items = [
         "Right column",
         "HORIZONTAL_CENTER",
         "CENTERRIGHT",
-        48,
+        80,
         [
             # A soft line: white at a third strength reads on the dark background without shouting.
             {
@@ -146,13 +149,13 @@ items = [
                 "internal_toggles": {"shape_height": 10},
                 "internal_formulas": {"shape_height": "$si(rheight) * 0.62$"},
             },
-            stack("Right labels", "VERTICAL_LEFT", "CENTER", 0, [text(k, k, ROW, "TOPLEFT", color="#B3FFFFFF") for k, _, _ in RIGHT_ROWS]),
-            stack("Right values", "VERTICAL_RIGHT", "CENTER", 0, [text(k, v, ROW, "TOPRIGHT", color=c, color_formula=cf) for k, v, (c, cf) in RIGHT_ROWS]),
+            stack("Right labels", "VERTICAL_LEFT", "CENTER", 0, [text(k, k, ROW, "TOPLEFT", color="#B3FFFFFF", align="LEFT", width=LABEL_W) for k, _, _ in RIGHT_ROWS], margin=6.0),
+            stack("Right values", "VERTICAL_RIGHT", "CENTER", 0, [text(k, v, ROW, "TOPRIGHT", color=c, color_formula=cf, align="RIGHT", width=VALUE_W) for k, v, (c, cf) in RIGHT_ROWS], margin=6.0),
         ],
-        margin=56.0,
-    ),
-    text("Updated", f"↻ {field('updated')}", 26, "TOPRIGHT", 40, 36, color="#B3FFFFFF"),
-    text("Open hint", "Open GoalBrew ›", 22, "BOTTOMRIGHT", 40, 26, color="#FFD6AA50"),
+        margin=48.0,
+    )
+    | {"position_offset_y": 14.0},
+    text("Updated and open hint", f"↻ {field('updated')}   Open GoalBrew ›", 22, "TOPRIGHT", 40, 18, color="#FFD6AA50"),
     # Last in the list, so they sit on top of everything and catch the taps.
     tap_area("Tap left: refresh", "CENTERLEFT", {"type": "SINGLE_TAP", "action": "KUSTOM_ACTION", "kustom_action": "TEXT_UPDATE"}),
     tap_area("Tap right: open GoalBrew", "CENTERRIGHT", {"type": "SINGLE_TAP", "action": "OPEN_LINK", "url": TODAY}),
