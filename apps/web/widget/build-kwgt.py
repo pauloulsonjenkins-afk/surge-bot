@@ -5,6 +5,10 @@ Run from this folder:  python build-kwgt.py
 The widget address (with its key) is NOT in the file: after importing, open the widget's Globals and paste it into gb.
 The format follows a real KWGT export (preset.json plus thumbnails in a zip). Tap the left half to refresh the
 figures, the right half to open GoalBrew's Today page.
+
+KWGT scales a preset to the widget's real size on the phone, so nothing here assumes a size: the background and the
+two tap halves take the widget's own width and height ($si(rwidth)$, $si(rheight)$), and the lines sit in a stack
+one under another, so a longer figure pushes the next line down instead of overlapping it.
 """
 import io
 import json
@@ -44,35 +48,62 @@ def text(title, expr, size, anchor, x=0.0, y=0.0, color="#FFFFFFFF", color_formu
     return t
 
 
-def tap_area(title, anchor, event):
-    return {
-        "internal_type": "ShapeModule",
-        "internal_title": title,
-        "shape_type": "RECT",
-        "shape_width": float(W / 2),
-        "shape_height": float(H),
-        "paint_color": "#00000000",  # invisible: it only catches the tap
-        "position_anchor": anchor,
-        "internal_events": [event],
-    }
+def sized(shape, width, height):
+    """A shape whose width and height are formulas (the widget's own size), with a fallback number."""
+    shape["internal_toggles"] = {**shape.get("internal_toggles", {}), "shape_width": 10, "shape_height": 10}
+    shape["internal_formulas"] = {**shape.get("internal_formulas", {}), "shape_width": width, "shape_height": height}
+    return shape
 
+
+def tap_area(title, anchor, event):
+    return sized(
+        {
+            "internal_type": "ShapeModule",
+            "internal_title": title,
+            "shape_type": "RECT",
+            "shape_width": float(W / 2),
+            "shape_height": float(H),
+            "paint_color": "#00000000",  # invisible: it only catches the tap
+            "position_anchor": anchor,
+            "internal_events": [event],
+        },
+        "$si(rwidth) / 2$",
+        "$si(rheight)$",
+    )
+
+
+lines = {
+    "internal_type": "StackLayerModule",
+    "internal_title": "Figures",
+    "config_stacking": "VERTICAL_LEFT",
+    "config_margin": 6.0,
+    "position_anchor": "CENTERLEFT",
+    "position_offset_x": 40.0,
+    "viewgroup_items": [
+        text("Betting status", f"Betting {field('status')}", 40, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".statusColor\")$"),
+        text("Today's Live P/L", f"Today {field('livePL')}", 58, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".livePLColor\")$"),
+        text("Balance and money out", f"Balance {field('balance')} · Out {field('moneyOut')}", 30, "TOPLEFT"),
+        text("Alerts and not placed", f"{field('alertsHour')} alerts/hr · Not placed {field('notPlaced')}", 28, "TOPLEFT", color="#B3FFFFFF"),
+        text("Warning", field("warning"), 28, "TOPLEFT", color_formula=f"$wg(gv(gb), json, \".warningColor\")$"),
+    ],
+}
 
 items = [
-    {
-        "internal_type": "ShapeModule",
-        "internal_title": "Background",
-        "shape_type": "RECT",
-        "shape_width": float(W - 16),
-        "shape_height": float(H - 16),
-        "shape_corners": 40.0,
-        "paint_color": "#F0141A1F",
-    },
-    text("Betting status", f"Betting {field('status')}", 44, "TOPLEFT", 40, 34, color_formula=f"$wg(gv(gb), json, \".statusColor\")$"),
-    text("Updated", f"↻ {field('updated')}", 28, "TOPRIGHT", 40, 40, color="#B3FFFFFF"),
-    text("Today's Live P/L", f"Today {field('livePL')}", 66, "CENTERLEFT", 40, -6, color_formula=f"$wg(gv(gb), json, \".livePLColor\")$"),
-    text("Warning", field("warning"), 28, "CENTERRIGHT", 40, -6, align="RIGHT", width=380, color_formula=f"$wg(gv(gb), json, \".warningColor\")$"),
-    text("Balance and money out", f"Balance {field('balance')} · Out {field('moneyOut')}", 32, "BOTTOMLEFT", 40, 92),
-    text("Alerts and not placed", f"{field('alertsHour')} alerts/hr · Not placed {field('notPlaced')}", 30, "BOTTOMLEFT", 40, 44, color="#B3FFFFFF"),
+    sized(
+        {
+            "internal_type": "ShapeModule",
+            "internal_title": "Background",
+            "shape_type": "RECT",
+            "shape_width": float(W),
+            "shape_height": float(H),
+            "shape_corners": 40.0,
+            "paint_color": "#F0141A1F",
+        },
+        "$si(rwidth)$",
+        "$si(rheight)$",
+    ),
+    lines,
+    text("Updated", f"↻ {field('updated')}", 26, "TOPRIGHT", 40, 36, color="#B3FFFFFF"),
     # Last in the list, so they sit on top of everything and catch the taps.
     tap_area("Tap left: refresh", "CENTERLEFT", {"type": "SINGLE_TAP", "action": "KUSTOM_ACTION", "kustom_action": "TEXT_UPDATE"}),
     tap_area("Tap right: open GoalBrew", "CENTERRIGHT", {"type": "SINGLE_TAP", "action": "OPEN_LINK", "url": TODAY}),
