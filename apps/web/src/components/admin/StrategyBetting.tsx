@@ -14,10 +14,13 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
  */
 export type SendingStrategy = SendingState["strategies"][number];
 
-const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "HOME_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY", "EDGE_VALUE"]);
+const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "HOME_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY", "NEXT_GOAL_LAY", "EDGE_VALUE"]);
 
 /** A strategy that LAYS (Away Win Lay): its stake is the liability, and it has a maximum lay price, not minimum odds. */
-const isLay = (s: SendingStrategy) => s.market === "AWAY_WIN_LAY";
+const isLay = (s: SendingStrategy) => s.market === "AWAY_WIN_LAY" || s.market === "NEXT_GOAL_LAY";
+/** What a lay loses on: the away side winning (Away Win Lay), or another goal (LAY next goal). */
+const layLosesOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "another goal is scored" : "the away side wins");
+const layWinsOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "no more goals come" : "a home win or draw");
 
 /** Whether this strategy's market can be bet (some need a Betfair market code set under Sending > Bet wording first). */
 export function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
@@ -133,7 +136,7 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
           <p>Its new picks will be bet with real money{settings.enabled ? "" : " once betting is switched on (Betting)"}.</p>
           {isLay(s) && (
             <p>
-              These are LAY bets: each one wins a small amount on a home win or draw, and loses the full liability if the away side wins. They are placed only
+              These are LAY bets: each one wins a small amount if {layWinsOn(s)}, and loses the full liability if {layLosesOn(s)}. They are placed only
               by GoalBrew&apos;s direct betting, so Betting → Limits and switches → Betting on Betfair must be Live.
             </p>
           )}
@@ -317,7 +320,7 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
       </div>
       {supported && isLay(s) && (
         <p className="text-xs text-ink-muted">
-          The stake is the <strong className="text-ink">liability</strong>: the most one bet can lose (if the away side wins). A win pays about liability ÷ (price −
+          This is a <strong className="text-ink">LAY</strong>. The stake is the <strong className="text-ink">liability</strong>: the most one bet can lose (if {layLosesOn(s)}). A win pays about liability ÷ (price −
           1), e.g. £5 at 4.50 wins £1.43. Betfair needs a lay stake of at least £1, so at 4.50 the liability must be at least £3.50.
         </p>
       )}

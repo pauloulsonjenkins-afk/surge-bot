@@ -12,6 +12,7 @@ export const MARKET_LABEL: Record<string, string> = {
   NO_MORE_GOALS: "No more goals",
   FIRST_HALF_GOALS: "1st half goals (pre-match)",
   AWAY_WIN_LAY: "Away win lay (pre-match)",
+  NEXT_GOAL_LAY: "LAY next goal (lay Over goals so far + 0.5)",
   EDGE_VALUE: "Edge value bet (pre-match, market varies)",
 };
 

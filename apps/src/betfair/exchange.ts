@@ -22,6 +22,7 @@
  * lost, lapsed, cancelled, voided), stores them in betfair_bets keyed by bet id (the same id BF Bot Manager's export
  * uses, so both sources update one record) and links them to picks (matchBets).
  */
+import { isLayMarket } from "../inplayguru/parse-alert";
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
 import { couldBeSameMatch, eventScore, matchBets } from "./reconcile";
@@ -297,7 +298,13 @@ export class BetfairReader {
    * the price of it now. The betting software finds the bet by these same names, so "noMarket" or "noSelection" means
    * it can't place it: the market code or wording on the Sending page doesn't match Betfair's.
    */
-  async checkBet(eventId: string, marketType: string, selectionName: string): Promise<{ status: MarketCheck; price: number | null; runners: string[]; marketId?: string; selectionId?: number }> {
+  async checkBet(
+    eventId: string,
+    marketType: string,
+    selectionName: string,
+    /** "lay" for a LAY pick: the best price available to lay at, instead of the best to back. */
+    side: "back" | "lay" = "back",
+  ): Promise<{ status: MarketCheck; price: number | null; runners: string[]; marketId?: string; selectionId?: number }> {
     const markets = await this.call<MarketCatalogue[]>("listMarketCatalogue", {
       filter: { eventIds: [eventId], marketTypeCodes: [marketType] },
       marketProjection: ["RUNNER_DESCRIPTION"],
@@ -308,7 +315,7 @@ export class BetfairReader {
     const runners = (market.runners ?? []).map((r) => r.runnerName);
     const runner = market.runners ? findRunner(market.runners, selectionName) : undefined;
     if (!runner) return { status: "noSelection", price: null, runners };
-    return { status: "ok", price: await this.priceOf(market.marketId, runner.selectionId), runners, marketId: market.marketId, selectionId: runner.selectionId };
+    return { status: "ok", price: await this.priceOf(market.marketId, runner.selectionId, side), runners, marketId: market.marketId, selectionId: runner.selectionId };
   }
 
   /**
@@ -336,14 +343,14 @@ export class BetfairReader {
     return s === "WINNER" || s === "LOSER" || s === "REMOVED" ? s : null;
   }
 
-  /** The best back price of one selection in one market right now (else its last traded price), or null. */
-  async priceOf(marketId: string, selectionId: number): Promise<number | null> {
-    const books = await this.call<Array<{ runners?: Array<{ selectionId: number; lastPriceTraded?: number; ex?: { availableToBack?: Array<{ price: number }> } }> }>>(
+  /** The best back (or, with side "lay", lay) price of one selection in one market right now (else its last traded price), or null. */
+  async priceOf(marketId: string, selectionId: number, side: "back" | "lay" = "back"): Promise<number | null> {
+    const books = await this.call<Array<{ runners?: Array<{ selectionId: number; lastPriceTraded?: number; ex?: { availableToBack?: Array<{ price: number }>; availableToLay?: Array<{ price: number }> } }> }>>(
       "listMarketBook",
       { marketIds: [marketId], priceProjection: { priceData: ["EX_BEST_OFFERS"] } },
     );
     const r = books[0]?.runners?.find((x) => x.selectionId === selectionId);
-    const price = r?.ex?.availableToBack?.[0]?.price ?? r?.lastPriceTraded ?? null;
+    const price = (side === "lay" ? r?.ex?.availableToLay?.[0]?.price : r?.ex?.availableToBack?.[0]?.price) ?? r?.lastPriceTraded ?? null;
     return price !== null && price > 1 ? price : null;
   }
 
@@ -606,7 +613,7 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
     if (pick) {
       const market = feedMarket(pick, settings, namer);
       if (!("error" in market)) {
-        const bet = await reader.checkBet(found.eventId!, market.marketType, market.selectionName).catch(() => null);
+        const bet = await reader.checkBet(found.eventId!, market.marketType, market.selectionName, pick.market === "NEXT_GOAL_LAY" ? "lay" : "back").catch(() => null);
         if (bet) {
           odds = bet.price;
           check = {
@@ -682,7 +689,7 @@ async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<number>
       const key = strategyLabel(p.strategy).toLowerCase();
       if (settings.strategies[key] !== true || now > betableUntil(p, settings.maxAgeMinutes)) return false;
       // A lay waits for its price to FALL to the maximum lay price; a back bet for its price to RISE to the minimum.
-      if (p.market === "AWAY_WIN_LAY") {
+      if (isLayMarket(p.market)) {
         const max = settings.maxLayOdds[key];
         return max !== undefined && p.exchangeOdds > max;
       }
@@ -694,7 +701,7 @@ async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<number>
   for (const p of held) {
     const market = feedMarket(p, settings, namer);
     if ("error" in market) continue;
-    const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName).catch(() => null);
+    const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName, p.market === "NEXT_GOAL_LAY" ? "lay" : "back").catch(() => null);
     if (bet?.price != null && bet.price !== p.exchangeOdds) {
       db.setPickExchangeOdds(p.id, bet.price);
       moved++;

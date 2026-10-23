@@ -40,7 +40,7 @@
  * pick it already has, which could otherwise place a second bet.
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
-import { kickoffMinutes, leagueCountryFromText } from "./parse-alert";
+import { isLayMarket, kickoffMinutes, leagueCountryFromText } from "./parse-alert";
 import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
@@ -580,7 +580,8 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
     const m = overUnderMarket(p.detail?.targetLine ?? null);
     return m ? { marketType: m.marketType, selectionName: m.selectionName.replace(/^Over /, "Under ") } : { error: "Could not work out the Over/Under line." };
   }
-  if (p.market === "NEXT_GOAL" || p.market === "OVER_1_5" || p.market === "TWO_MORE_GOALS") {
+  // LAY the next goal is laid in the same Over/Under market, on the same Over selection (the row says LAY).
+  if (p.market === "NEXT_GOAL" || p.market === "NEXT_GOAL_LAY" || p.market === "OVER_1_5" || p.market === "TWO_MORE_GOALS") {
     return overUnderMarket(p.detail?.targetLine ?? null) ?? { error: "Could not work out the Over/Under line." };
   }
   if (p.market === "BOTH_TEAMS_TO_SCORE") return { marketType: settings.bttsMarketType, selectionName: settings.bttsSelection };
@@ -779,7 +780,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       continue;
     }
     // A lay is only ever placed by GoalBrew's own direct betting, never handed to other betting software.
-    const lay = p.market === "AWAY_WIN_LAY";
+    const lay = isLayMarket(p.market);
     if (lay && !opts.direct) {
       skipped.push(skip(p, "Lay bets are placed only by GoalBrew's direct betting (Betting → Limits, Live)."));
       continue;
@@ -874,7 +875,7 @@ export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boo
   const market = feedMarket(p, settings, alias);
   if ("error" in market) throw new Error(market.error);
   const key = strategyLabel(p.strategy).toLowerCase();
-  const lay = p.market === "AWAY_WIN_LAY";
+  const lay = isLayMarket(p.market);
   const staked = resolveStake(settings, key, getBank(db), { now, live: true });
   const stake = staked.stake ?? 1;
   if (stake > settings.maxStake) throw new Error(`Its stake £${stake.toFixed(2)} is above your highest stake allowed (£${settings.maxStake}).`);
@@ -927,7 +928,12 @@ export function alertOddsOfPick(p: LivePick): number | null {
     overLine: d.odds?.overUnderLine ?? null,
     overOdds: d.odds?.over ?? null,
     favouriteOdds: typeof favouriteOdds === "number" ? favouriteOdds : null,
-    layOdds: p.market === "AWAY_WIN_LAY" ? (d.odds?.preMatch1x2?.[2] ?? null) : null,
+    layOdds:
+      p.market === "AWAY_WIN_LAY"
+        ? (d.odds?.preMatch1x2?.[2] ?? null)
+        : p.market === "NEXT_GOAL_LAY" && d.odds?.overUnderLine === d.targetLine
+          ? (d.odds?.over ?? null)
+          : null,
   });
 }
 
@@ -992,9 +998,11 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     else if (tooLate(p, settings)) skipped = `Alert at ${p.minute}', after the latest minute bet (${settings.latestMinute}').`;
     else if (stake === null) skipped = staked.reason ?? "No stake set for this strategy.";
     else if (stake > settings.maxStake) skipped = `Stake £${stake.toFixed(2)} is above the highest allowed (£${settings.maxStake}).`;
-    else if (p.market !== "AWAY_WIN_LAY" && minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
+    else if (!isLayMarket(p.market) && minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
     else if (p.market === "AWAY_WIN_LAY" && settings.maxLayOdds[key] !== undefined && (p.detail?.odds?.preMatch1x2?.[2] ?? 0) > settings.maxLayOdds[key]!)
       skipped = `The away price ${p.detail!.odds.preMatch1x2![2].toFixed(2)} was above the maximum lay price ${settings.maxLayOdds[key]!.toFixed(2)}.`;
+    else if (p.market === "NEXT_GOAL_LAY" && settings.maxLayOdds[key] !== undefined && p.exchangeOdds !== null && p.exchangeOdds > settings.maxLayOdds[key]!)
+      skipped = `The lay price ${p.exchangeOdds.toFixed(2)} was above the maximum lay price ${settings.maxLayOdds[key]!.toFixed(2)}.`;
     else if (stops.get(key)?.stopped) skipped = `Stopped: ${stops.get(key)!.reason}`;
     else if (betsToday >= settings.dailyCap) skipped = "Daily limit reached.";
 

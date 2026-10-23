@@ -33,7 +33,17 @@ export type MarketCode =
   | "NO_MORE_GOALS"
   | "FIRST_HALF_GOALS"
   /** Lay the away side before kick-off: wins on a home win or a draw. Laid only by GoalBrew's direct betting (Match Odds). */
-  | "AWAY_WIN_LAY";
+  | "AWAY_WIN_LAY"
+  /**
+   * LAY the next goal: lay Over (goals at the alert + 0.5), so it WINS when no more goals come. Made by GoalBrew itself
+   * from another strategy's next-goal alert (inplayguru/lay-groups.ts), laid only by GoalBrew's direct betting.
+   */
+  | "NEXT_GOAL_LAY";
+
+/** Bets that are LAYS: the stake is the liability (the most one can lose), and only direct betting places them. */
+export function isLayMarket(market: string | null | undefined): boolean {
+  return market === "AWAY_WIN_LAY" || market === "NEXT_GOAL_LAY";
+}
 
 export type PickResult = "hit" | "miss";
 
@@ -104,6 +114,9 @@ export interface ParsedAlert {
 
 /** Strategy name (lower case, no bracketed note) -> market. Order matters: first match wins. */
 const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
+  // "LAY next goal · ..." (added 23 Oct 2026): GoalBrew's own lay picks, made from groups of next-goal alerts that kept
+  // losing when backed (inplayguru/lay-groups.ts). First, so no later rule reads them as a back bet.
+  { test: /^lay next goal/, market: "NEXT_GOAL_LAY" },
   // "Away Win Lay" (added 10 Oct 2026): a PRE-MATCH alert ("Kickoff: In 1 hour") laying the away side; InPlayGuru
   // tracks it as Double Chance 1X. Settled from the score, priced as a lay; laid on Betfair only by direct betting.
   { test: /away win lay/, market: "AWAY_WIN_LAY" },
@@ -469,6 +482,14 @@ export function parseAlert(text: string): ParsedAlert {
     } else {
       flags.push("Could not read the score, so the goal line can't be worked out.");
     }
+  } else if (market === "NEXT_GOAL_LAY") {
+    // LAY Over (goals so far + 0.5): wins if no more goals come.
+    if (goalsHome !== null && goalsAway !== null) {
+      targetLine = goalsHome + goalsAway + 0.5;
+      selection = `LAY Over ${targetLine}`;
+    } else {
+      flags.push("Could not read the score, so the goal line can't be worked out.");
+    }
   } else if (market === "TWO_MORE_GOALS") {
     if (goalsHome !== null && goalsAway !== null) {
       targetLine = goalsHome + goalsAway + 1.5;
@@ -541,7 +562,7 @@ export function parseAlert(text: string): ParsedAlert {
     // Over (goals at the alert + 0.5): wins if the final total is above that line.
     if ((market === "NEXT_GOAL" || market === "OVER_1_5" || market === "TWO_MORE_GOALS") && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
     // No more goals: wins only if the final total stays under the line.
-    else if (market === "NO_MORE_GOALS" && targetLine !== null) computed = a + b < targetLine ? "hit" : "miss";
+    else if ((market === "NO_MORE_GOALS" || market === "NEXT_GOAL_LAY") && targetLine !== null) computed = a + b < targetLine ? "hit" : "miss";
     else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";
     // Favourite to win (Match Odds): hits only if the favourite wins. A draw loses.
     else if (market === "FAVOURITE_TO_WIN" && favourite !== null) {

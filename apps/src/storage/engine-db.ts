@@ -2315,6 +2315,8 @@ export class EngineDb {
         if (eb && typeof eb.market === "string" && typeof eb.pick === "string") edgeBet = { market: eb.market, pick: eb.pick };
         const pre = p.odds?.preMatch1x2;
         if (p.market === "AWAY_WIN_LAY" && Array.isArray(pre) && typeof pre[2] === "number" && pre[2] > 1) layOdds = pre[2];
+        // LAY the next goal: the alert's Over price for its line, as a stand-in until Betfair's own lay price is read.
+        if (p.market === "NEXT_GOAL_LAY" && typeof p.odds?.over === "number" && p.odds.overUnderLine === p.targetLine) layOdds = p.odds.over;
         targetLine = typeof p.targetLine === "number" ? p.targetLine : null;
         overLine = typeof p.odds?.overUnderLine === "number" ? p.odds.overUnderLine : null;
         overOdds = typeof p.odds?.over === "number" ? p.odds.over : null;

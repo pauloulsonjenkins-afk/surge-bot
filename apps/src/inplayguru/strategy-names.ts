@@ -25,6 +25,25 @@ const STRATEGY_NAMES_KEY = "strategy_names";
 
 /** Keyed by the lower-case InPlayGuru name (strategyLabel, lower-cased). */
 const DEFAULTS: Record<string, StrategyInfo> = {
+  // LAY bets made by GoalBrew from groups of next-goal alerts that kept losing when backed (inplayguru/lay-groups.ts).
+  "lay next goal · japan and brazil": {
+    name: "LAY · Japan & Brazil next goal",
+    description: "A LAY bet: bets AGAINST another goal in Japanese and Brazilian matches, where backing the next goal kept losing.",
+    trigger: "Any of your next-goal alerts in Japan or Brazil, not already backed Live.",
+    bet: "LAY Over (goals so far + 0.5): wins if no more goals; the stake is the liability",
+  },
+  "lay next goal · wake-up call 1 goal apart": {
+    name: "LAY · Wake-up Call 1 goal apart",
+    description: "A LAY bet: bets AGAINST another goal when Wake-up Call fires with the sides one goal apart, which kept losing when backed.",
+    trigger: "Wake-up Call alerts with the sides one goal apart (its 2+ goals apart slice is still backed).",
+    bet: "LAY Over (goals so far + 0.5): wins if no more goals; the stake is the liability",
+  },
+  "lay next goal · comeback roast, not home 1 down": {
+    name: "LAY · Comeback Roast (not home 1 down)",
+    description: "A LAY bet: bets AGAINST another goal on Comeback Roast alerts outside its Golden slice, which kept losing when backed.",
+    trigger: "Comeback Roast alerts unless the home side is one goal down.",
+    bet: "LAY Over (goals so far + 0.5): wins if no more goals; the stake is the liability",
+  },
   "first half goal": {
     name: "Early Roast",
     description: "A pre-match pick for a goal before half-time, in matches where both teams usually score early.",

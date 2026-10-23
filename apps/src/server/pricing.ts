@@ -19,6 +19,7 @@
  *          the odds set for the strategy on Win/Loss
  *   profit hit: stake x (odds - 1), less commission on the winnings; miss: minus the stake
  */
+import { isLayMarket } from "../inplayguru/parse-alert";
 
 export interface PriceableResult {
   market: string | null;
@@ -72,6 +73,11 @@ export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "
     const a = r.layOdds ?? null;
     return a !== null && a > 1.01 ? Math.round((a / (a - 1)) * 1000) / 1000 : null;
   }
+  // LAY the next goal: priced from the lay price of Over (given as layOdds), turned into its back equivalent.
+  if (r.market === "NEXT_GOAL_LAY") {
+    const a = r.layOdds ?? null;
+    return a !== null && a > 1.01 ? Math.round((a / (a - 1)) * 1000) / 1000 : null;
+  }
   if (r.market === "NEXT_GOAL" || r.market === "OVER_1_5" || r.market === "TWO_MORE_GOALS") {
     return r.targetLine !== null && r.overLine === r.targetLine && r.overOdds !== null && r.overOdds > 1 ? r.overOdds : null;
   }
@@ -85,7 +91,7 @@ export function priceResult(
 ): PriceOutcome {
   if (r.placement === "notPlaced") return { kind: "notPlaced", reason: "Sent to bet, but no bet was placed on Betfair." };
   // Real money: what Betfair matched and paid.
-  if (!ctx.estimate && r.placement === "betfair" && r.betStake && r.betOdds && r.betOdds > 1 && r.market === "AWAY_WIN_LAY") {
+  if (!ctx.estimate && r.placement === "betfair" && r.betStake && r.betOdds && r.betOdds > 1 && isLayMarket(r.market)) {
     // A matched LAY: Betfair's stake is the backer's, so the money risked is the liability, stake x (price - 1), and
     // the odds that make the sums work are price / (price - 1).
     const liability = r.betStake * (r.betOdds - 1);
@@ -144,6 +150,17 @@ export function pickOdds(
   r: Pick<PriceableResult, "market" | "targetLine" | "overLine" | "overOdds" | "favouriteOdds" | "betOdds" | "exchangeOdds" | "takenOdds">,
   assumedOdds: number | null,
 ): { odds: number; source: OddsSource } | null {
+  // LAY the next goal: Betfair's actual lay price comes first (the alert's own price is a back quote), always turned into
+  // what it pays per pound risked, L / (L - 1).
+  if (r.market === "NEXT_GOAL_LAY") {
+    const eq = (a: number) => Math.round((a / (a - 1)) * 1000) / 1000;
+    if (r.takenOdds != null && r.takenOdds > 1.01) return { odds: eq(r.takenOdds), source: "taken" };
+    if (r.exchangeOdds != null && r.exchangeOdds > 1.01) return { odds: eq(r.exchangeOdds), source: "exchange" };
+    if (r.betOdds != null && r.betOdds > 1.01) return { odds: eq(r.betOdds), source: "bet" };
+    const quoted = alertOddsOf(r);
+    if (quoted !== null) return { odds: quoted, source: "alert" };
+    return assumedOdds !== null ? { odds: assumedOdds, source: "assumed" } : null;
+  }
   if (r.takenOdds != null && r.takenOdds > 1) return { odds: r.takenOdds, source: "taken" };
   const alert = alertOddsOf(r);
   if (alert !== null) return { odds: alert, source: "alert" };

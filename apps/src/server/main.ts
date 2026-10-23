@@ -2,7 +2,8 @@
  * Entry point for the engine's DigitalOcean web service.
  * package.json "start" runs the compiled copy: node dist/src/server/main.js
  */
-import { getExchangeReader, startBetfairPoller, whenPicksReady } from "../betfair/exchange";
+import { getExchangeReader, requestExchangeCheck, startBetfairPoller, whenPicksReady } from "../betfair/exchange";
+import { syncLayPicks } from "../inplayguru/lay-groups";
 import { parseAlert } from "../inplayguru/parse-alert";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -145,6 +146,20 @@ async function main(): Promise<void> {
     }
   }, 60_000);
   simSweep.unref();
+
+  // LAY picks (inplayguru/lay-groups.ts): made from qualifying next-goal alerts within seconds, so Betfair's lay price is
+  // read while it's still the alert's moment; their sources' later edits are copied across so they settle.
+  const laySweep = setInterval(() => {
+    try {
+      if (syncLayPicks(db) > 0) {
+        requestExchangeCheck();
+        recordSimBets(db);
+      }
+    } catch (err) {
+      log.error(`Could not make LAY picks: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, 15_000);
+  laySweep.unref();
 
   // Once an hour in the daytime (08:00-22:00 UK): any strategy now worth putting Live, or back to Sim? One
   // notification per new suggestion; they're also listed on the Today page.
