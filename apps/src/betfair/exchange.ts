@@ -368,13 +368,19 @@ export class BetfairReader {
     });
     const cleared: ClearedOrder[] = [];
     for (const betStatus of ["SETTLED", "LAPSED", "CANCELLED", "VOIDED"] as const) {
-      const r = await this.call<{ clearedOrders: ClearedOrder[] }>("listClearedOrders", {
-        betStatus,
-        settledDateRange: { from },
-        includeItemDescription: true,
-        recordCount: 1000,
-      });
-      for (const o of r.clearedOrders) cleared.push({ ...o, betOutcome: betStatus === "SETTLED" ? o.betOutcome : betStatus });
+      // Betfair returns up to 1000 at a time: the 30-day read pages through them all (at most 10 pages).
+      for (let page = 0, fromRecord = 0; page < 10; page++) {
+        const r = await this.call<{ clearedOrders: ClearedOrder[]; moreAvailable?: boolean }>("listClearedOrders", {
+          betStatus,
+          settledDateRange: { from },
+          includeItemDescription: true,
+          fromRecord,
+          recordCount: 1000,
+        });
+        for (const o of r.clearedOrders) cleared.push({ ...o, betOutcome: betStatus === "SETTLED" ? o.betOutcome : betStatus });
+        if (!r.moreAvailable || r.clearedOrders.length === 0) break;
+        fromRecord += r.clearedOrders.length;
+      }
     }
     await this.names(current.currentOrders.map((o) => o.marketId));
 
