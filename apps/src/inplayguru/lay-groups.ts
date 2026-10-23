@@ -26,8 +26,10 @@ import { log } from "../server/log";
 export const LAY_CHAT = "lay";
 
 export interface LayGroup {
-  /** The first line of its picks, and so its strategy name. Always starts "LAY next goal". */
+  /** The first line of its picks, and so its strategy name. Starts "LAY next goal" or "LAY home win". */
   header: string;
+  /** The source alerts' market: next-goal alerts are laid as the next goal, home-win alerts as the home side. */
+  source: "NEXT_GOAL" | "HOME_TO_WIN";
   test: (p: LivePick, country: string | null) => boolean;
 }
 
@@ -36,9 +38,11 @@ const sourceKey = (p: LivePick) => strategyLabel(p.strategy).toLowerCase();
 
 /** In order: a pick in more than one group is laid once, under the first. */
 export const LAY_GROUPS: LayGroup[] = [
-  { header: "LAY next goal · Japan and Brazil", test: (_p, country) => /^(japan|brazil)$/i.test((country ?? "").trim()) },
-  { header: "LAY next goal · Wake-up Call 1 goal apart", test: (p) => sourceKey(p) === "time to fight" && Math.abs(margin(p) ?? 0) === 1 },
-  { header: "LAY next goal · Comeback Roast, not home 1 down", test: (p) => sourceKey(p) === "losing team pushing hard" && margin(p) !== null && margin(p) !== -1 },
+  { header: "LAY next goal · Japan and Brazil", source: "NEXT_GOAL", test: (_p, country) => /^(japan|brazil)$/i.test((country ?? "").trim()) },
+  { header: "LAY next goal · Wake-up Call 1 goal apart", source: "NEXT_GOAL", test: (p) => sourceKey(p) === "time to fight" && Math.abs(margin(p) ?? 0) === 1 },
+  { header: "LAY next goal · Comeback Roast, not home 1 down", source: "NEXT_GOAL", test: (p) => sourceKey(p) === "losing team pushing hard" && margin(p) !== null && margin(p) !== -1 },
+  // Matched odds home (added 23 Oct 2026, Sim): backed it was -10.6% over 132 bets (19-23 Oct); laid about +7.7%.
+  { header: "LAY home win · Matched odds home", source: "HOME_TO_WIN", test: (p) => sourceKey(p) === "matched odds home" },
 ];
 
 /** The LAY pick's text: the source alert with the group's name on top, and its Hit/Miss ticks (about the back bet) left out. */
@@ -49,7 +53,9 @@ export function layText(source: string, group: LayGroup): string {
   return [`🔔 ${group.header}`, ...body].join("\n");
 }
 
-const matchScore = (p: LivePick) => `${(p.home ?? "").toLowerCase()}|${(p.away ?? "").toLowerCase()}|${p.goalsHome}-${p.goalsAway}`;
+/** One match, score and kind of bet (goals or the result): a LAY and a back bet clash only on the same kind. */
+const matchScore = (p: LivePick) =>
+  `${(p.home ?? "").toLowerCase()}|${(p.away ?? "").toLowerCase()}|${p.goalsHome}-${p.goalsAway}|${p.market === "HOME_TO_WIN" || p.market === "HOME_WIN_LAY" ? "result" : "goals"}`;
 
 /** One pass: makes the LAY picks for new qualifying alerts, and copies later edits of their sources. Returns how many changed. */
 export function syncLayPicks(db: EngineDb, now = new Date()): number {
@@ -62,11 +68,11 @@ export function syncLayPicks(db: EngineDb, now = new Date()): number {
     const seg = segmentBetFor(settings, p);
     return settings.enabled && (seg ? seg.cfg.live : settings.strategies[sourceKey(p)] === true);
   };
-  const sources = recent.filter((p) => p.chatId !== LAY_CHAT && p.chatId !== "edge" && p.market === "NEXT_GOAL" && !p.excluded && p.home && p.away);
+  const sources = recent.filter((p) => p.chatId !== LAY_CHAT && p.chatId !== "edge" && (p.market === "NEXT_GOAL" || p.market === "HOME_TO_WIN") && !p.excluded && p.home && p.away);
   const liveScores = new Set(sources.filter(backedLive).map(matchScore));
   let changed = 0;
   for (const p of sources) {
-    const group = LAY_GROUPS.find((g) => g.test(p, leagueCountryFromText(p.rawText)));
+    const group = LAY_GROUPS.find((g) => g.source === p.market && g.test(p, leagueCountryFromText(p.rawText)));
     if (!group) continue;
     const existing = lays.get(p.id);
     if (!existing) {

@@ -13,6 +13,7 @@ export const MARKET_LABEL: Record<string, string> = {
   FIRST_HALF_GOALS: "1st half goals (pre-match)",
   AWAY_WIN_LAY: "Away win lay (pre-match)",
   NEXT_GOAL_LAY: "LAY next goal (lay Over goals so far + 0.5)",
+  HOME_WIN_LAY: "LAY home win (lay the home side, Match Odds)",
   EDGE_VALUE: "Edge value bet (pre-match, market varies)",
 };
 

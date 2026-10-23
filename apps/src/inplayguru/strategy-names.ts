@@ -38,6 +38,12 @@ const DEFAULTS: Record<string, StrategyInfo> = {
     trigger: "Wake-up Call alerts with the sides one goal apart (its 2+ goals apart slice is still backed).",
     bet: "LAY Over (goals so far + 0.5): wins if no more goals; the stake is the liability",
   },
+  "lay home win · matched odds home": {
+    name: "LAY · Home win (Matched odds home)",
+    description: "A LAY bet: bets AGAINST the home side winning on Matched odds home alerts, which kept losing when backed.",
+    trigger: "Every Matched odds home alert, not already backed Live.",
+    bet: "LAY the home side (Match Odds): wins on a draw or an away win; the stake is the liability",
+  },
   "lay next goal · comeback roast, not home 1 down": {
     name: "LAY · Comeback Roast (not home 1 down)",
     description: "A LAY bet: bets AGAINST another goal on Comeback Roast alerts outside its Golden slice, which kept losing when backed.",

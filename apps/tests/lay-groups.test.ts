@@ -67,3 +67,23 @@ test("LAY picks are made for the groups, once, never against a Live back bet, an
   db2.upsertLivePick("c", 1, alert("Time to fight", "🇪🇸 Spain La Liga", [1, 0]), parseAlert(alert("Time to fight", "🇪🇸 Spain La Liga", [1, 0])), now, now);
   assert.equal(syncLayPicks(db2), 0);
 });
+
+test("LAY home win: each Matched odds home alert gets a LAY of the home side in Match Odds, winning on a draw or away win", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const now = new Date(Date.now() - 1000).toISOString();
+  const moh = (ft?: [number, number]) => alert("Matched odds home", "🇪🇸 Spain La Liga", [0, 0], ft);
+  const back = parseAlert(moh());
+  assert.equal(back.market, "HOME_TO_WIN");
+  db.upsertLivePick("c", 1, moh(), back, now, now);
+  assert.equal(syncLayPicks(db), 1);
+  const lay = recent(db).find((p) => p.chatId === LAY_CHAT)!;
+  assert.equal(lay.strategy, "LAY home win · Matched odds home");
+  assert.equal(lay.market, "HOME_WIN_LAY");
+  assert.ok(isLayMarket("HOME_WIN_LAY"));
+  assert.deepEqual(feedMarket(lay, getSendingSettings(db), (n) => n), feedMarket(recent(db).find((p) => p.chatId === "c")!, getSendingSettings(db), (n) => n));
+  assert.equal(parseAlert(layText(moh([1, 1]), LAY_GROUPS[3]!)).result, "hit", "a draw: the LAY wins");
+  assert.equal(parseAlert(layText(moh([0, 1]), LAY_GROUPS[3]!)).result, "hit", "an away win: the LAY wins");
+  assert.equal(parseAlert(layText(moh([2, 1]), LAY_GROUPS[3]!)).result, "miss", "a home win: the LAY loses");
+  // Lay the home side at 2.50: risk £1.50 to win £1, so it pays like a back bet at 2.50 / 1.50.
+  assert.equal(pickOdds({ market: "HOME_WIN_LAY", targetLine: null, overLine: null, overOdds: null, favouriteOdds: null, betOdds: null, exchangeOdds: 2.5, takenOdds: null }, null)?.odds, 1.667);
+});

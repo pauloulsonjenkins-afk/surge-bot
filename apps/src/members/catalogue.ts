@@ -27,6 +27,7 @@ export const MARKET_LABEL: Record<string, string> = {
   TWO_MORE_GOALS: "Two more goals",
   NO_MORE_GOALS: "No more goals",
   NEXT_GOAL_LAY: "LAY next goal",
+  HOME_WIN_LAY: "LAY home win",
   FIRST_HALF_GOALS: "1st half goals (pre-match)",
 };
 
@@ -61,7 +62,7 @@ export function listCatalogue(db: EngineDb, config: MembersConfig): CatalogueEnt
   for (const [key, info] of Object.entries(names)) {
     if (key in ignored) continue;
     // GoalBrew's own LAY bets (inplayguru/lay-groups.ts) are the admin's, never offered to members.
-    if (key.startsWith("lay next goal")) continue;
+    if (key.startsWith("lay next goal") || key.startsWith("lay home win")) continue;
     if (published && !published.has(key)) continue;
     // A strategy that never sent an alert has nothing to show yet.
     if (!seen.has(key)) continue;

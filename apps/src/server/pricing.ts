@@ -74,7 +74,7 @@ export function alertOddsOf(r: Pick<PriceableResult, "market" | "targetLine" | "
     return a !== null && a > 1.01 ? Math.round((a / (a - 1)) * 1000) / 1000 : null;
   }
   // LAY the next goal: priced from the lay price of Over (given as layOdds), turned into its back equivalent.
-  if (r.market === "NEXT_GOAL_LAY") {
+  if (r.market === "NEXT_GOAL_LAY" || r.market === "HOME_WIN_LAY") {
     const a = r.layOdds ?? null;
     return a !== null && a > 1.01 ? Math.round((a / (a - 1)) * 1000) / 1000 : null;
   }
@@ -152,7 +152,7 @@ export function pickOdds(
 ): { odds: number; source: OddsSource } | null {
   // LAY the next goal: Betfair's actual lay price comes first (the alert's own price is a back quote), always turned into
   // what it pays per pound risked, L / (L - 1).
-  if (r.market === "NEXT_GOAL_LAY") {
+  if (r.market === "NEXT_GOAL_LAY" || r.market === "HOME_WIN_LAY") {
     const eq = (a: number) => Math.round((a / (a - 1)) * 1000) / 1000;
     if (r.takenOdds != null && r.takenOdds > 1.01) return { odds: eq(r.takenOdds), source: "taken" };
     if (r.exchangeOdds != null && r.exchangeOdds > 1.01) return { odds: eq(r.exchangeOdds), source: "exchange" };

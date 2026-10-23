@@ -40,7 +40,7 @@
  * pick it already has, which could otherwise place a second bet.
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
-import { isLayMarket, kickoffMinutes, leagueCountryFromText } from "./parse-alert";
+import { isLayGroupMarket, isLayMarket, kickoffMinutes, leagueCountryFromText } from "./parse-alert";
 import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
@@ -604,7 +604,8 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
     const fill = (t: string) => t.replace(/\{line\}/g, line.toFixed(1)).replace(/\{line10\}/g, String(Math.round(line * 10)).padStart(2, "0"));
     return { marketType: fill(settings.firstHalfCornersMarketType), selectionName: fill(settings.firstHalfCornersSelection) };
   }
-  if (p.market === "HOME_TO_WIN") {
+  // LAY home win is laid in Match Odds on the home side, the same selection Matched odds home backs.
+  if (p.market === "HOME_TO_WIN" || p.market === "HOME_WIN_LAY") {
     return { marketType: settings.favouriteMarketType, selectionName: settings.favouriteHomeSelection.replace(/\{home\}/g, alias(p.home ?? "")).replace(/\{away\}/g, alias(p.away ?? "")) };
   }
   if (p.market === "FAVOURITE_TO_WIN" || p.market === "UNDERDOG_DOUBLE_CHANCE") {
@@ -934,7 +935,9 @@ export function alertOddsOfPick(p: LivePick): number | null {
         ? (d.odds?.preMatch1x2?.[2] ?? null)
         : p.market === "NEXT_GOAL_LAY" && d.odds?.overUnderLine === d.targetLine
           ? (d.odds?.over ?? null)
-          : null,
+          : p.market === "HOME_WIN_LAY"
+            ? (live?.[0] ?? null)
+            : null,
   });
 }
 
@@ -1002,7 +1005,7 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     else if (!isLayMarket(p.market) && minPrice !== null && odds !== null && odds < minPrice) skipped = `Odds ${odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.`;
     else if (p.market === "AWAY_WIN_LAY" && settings.maxLayOdds[key] !== undefined && (p.detail?.odds?.preMatch1x2?.[2] ?? 0) > settings.maxLayOdds[key]!)
       skipped = `The away price ${p.detail!.odds.preMatch1x2![2].toFixed(2)} was above the maximum lay price ${settings.maxLayOdds[key]!.toFixed(2)}.`;
-    else if (p.market === "NEXT_GOAL_LAY" && settings.maxLayOdds[key] !== undefined && p.exchangeOdds !== null && p.exchangeOdds > settings.maxLayOdds[key]!)
+    else if (isLayGroupMarket(p.market) && settings.maxLayOdds[key] !== undefined && p.exchangeOdds !== null && p.exchangeOdds > settings.maxLayOdds[key]!)
       skipped = `The lay price ${p.exchangeOdds.toFixed(2)} was above the maximum lay price ${settings.maxLayOdds[key]!.toFixed(2)}.`;
     else if (stops.get(key)?.stopped) skipped = `Stopped: ${stops.get(key)!.reason}`;
     else if (betsToday >= settings.dailyCap) skipped = "Daily limit reached.";

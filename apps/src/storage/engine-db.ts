@@ -2319,6 +2319,8 @@ export class EngineDb {
         if (p.market === "AWAY_WIN_LAY" && Array.isArray(pre) && typeof pre[2] === "number" && pre[2] > 1) layOdds = pre[2];
         // LAY the next goal: the alert's Over price for its line, as a stand-in until Betfair's own lay price is read.
         if (p.market === "NEXT_GOAL_LAY" && typeof p.odds?.over === "number" && p.odds.overUnderLine === p.targetLine) layOdds = p.odds.over;
+        // LAY home win: the alert's live home price, as a stand-in until Betfair's own lay price is read.
+        if (p.market === "HOME_WIN_LAY" && typeof p.odds?.live1x2?.[0] === "number" && p.odds.live1x2[0] > 1) layOdds = p.odds.live1x2[0];
         targetLine = typeof p.targetLine === "number" ? p.targetLine : null;
         overLine = typeof p.odds?.overUnderLine === "number" ? p.odds.overUnderLine : null;
         overOdds = typeof p.odds?.over === "number" ? p.odds.over : null;

@@ -22,7 +22,7 @@
  * lost, lapsed, cancelled, voided), stores them in betfair_bets keyed by bet id (the same id BF Bot Manager's export
  * uses, so both sources update one record) and links them to picks (matchBets).
  */
-import { isLayMarket } from "../inplayguru/parse-alert";
+import { isLayGroupMarket, isLayMarket } from "../inplayguru/parse-alert";
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
 import { couldBeSameMatch, eventScore, matchBets } from "./reconcile";
@@ -613,7 +613,7 @@ async function checkNewAlerts(db: EngineDb, reader: BetfairReader, cache: MatchC
     if (pick) {
       const market = feedMarket(pick, settings, namer);
       if (!("error" in market)) {
-        const bet = await reader.checkBet(found.eventId!, market.marketType, market.selectionName, pick.market === "NEXT_GOAL_LAY" ? "lay" : "back").catch(() => null);
+        const bet = await reader.checkBet(found.eventId!, market.marketType, market.selectionName, isLayGroupMarket(pick.market) ? "lay" : "back").catch(() => null);
         if (bet) {
           odds = bet.price;
           check = {
@@ -701,7 +701,7 @@ async function repriceHeld(db: EngineDb, reader: BetfairReader): Promise<number>
   for (const p of held) {
     const market = feedMarket(p, settings, namer);
     if ("error" in market) continue;
-    const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName, p.market === "NEXT_GOAL_LAY" ? "lay" : "back").catch(() => null);
+    const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName, isLayGroupMarket(p.market) ? "lay" : "back").catch(() => null);
     if (bet?.price != null && bet.price !== p.exchangeOdds) {
       db.setPickExchangeOdds(p.id, bet.price);
       moved++;

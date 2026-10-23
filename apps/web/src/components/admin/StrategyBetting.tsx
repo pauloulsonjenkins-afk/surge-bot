@@ -14,13 +14,13 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
  */
 export type SendingStrategy = SendingState["strategies"][number];
 
-const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "HOME_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY", "NEXT_GOAL_LAY", "EDGE_VALUE"]);
+const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "HOME_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY", "NEXT_GOAL_LAY", "HOME_WIN_LAY", "EDGE_VALUE"]);
 
 /** A strategy that LAYS (Away Win Lay): its stake is the liability, and it has a maximum lay price, not minimum odds. */
-const isLay = (s: SendingStrategy) => s.market === "AWAY_WIN_LAY" || s.market === "NEXT_GOAL_LAY";
+const isLay = (s: SendingStrategy) => s.market === "AWAY_WIN_LAY" || s.market === "NEXT_GOAL_LAY" || s.market === "HOME_WIN_LAY";
 /** What a lay loses on: the away side winning (Away Win Lay), or another goal (LAY next goal). */
-const layLosesOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "another goal is scored" : "the away side wins");
-const layWinsOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "no more goals come" : "a home win or draw");
+const layLosesOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "another goal is scored" : s.market === "HOME_WIN_LAY" ? "the home side wins" : "the away side wins");
+const layWinsOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "no more goals come" : s.market === "HOME_WIN_LAY" ? "a draw or an away win" : "a home win or draw");
 
 /** Whether this strategy's market can be bet (some need a Betfair market code set under Sending > Bet wording first). */
 export function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
