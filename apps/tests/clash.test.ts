@@ -85,3 +85,21 @@ test("a lay idea watched becomes a LAY group in Sim at £2, and lays only its sl
   unwatchLayGroup(db, g.header);
   assert.equal(layGroups(db).length, LAY_GROUPS.length);
 });
+
+test("lay ideas leave out alerts a LAY group already lays", async () => {
+  const { findLayIdeas } = await import("../src/server/lay-finder");
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { stakes: { "time to fight": 1, "blistering momentum": 1 } });
+  const settled = (strategy: string, goals: [number, number], line: string, match: string) =>
+    [`🔔 ${strategy}`, "", "🇪🇸 Spain La Liga", match, "", "Timer: 75'", `Goals: ${goals[0]} - ${goals[1]}`, `Over/Under ${line} Odds:`, "1.70 2.10", "", "⸻⸻ Match Summary ⸻⸻", `Half-Time Score: ${goals[0]}-${goals[1]}`, `Full-Time Score: ${goals[0]}-${goals[1]}`, "", "❌ Miss"].join("\n");
+  for (let i = 0; i < 60; i++) {
+    const at = new Date(Date.now() - (60 - i) * 3_600_000).toISOString();
+    const a = settled("Time to fight", [1, 0], "1.50", `Home${i} vs Away${i}`); // 1 goal apart: already laid
+    const b = settled("Blistering Momentum", [0, 0], "0.50", `Other${i} vs Third${i}`); // not laid by anything
+    db.upsertLivePick("c", i * 2 + 1, a, parseAlert(a), at, at);
+    db.upsertLivePick("c", i * 2 + 2, b, parseAlert(b), at, at);
+  }
+  const ideas = findLayIdeas(db);
+  assert.ok(ideas.length > 0, "Blistering Momentum, which lost every time, is an idea");
+  assert.ok(ideas.every((i) => i.strategyKey === "blistering momentum"), "nothing from Wake-up Call 1 goal apart");
+});

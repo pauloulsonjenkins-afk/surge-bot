@@ -3,7 +3,8 @@
  * looks for strategies, or slices of them, that kept LOSING when backed, and works out what laying them would have
  * made.
  *
- * Only next-goal and home-win strategies, the two GoalBrew can lay (lay-groups.ts). Each priced settled pick is laid at
+ * Only next-goal and home-win strategies, the two GoalBrew can lay (lay-groups.ts), and only alerts no LAY group lays
+ * already, so an idea is always new money. Each priced settled pick is laid at
  * its back price plus about two ticks (3%), risking £1 of liability: a back win loses the £1, a back loss wins
  * £1 / (lay price - 1), less 2% commission. An idea needs 40+ picks, +4% or more per £1 of liability laid, and to
  * have been profitable laid in BOTH halves of the record. As with the Golden finder, many slices are tried, so some
@@ -17,7 +18,8 @@ import { pricingInputs } from "./winloss";
 import { FEATURES, ruleLabel, ruleTest, type Feature } from "./segments";
 import { layGroups } from "../inplayguru/lay-groups";
 
-const FOUND_KEY = "lay_ideas";
+// v2: ideas from before LAY groups were left out are dropped, not shown for up to 6 hours.
+const FOUND_KEY = "lay_ideas_v2";
 const SIX_HOURS = 6 * 3_600_000;
 const MIN_IN = 40;
 const SPREAD = 1.03;
@@ -50,9 +52,12 @@ const mean = (xs: number[]) => (xs.length ? xs.reduce((t, x) => t + x, 0) / xs.l
 
 export function findLayIdeas(db: EngineDb): LayIdea[] {
   const { price } = pricingInputs(db);
+  const groups = layGroups(db);
   const by = new Map<string, { source: LayIdea["source"]; rows: Row[] }>();
   for (const r of db.listResultsForWinLoss("1970-01-01T00:00:00.000Z")) {
     if (!r.facts || (r.market !== "NEXT_GOAL" && r.market !== "HOME_TO_WIN")) continue;
+    // Already laid by a LAY group: not an idea, whatever slice it's in.
+    if (groups.some((g) => g.source === r.market && g.covers(strategyLabel(r.strategy).toLowerCase(), r.facts!))) continue;
     const { priced } = price(r);
     if (priced.kind !== "priced" || priced.stake <= 0 || !(priced.odds > 1.01)) continue;
     const lay = priced.odds * SPREAD;
@@ -66,20 +71,14 @@ export function findLayIdeas(db: EngineDb): LayIdea[] {
   for (let i = 0; i < feats.length; i++)
     for (let j = i + 1; j < feats.length; j++) if (FEATURES[feats[i]!].group !== FEATURES[feats[j]!].group) rules.push([feats[i]!, feats[j]!]);
 
-  // What's laid already: a whole strategy laid leaves nothing of it to suggest; a slice laid isn't suggested again.
-  const laid = layGroups(db).filter((g) => g.lays !== null);
-  const id = (rule: Feature[]) => [...rule].sort().join("+");
 
   const out: LayIdea[] = [];
   for (const [key, { source, rows }] of by) {
     if (rows.length < MIN_IN) continue;
-    const mine = laid.filter((g) => g.lays === key);
-    if (mine.some((g) => g.whole)) continue;
     rows.sort((a, b) => a.at.localeCompare(b.at));
     const mid = rows[Math.floor(rows.length / 2)]!.at;
     const found: LayIdea[] = [];
     for (const rule of rules) {
-      if (mine.some((g) => g.rule && id(g.rule) === id(rule))) continue;
       const test = rule.length > 0 ? ruleTest(rule) : () => true;
       const inn = rows.filter((r) => test(r.facts));
       if (inn.length < MIN_IN) continue;

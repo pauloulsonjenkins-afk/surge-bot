@@ -23,7 +23,7 @@ import type { EngineDb, LivePick } from "../storage/engine-db";
 import { getSendingSettings, pickFacts, saveSendingSettings, segmentBetFor, strategyLabel } from "./bet-feed";
 import { leagueCountryFromText, parseAlert } from "./parse-alert";
 import { clashOf, exposureOf } from "./clash";
-import { ruleLabel, ruleTest, type Feature } from "../server/segments";
+import { ruleLabel, ruleTest, type AlertFacts, type Feature } from "../server/segments";
 import { log } from "../server/log";
 
 export const LAY_CHAT = "lay";
@@ -41,19 +41,20 @@ export interface LayGroup {
   whole?: boolean;
   /** Added from a lay idea (lay-finder.ts), with its rule; built-in groups have none. */
   rule?: Feature[];
-  test: (p: LivePick, country: string | null) => boolean;
+  /** Whether an alert of this strategy (key), with these facts, is in the group: for new alerts and for the lay finder. */
+  covers: (strategyKey: string, f: AlertFacts) => boolean;
 }
 
-const margin = (p: LivePick) => (p.goalsHome === null || p.goalsAway === null ? null : p.goalsHome - p.goalsAway);
+const margin = (f: AlertFacts) => (f.goalsHome === null || f.goalsAway === null ? null : f.goalsHome - f.goalsAway);
 const sourceKey = (p: LivePick) => strategyLabel(p.strategy).toLowerCase();
 
 /** In order: a pick in more than one group is laid once, under the first. */
 export const LAY_GROUPS: LayGroup[] = [
-  { header: "LAY next goal · Japan and Brazil", source: "NEXT_GOAL", lays: null, why: "Next-goal alerts in Japan or Brazil, any strategy: -26.8% per £1 backed over 121 bets.", test: (_p, country) => /^(japan|brazil)$/i.test((country ?? "").trim()) },
-  { header: "LAY next goal · Wake-up Call 1 goal apart", source: "NEXT_GOAL", lays: "time to fight", why: "Wake-up Call with the sides one goal apart: -9.1% per £1 backed over 776 bets.", test: (p) => sourceKey(p) === "time to fight" && Math.abs(margin(p) ?? 0) === 1 },
-  { header: "LAY next goal · Comeback Roast, not home 1 down", source: "NEXT_GOAL", lays: "losing team pushing hard", why: "Comeback Roast outside its Golden slice (not home 1 down): -15.3% per £1 backed over 183 bets.", test: (p) => sourceKey(p) === "losing team pushing hard" && margin(p) !== null && margin(p) !== -1 },
+  { header: "LAY next goal · Japan and Brazil", source: "NEXT_GOAL", lays: null, why: "Next-goal alerts in Japan or Brazil, any strategy: -26.8% per £1 backed over 121 bets.", covers: (_k, f) => /^(japan|brazil)$/i.test((f.country ?? "").trim()) },
+  { header: "LAY next goal · Wake-up Call 1 goal apart", source: "NEXT_GOAL", lays: "time to fight", why: "Wake-up Call with the sides one goal apart: -9.1% per £1 backed over 776 bets.", covers: (k, f) => k === "time to fight" && Math.abs(margin(f) ?? 0) === 1 },
+  { header: "LAY next goal · Comeback Roast, not home 1 down", source: "NEXT_GOAL", lays: "losing team pushing hard", why: "Comeback Roast outside its Golden slice (not home 1 down): -15.3% per £1 backed over 183 bets.", covers: (k, f) => k === "losing team pushing hard" && margin(f) !== null && margin(f) !== -1 },
   // Matched odds home (added 23 Oct 2026, Sim): backed it was -10.6% over 132 bets (19-23 Oct); laid about +7.7%.
-  { header: "LAY home win · Matched odds home", source: "HOME_TO_WIN", lays: "matched odds home", whole: true, why: "Every Matched odds home alert: -10.6% per £1 backed over 132 bets.", test: (p) => sourceKey(p) === "matched odds home" },
+  { header: "LAY home win · Matched odds home", source: "HOME_TO_WIN", lays: "matched odds home", whole: true, why: "Every Matched odds home alert: -10.6% per £1 backed over 132 bets.", covers: (k) => k === "matched odds home" },
 ];
 
 const CUSTOM_KEY = "lay_groups_custom";
@@ -80,7 +81,7 @@ function fromSaved(g: SavedLayGroup): LayGroup {
     whole: g.rule.length === 0,
     why: g.why,
     rule: g.rule,
-    test: (p) => sourceKey(p) === g.strategyKey && test(pickFacts(p)),
+    covers: (k, f) => k === g.strategyKey && test(f),
   };
 }
 
@@ -157,7 +158,7 @@ export function syncLayPicks(db: EngineDb, now = new Date()): number {
   let changed = 0;
   const groups = layGroups(db);
   for (const p of sources) {
-    const group = groups.find((g) => g.source === p.market && g.test(p, leagueCountryFromText(p.rawText)));
+    const group = groups.find((g) => g.source === p.market && g.covers(sourceKey(p), pickFacts(p)));
     if (!group) continue;
     const existing = lays.get(p.id);
     if (!existing) {
