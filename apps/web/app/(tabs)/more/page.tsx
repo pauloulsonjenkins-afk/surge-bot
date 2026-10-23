@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bot, CalendarDays, ChevronRight, Crown, Gauge, Lock, PencilLine, Send, Settings, TrendingUp, Trophy } from "lucide-react";
+import { Bell, Bot, CalendarDays, ChevronRight, Crown, Gauge, Lock, PencilLine, Send, Settings, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
@@ -19,6 +19,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: n
   "/more/admin/horses": HorseHeadIcon,
   "/more/admin/members": Crown,
   "/more/admin/settings": Settings,
+  "/more/admin/notifications": Bell,
 };
 
 /** Your account, then (for the admin only) the admin pages. Everyone else gets a small way into the admin sign-in. */

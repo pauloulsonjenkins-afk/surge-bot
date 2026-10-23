@@ -32,6 +32,7 @@ import { useToday } from "@/queries/use-today";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { ADVICE_LABEL, AdviceRow, ApplyAdvice, isGoodAdvice } from "@/components/admin/Advice";
 import { isLayRow, LaySection } from "@/components/admin/LaySection";
+import { Sparkline } from "@/components/ui/Sparkline";
 
 // The chart library is about a tenth of the app's code: loaded only when an equity curve is opened, not with the page.
 const EquityCurve = dynamic(() => import("@/components/admin/EquityCurve").then((m) => m.EquityCurve), {
@@ -671,6 +672,11 @@ function StrategyCard({
               </span>
             )}
           </span>
+          {row.spark && row.spark.length >= 5 && (
+            <span className="block shrink-0" title={`Running profit over its last ${row.spark.length} bets (Live and Sim): ${gbp(row.spark[row.spark.length - 1]!)}`}>
+              <Sparkline values={row.spark} />
+            </span>
+          )}
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
             <span className="block text-xs text-ink-muted">{headline.sub}</span>

@@ -14,7 +14,6 @@ import { getExchangeReader, judgeExchange, searchWord, type BetfairReader } from
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { edgeCards, KEY, type EdgeBet, type EdgeCard } from "./edge";
 import { log } from "../server/log";
-import { recordValuePicks } from "./value-strategy";
 
 const AHEAD_MS = 24 * 3_600_000;
 const COMMISSION = 0.02;
@@ -119,8 +118,8 @@ export async function priceEdge(db: EngineDb, reader: BetfairReader, now = new D
       new Date(now.getTime() - 2 * 3_600_000).toISOString(),
     );
   }
-  // Best Value Cuppa: the value bets on matches about to start become Sim picks (edge/value-strategy.ts).
-  recordValuePicks(db, soon, now);
+  // Best Value Cuppa was retired on 24 Oct 2026 (-22% per £1 over 104 Sim picks, -52% in its last week): no new picks
+  // are made from the value bets. Those already made still settle (edge/value-strategy.ts); Edge's cards are unchanged.
   log.info(`Edge: Betfair prices read for ${priced} trends across ${soon.length} fixtures in the next 24 hours.`);
   return priced;
 }

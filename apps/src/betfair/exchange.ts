@@ -37,6 +37,9 @@ const API_URL = "https://api.betfair.com/exchange/betting/rest/v1.0/";
 const POLL_MS = 45_000;
 /** How often the list of competitions Betfair offers is saved. */
 const COMPETITIONS_EVERY_MS = 6 * 60 * 60 * 1000;
+/** The daily wider read of settled bets (see the poll). */
+const WIDE_EVERY_MS = 24 * 60 * 60 * 1000;
+const WIDE_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 /** A Betfair session lasts hours; log in again well before it would run out. */
 const SESSION_MS = 3 * 60 * 60 * 1000;
 const LOOKBACK_MS = 24 * 60 * 60 * 1000;
@@ -354,9 +357,9 @@ export class BetfairReader {
     return price !== null && price > 1 ? price : null;
   }
 
-  /** Every bet placed or settled in the last day, in the stored shape. */
-  async recentBets(now = new Date()): Promise<BetfairBet[]> {
-    const from = new Date(now.getTime() - LOOKBACK_MS).toISOString();
+  /** Every bet placed or settled in the last day (or `lookbackMs`), in the stored shape. */
+  async recentBets(now = new Date(), lookbackMs = LOOKBACK_MS): Promise<BetfairBet[]> {
+    const from = new Date(now.getTime() - lookbackMs).toISOString();
     const current = await this.call<{ currentOrders: CurrentOrder[] }>("listCurrentOrders", {
       dateRange: { from },
       orderProjection: "ALL",
@@ -775,6 +778,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
   const exchangeCache: MatchCache = new Map();
   let running = false;
   let competitionsAt = 0;
+  let wideAt = 0;
   // The match lookup runs from the poll and on demand (requestExchangeCheck), one at a time; a request made while
   // one is running runs it again afterwards, so a new alert is never left for the next poll.
   let looking = false;
@@ -805,6 +809,15 @@ export function startBetfairPoller(db: EngineDb): () => void {
     try {
       const bets = await reader.recentBets();
       db.saveBetfairBets(bets, new Date().toISOString());
+      // Once a day, the last 30 days of settled bets too: one that settled while GoalBrew was down (the usual read only
+      // looks back a day) would otherwise stay open for good.
+      if (Date.now() - wideAt > WIDE_EVERY_MS) {
+        wideAt = Date.now();
+        await reader
+          .recentBets(new Date(), WIDE_LOOKBACK_MS)
+          .then((old) => db.saveBetfairBets(old, new Date().toISOString()))
+          .catch((err: unknown) => log.warn(`Betfair 30-day bet read failed: ${err instanceof Error ? err.message : String(err)}`));
+      }
       // Bets GoalBrew placed itself (direct.ts) are linked by their bet id before any guessing by match and time.
       db.linkDirectBets();
       const linked = matchBets(db);
@@ -812,6 +825,9 @@ export function startBetfairPoller(db: EngineDb): () => void {
       const corrected = db.markBetPicksOnExchange();
       if (corrected > 0) log.info(`Betfair: ${corrected} pick(s) marked on Betfair from their placed bets.`);
       for (const c of db.applyBetfairResults()) log.info(`Betfair: pick ${c.id} amended ${c.from} → ${c.to} to match how Betfair settled its bet.`);
+      // Live picks whose score never came, a day on: settled from how Betfair settled their bets.
+      for (const c of db.settleOpenFromBetfair(new Date(Date.now() - 86_400_000).toISOString()))
+        log.info(`Betfair: pick ${c.id} had no full-time score; settled ${c.result} from its Betfair bet.`);
       status.lastOkAt = new Date().toISOString();
       status.lastCount = bets.length;
       // Picks still with no bet 3 minutes after sending: one push notification each (betfair/unplaced.ts).

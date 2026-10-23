@@ -9,6 +9,7 @@
  *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
+ *   GET  /internal/notifications               every notification sent to the admin, last 60 days (admin site only)
  *   GET  /internal/lay-groups                  the LAY groups (what each lays and why) and the lay ideas (admin site only)
  *   POST /internal/lay-groups/watch {strategyKey, source, rule, why} · /unwatch {header}   lay an idea in Sim, or stop (admin only)
  *   GET  /internal/clash-check?strategy=X     how X's picks met what is Live now, last 30 days (admin site only)
@@ -95,7 +96,7 @@ import { currentStake, getBank } from "../inplayguru/stake";
 import { addMatchName, betPickNow, pickSegments, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
-import { ALL_TIME, computeHitRateContext, computePickProfits, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
+import { ALL_TIME, computeHitRateContext, computePickProfits, computeSparks, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { cachedReport, clearReportCache } from "./report-cache";
 import { reportTimings } from "./report-timings";
@@ -487,6 +488,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       } catch (err) {
         send(res, 400, { error: err instanceof Error ? err.message : "Couldn't retry that." });
       }
+      return;
+    }
+
+    // The Notifications page: what was sent, newest first (push.ts logs each one).
+    if (req.method === "GET" && path === "/internal/notifications") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, { notifications: db.listPushLog(500) });
       return;
     }
 
@@ -1205,11 +1213,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           // Money counts from a rule change like the record does; the figures from before come back as `before`.
           const returns = timed("returns", () => computeStrategyReturns(db, since, { fromRuleChange: true, rows }));
           const form = timed("form", () => computeStrategyForm(db, new Date(), rows));
+          const sparks = timed("sparks", () => computeSparks(db, new Date(), rows));
           const strategies = timed("list", () =>
             db.listStrategiesForAdmin(since).map((x) => ({
               ...x,
               returns: returns[x.label.toLowerCase()] ?? null,
               form: form[x.label.toLowerCase()] ?? null,
+              spark: sparks[x.label.toLowerCase()] ?? [],
               sendingOn: settings.strategies[x.label.toLowerCase()] === true,
               // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
               mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",

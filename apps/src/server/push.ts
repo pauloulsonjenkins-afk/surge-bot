@@ -82,7 +82,14 @@ export interface PushMessage {
  * many it reached. Never throws: a failed notification mustn't stop the caller.
  */
 export async function sendPush(db: EngineDb, message: PushMessage): Promise<number> {
-  return deliver(db, db.listPushSubscriptions(), message, (endpoint) => db.deletePushSubscription(endpoint));
+  const reached = await deliver(db, db.listPushSubscriptions(), message, (endpoint) => db.deletePushSubscription(endpoint));
+  // Kept for the Notifications page, whether or not a device got it.
+  try {
+    db.logPush(new Date().toISOString(), message.title, message.body, message.url ?? null, reached);
+  } catch {
+    // never stops the caller
+  }
+  return reached;
 }
 
 /**

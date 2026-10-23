@@ -803,7 +803,7 @@ export function computePickProfits(db: EngineDb, sinceIso: string): Record<numbe
     const { priced } = price(r);
     const placement = r.placement;
     if (priced.kind === "priced") {
-      out[r.id] = { stake: r2(priced.stake), profit: r2(priced.profit), placement, real: placement === "betfair", assumed: priced.oddsSource === "assumed" };
+      out[r.id] = { stake: r2(priced.stake), profit: r2(priced.profit), placement, real: placement === "betfair", assumed: priced.oddsSource === "assumed", ...(r.byHand ? { byHand: true } : {}) };
     } else if (placement === "notPlaced") out[r.id] = { stake: 0, profit: 0, placement, real: false, assumed: false };
   }
   return out;
@@ -820,6 +820,8 @@ export interface PickProfit {
   real: boolean;
   /** Priced at the strategy's assumed odds (a guess), not a real price. */
   assumed: boolean;
+  /** A Sim pick bet for real by hand (Live tab, Bet this for real). */
+  byHand?: boolean;
 }
 
 /** One window of a strategy's form: its figures overall and split into Live (real money) and Sim. */
@@ -852,6 +854,28 @@ export const RECENT_PICKS = 20;
  * the window before for comparison. Priced exactly as computeStrategyReturns. A strategy whose rules changed
  * (RECORD_FROM) counts only picks from the change. `rows`: every settled pick, already read (see settledSince).
  */
+/**
+ * Each strategy's running profit over its last 30 priced bets (Live and Sim together, oldest first), for the sparkline on
+ * its Strategies card. From the last 60 days.
+ */
+export function computeSparks(db: EngineDb, now = new Date(), rows?: ResultRow[], n = 30): Record<string, number[]> {
+  const { price } = pricingInputs(db);
+  const since = new Date(now.getTime() - 60 * 86_400_000).toISOString();
+  const by = new Map<string, Array<{ at: string; profit: number }>>();
+  for (const r of settledSince(db, since, rows)) {
+    const p = price(r);
+    if (p.priced.kind !== "priced") continue;
+    (by.get(p.key) ?? by.set(p.key, []).get(p.key)!).push({ at: r.firstSeenAt, profit: p.priced.profit });
+  }
+  const out: Record<string, number[]> = {};
+  for (const [key, list] of by) {
+    list.sort((a, b) => a.at.localeCompare(b.at));
+    let run = 0;
+    out[key] = list.slice(-n).map((x) => Math.round((run += x.profit) * 100) / 100);
+  }
+  return out;
+}
+
 export function computeStrategyForm(db: EngineDb, now = new Date(), rows?: ResultRow[]): Record<string, StrategyForm> {
   const { commission, price } = pricingInputs(db);
   const since = new Date(now.getTime() - 60 * 86_400_000).toISOString();

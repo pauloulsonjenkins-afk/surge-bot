@@ -766,6 +766,17 @@ export class EngineDb {
         card_json   TEXT NOT NULL
       );
 
+      -- Every notification sent to the admin (server/push.ts), for the Notifications page; 60 days kept.
+      CREATE TABLE IF NOT EXISTS push_log (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        at       TEXT NOT NULL,
+        title    TEXT NOT NULL,
+        body     TEXT NOT NULL,
+        url      TEXT,
+        reached  INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS push_log_at ON push_log (at);
+
       -- Devices (browsers, or the installed app) that get the admin's push notifications (server/push.ts).
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         endpoint      TEXT PRIMARY KEY,
@@ -1065,6 +1076,31 @@ export class EngineDb {
    * done on "Fix a result". Only picks with a bet placed by direct betting (the exact market and selection sent), and
    * never one already amended by hand. Returns the picks changed.
    */
+  /**
+   * A Live pick still without a result a day after it was sent, whose matched Betfair bets have all settled: settled
+   * from how Betfair paid them (any won = hit; for a lay, Betfair's "won" is the lay winning). Its full-time score
+   * never came (no InPlayGuru edit, no API-Football match), but the money is known. Returns the picks settled.
+   */
+  settleOpenFromBetfair(sentBefore: string): Array<{ id: number; result: "hit" | "miss" }> {
+    const rows = this.db
+      .prepare(
+        `SELECT p.id AS id,
+                SUM(CASE WHEN b.status = 'won' THEN 1 ELSE 0 END) AS won,
+                SUM(CASE WHEN b.status IN ('won', 'lost') THEN 0 ELSE 1 END) AS open
+         FROM live_picks p JOIN betfair_bets b ON b.pick_id = p.id AND b.matched > 0
+         WHERE p.result IS NULL AND p.result_override IS NULL AND p.excluded = 0 AND p.sent_at IS NOT NULL AND p.sent_at < ?
+         GROUP BY p.id
+         HAVING open = 0`,
+      )
+      .all(sentBefore) as Array<{ id: number; won: number; open: number }>;
+    const out: Array<{ id: number; result: "hit" | "miss" }> = [];
+    for (const r of rows) {
+      const result: "hit" | "miss" = r.won > 0 ? "hit" : "miss";
+      if (this.setResultOverride(r.id, result)) out.push({ id: r.id, result });
+    }
+    return out;
+  }
+
   applyBetfairResults(): Array<{ id: number; from: "hit" | "miss"; to: "hit" | "miss" }> {
     const rows = this.db
       .prepare(
@@ -1394,6 +1430,24 @@ export class EngineDb {
     const n = this.db.prepare(`DELETE FROM push_subscriptions WHERE endpoint = ?`).run(endpoint).changes;
     if (n > 0) this.onChange();
     return n > 0;
+  }
+
+  /** Notes a notification sent to the admin, and drops those over 60 days old. */
+  logPush(at: string, title: string, body: string, url: string | null, reached: number): void {
+    this.db.prepare(`INSERT INTO push_log (at, title, body, url, reached) VALUES (?, ?, ?, ?, ?)`).run(at, title, body, url, reached);
+    this.db.prepare(`DELETE FROM push_log WHERE at < ?`).run(new Date(Date.parse(at) - 60 * 86_400_000).toISOString());
+  }
+
+  /** The admin's notifications, newest first. */
+  listPushLog(limit = 300): Array<{ id: number; at: string; title: string; body: string; url: string | null; reached: number }> {
+    return this.db.prepare(`SELECT id, at, title, body, url, reached FROM push_log ORDER BY at DESC, id DESC LIMIT ?`).all(limit) as Array<{
+      id: number;
+      at: string;
+      title: string;
+      body: string;
+      url: string | null;
+      reached: number;
+    }>;
   }
 
   listPushSubscriptions(): Array<{ endpoint: string; keys: { p256dh: string; auth: string }; label: string | null; createdAt: string }> {

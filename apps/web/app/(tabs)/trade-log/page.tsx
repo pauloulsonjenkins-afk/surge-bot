@@ -19,7 +19,27 @@ import { useShowMore } from "@/components/ui/ShowMore";
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
 
 /** A pick as this page shows it. Money and the Live / Sim tag are only there for the admin. */
-type Row = PublicPick & { pnl?: LivePick["pnl"]; excluded?: boolean };
+type Row = PublicPick & { pnl?: LivePick["pnl"]; excluded?: boolean; chatId?: string; messageId?: number };
+
+/** A LAY GoalBrew made from another pick (lay-groups.ts): its message id is that pick's id. */
+const layOf = (p: Row) => (p.chatId === "lay" && typeof p.messageId === "number" ? p.messageId : null);
+
+/**
+ * A match's picks with each LAY straight after the pick it was made from, so the pair reads as one: in Sim both are
+ * recorded, but they bet opposite ways on the same alert. Returns the picks in order, and each pair's net.
+ */
+function withPairs(picks: Row[]): Array<{ pick: Row; pairedWith: Row | null }> {
+  const byId = new Map(picks.map((p) => [p.id, p]));
+  const laid = new Map(picks.filter((p) => layOf(p) !== null && byId.has(layOf(p)!)).map((p) => [layOf(p)!, p]));
+  const out: Array<{ pick: Row; pairedWith: Row | null }> = [];
+  for (const p of picks) {
+    if (layOf(p) !== null && byId.has(layOf(p)!)) continue; // placed after its source below
+    out.push({ pick: p, pairedWith: null });
+    const lay = laid.get(p.id);
+    if (lay) out.push({ pick: lay, pairedWith: p });
+  }
+  return out;
+}
 
 const moneyTone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-ink-muted");
 
@@ -39,7 +59,7 @@ const priced = (p: Row) => (p.pnl && p.pnl.placement !== "notPlaced" ? p.pnl : n
 const matchKey = (p: Row) => `${(p.home ?? "?").toLowerCase().trim()}|${(p.away ?? "?").toLowerCase().trim()}`;
 
 /** One pick under its match: the strategy and bet on the left; the money (admin) or the result on the right. */
-function PickLine({ pick, admin }: { pick: Row; admin: boolean }) {
+function PickLine({ pick, admin, pairedWith = null }: { pick: Row; admin: boolean; pairedWith?: Row | null }) {
   const hit = pick.result === "hit";
   const strategyNames = useStrategyNames();
   const money = admin ? priced(pick) : null;
@@ -51,7 +71,15 @@ function PickLine({ pick, admin }: { pick: Row; admin: boolean }) {
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink">
           <span className="min-w-0 truncate">{strategyNames.name(pick.strategy)}</span>
           {admin && mode !== "live" && <ModeBadge mode={mode} />}
+          {admin && pick.pnl?.byHand && <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn">Hand bet</span>}
         </p>
+        {admin && pairedWith && (
+          <p className="mt-0.5 text-xs text-ink-muted">
+            ↳ LAY of the pick above
+            {priced(pairedWith) && priced(pick) ? ` · together ${gbp(priced(pairedWith)!.profit + priced(pick)!.profit)}` : ""}
+            {modeOf(pick) === "sim" && modeOf(pairedWith) === "sim" ? " (both Sim, so nothing was bet)" : ""}
+          </p>
+        )}
         <p className="mt-0.5 truncate text-xs text-ink-muted">{betText(pick.market, pick.selection) ?? "No market set"}</p>
       </div>
       <div className="shrink-0 text-right">
@@ -215,8 +243,8 @@ export default function TradeLogPage() {
                         <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">{first.ftScore ?? "–"}</span>
                       </div>
                       <ul className="divide-y divide-line">
-                        {picks.map((p) => (
-                          <PickLine key={p.id} pick={p} admin={admin} />
+                        {withPairs(picks).map(({ pick: p, pairedWith }) => (
+                          <PickLine key={p.id} pick={p} admin={admin} pairedWith={pairedWith} />
                         ))}
                       </ul>
                     </li>

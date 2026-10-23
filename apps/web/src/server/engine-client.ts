@@ -106,7 +106,7 @@ export interface LivePick {
    * figure is real (from the matched Betfair bet). "notPlaced": sent but never placed, so nothing was staked.
    * placement and real are missing from an older engine.
    */
-  pnl?: { stake: number; profit: number; placement?: PickPlacement; real?: boolean; assumed?: boolean } | null;
+  pnl?: { stake: number; profit: number; placement?: PickPlacement; real?: boolean; assumed?: boolean; byHand?: boolean } | null;
   flags: string[];
   detail: {
     stats: Record<string, [number, number]>;
@@ -904,6 +904,8 @@ export interface AdminStrategy {
     /** Best Value Cuppa only: the same figures split by bet type. */
     byBet?: Partial<Record<"unders" | "overs" | "btts" | "result", { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }>>;
   } | null;
+  /** Running profit over its last 30 priced bets, oldest first (engine computeSparks), for the card's sparkline. */
+  spark?: number[];
   /** Recent form: the last 20 settled picks, and the last 7 days (mirrors StrategyForm in the engine's winloss.ts). */
   form?: { recent: FormWindow; week: FormWindow; change?: { at: string; before: FormWindow; after: FormWindow } } | null;
 }
@@ -1766,6 +1768,20 @@ export interface StrategyAdvice {
 }
 
 /** Carries out one suggestion (the admin pressed Apply). */
+/** A notification sent to the admin (engine push.ts), for the Notifications page. */
+export interface SentNotification {
+  id: number;
+  at: string;
+  title: string;
+  body: string;
+  url: string | null;
+  reached: number;
+}
+
+export function getNotifications(): Promise<{ notifications: SentNotification[] }> {
+  return engineCall<{ notifications: SentNotification[] }>("/internal/notifications", "the notifications", { timeoutMs: 15000 });
+}
+
 /** The LAY section (engine lay-groups.ts and lay-finder.ts). */
 export interface LayGroupInfo {
   key: string;

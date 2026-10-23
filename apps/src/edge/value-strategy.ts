@@ -1,4 +1,7 @@
 /**
+ * RETIRED 24 Oct 2026: no new picks are made (edge-prices.ts no longer calls recordValuePicks); its picks so far settle
+ * as below and its record stays. Kept so it can be brought back by restoring that one call.
+ *
  * BEST VALUE CUPPA: Edge's Betfair value bets, recorded as a strategy of their own so they build a Sim record like
  * every other strategy (Strategies, Results, Win/Loss).
  *

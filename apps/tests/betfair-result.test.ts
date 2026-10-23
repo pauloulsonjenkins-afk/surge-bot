@@ -58,3 +58,25 @@ test("a result amended by hand is never touched", () => {
   assert.deepEqual(db.applyBetfairResults(), []);
   assert.equal(resultOf(db, id), "miss");
 });
+
+test("a Live pick whose full-time score never came is settled from its Betfair bet, once the bet has settled", () => {
+  for (const status of ["won", "lost", "matched"] as const) {
+    const db = new EngineDb(":memory:", () => {});
+    const at = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    db.upsertLivePick("chat", 1, alert(), parseAlert(alert()), at); // no full-time edit ever came
+    const id = db.listLivePicks(5)[0]!.id;
+    db.markSent([{ id, rowJson: JSON.stringify({ stake: 1.13 }) }]);
+    db.claimDirectBet(id, "live", { strategy: "Time to fight", eventName: "Livorno v Grosseto", marketType: "OVER_UNDER_75", selectionName: "Over 7.5 Goals", stake: 1.13, minPrice: 1.45 }, at);
+    db.updateDirectBet(id, { state: "placed", betId: "B1", sizeMatched: 1.13, avgPrice: 1.98 }, at);
+    db.saveBetfairBets(
+      [{ betId: "B1", placedAt: at, settledAt: status === "matched" ? null : at, event: "Livorno v Grosseto", market: "Over/Under 7.5 Goals", selection: "Over 7.5 Goals", side: "back", provider: null, status, stake: 1.13, matched: 1.13, odds: 1.98, profit: null }],
+      at,
+    );
+    db.linkDirectBets();
+    const later = new Date(Date.now() + 60_000).toISOString();
+    const done = db.settleOpenFromBetfair(later);
+    if (status === "matched") assert.deepEqual(done, [], "still open on Betfair: left alone");
+    else assert.deepEqual(done, [{ id, result: status === "won" ? "hit" : "miss" }]);
+    assert.deepEqual(db.settleOpenFromBetfair(later), [], "once");
+  }
+});
