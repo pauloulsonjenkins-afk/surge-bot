@@ -20,6 +20,9 @@ const action = "inline-flex min-h-11 items-center rounded-md px-3 text-xs font-m
 /** Below this many priced picks a return is noise: shown, but not in green or red ("−100%" on one pick looked like news). */
 const FEW = 10;
 
+/** The one colour rule on this page: green making money, red losing, grey on fewer than FEW picks (too few to judge). */
+const judged = (roi: number | null | undefined, n: number) => (n < FEW ? "text-ink-muted" : toneOf(roi));
+
 /** One side of the comparison: its return per £1 as the figure to read, its record under it. */
 function Side({ r, name }: { r: StrategyReturn; name: string }) {
   const hits = r.hits ?? 0;
@@ -31,7 +34,7 @@ function Side({ r, name }: { r: StrategyReturn; name: string }) {
         <p className="mt-0.5 text-sm text-ink-muted">Nothing settled yet</p>
       ) : (
         <>
-          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${few ? "text-ink-muted" : toneOf(r.roi)}`}>{r.counted > 0 ? signedPct(r.roi) : "–"}</p>
+          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${judged(r.roi, r.counted)}`}>{r.counted > 0 ? signedPct(r.roi) : "–"}</p>
           <p className="text-xs tabular-nums text-ink-muted">
             {hits}–{r.settled - hits}
             {r.counted > 0 && ` · ${r.counted} priced`}
@@ -92,6 +95,18 @@ export default function GoldenPage() {
     // The admin layout already gives the page its side margins, so none here (they were doubled before).
     <div className="space-y-5">
       <PageHeader title="Golden" subtitle="Parts of a strategy that may be worth more than the rest. Gold means proved; an outline means still being proved." />
+      {/* The colour key: the same rule for every figure on the page. */}
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+        <span>
+          <span className="font-semibold text-hit">Green</span> making money
+        </span>
+        <span>
+          <span className="font-semibold text-loss">Red</span> losing
+        </span>
+        <span>
+          <span className="font-semibold">Grey</span> fewer than {FEW} priced picks, too few to judge
+        </span>
+      </p>
 
       <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm text-ink-muted">
         <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">How Golden works</summary>
@@ -170,7 +185,7 @@ export default function GoldenPage() {
                                 Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
                                 {s.ownLive && s.ownLive.n > 0 ? (
                                   <span className="tabular-nums">
-                                    {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={toneOf(s.ownLive.roi)}>{signedPct(s.ownLive.roi)}</span> on {s.ownLive.n} ·{" "}
+                                    {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={judged(s.ownLive.roi, s.ownLive.n)}>{signedPct(s.ownLive.roi)}</span> on {s.ownLive.n} ·{" "}
                                     {gbp(s.ownLive.profit)}
                                   </span>
                                 ) : (
@@ -181,7 +196,7 @@ export default function GoldenPage() {
                             {s.recent && s.recent.n > 0 && s.status !== "candidate" && (
                               <p className="text-xs tabular-nums text-ink-muted">
                                 Last {s.recent.n} picks: {s.recent.won}–{s.recent.n - s.recent.won}{" "}
-                                <span className={toneOf(s.recent.roi)}>{signedPct(s.recent.roi)}</span>
+                                <span className={judged(s.recent.roi, s.recent.n)}>{signedPct(s.recent.roi)}</span>
                               </p>
                             )}
                             {s.why && <p className="text-xs text-destructive">Not Golden: {s.why}.</p>}
@@ -251,9 +266,9 @@ export default function GoldenPage() {
                       <span className="block text-xs text-ink-muted">{g.strategy}</span>
                       <span className="block font-medium text-ink">{sliceName(g.label)}</span>
                       <span className="mt-0.5 block text-xs tabular-nums text-ink-muted">
-                        <span className={toneOf(g.slice.roi)}>{signedPct(g.slice.roi)}</span> per £1 over {g.slice.n} picks
+                        <span className={judged(g.slice.roi, g.slice.n)}>{signedPct(g.slice.roi)}</span> per £1 over {g.slice.n} picks
                         {g.slice.n > 0 && ` (${Math.round((g.slice.hits / g.slice.n) * 100)}% won, likely ${signedPct(g.slice.low)} or better)`} · the rest{" "}
-                        <span className={toneOf(g.rest.roi)}>{signedPct(g.rest.roi)}</span> over {g.rest.n}
+                        <span className={judged(g.rest.roi, g.rest.n)}>{signedPct(g.rest.roi)}</span> over {g.rest.n}
                       </span>
                       <span className="block text-xs tabular-nums text-ink-muted">
                         Older half {signedPct(g.halves[0]?.slice)} vs {signedPct(g.halves[0]?.rest)} · newer half {signedPct(g.halves[1]?.slice)} vs {signedPct(g.halves[1]?.rest)}
