@@ -46,6 +46,7 @@ import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
 import { getLeagueBlocks, isLeagueBlocked } from "./league-blocks";
 import { extraFacts, segmentsOf, type AlertFacts } from "../server/segments";
+import { clashOf, exposureOf, type Exposure } from "./clash";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -678,6 +679,8 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
   const rows: FeedRow[] = [];
   const skipped: FeedSkip[] = [];
   const toMark: Array<{ id: number; rowJson: string }> = [];
+  // Live bets already on each match (sent, back or lay), so a new one that would cancel one out isn't placed (clash.ts).
+  const betsOn = liveBetsByMatch(db);
 
   // The whole-account daily loss stop: once Live is down the limit today, no NEW picks go out (ones already handed over
   // are repeated as before). Worked out once per feed build.
@@ -814,6 +817,11 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     }
 
     if (!alreadySent) {
+      const against = cancelling(betsOn, p);
+      if (against) {
+        skipped.push(skip(p, `Would cancel out ${against.label}'s Live bet on this match, so it isn't placed.`));
+        continue;
+      }
       if (sentToday >= settings.dailyCap) {
         skipped.push(skip(p, "Daily limit reached."));
         continue;
@@ -842,12 +850,38 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       ...(lay ? { maxPrice } : {}),
     };
     rows.push(row);
-    if (!alreadySent) toMark.push({ id: p.id, rowJson: JSON.stringify(row) });
+    if (!alreadySent) {
+      toMark.push({ id: p.id, rowJson: JSON.stringify(row) });
+      addLiveBet(betsOn, p);
+    }
   }
 
   if (opts.markSent) db.markSent(toMark);
 
   return { rows, skipped, csv: toCsv(rows, Object.keys(settings.minOdds).length > 0), newlySent: toMark.length, blockedReason: null };
+}
+
+/** The match a pick is on, for the match limit and clashes. */
+const matchKeyOf = (p: LivePick) => `${p.leagueKey}|${(p.home ?? "").toLowerCase()}|${(p.away ?? "").toLowerCase()}`;
+
+type LiveBets = Map<string, Array<{ id: number; label: string; exposure: Exposure }>>;
+
+function addLiveBet(m: LiveBets, p: LivePick): void {
+  const k = matchKeyOf(p);
+  m.set(k, [...(m.get(k) ?? []), { id: p.id, label: strategyLabel(p.strategy), exposure: exposureOf(p) }]);
+}
+
+/** The Live bets (handed over, not removed) on each match among the latest picks. */
+export function liveBetsByMatch(db: EngineDb): LiveBets {
+  const m: LiveBets = new Map();
+  for (const p of db.listLivePicks(300)) if (p.sentAt !== null && !p.excluded) addLiveBet(m, p);
+  return m;
+}
+
+/** The Live bet on this pick's match that it would cancel out, if any (clash.ts). */
+export function cancelling(m: LiveBets, p: LivePick): { id: number; label: string } | null {
+  const mine = exposureOf(p);
+  return (m.get(matchKeyOf(p)) ?? []).find((b) => b.id !== p.id && clashOf(mine, b.exposure) === "cancels") ?? null;
 }
 
 /**
@@ -881,6 +915,8 @@ export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boo
   const staked = resolveStake(settings, key, getBank(db), { now, live: true });
   const stake = staked.stake ?? 1;
   if (stake > settings.maxStake) throw new Error(`Its stake £${stake.toFixed(2)} is above your highest stake allowed (£${settings.maxStake}).`);
+  const against = cancelling(liveBetsByMatch(db), p);
+  if (against) throw new Error(`It would cancel out ${against.label}'s Live bet on this match.`);
   if (settings.matchCap > 0) {
     const same = (x: LivePick) => x.leagueKey === p.leagueKey && (x.home ?? "").toLowerCase() === p.home!.toLowerCase() && (x.away ?? "").toLowerCase() === p.away!.toLowerCase();
     const out = db.listLivePicks(300).filter((x) => x.sentAt && !x.excluded && same(x)).reduce((t, x) => t + (parseFrozenRow(x)?.stake ?? 0), 0);

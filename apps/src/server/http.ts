@@ -9,6 +9,9 @@
  *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
+ *   GET  /internal/lay-groups                  the LAY groups (what each lays and why) and the lay ideas (admin site only)
+ *   POST /internal/lay-groups/watch {strategyKey, source, rule, why} · /unwatch {header}   lay an idea in Sim, or stop (admin only)
+ *   GET  /internal/clash-check?strategy=X     how X's picks met what is Live now, last 30 days (admin site only)
  *   GET  /internal/strategy-advice             the strategy suggestions on their own, for the menus' count badge (admin site only)
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
@@ -98,10 +101,14 @@ import { cachedReport, clearReportCache } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
+import { clashCheck } from "./clash-check";
+import { layIdeas } from "./lay-finder";
+import { layGroups, unwatchLayGroup, watchLayGroup } from "../inplayguru/lay-groups";
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
 import { setGoldenNotify } from "./golden-notify";
-import type { Feature } from "./segments";
+import { FEATURES, type Feature } from "./segments";
+import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { getProbe } from "../fixtures/probe";
@@ -125,6 +132,18 @@ const BETFAIR_IMPORT_PREFIX = "/imports/betfair/";
 const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 
 class BodyTooLarge extends Error {}
+
+/** The LAY section: each LAY group (what it lays and why) and the lay ideas not already laid. */
+function layReport(db: EngineDb): Record<string, unknown> {
+  const groups = layGroups(db);
+  const ideas = layIdeas(db);
+  const laid = new Set(groups.filter((g) => g.lays).map((g) => `${g.lays}#${[...(g.rule ?? [])].sort().join("+")}`));
+  const whole = new Set(groups.filter((g) => g.whole && g.lays).map((g) => g.lays!));
+  return {
+    groups: groups.map((g) => ({ key: g.header.toLowerCase(), header: g.header, lays: g.lays, laysName: g.lays ? displayName(db, g.lays) : null, whole: !!g.whole, why: g.why, custom: !!g.rule })),
+    ideas: { at: ideas.at, list: ideas.list.filter((i) => !whole.has(i.strategyKey) && !laid.has(`${i.strategyKey}#${[...i.rule].sort().join("+")}`)) },
+  };
+}
 
 function send(res: ServerResponse, status: number, body: Record<string, unknown>, closeConnection = false): void {
   const json = JSON.stringify(body);
@@ -468,6 +487,44 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       } catch (err) {
         send(res, 400, { error: err instanceof Error ? err.message : "Couldn't retry that." });
       }
+      return;
+    }
+
+    // The LAY section: each LAY group and the lay ideas (lay-groups.ts, lay-finder.ts).
+    if (req.method === "GET" && path === "/internal/lay-groups") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, layReport(db));
+      return;
+    }
+    if (req.method === "POST" && (path === "/internal/lay-groups/watch" || path === "/internal/lay-groups/unwatch")) {
+      if (!requireAdmin(req, res)) return;
+      const body = await readJsonBody(req);
+      try {
+        if (path.endsWith("/unwatch")) {
+          if (typeof body.header !== "string") throw new Error("Which LAY group?");
+          unwatchLayGroup(db, body.header);
+        } else {
+          const rule = Array.isArray(body.rule) ? body.rule : [];
+          if (typeof body.strategyKey !== "string" || (body.source !== "NEXT_GOAL" && body.source !== "HOME_TO_WIN") || !rule.every((f) => typeof f === "string" && f in FEATURES))
+            throw new Error("Which idea?");
+          watchLayGroup(db, body.strategyKey, body.source, rule as Feature[], typeof body.why === "string" ? body.why.slice(0, 300) : "");
+        }
+        send(res, 200, layReport(db));
+      } catch (err) {
+        send(res, 400, { error: err instanceof Error ? err.message : "Couldn't do that." });
+      }
+      return;
+    }
+
+    // Before a strategy goes Live: how its picks met what is Live now (clash-check.ts).
+    if (req.method === "GET" && path === "/internal/clash-check") {
+      if (!requireAdmin(req, res)) return;
+      const strategy = new URL(rawUrl, "http://internal").searchParams.get("strategy");
+      if (!strategy) {
+        send(res, 400, { error: "Which strategy?" });
+        return;
+      }
+      send(res, 200, { ...clashCheck(db, strategy) });
       return;
     }
 

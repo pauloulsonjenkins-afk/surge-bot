@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import type { StrategyAdvice } from "@/server/engine-client";
+import { ClashSummary } from "@/components/admin/ClashSummary";
 
 /**
  * Strategy suggestions (strategy-advice.ts in the engine): shown on Today and on Strategies, each with its own Apply.
@@ -46,7 +47,13 @@ export function ApplyAdvice({ a, name, size = "sm" }: { a: StrategyAdvice; name:
         disabled={apply.isPending}
         onClick={async (e) => {
           e.stopPropagation();
-          if (await dialog.confirm({ title: `${name}: ${a.action}?`, tone: "money", confirmLabel: a.action!, body: <p>{a.reason}</p> })) apply.mutate();
+          const body = (
+            <>
+              <p>{a.reason}</p>
+              {a.kind === "try-live" && <ClashSummary strategyKey={a.key} />}
+            </>
+          );
+          if (await dialog.confirm({ title: `${name}: ${a.action}?`, tone: "money", confirmLabel: a.action!, body })) apply.mutate();
         }}
         className={`rounded-md bg-accent font-semibold text-accent-ink disabled:opacity-50 ${size === "md" ? "px-4 py-2 text-sm" : "px-3 py-1.5 text-xs"}`}
       >

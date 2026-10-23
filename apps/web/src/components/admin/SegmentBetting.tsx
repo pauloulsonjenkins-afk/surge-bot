@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { ClashSummary } from "@/components/admin/ClashSummary";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { SegmentLabel } from "@/components/ui/SegmentLabel";
 import { useSaveSending, type SendingSettings } from "@/queries/use-sending";
@@ -67,10 +68,14 @@ export function SegmentBetting({
         tone: "money",
         confirmLabel: "Bet them Live",
         body: (
-          <p>
-            {strategyName}&apos;s {name} alerts will be bet with real money at {stakeText(p)}, whether {strategyName} itself is Live or in Sim. Your highest stake,
-            match limit, daily loss stop and its stop loss still apply.
-          </p>
+          <>
+            <p>
+              {strategyName}&apos;s {name} alerts will be bet with real money at {stakeText(p)}, whether {strategyName} itself is Live or in Sim. Your highest stake,
+              match limit, daily loss stop and its stop loss still apply.
+            </p>
+            <p className="text-xs text-ink-muted">For all of {strategyName}&apos;s picks (this slice is a part of them):</p>
+            <ClashSummary strategyKey={strategyKey} compact />
+          </>
         ),
       });
       if (!ok) return;

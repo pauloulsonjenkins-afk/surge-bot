@@ -1766,6 +1766,55 @@ export interface StrategyAdvice {
 }
 
 /** Carries out one suggestion (the admin pressed Apply). */
+/** The LAY section (engine lay-groups.ts and lay-finder.ts). */
+export interface LayGroupInfo {
+  key: string;
+  header: string;
+  lays: string | null;
+  laysName: string | null;
+  whole: boolean;
+  why: string;
+  custom: boolean;
+}
+export interface LayIdea {
+  strategyKey: string;
+  strategy: string;
+  source: "NEXT_GOAL" | "HOME_TO_WIN";
+  rule: string[];
+  label: string;
+  n: number;
+  backedRoi: number;
+  laidRoi: number;
+  halves: [number, number];
+}
+export interface LayReport {
+  groups: LayGroupInfo[];
+  ideas: { at: string; list: LayIdea[] };
+}
+
+export function getLayReport(): Promise<LayReport> {
+  return engineCall<LayReport>("/internal/lay-groups", "the LAY groups", { timeoutMs: 30000 });
+}
+
+export function layGroupAction(body: { action: "watch"; strategyKey: string; source: string; rule: string[]; why: string } | { action: "unwatch"; header: string }): Promise<LayReport> {
+  const { action, ...rest } = body;
+  return engineCall<LayReport>(`/internal/lay-groups/${action}`, "the LAY groups", { method: "POST", body: rest, timeoutMs: 30000 });
+}
+
+/** How a strategy's picks met what is Live now, last 30 days (engine clash-check.ts). */
+export interface ClashCheck {
+  key: string;
+  days: number;
+  picks: number;
+  shared: number;
+  totals: Record<"cancels" | "offsets" | "doubles" | "unrelated", number>;
+  against: Array<{ key: string; name: string; cancels: number; offsets: number; doubles: number; unrelated: number }>;
+}
+
+export function getClashCheck(strategy: string): Promise<ClashCheck> {
+  return engineCall<ClashCheck>(`/internal/clash-check?strategy=${encodeURIComponent(strategy)}`, "the clash check", { timeoutMs: 20000 });
+}
+
 /** The strategy suggestions on their own (for the menus' count badge). */
 export function getStrategyAdvice(): Promise<{ advice: StrategyAdvice[] }> {
   return engineCall<{ advice: StrategyAdvice[] }>("/internal/strategy-advice", "suggestions", { timeoutMs: 15000 });

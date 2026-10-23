@@ -31,6 +31,7 @@ import { usePriceCheck } from "@/queries/use-price-check";
 import { useToday } from "@/queries/use-today";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { ADVICE_LABEL, AdviceRow, ApplyAdvice, isGoodAdvice } from "@/components/admin/Advice";
+import { isLayRow, LaySection } from "@/components/admin/LaySection";
 
 // The chart library is about a tenth of the app's code: loaded only when an equity curve is opened, not with the page.
 const EquityCurve = dynamic(() => import("@/components/admin/EquityCurve").then((m) => m.EquityCurve), {
@@ -922,6 +923,8 @@ export default function StrategiesPage() {
   const [view, setView] = useState<View>("own");
   // Weekly (the default): one row per strategy, £ week by week; Cards: the full card per strategy.
   const [layout, setLayout] = useState<"weekly" | "cards">("weekly");
+  // Back bets, or the LAY section (lays bet against something, so they get their own view).
+  const [side, setSide] = useState<"back" | "lay">("back");
   const weeksData = useStrategyWeeks();
   const strategies = useMemo(() => data?.strategies ?? [], [data]);
   const ignored = data?.ignored ?? [];
@@ -1071,7 +1074,19 @@ export default function StrategiesPage() {
         </section>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <Segmented
+        label="Bets"
+        value={side}
+        onChange={setSide}
+        options={[
+          { value: "back", label: "Back bets" },
+          { value: "lay", label: `LAY bets${strategies.some(isLayRow) ? ` · ${strategies.filter(isLayRow).length}` : ""}` },
+        ]}
+      />
+
+      {side === "lay" && data && <LaySection rows={strategies.filter(isLayRow)} all={strategies} betOf={betOf} settings={sending.data?.settings} />}
+
+      <div className={`flex flex-wrap items-center gap-3 ${side === "lay" ? "hidden" : ""}`}>
         <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "weekly", label: "Weekly" }, { value: "cards", label: "Cards" }]} />
         {layout === "cards" && <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />}
         <Segmented label="Whose figures" value={view} onChange={setView} options={VIEWS} />
@@ -1157,7 +1172,7 @@ export default function StrategiesPage() {
         </div>
       )}
 
-      {error ? (
+      {side === "lay" ? null : error ? (
         <QueryError error={error} next="/more/admin/strategies" />
       ) : isLoading || !data ? (
         <div className="space-y-2">
@@ -1174,7 +1189,7 @@ export default function StrategiesPage() {
             // Best first by the chosen figure (in the section's own mode), so what to act on is at the top and bottom.
             const valueOf = (r: AdminStrategy) => sortValue(r, view === "own" ? ownMode(r).mode : m, sortBy) ?? -Infinity;
             const group = strategies
-              .filter((r) => modeOf(r) === m)
+              .filter((r) => modeOf(r) === m && !isLayRow(r))
               .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
             const renderCard = (r: AdminStrategy) => (

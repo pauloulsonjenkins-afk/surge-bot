@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ClashSummary } from "@/components/admin/ClashSummary";
 import { marketName } from "@/lib/markets";
 import { StopLossControls } from "@/components/admin/StopLossControls";
 import { useSaveSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
@@ -145,6 +146,7 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
               <strong>No stop loss is set.</strong> Open this strategy and set one first if it should stop after a bad day.
             </p>
           )}
+          <ClashSummary strategyKey={key} />
         </>
       ),
     });
