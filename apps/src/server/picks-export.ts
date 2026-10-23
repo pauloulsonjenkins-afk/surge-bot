@@ -81,7 +81,17 @@ export function picksExportCsv(db: EngineDb): string {
     const d = p.detail;
     const m = money.get(p.id);
     const settled = p.result === "hit" || p.result === "miss";
-    const placement: string = m ? PLACEMENT[m.placement] : p.manualBet ? "placed by hand" : p.sentAt ? "sent (open)" : "Sim (open)";
+    // A removed pick ("didn't actually bet") has no money figures, settled or not: say so rather than "open".
+    const open = settled ? "settled" : "open";
+    const placement: string = m
+      ? PLACEMENT[m.placement]
+      : p.excluded
+        ? "removed"
+        : p.manualBet
+          ? "placed by hand"
+          : p.sentAt
+            ? `sent (${open})`
+            : `Sim (${open})`;
     const live = m ? m.placement !== "sim" : p.manualBet !== null || p.sentAt !== null;
     const pickBets = bets.get(p.id) ?? [];
     const matched = pickBets.reduce((t, b) => t + b.matched, 0);
