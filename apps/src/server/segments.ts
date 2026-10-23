@@ -27,6 +27,31 @@ export interface AlertFacts {
   minute?: number | null;
   /** The league's country, from the alert's flag (null for international competitions or when unknown). */
   country?: string | null;
+  /** The alert's own price for its bet (the Over price of its line), when it has one. */
+  price?: number | null;
+  /** Minutes since the last goal; with no goal yet, the minute itself. */
+  sinceGoal?: number | null;
+  /** A youth, women's or reserves match (from the league and team names). */
+  youth?: boolean | null;
+}
+
+/** The extra facts (price, time since the last goal, youth) from a parsed alert, for pickFacts and the stored results. */
+export function extraFacts(a: {
+  lastGoal?: string | null;
+  minute?: number | null;
+  targetLine?: number | null;
+  odds?: { over?: number | null; overUnderLine?: number | null } | null;
+  competition?: string | null;
+  home?: string | null;
+  away?: string | null;
+}): Pick<AlertFacts, "price" | "sinceGoal" | "youth"> {
+  const over = a.odds?.over ?? null;
+  const price = over !== null && over > 1 && a.targetLine != null && a.odds?.overUnderLine === a.targetLine ? over : null;
+  const ago = /\((\d+) minutes? ago\)/.exec(a.lastGoal ?? "");
+  const sinceGoal = ago ? Number(ago[1]) : /^none$/i.test((a.lastGoal ?? "").trim()) && a.minute != null ? a.minute : null;
+  const names = `${a.competition ?? ""} ${a.home ?? ""} ${a.away ?? ""}`;
+  const youth = names.trim() ? /\(W\)|women|\bU(1[6-9]|2[0-3])\b|youth|reserves?\b|\(Res\)/i.test(names) : null;
+  return { price, sinceGoal, youth };
 }
 
 export interface Segment {
@@ -115,6 +140,18 @@ export const FEATURES = {
       return !!o && Math.min(o[0], o[2]) > 2.2;
     },
   },
+  // The alert's own price for its bet (added 23 Oct 2026: under 1.30 was break-even for several strategies).
+  priceUnder130: { group: "odds", label: "priced under 1.30", test: (f: AlertFacts) => f.price != null && f.price < 1.3 },
+  price130to149: { group: "odds", label: "priced 1.30-1.49", test: (f: AlertFacts) => f.price != null && f.price >= 1.3 && f.price < 1.5 },
+  price150to179: { group: "odds", label: "priced 1.50-1.79", test: (f: AlertFacts) => f.price != null && f.price >= 1.5 && f.price < 1.8 },
+  price180plus: { group: "odds", label: "priced 1.80+", test: (f: AlertFacts) => f.price != null && f.price >= 1.8 },
+  goalLast10: { group: "lastGoal", label: "a goal in the last 10 minutes", test: (f: AlertFacts) => f.sinceGoal != null && f.sinceGoal <= 10 },
+  quiet20: { group: "lastGoal", label: "no goal for 20+ minutes", test: (f: AlertFacts) => f.sinceGoal != null && f.sinceGoal >= 20 },
+  redCard: { group: "cards", label: "a red card", test: (f: AlertFacts) => !!f.stats["Red Cards"] && f.stats["Red Cards"][0] + f.stats["Red Cards"][1] > 0 },
+  xgHigh: { group: "xg", label: "xG 1.5+ in total", test: (f: AlertFacts) => !!f.stats["xG"] && f.stats["xG"][0] + f.stats["xG"][1] >= 1.5 },
+  xgLow: { group: "xg", label: "xG under 0.8 in total", test: (f: AlertFacts) => !!f.stats["xG"] && f.stats["xG"][0] + f.stats["xG"][1] < 0.8 },
+  youthWomen: { group: "players", label: "youth, women's or reserves", test: (f: AlertFacts) => f.youth === true },
+  seniorMen: { group: "players", label: "senior men's", test: (f: AlertFacts) => f.youth === false },
   // Added by hand only (the finder doesn't try it): next-goal picks there lost heavily in both halves of the record
   // to 22 Oct 2026 (Japan -28.7% over 60, Brazil -23.7% over 60).
   notJapanBrazil: { group: "league", label: "not Japan or Brazil", manual: true, test: (f: AlertFacts) => !/^(japan|brazil)$/i.test((f.country ?? "").trim()) },

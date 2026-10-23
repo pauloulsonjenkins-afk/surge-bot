@@ -36,3 +36,14 @@ test("a hand-made slice can have three parts: level, favourite 2x dangerous atta
   assert.equal(ruleTest(["favLevel", "favDa2x"])(facts("Japan")), true, "without the country part, Japan is in");
   assert.throws(() => watchSegment(db, "time to fight", ["favLevel", "favDa2x", "notJapanBrazil", "min70"]), /isn't a rule/);
 });
+
+test("the finder's new facts: the alert's price, minutes since the last goal, youth", async () => {
+  const { extraFacts } = await import("../src/server/segments");
+  const odds = { over: 1.72, overUnderLine: 1.5 };
+  assert.deepEqual(extraFacts({ lastGoal: "Home at 66' (13 minutes ago)", minute: 79, targetLine: 1.5, odds, competition: "Spain La Liga", home: "Celta", away: "Getafe" }), { price: 1.72, sinceGoal: 13, youth: false });
+  assert.deepEqual(extraFacts({ lastGoal: "None", minute: 55, targetLine: 0.5, odds, competition: "England Premier League U21", home: "A", away: "B" }), { price: null, sinceGoal: 55, youth: true });
+  const f = { ...facts("England"), price: 1.25, sinceGoal: 25, youth: false, stats: { "Red Cards": [0, 1] as [number, number], xG: [1.1, 0.6] as [number, number] } };
+  assert.ok(FEATURES.priceUnder130.test(f) && !FEATURES.price130to149.test(f));
+  assert.ok(FEATURES.quiet20.test(f) && !FEATURES.goalLast10.test(f));
+  assert.ok(FEATURES.redCard.test(f) && FEATURES.xgHigh.test(f) && FEATURES.seniorMen.test(f) && !FEATURES.youthWomen.test(f));
+});

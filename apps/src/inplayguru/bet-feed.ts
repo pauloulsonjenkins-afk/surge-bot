@@ -45,7 +45,7 @@ import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
 import { getLeagueBlocks, isLeagueBlocked } from "./league-blocks";
-import { segmentsOf, type AlertFacts } from "../server/segments";
+import { extraFacts, segmentsOf, type AlertFacts } from "../server/segments";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -297,6 +297,7 @@ export function pickFacts(p: LivePick): AlertFacts {
     live1x2: p.detail?.odds?.live1x2 ?? null,
     minute: p.minute,
     country: leagueCountryFromText(p.rawText),
+    ...extraFacts({ ...(p.detail ?? {}), minute: p.minute, competition: p.competition, home: p.home, away: p.away }),
   };
 }
 
