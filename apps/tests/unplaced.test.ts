@@ -8,7 +8,7 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { matchBets } from "../src/betfair/reconcile";
-import { fixAndResend, listUnplaced, matchStatsLines, notifyUnplaced, scoreLine } from "../src/betfair/unplaced";
+import { directReason, fixAndResend, listUnplaced, matchStatsLines, notifyUnplaced, scoreLine } from "../src/betfair/unplaced";
 
 const S = "Time to fight";
 const KEY = S.toLowerCase();
@@ -158,4 +158,12 @@ test("a match not on Betfair isn't sent, and a price under the minimum odds wait
   feed = buildFeed(db, { markSent: true });
   assert.deepEqual(feed.rows.map((r) => r.pickId), [b!.id]);
   assert.equal(db.getLivePick(b!.id)!.exchangeEventId, "E2");
+});
+
+test("the reason shown is direct betting's own when it has one: still trying, or why it wasn't bet", () => {
+  assert.equal(directReason({ state: "waiting", reason: "Price 1.03 is below the minimum 1.20." }), "Still trying: Price 1.03 is below the minimum 1.20.");
+  assert.equal(directReason({ state: "failed", reason: "The market has closed." }), "Not bet: The market has closed.");
+  assert.equal(directReason({ state: "skipped", reason: "Too old to bet." }), "Not bet: Too old to bet.");
+  assert.equal(directReason({ state: "waiting", reason: null }), null, "no reason: the usual one is worked out");
+  assert.equal(directReason(null), null);
 });

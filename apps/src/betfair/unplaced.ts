@@ -58,7 +58,7 @@ export function listUnplaced(db: EngineDb, lastOkAt: string | null, now = new Da
       match: `${pick.home ?? "?"} v ${pick.away ?? "?"}`,
       competition: pick.competition,
       sentAt: p.sentAt,
-      reason: reasonFor(pick.exchange, pick.marketCheck, pick.marketCheckDetail, pick.exchangeOdds, minPriceSent(pick.sentRowJson)),
+      reason: directReason(db.getDirectBet(p.id)) ?? reasonFor(pick.exchange, pick.marketCheck, pick.marketCheckDetail, pick.exchangeOdds, minPriceSent(pick.sentRowJson)),
       alertedAt: alerted.get(p.id) ?? null,
       betfairEvent: pick.exchange === "nameDiffers" && pick.exchangeEvent ? pick.exchangeEvent : null,
       price: pick.exchangeOdds,
@@ -77,6 +77,13 @@ function minPriceSent(rowJson: string | null): number | null {
   } catch {
     return null;
   }
+}
+
+/** GoalBrew's own direct betting's reason, when it has one: why it is still waiting, or why it gave up. */
+export function directReason(d: { state: string; reason: string | null } | null | undefined): string | null {
+  if (!d?.reason) return null;
+  if (d.state === "waiting" || d.state === "placing") return `Still trying: ${d.reason}`;
+  return `Not bet: ${d.reason}`;
 }
 
 export function reasonFor(exchange: string | null, check: string | null, detail: string | null, price: number | null, minPrice: number | null): string {
