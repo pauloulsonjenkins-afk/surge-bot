@@ -6,6 +6,7 @@ import { Bot, CalendarDays, ChevronRight, Crown, Gauge, Lock, PencilLine, Send, 
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
+import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import { useMe } from "@/queries/use-me";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
@@ -44,7 +45,10 @@ export default function MorePage() {
                         <Icon size={18} />
                       </span>
                       <span className="flex-1">
-                        <span className="block text-sm font-medium text-ink">{label}</span>
+                        <span className="flex items-center text-sm font-medium text-ink">
+                          {label}
+                          <AdviceBadge href={href} />
+                        </span>
                         <span className="block text-xs text-ink-muted">{description}</span>
                       </span>
                       <ChevronRight size={16} className="text-ink-muted" />

@@ -1766,6 +1766,11 @@ export interface StrategyAdvice {
 }
 
 /** Carries out one suggestion (the admin pressed Apply). */
+/** The strategy suggestions on their own (for the menus' count badge). */
+export function getStrategyAdvice(): Promise<{ advice: StrategyAdvice[] }> {
+  return engineCall<{ advice: StrategyAdvice[] }>("/internal/strategy-advice", "suggestions", { timeoutMs: 15000 });
+}
+
 export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"], league?: string): Promise<{ advice: StrategyAdvice[] }> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;

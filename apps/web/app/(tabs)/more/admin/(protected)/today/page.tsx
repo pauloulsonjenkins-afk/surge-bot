@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { getJson } from "@/queries/fetch-json";
 import type { EdgeCard } from "@/lib/members/edge";
+import { AdviceRow } from "@/components/admin/Advice";
 import { toneOf, gbp } from "@/lib/format";
 
 
@@ -320,56 +321,3 @@ export default function TodayPage() {
   );
 }
 
-const ADVICE_LABEL: Record<StrategyAdvice["kind"], string> = {
-  "try-live": "ready to try Live",
-  "back-to-sim": "consider putting back to Sim",
-  "stake-up": "worth a bigger stake",
-  "stake-down": "worth a smaller stake",
-  "league-block": "losing in one league",
-};
-
-/** One suggestion, with Apply (confirmed first: it changes real-money betting). */
-function AdviceRow({ a, name }: { a: StrategyAdvice; name: string }) {
-  const qc = useQueryClient();
-  const dialog = useDialog();
-  const [done, setDone] = useState<string | null>(null);
-  const apply = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/admin/advice/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: a.key, kind: a.kind, ...(a.league ? { league: a.league.key } : {}) }) });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(body.error ?? "Couldn't apply that.");
-    },
-    onSuccess: () => {
-      setDone(a.action ?? "Done");
-      void qc.invalidateQueries();
-    },
-  });
-  const good = a.kind === "try-live" || a.kind === "stake-up";
-  return (
-    <li className="flex flex-wrap items-start justify-between gap-2">
-      <span className="min-w-0 flex-1">
-        <Link href={a.league ? "/more/admin/leagues?tab=profit" : "/more/admin/strategies"} className="font-medium text-ink underline decoration-line">
-          {name}
-        </Link>{" "}
-        <span className={good ? "text-hit" : "text-warn"}>{ADVICE_LABEL[a.kind]}</span>
-        <span className="block text-xs text-ink-muted">{a.reason}</span>
-        {apply.error && <span className="block text-xs text-destructive">{apply.error.message}</span>}
-      </span>
-      {a.action &&
-        (done ? (
-          <span className="shrink-0 text-xs text-hit">Done: {done}</span>
-        ) : (
-          <button
-            type="button"
-            disabled={apply.isPending}
-            onClick={async () => {
-              if (await dialog.confirm({ title: `${name}: ${a.action}?`, tone: "money", confirmLabel: a.action!, body: <p>{a.reason}</p> })) apply.mutate();
-            }}
-            className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50"
-          >
-            {apply.isPending ? "Applying…" : a.action}
-          </button>
-        ))}
-    </li>
-  );
-}

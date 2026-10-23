@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { NotPlacedReport, SpeedReport, TodaySnapshot } from "@/server/engine-client";
+import type { NotPlacedReport, SpeedReport, StrategyAdvice, TodaySnapshot } from "@/server/engine-client";
 import { getJson } from "./fetch-json";
 
 export type { NotPlacedReport, SpeedReport, TodaySnapshot };
@@ -14,6 +14,17 @@ export function useToday() {
     refetchInterval: 15_000,
     staleTime: 5_000,
   });
+}
+
+/** The strategy suggestions on their own, for the menus' count badge: checked every two minutes, a light call. */
+export function useAdviceCount(): number {
+  const q = useQuery({
+    queryKey: ["advice-count"],
+    queryFn: ({ signal }) => getJson<{ advice: StrategyAdvice[] }>("/api/admin/advice", "suggestions", signal),
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  });
+  return q.data?.advice.length ?? 0;
 }
 
 export function useNotPlaced(days: number) {

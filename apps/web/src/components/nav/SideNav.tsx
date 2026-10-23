@@ -7,6 +7,7 @@ import { Lock, LogIn } from "lucide-react";
 import { useVisibleTabs } from "./BottomNav";
 import { useMe } from "@/queries/use-me";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
+import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 const itemCls = (active: boolean) =>
@@ -73,6 +74,7 @@ export default function SideNav() {
                         <Link href={s.href} aria-current={active ? "page" : undefined} className={itemCls(active)}>
                           <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-accent" : "bg-transparent"}`} aria-hidden />
                           {s.label}
+                          <AdviceBadge href={s.href} />
                         </Link>
                       </li>
                     );

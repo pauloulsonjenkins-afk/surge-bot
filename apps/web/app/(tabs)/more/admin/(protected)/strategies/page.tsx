@@ -30,6 +30,7 @@ import { PriceCheck } from "@/components/admin/PriceCheck";
 import { usePriceCheck } from "@/queries/use-price-check";
 import { useToday } from "@/queries/use-today";
 import type { StrategyAdvice } from "@/server/engine-client";
+import { ADVICE_LABEL, AdviceRow, ApplyAdvice, isGoodAdvice } from "@/components/admin/Advice";
 
 // The chart library is about a tenth of the app's code: loaded only when an equity curve is opened, not with the page.
 const EquityCurve = dynamic(() => import("@/components/admin/EquityCurve").then((m) => m.EquityCurve), {
@@ -584,9 +585,7 @@ function StrategyCard({
   // The rule change's "before" figures in the same mode (the headline counts from the change).
   const beforeAll = row.returns?.before;
   const before = beforeAll ? (pickMode === "all" ? (beforeAll.all ?? null) : beforeAll[pickMode]) : null;
-  const hint = advice
-    ? { tone: advice.kind === "try-live" || advice.kind === "stake-up" ? "good" : "warn", text: `Suggested: ${advice.action ?? advice.kind}. ${advice.reason} Apply it on Today.` }
-    : null;
+  const good = advice ? isGoodAdvice(advice) : false;
   const options = all.filter((o) => o.label !== row.label);
   const names = useStrategyNames();
   const info = names.info(row.label);
@@ -621,7 +620,9 @@ function StrategyCard({
   const thin = (money?.counted ?? 0) < SAMPLE;
 
   return (
-    <li className={`card-hover overflow-hidden rounded-xl border transition-colors ${open ? "card-open" : "bg-surface"} ${selected ? "border-accent" : "border-line"}`}>
+    <li
+      className={`card-hover overflow-hidden rounded-xl border transition-colors ${open ? "card-open" : "bg-surface"} ${selected ? "border-accent" : "border-line"} ${advice ? (good ? "ring-2 ring-hit/70" : "ring-2 ring-warn/70") : ""}`}
+    >
       {/* The row to compare by: name, record and hit rate against break-even on the left, the headline figure on the right. */}
       {/* Wraps on a narrow screen: the Live / Sim switch drops to its own line instead of squeezing the name to one letter wide. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3">
@@ -686,7 +687,16 @@ function StrategyCard({
         const b = betSummary(bet, settings);
         return <p className={`-mt-1.5 px-3.5 pb-2 text-xs ${b.warn ? "text-warn" : "text-ink-muted"}`}>Bet: {b.text}</p>;
       })()}
-      {hint && <p className={`-mt-1 px-3.5 pb-3 text-xs ${hint.tone === "good" ? "text-hit" : "text-warn"}`}>{hint.text}</p>}
+      {/* A suggestion for this strategy (the same as at the top of the page and on Today), with its own Apply. */}
+      {advice && (
+        <div className={`mx-3.5 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${good ? "border-hit/40 bg-hit/10" : "border-warn/40 bg-warn/10"}`}>
+          <span className="min-w-0 flex-1 text-xs">
+            <span className={`font-semibold ${good ? "text-hit" : "text-warn"}`}>Suggested: {ADVICE_LABEL[advice.kind]}</span>
+            <span className="block text-ink-muted">{advice.reason}</span>
+          </span>
+          <ApplyAdvice a={advice} name={shownName} />
+        </div>
+      )}
 
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
@@ -891,7 +901,9 @@ export default function StrategiesPage() {
   }, [priceCheck.data]);
   // Today's suggestions, so each card says the same as Today (one set of rules, in the engine).
   const today = useToday();
-  const adviceOf = useMemo(() => new Map((today.data?.advice ?? []).filter((a) => a.kind !== "league-block").map((a) => [a.key.toLowerCase(), a])), [today.data]);
+  const allAdvice = useMemo<StrategyAdvice[]>(() => today.data?.advice ?? [], [today.data]);
+  const names = useStrategyNames();
+  const adviceOf = useMemo(() => new Map(allAdvice.filter((a) => a.kind !== "league-block").map((a) => [a.key.toLowerCase(), a])), [allAdvice]);
   const betOf = useMemo(() => {
     const map = new Map<string, SendingStrategy>();
     for (const s of sending.data?.strategies ?? []) map.set(s.label.toLowerCase(), s);
@@ -1042,6 +1054,22 @@ export default function StrategiesPage() {
           </>
         }
       />
+
+      {/* Suggestions first, where they can't be missed: the same list as Today, each with Apply. */}
+      {allAdvice.length > 0 && (
+        <section aria-label="Suggestions" className="rounded-xl border-2 border-accent bg-accent/5 p-3.5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
+            Suggestions
+            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-ink">{allAdvice.length}</span>
+          </h3>
+          <p className="mt-0.5 text-xs text-ink-muted">From each strategy&apos;s results since its rules last changed. Nothing changes until you press the button and confirm.</p>
+          <ul className="mt-3 space-y-3 text-sm">
+            {allAdvice.map((a) => (
+              <AdviceRow key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} a={a} name={a.league ? `${names.name(a.key)} in ${a.league.name}` : names.name(a.key)} link={!!a.league} />
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "weekly", label: "Weekly" }, { value: "cards", label: "Cards" }]} />

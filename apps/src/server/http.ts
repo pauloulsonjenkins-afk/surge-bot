@@ -9,6 +9,7 @@
  *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
+ *   GET  /internal/strategy-advice             the strategy suggestions on their own, for the menus' count badge (admin site only)
  *   POST /internal/strategy-advice/apply       carry out one strategy suggestion {key, kind} (admin site only)
  *   GET  /internal/leagues                      every league seen, with its hide / reset / country / tier settings (admin site only)
  *   GET  /internal/golden · POST /internal/golden/watch {strategyKey, rule} · /unwatch {strategyKey, id}   Golden (admin only)
@@ -467,6 +468,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       } catch (err) {
         send(res, 400, { error: err instanceof Error ? err.message : "Couldn't retry that." });
       }
+      return;
+    }
+
+    // The suggestions on their own: a light call the menus poll for their count badge (Today's summary is much heavier).
+    if (req.method === "GET" && path === "/internal/strategy-advice") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, { advice: visibleAdvice(db) });
       return;
     }
 

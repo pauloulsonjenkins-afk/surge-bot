@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { ADMIN_GROUPS, ADMIN_SECTIONS } from "@/lib/admin-sections";
+import { AdviceBadge } from "@/components/admin/AdviceBadge";
 
 // On a touch screen each tab is 44px tall, the size a finger hits reliably (32px before).
 const tap = "[@media(pointer:coarse)]:min-h-11";
@@ -28,6 +29,7 @@ export default function AdminNav() {
       {daily.map((s) => (
         <Link key={s.href} href={s.href} aria-current={isOn(s.href) ? "page" : undefined} className={chip(isOn(s.href))}>
           {s.label}
+          <AdviceBadge href={s.href} />
         </Link>
       ))}
       <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-line" />
