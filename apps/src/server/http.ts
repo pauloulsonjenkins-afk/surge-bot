@@ -19,7 +19,7 @@
  *   GET  /internal/golden · POST /internal/golden/watch {strategyKey, rule} · /unwatch {strategyKey, id}   Golden (admin only)
  *   GET  /internal/strategies/weeks             each strategy's £ by week, last 7 days and the 28 before (admin only)
  *   GET  /internal/leagues/returns?since=       money by league and strategy within it, and stopped strategies (admin only)
- *   POST /internal/picks/bet-now {pickId}       bet a Sim pick for real now, with the usual safety checks (admin only)
+ *   POST /internal/picks/bet-now {pickId, stake?}     bet a Sim pick for real now, with the usual safety checks (admin only)
  *   POST /internal/leagues/block                stop or restart a strategy in a league {strategy, leagueKey, league, blocked}
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N|since=ISO  totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
@@ -468,7 +468,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
       try {
-        const row = betPickNow(db, Number(body.pickId), { directLive: effectiveMode(getDirectSettings(db)) === "live" });
+        const chosen = typeof body.stake === "number" ? body.stake : undefined;
+        const row = betPickNow(db, Number(body.pickId), { directLive: effectiveMode(getDirectSettings(db)) === "live" }, new Date(), chosen);
         log.info(`Sim pick ${row.pickId} bet for real by hand: £${row.stake.toFixed(2)} on ${row.eventName} (${row.selectionName}).`);
         wakeDirect();
         send(res, 200, { stake: row.stake, selection: row.selectionName, event: row.eventName });

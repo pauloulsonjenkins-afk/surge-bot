@@ -57,3 +57,12 @@ test("a pick bet by hand stays in its strategy's Sim record, is left out of its 
   assert.equal(r.live.counted, 0, "not in the Live record the ladder judges");
   assert.equal(r.byHand?.settled, 1, "shown on its own");
 });
+
+test("the stake can be chosen: used as given, at least £1 and within the highest stake", () => {
+  const a = setup();
+  assert.equal(betPickNow(a.db, a.id, { directLive: true }, new Date(), 3.456).stake, 3.46);
+  const b = setup();
+  assert.throws(() => betPickNow(b.db, b.id, { directLive: true }, new Date(), 0.5), /at least £1/);
+  saveSendingSettings(b.db, { maxStake: 4 });
+  assert.throws(() => betPickNow(b.db, b.id, { directLive: true }, new Date(), 5), /highest stake/);
+});

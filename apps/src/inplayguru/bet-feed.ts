@@ -890,7 +890,7 @@ export function cancelling(m: LiveBets, p: LivePick): { id: number; label: strin
  * loss stop, the highest stake and the match limit. Its minimum odds still apply (direct betting waits for the price).
  * The pick then counts as a Live bet; its Sim record is dropped. Throws, with the reason, when it can't be bet.
  */
-export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boolean }, now = new Date()): FeedRow {
+export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boolean }, now = new Date(), chosenStake?: number): FeedRow {
   const p = db.getLivePick(pickId);
   if (!p || p.excluded) throw new Error("That pick was removed.");
   if (p.sentAt) throw new Error("That pick has already been handed to betting.");
@@ -913,7 +913,9 @@ export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boo
   const key = strategyLabel(p.strategy).toLowerCase();
   const lay = isLayMarket(p.market);
   const staked = resolveStake(settings, key, getBank(db), { now, live: true });
-  const stake = staked.stake ?? 1;
+  // The admin may choose the stake (the strategy's is suggested); £1 is Betfair's smallest bet.
+  if (chosenStake !== undefined && !(Number.isFinite(chosenStake) && chosenStake >= 1)) throw new Error("The stake must be at least £1, Betfair's smallest bet.");
+  const stake = chosenStake !== undefined ? Math.round(chosenStake * 100) / 100 : (staked.stake ?? 1);
   if (stake > settings.maxStake) throw new Error(`Its stake £${stake.toFixed(2)} is above your highest stake allowed (£${settings.maxStake}).`);
   const against = cancelling(liveBetsByMatch(db), p);
   if (against) throw new Error(`It would cancel out ${against.label}'s Live bet on this match.`);

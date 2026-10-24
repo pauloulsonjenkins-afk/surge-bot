@@ -1911,8 +1911,8 @@ export function setStrategyLeagueBlock(body: { strategy: string; leagueKey: stri
 }
 
 /** Bets a Sim pick for real now (Live: Bet this for real). */
-export function betPickNow(pickId: number): Promise<{ stake: number; selection: string; event: string }> {
-  return engineCall(`/internal/picks/bet-now`, "the bet", { method: "POST", body: { pickId }, timeoutMs: 10000 });
+export function betPickNow(pickId: number, stake?: number): Promise<{ stake: number; selection: string; event: string }> {
+  return engineCall(`/internal/picks/bet-now`, "the bet", { method: "POST", body: stake !== undefined ? { pickId, stake } : { pickId }, timeoutMs: 10000 });
 }
 
 /** One week's figures for a strategy (mirrors WeekTally in the engine's strategy-weeks.ts). */

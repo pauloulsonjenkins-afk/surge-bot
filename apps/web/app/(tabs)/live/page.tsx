@@ -660,6 +660,15 @@ function BetForReal({ pick }: { pick: LivePick }) {
   const names = useStrategyNames();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // The stake: the strategy's own is suggested, and can be changed before betting.
+  const key = pick.strategy.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const own = sending.data?.strategies.find((x) => x.label.toLowerCase() === key);
+  const suggested = Math.round((own?.stakeNow ?? own?.stake ?? 1) * 100) / 100;
+  const [stakeText, setStakeText] = useState<string | null>(null);
+  const shown = stakeText ?? suggested.toFixed(2);
+  const chosen = Number(shown);
+  const maxStake = sending.data?.settings.maxStake ?? null;
+  const stakeError = !Number.isFinite(chosen) || chosen < 1 ? "At least £1" : maxStake !== null && chosen > maxStake ? `Highest allowed £${maxStake}` : null;
   const maxAge = sending.data?.settings.maxAgeMinutes ?? 10;
   // In play: within the betting window from the alert. Pre-match: until kick-off.
   const until = pick.minute !== null ? Date.parse(pick.firstSeenAt) + maxAge * 60_000 : pick.detail?.kickoff ? Date.parse(pick.detail.kickoff) : kickoffOf(pick);
@@ -668,9 +677,26 @@ function BetForReal({ pick }: { pick: LivePick }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {!msg?.ok && (
+        <label className="flex items-center gap-1 text-xs text-ink-muted">
+          £
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.5"
+            min={1}
+            value={shown}
+            onChange={(e) => setStakeText(e.target.value)}
+            aria-label="Stake to bet"
+            className="w-16 rounded-md border border-line bg-surface px-1.5 py-1 text-xs tabular-nums text-ink"
+          />
+          {stakeText === null || Number(stakeText) === suggested ? <span>suggested</span> : <button type="button" onClick={() => setStakeText(null)} className="underline">use £{suggested.toFixed(2)}</button>}
+        </label>
+      )}
+      {!msg?.ok && (
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || stakeError !== null}
+          title={stakeError ?? undefined}
           onClick={async () => {
             const name = names.name(pick.strategy);
             const ok = await dialog.confirm({
@@ -679,8 +705,9 @@ function BetForReal({ pick }: { pick: LivePick }) {
               confirmLabel: "Bet it",
               body: (
                 <p>
-                  {betText(pick.market, pick.selection) ?? pick.selection} on {pick.home} v {pick.away}, at {name}&apos;s stake (£1 if it has none). Your highest stake, match limit and
-                  daily loss stop still apply, and its minimum odds: GoalBrew waits for the price if it&apos;s below.
+                  {betText(pick.market, pick.selection) ?? pick.selection} on {pick.home} v {pick.away}, at <strong>£{chosen.toFixed(2)}</strong>
+                  {chosen === suggested ? ` (${name}'s stake)` : ` (${name}'s own stake is £${suggested.toFixed(2)})`}. Your highest stake, match limit and daily loss stop still
+                  apply, and its minimum odds: GoalBrew waits for the price if it&apos;s below.
                 </p>
               ),
             });
@@ -688,7 +715,7 @@ function BetForReal({ pick }: { pick: LivePick }) {
             setBusy(true);
             setMsg(null);
             try {
-              const res = await fetch("/api/admin/picks/bet-now", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pickId: pick.id }) });
+              const res = await fetch("/api/admin/picks/bet-now", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pickId: pick.id, stake: chosen }) });
               const body = (await res.json().catch(() => ({}))) as { error?: string; stake?: number };
               setMsg(res.ok ? { ok: true, text: `Sent to bet at £${(body.stake ?? 0).toFixed(2)}: check Betting → Bets in a few seconds.` } : { ok: false, text: body.error ?? "Couldn't bet that." });
             } finally {
@@ -700,6 +727,7 @@ function BetForReal({ pick }: { pick: LivePick }) {
           {busy ? "Sending…" : "Bet this for real"}
         </button>
       )}
+      {!msg && stakeError && <span className="text-xs text-warn">{stakeError}</span>}
       {!msg && <span className="text-xs text-ink-muted">{pick.minute !== null ? `${left} min left to bet` : "until kick-off"}</span>}
       {msg && <span className={`text-xs ${msg.ok ? "text-hit" : "text-warn"}`}>{msg.text}</span>}
     </div>
