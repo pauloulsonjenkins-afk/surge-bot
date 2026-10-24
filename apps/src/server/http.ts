@@ -1214,12 +1214,15 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           const returns = timed("returns", () => computeStrategyReturns(db, since, { fromRuleChange: true, rows }));
           const form = timed("form", () => computeStrategyForm(db, new Date(), rows));
           const sparks = timed("sparks", () => computeSparks(db, new Date(), rows));
+          // Today (UK day) on its own, Live and Sim apart, for the card's "Today" line.
+          const today = timed("today", () => computeStrategyReturns(db, ukDayBounds(ukDateOf(new Date())).from, { rows }));
           const strategies = timed("list", () =>
             db.listStrategiesForAdmin(since).map((x) => ({
               ...x,
               returns: returns[x.label.toLowerCase()] ?? null,
               form: form[x.label.toLowerCase()] ?? null,
               spark: sparks[x.label.toLowerCase()] ?? [],
+              today: today[x.label.toLowerCase()] ? { live: today[x.label.toLowerCase()]!.live, sim: today[x.label.toLowerCase()]!.sim } : null,
               sendingOn: settings.strategies[x.label.toLowerCase()] === true,
               // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
               mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",

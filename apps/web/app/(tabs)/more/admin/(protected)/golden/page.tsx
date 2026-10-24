@@ -24,7 +24,7 @@ const FEW = 10;
 const judged = (roi: number | null | undefined, n: number) => (n < FEW ? "text-ink-muted" : toneOf(roi));
 
 /** One side of the comparison: its return per £1 as the figure to read, its record under it. */
-function Side({ r, name }: { r: StrategyReturn; name: string }) {
+function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { live: StrategyReturn; sim: StrategyReturn } }) {
   const hits = r.hits ?? 0;
   const few = r.counted < FEW;
   return (
@@ -40,6 +40,14 @@ function Side({ r, name }: { r: StrategyReturn; name: string }) {
             {r.counted > 0 && ` · ${r.counted} priced`}
             {r.counted > 0 && few && " · too few to judge"}
           </p>
+          {/* Live and Sim apart, so a switch between them never changes what's shown above (that's both together). */}
+          {split && (
+            <p className="text-xs tabular-nums text-ink-muted">
+              Live{" "}
+              <span className={judged(split.live.roi, split.live.counted)}>{split.live.counted > 0 ? signedPct(split.live.roi) : "–"}</span> ({split.live.counted}) · Sim{" "}
+              <span className={judged(split.sim.roi, split.sim.counted)}>{split.sim.counted > 0 ? signedPct(split.sim.roi) : "–"}</span> ({split.sim.counted})
+            </p>
+          )}
         </>
       )}
     </div>
@@ -177,8 +185,8 @@ export default function GoldenPage() {
                             </div>
                             <p className="font-medium text-ink">{sliceName(s.label)}</p>
                             <div className="grid grid-cols-2 gap-2">
-                              <Side r={s.slice.all} name="This part" />
-                              <Side r={s.rest.all} name={`Rest of ${s.strategy}`} />
+                              <Side r={s.slice.all} name="This part · Live + Sim" split={s.slice} />
+                              <Side r={s.rest.all} name={`Rest of ${s.strategy}`} split={s.rest} />
                             </div>
                             {s.bet?.live && (
                               <p className="text-xs text-ink-muted">

@@ -522,6 +522,39 @@ function AboutStrategy({ label }: { label: string }) {
   );
 }
 
+/**
+ * Live and Sim always side by side, so switching a strategy never changes what's shown, and today on its own line.
+ * Live is real money (its bets since the last rule change); Sim is what the picks would have made.
+ */
+function LiveSimToday({ row }: { row: AdminStrategy }) {
+  const r = row.returns;
+  const t = row.today;
+  const part = (label: string, x: StrategyReturn | undefined, money: boolean) =>
+    x && x.counted > 0 ? (
+      <span>
+        {label} <span className={roiTone(money ? x.profit : x.roi)}>{money ? gbp(x.profit) : roiText(x.roi)}</span>
+        <span className="text-ink-muted"> ({x.counted})</span>
+      </span>
+    ) : (
+      <span className="text-ink-muted">{label} –</span>
+    );
+  return (
+    <span className="mt-1 block space-y-0.5 text-xs text-ink-muted">
+      <span className="flex flex-wrap gap-x-3">
+        {part("Live", r?.live, false)}
+        {part("Sim", r?.sim, false)}
+      </span>
+      {t && (t.live.counted > 0 || t.sim.counted > 0) && (
+        <span className="flex flex-wrap gap-x-3">
+          <span className="font-medium text-ink">Today</span>
+          {part("Live", t.live, true)}
+          {part("Sim", t.sim, true)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function StrategyCard({
   row,
   mode: pickMode,
@@ -665,6 +698,7 @@ function StrategyCard({
                 })()}
               </span>
             )}
+            <LiveSimToday row={row} />
             <SegmentLines row={row} mode={pickMode} />
             {borrowed && (
               <span className="mt-1 block text-xs text-warn">

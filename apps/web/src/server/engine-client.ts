@@ -904,6 +904,8 @@ export interface AdminStrategy {
     /** Best Value Cuppa only: the same figures split by bet type. */
     byBet?: Partial<Record<"unders" | "overs" | "btts" | "result", { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn }>>;
   } | null;
+  /** Today (UK day) only, Live and Sim apart. */
+  today?: { live: StrategyReturn; sim: StrategyReturn } | null;
   /** Running profit over its last 30 priced bets, oldest first (engine computeSparks), for the card's sparkline. */
   spark?: number[];
   /** Recent form: the last 20 settled picks, and the last 7 days (mirrors StrategyForm in the engine's winloss.ts). */
