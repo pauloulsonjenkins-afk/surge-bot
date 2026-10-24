@@ -8,7 +8,7 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { ClashSummary } from "@/components/admin/ClashSummary";
-import type { SendingStrategy } from "@/components/admin/StrategyBetting";
+import { LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
 import { gbp } from "@/lib/format";
 
 /** The markets that are LAY bets: GoalBrew's own lay groups, and InPlayGuru's Away Win Lay. */
@@ -19,7 +19,25 @@ const pct = (n: number | null | undefined) => (n == null ? "–" : `${n > 0 ? "+
 const tone = (n: number | null | undefined) => (n == null ? "text-ink-muted" : n >= 0 ? "text-hit" : "text-destructive");
 
 /** One LAY strategy: what it lays and why, the risk, its record next to what it lays, and clashes. */
-function LayCard({ row, lays, why, custom, header, bet, all }: { row: AdminStrategy; lays: string | null; why: string; custom: boolean; header: string | null; bet?: SendingStrategy; all: AdminStrategy[] }) {
+function LayCard({
+  row,
+  lays,
+  why,
+  custom,
+  header,
+  bet,
+  settings,
+  all,
+}: {
+  row: AdminStrategy;
+  lays: string | null;
+  why: string;
+  custom: boolean;
+  header: string | null;
+  bet?: SendingStrategy;
+  settings?: SendingSettings;
+  all: AdminStrategy[];
+}) {
   const names = useStrategyNames();
   const dialog = useDialog();
   const action = useLayGroupAction();
@@ -35,6 +53,12 @@ function LayCard({ row, lays, why, custom, header, bet, all }: { row: AdminStrat
             {names.name(row.label)} <ModeBadge mode={live ? "live" : "sim"} />
           </span>
           <span className="mt-0.5 block text-xs text-ink-muted">{why || "InPlayGuru's own lay strategy."}</span>
+          {/* Live or Sim, as on every strategy card (asks first before real money). */}
+          {bet && settings && (
+            <span className="mt-2 block">
+              <LiveSimSwitch s={bet} settings={settings} />
+            </span>
+          )}
         </span>
         <span className="shrink-0 text-right">
           <span className={`block font-display text-xl font-bold tabular-nums ${tone(mine?.roi)}`}>{pct(mine?.roi)}</span>
@@ -143,7 +167,7 @@ function IdeaRow({ idea }: { idea: LayIdea }) {
  * Strategies → LAY: every LAY strategy with what it lays and why, its risk, its record next to what it lays, and its
  * clashes with what's Live; then the lay ideas (the Golden finder turned round), each one tap from being laid in Sim.
  */
-export function LaySection({ rows, all, betOf }: { rows: AdminStrategy[]; all: AdminStrategy[]; betOf: (label: string) => SendingStrategy | undefined; settings?: SendingSettings }) {
+export function LaySection({ rows, all, betOf, settings }: { rows: AdminStrategy[]; all: AdminStrategy[]; betOf: (label: string) => SendingStrategy | undefined; settings?: SendingSettings }) {
   const lay = useLayGroups();
   const info = new Map((lay.data?.groups ?? []).map((g) => [g.key, g]));
   const sorted = [...rows].sort((a, b) => Number(b.sendingOn) - Number(a.sendingOn) || a.label.localeCompare(b.label));
@@ -164,7 +188,7 @@ export function LaySection({ rows, all, betOf }: { rows: AdminStrategy[]; all: A
         <ul className="space-y-2">
           {sorted.map((r) => {
             const g = info.get(r.label.toLowerCase());
-            return <LayCard key={r.label} row={r} lays={g?.lays ?? null} why={g?.why ?? ""} custom={g?.custom ?? false} header={g?.header ?? null} bet={betOf(r.label)} all={all} />;
+            return <LayCard key={r.label} row={r} lays={g?.lays ?? null} why={g?.why ?? ""} custom={g?.custom ?? false} header={g?.header ?? null} bet={betOf(r.label)} settings={settings} all={all} />;
           })}
         </ul>
       )}
