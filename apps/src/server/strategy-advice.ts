@@ -137,7 +137,13 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       // goal settled within 5 minutes, so the quickest winners look worst.
       const check = ko ? { picks: ko.picks, edge: ko.edge } : null;
       const stop = stops[key];
+      // Its own Live bets in the last 30 days (from an earlier spell Live) count too: if they'd put it straight back to
+      // Sim (the rule below), "Put Live" would only flip-flop. Boiling Point, 24 Oct 2026: +2.4% in Sim, -6.6% Live.
+      const recentLive = rec?.live;
+      const liveAdj = recentLive ? adjusted(recentLive.roi, recentLive.counted) : null;
+      const liveLosing = !!recentLive && recentLive.counted >= 30 && liveAdj !== null && liveAdj < -0.02;
       const ok =
+        !liveLosing &&
         sim.counted >= SAMPLE &&
         adj !== null &&
         adj > 0 &&
