@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import type { AdminStrategy, StrategyReturn } from "@/server/engine-client";
-import type { SendingSettings } from "@/queries/use-sending";
+import type { SendingSettings, SendingState } from "@/queries/use-sending";
 import { useLayGroupAction, useLayGroups, type LayIdea } from "@/queries/use-lay-groups";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { ClashSummary } from "@/components/admin/ClashSummary";
-import { LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
+import { BetSettings, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
 import { gbp } from "@/lib/format";
 
 /** The markets that are LAY bets: GoalBrew's own lay groups, and InPlayGuru's Away Win Lay. */
@@ -27,6 +27,7 @@ function LayCard({
   header,
   bet,
   settings,
+  bank,
   all,
 }: {
   row: AdminStrategy;
@@ -36,9 +37,11 @@ function LayCard({
   header: string | null;
   bet?: SendingStrategy;
   settings?: SendingSettings;
+  bank?: SendingState["bank"];
   all: AdminStrategy[];
 }) {
   const names = useStrategyNames();
+  const [editing, setEditing] = useState(false);
   const dialog = useDialog();
   const action = useLayGroupAction();
   const live = row.sendingOn;
@@ -97,6 +100,20 @@ function LayCard({
       </dl>
 
       <ClashSummary strategyKey={row.label} compact />
+
+      {/* Its liability, highest lay price and stop loss: the same settings as on every strategy card. */}
+      {bet && settings && (
+        <div>
+          <button type="button" aria-expanded={editing} onClick={() => setEditing((v) => !v)} className="text-xs font-medium text-accent underline">
+            {editing ? "Hide bet settings" : "Bet settings: liability, highest lay price, stop loss"}
+          </button>
+          {editing && (
+            <div className="mt-2">
+              <BetSettings s={bet} settings={settings} bank={bank} />
+            </div>
+          )}
+        </div>
+      )}
 
       {custom && header && (
         <button
@@ -167,7 +184,19 @@ function IdeaRow({ idea }: { idea: LayIdea }) {
  * Strategies → LAY: every LAY strategy with what it lays and why, its risk, its record next to what it lays, and its
  * clashes with what's Live; then the lay ideas (the Golden finder turned round), each one tap from being laid in Sim.
  */
-export function LaySection({ rows, all, betOf, settings }: { rows: AdminStrategy[]; all: AdminStrategy[]; betOf: (label: string) => SendingStrategy | undefined; settings?: SendingSettings }) {
+export function LaySection({
+  rows,
+  all,
+  betOf,
+  settings,
+  bank,
+}: {
+  rows: AdminStrategy[];
+  all: AdminStrategy[];
+  betOf: (label: string) => SendingStrategy | undefined;
+  settings?: SendingSettings;
+  bank?: SendingState["bank"];
+}) {
   const lay = useLayGroups();
   const info = new Map((lay.data?.groups ?? []).map((g) => [g.key, g]));
   const sorted = [...rows].sort((a, b) => Number(b.sendingOn) - Number(a.sendingOn) || a.label.localeCompare(b.label));
@@ -188,7 +217,7 @@ export function LaySection({ rows, all, betOf, settings }: { rows: AdminStrategy
         <ul className="space-y-2">
           {sorted.map((r) => {
             const g = info.get(r.label.toLowerCase());
-            return <LayCard key={r.label} row={r} lays={g?.lays ?? null} why={g?.why ?? ""} custom={g?.custom ?? false} header={g?.header ?? null} bet={betOf(r.label)} settings={settings} all={all} />;
+            return <LayCard key={r.label} row={r} lays={g?.lays ?? null} why={g?.why ?? ""} custom={g?.custom ?? false} header={g?.header ?? null} bet={betOf(r.label)} settings={settings} bank={bank} all={all} />;
           })}
         </ul>
       )}

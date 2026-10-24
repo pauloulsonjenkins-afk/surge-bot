@@ -1090,7 +1090,7 @@ export default function StrategiesPage() {
         ]}
       />
 
-      {side === "lay" && data && <LaySection rows={strategies.filter(isLayRow)} all={strategies} betOf={betOf} settings={sending.data?.settings} />}
+      {side === "lay" && data && <LaySection rows={strategies.filter(isLayRow)} all={strategies} betOf={betOf} settings={sending.data?.settings} bank={sending.data?.bank} />}
 
       <div className={`flex flex-wrap items-center gap-3 ${side === "lay" ? "hidden" : ""}`}>
         <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "weekly", label: "Weekly" }, { value: "cards", label: "Cards" }]} />
