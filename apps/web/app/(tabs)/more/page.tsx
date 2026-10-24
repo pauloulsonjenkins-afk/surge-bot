@@ -19,6 +19,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: n
   "/more/admin/horses": HorseHeadIcon,
   "/more/admin/members": Crown,
   "/more/admin/settings": Settings,
+  "/more/admin/day": CalendarDays,
   "/more/admin/notifications": Bell,
 };
 
