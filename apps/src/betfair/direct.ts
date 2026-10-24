@@ -765,16 +765,23 @@ async function workLay(
   }
 
   const ask = askLayPrice(me.lay, maxPrice, limits.acceptBelowPct ?? s.acceptBelowPct);
-  const size = layStake(d.stake, ask);
+  let size = layStake(d.stake, ask);
+  // Under Betfair's £1 minimum lay: raised to £1, so the liability becomes (price - 1), as long as that stays within the
+  // highest stake allowed (Betting → Limits). With a highest lay price of 2.30 that is at most £1.30.
+  let liability = d.stake;
   if (size < MIN_STAKE) {
-    return fail(`At ${ask.toFixed(2)} a ${money(d.stake)} liability is a ${money(size)} lay, under Betfair's ${money(MIN_STAKE)} minimum: raise the liability to at least ${money(Math.ceil((ask - 1) * 100) / 100)}.`);
+    const needed = Math.ceil((ask - 1) * MIN_STAKE * 100) / 100;
+    if (needed > getSendingSettings(db).maxStake)
+      return fail(`At ${ask.toFixed(2)} a ${money(d.stake)} liability is a ${money(size)} lay, under Betfair's ${money(MIN_STAKE)} minimum, and the ${money(needed)} it needs is above your highest stake.`);
+    size = MIN_STAKE;
+    liability = needed;
   }
   const depth = depthAtOrAbove(me.layDepth?.map((l) => ({ price: -l.price, size: l.size })), -ask);
   if (depth !== null && depth < size) return wait(`Only ${money(depth)} on offer to lay into at ${ask.toFixed(2)} or better (lay ${money(size)}).`);
   const taking = ask > me.lay ? ` (taking up to ${ask.toFixed(2)})` : "";
 
   if (d.mode === "shadow") {
-    db.updateDirectBet(d.pickId, { state: "shadow", askPrice: ask, reason: `Would lay ${money(size)} at ${me.lay.toFixed(2)}${taking}, a ${money(d.stake)} liability.` }, at);
+    db.updateDirectBet(d.pickId, { state: "shadow", askPrice: ask, reason: `Would lay ${money(size)} at ${me.lay.toFixed(2)}${taking}, a ${money(liability)} liability.` }, at);
     return;
   }
 
@@ -782,7 +789,7 @@ async function workLay(
   if (paused) return wait(`Paused: ${paused}`);
   const dayStart = ukDayBounds(ukDateOf(now)).from;
   const staked = db.directStakeSince(dayStart);
-  if (staked + d.stake > s.dailyStakeLimit + 1e-9) {
+  if (staked + liability > s.dailyStakeLimit + 1e-9) {
     db.updateDirectBet(d.pickId, { state: "skipped", reason: `Daily stake limit reached (${money(staked)} of ${money(s.dailyStakeLimit)} placed today).` }, at);
     return;
   }

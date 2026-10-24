@@ -93,13 +93,18 @@ test("above the maximum lay price it waits instead of laying", async () => {
   assert.match(db.getDirectBet(id)!.reason ?? "", /above the maximum/);
 });
 
-test("a liability too small for Betfair's £1 minimum lay is refused with what to raise it to", async () => {
+test("a liability too small for Betfair's £1 minimum lay is raised to the £1 lay, within the highest stake", async () => {
   const { db, id, bf } = setup({ liability: 2 });
   await runDirect(db, bf, new Date(), ENV);
-  assert.equal(bf.placed.length, 0);
-  const d = db.getDirectBet(id)!;
-  assert.equal(d.state, "failed");
-  assert.match(d.reason ?? "", /raise the liability/);
+  assert.equal(bf.placed.length, 1, "laid at Betfair's £1 minimum instead of refused");
+  assert.equal(bf.placed[0]!.size, 1);
+
+  // Too big a raise for the highest stake allowed: refused, saying why.
+  const big = setup({ liability: 2 });
+  saveSendingSettings(big.db, { maxStake: 3 }); // the £2 liability is allowed, the £3.50 a £1 lay at 4.50 needs is not
+  await runDirect(big.db, big.bf, new Date(), ENV);
+  assert.equal(big.bf.placed.length, 0);
+  assert.match(big.db.getDirectBet(big.id)!.reason ?? "", /above your highest stake/);
 });
 
 test("a matched lay is counted as its liability, with back-equivalent odds", () => {
