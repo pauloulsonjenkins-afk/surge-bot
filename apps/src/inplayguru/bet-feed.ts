@@ -583,7 +583,7 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
     return m ? { marketType: m.marketType, selectionName: m.selectionName.replace(/^Over /, "Under ") } : { error: "Could not work out the Over/Under line." };
   }
   // LAY the next goal is laid in the same Over/Under market, on the same Over selection (the row says LAY).
-  if (p.market === "NEXT_GOAL" || p.market === "NEXT_GOAL_LAY" || p.market === "OVER_1_5" || p.market === "TWO_MORE_GOALS") {
+  if (p.market === "NEXT_GOAL" || p.market === "NEXT_GOAL_LAY" || p.market === "OVER_1_5" || p.market === "OVER_2_5" || p.market === "TWO_MORE_GOALS") {
     return overUnderMarket(p.detail?.targetLine ?? null) ?? { error: "Could not work out the Over/Under line." };
   }
   if (p.market === "BOTH_TEAMS_TO_SCORE") return { marketType: settings.bttsMarketType, selectionName: settings.bttsSelection };

@@ -27,6 +27,7 @@ export type MarketCode =
   | "HOME_TO_WIN"
   | "FAVOURITE_TO_SCORE"
   | "OVER_1_5"
+  | "OVER_2_5"
   /** Two more goals in the match: Over (goals at the alert + 1.5), any team. */
   | "TWO_MORE_GOALS"
   /** No more goals in the match: Under (goals at the alert + 0.5). */
@@ -167,6 +168,8 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /french press/, market: "FAVOURITE_TO_SCORE" },
   // "Over 1.5 Goals / Early Goal": Over 1.5 goals in the match, a fixed line.
   { test: /over 1\.5 goals/, market: "OVER_1_5" },
+  // "Early Pressure with Low Score" (added 25 Oct 2026): Over 2.5 goals in the match, a fixed line.
+  { test: /early pressure.*low score/, market: "OVER_2_5" },
   { test: /momentum/, market: "NEXT_GOAL" },
   { test: /action/, market: "NEXT_GOAL" },
 ];
@@ -515,6 +518,13 @@ export function parseAlert(text: string): ParsedAlert {
     if (!settled && goalsHome !== null && goalsAway !== null && goalsHome + goalsAway > 1.5) {
       flags.push(`There are already ${goalsHome + goalsAway} goals, so Over 1.5 is already decided.`);
     }
+  } else if (market === "OVER_2_5") {
+    // A fixed line: Over 2.5 goals in the match.
+    targetLine = 2.5;
+    selection = "Over 2.5";
+    if (!settled && goalsHome !== null && goalsAway !== null && goalsHome + goalsAway > 2.5) {
+      flags.push(`There are already ${goalsHome + goalsAway} goals, so Over 2.5 is already decided.`);
+    }
   } else if (market === "BOTH_TEAMS_TO_SCORE") {
     selection = "Yes";
     // If both teams have already scored the bet is meaningless.
@@ -571,7 +581,7 @@ export function parseAlert(text: string): ParsedAlert {
     const b = Number(ft[2]);
     let computed: PickResult | null = null;
     // Over (goals at the alert + 0.5): wins if the final total is above that line.
-    if ((market === "NEXT_GOAL" || market === "OVER_1_5" || market === "TWO_MORE_GOALS") && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
+    if ((market === "NEXT_GOAL" || market === "OVER_1_5" || market === "OVER_2_5" || market === "TWO_MORE_GOALS") && targetLine !== null) computed = a + b > targetLine ? "hit" : "miss";
     // No more goals: wins only if the final total stays under the line.
     else if ((market === "NO_MORE_GOALS" || market === "NEXT_GOAL_LAY") && targetLine !== null) computed = a + b < targetLine ? "hit" : "miss";
     else if (market === "BOTH_TEAMS_TO_SCORE") computed = a > 0 && b > 0 ? "hit" : "miss";

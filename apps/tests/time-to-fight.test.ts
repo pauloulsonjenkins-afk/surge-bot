@@ -75,3 +75,28 @@ test("Home pressure and Late goal hunter are next-goal bets; Over 1.5 Goals / Ea
   assert.equal(done("1-0").result, "miss");
   assert.ok(parse(make("Over 1.5 Goals / Early Goal", "2 - 0")).flags.some((f) => /already decided/.test(f)));
 });
+
+test("Early Pressure with Low Score is a fixed Over 2.5", async () => {
+  const { parseAlert: parse } = await import("../src/inplayguru/parse-alert");
+  const make = (goals: string, extra: string[] = []) =>
+    [`🔔 Early Pressure with Low Score`, "", "🇫🇷 France Ligue 1", "Lyon vs Nantes", "", "Timer: 20'", `Goals: ${goals}`, "Over/Under 2.50 Odds:", "1.90 1.90", ...extra].join("\n");
+  const o = parse(make("0 - 0"));
+  assert.equal(o.market, "OVER_2_5");
+  assert.equal(o.targetLine, 2.5);
+  assert.equal(o.selection, "Over 2.5");
+  assert.equal(o.sendable, true);
+  const done = (ft: string) => parse(make("0 - 0", ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", `Full-Time Score: ${ft}`, "", "✅ Hit"]));
+  assert.equal(done("2-1").result, "hit");
+  assert.equal(done("1-1").result, "miss");
+  assert.ok(parse(make("2 - 1")).flags.some((f) => /already decided/.test(f)));
+
+  const { buildFeed, saveSendingSettings } = await import("../src/inplayguru/bet-feed");
+  const { EngineDb } = await import("../src/storage/engine-db");
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, strategies: { "early pressure with low score": true }, stakes: { "early pressure with low score": 1 } });
+  db.upsertLivePick("c", 1, make("0 - 0"), parse(make("0 - 0")), new Date().toISOString(), new Date().toISOString());
+  const feed = buildFeed(db, { markSent: false });
+  assert.equal(feed.rows.length, 1);
+  assert.equal(feed.rows[0]?.marketType, "OVER_UNDER_25");
+  assert.equal(feed.rows[0]?.selectionName, "Over 2.5 Goals");
+});
