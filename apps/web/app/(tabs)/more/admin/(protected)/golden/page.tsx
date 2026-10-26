@@ -80,8 +80,9 @@ export default function GoldenPage() {
   const [betting, setBetting] = useState<string | null>(null);
   // Fixed when the page opens: only used to tell a start date still to come from one already passed.
   const [now] = useState(() => Date.now());
-  const confirmFrom = data?.confirmFrom ?? 50;
-  const candidateFrom = data?.candidateFrom ?? 30;
+  const candidateFrom = data?.candidateFrom ?? 50;
+  const trialFrom = data?.trialFrom ?? 150;
+  const fullFrom = data?.fullFrom ?? 300;
   const worst = Math.abs((data?.safety?.worstRoi ?? -0.05) * 100);
   const minBets = data?.safety?.minBets ?? 30;
 
@@ -100,7 +101,7 @@ export default function GoldenPage() {
   const checked = data ? new Date(data.suggestions.at) : null;
   const mainSlices = data?.slices.filter((s) => !s.quiet) ?? [];
   const quietSlices = data?.slices.filter((s) => s.quiet) ?? [];
-  const golden = mainSlices.filter((s) => s.status === "golden").length;
+  const golden = mainSlices.filter((s) => s.status === "full").length;
 
   return (
     // The admin layout already gives the page its side margins, so none here (they were doubled before).
@@ -127,13 +128,18 @@ export default function GoldenPage() {
             extra ones: the figures show that part against the rest of the same strategy, Live and Sim picks together.
           </p>
           <p>
-            It&apos;s a <b className="text-ink">candidate</b> until {confirmFrom} priced picks, then <b className="text-gold">Golden</b> if it&apos;s making +3% or more and beating the rest.
-            It has to keep earning it: if its last 30 picks lose more than 5% per £1, the badge goes at once (with a notification), and it only comes back after 30
-            more picks at +3% or better.
+            Watched quietly (no notification) until {candidateFrom} priced picks in profit make it a <b className="text-ink">candidate</b> (one notification). At{" "}
+            {trialFrom}+, still in profit in both halves of its record, a <b className="text-ink">small Live trial</b> is suggested — 1% stake, with a stop loss (one
+            notification). At {fullFrom}+, once that trial is itself in profit, <b className="text-gold">full stake</b> is suggested (one notification). Nothing is ever
+            switched Live or re-staked automatically — every suggestion is the admin&apos;s call.
+          </p>
+          <p>
+            It has to keep earning its stage: if its last 30 picks lose more than 5% per £1, the stage goes at once (with a notification), and it only comes back after
+            30 more picks back in profit.
           </p>
           <p>
             Bet one on its own with its &ldquo;Change betting&rdquo; button below (or from its strategy&apos;s card on Strategies). Safety: a slice bet Live on its own goes back to Sim by itself, with a
-            notification, if it stops being Golden or its own Live bets lose more than {worst}% per £1 over {minBets}+ bets.
+            notification, if it stops holding up or its own Live bets lose more than {worst}% per £1 over {minBets}+ bets.
           </p>
         </div>
       </details>
@@ -180,7 +186,11 @@ export default function GoldenPage() {
                           <li key={`${s.strategyKey}#${s.id}`} className="space-y-2 py-3 text-sm">
                             {/* Badge and date first, so the slice's name gets the full width on a phone. */}
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <GoldenBadge status={s.status} candidate={`Candidate · ${s.slice.all.counted} of ${confirmFrom}`} />
+                              <GoldenBadge
+                                status={s.status}
+                                candidate={`Candidate · ${s.slice.all.counted} of ${trialFrom}`}
+                                trial={`Live trial suggested · ${s.slice.all.counted} of ${fullFrom}`}
+                              />
                               <span className="text-xs text-ink-muted">
                                 {/* A slice set up ahead of time counts from midnight; until then, say so rather than "since" a date to come. */}
                                 {since.getTime() > now ? "counted from" : "since"} {day.format(since)}
@@ -204,13 +214,13 @@ export default function GoldenPage() {
                                 )}
                               </p>
                             )}
-                            {s.recent && s.recent.n > 0 && s.status !== "candidate" && (
+                            {s.recent && s.recent.n > 0 && s.status !== "candidate" && s.status !== "quiet" && (
                               <p className="text-xs tabular-nums text-ink-muted">
                                 Last {s.recent.n} picks: {s.recent.won}–{s.recent.n - s.recent.won}{" "}
                                 <span className={judged(s.recent.roi, s.recent.n)}>{signedPct(s.recent.roi)}</span>
                               </p>
                             )}
-                            {s.why && <p className="text-xs text-destructive">Not Golden: {s.why}.</p>}
+                            {s.why && <p className="text-xs text-destructive">Not holding up: {s.why}.</p>}
                             <p className={`text-xs ${s.bet?.live ? "font-medium text-ink" : "text-ink-muted"}`}>{betText(s)}</p>
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -268,8 +278,8 @@ export default function GoldenPage() {
               </summary>
               <div className="space-y-1 pb-3">
                 <p className="text-xs text-ink-muted">
-                  New ideas the finder found itself, counted from the day found. No notifications yet: once one reaches {candidateFrom} priced picks
-                  still beating the rest of its strategy, you&apos;ll be told it&apos;s a candidate; at {confirmFrom}, proved Golden.
+                  New ideas the finder found itself, counted from the day found. No notifications yet: once one reaches {candidateFrom} priced picks in
+                  profit, you&apos;ll be told it&apos;s a candidate.
                 </p>
                 <ul className="divide-y divide-line">
                   {quietSlices.map((s) => (

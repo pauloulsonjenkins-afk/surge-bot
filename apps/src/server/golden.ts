@@ -1,20 +1,22 @@
 /**
- * The Golden page: every watched slice of a strategy (segments.ts) with its record since it started, its status, and
+ * The Golden page: every watched slice of a strategy (segments.ts) with its record since it started, its stage, and
  * the Golden finder's suggestions for new ones.
  *
- * STATUS, from the slice's priced picks since its start (Live and Sim together):
- *   candidate        fewer than 50 so far
- *   golden           50+, making +3% or more per £1, and ahead of the rest of its strategy over the same time, AND
- *                    its last 30 priced picks not losing more than 5% per £1 (it has to keep earning it)
- *   not holding up   50+, but not all of those
- * A slice that loses the badge (the hourly check notes when, with a notification) only gets it back by proving itself
- * again on picks after that: 30+ of them at +3% or more per £1, on top of the rest.
+ * STAGE, from the slice's priced picks since its start (Live and Sim together):
+ *   quiet            fewer than CANDIDATE_FROM (50) so far — a finder-found slice is watched silently, no notification
+ *   candidate        CANDIDATE_FROM+, in profit (one notification)
+ *   trial            TRIAL_FROM+ (150), in profit in BOTH halves of the record: a small Live trial is suggested
+ *                    (1% stake, with a stop loss — never switched automatically; real money stays the admin's call)
+ *   full             FULL_FROM+ (300), AND its own Live trial bets are in profit: full stake suggested
+ *   not holding up   it reached candidate or further, but its last 30 priced picks lost more than 5% per £1
+ * The strict loss rule applies at every stage from candidate on: lost at once on a bad last 30, and only regained
+ * after 30 more picks back in profit. A notification goes out once per stage first reached, and once when it's lost.
  *
  * THE FINDER looks through each strategy with 150+ priced settled picks for a slice that did clearly better than the
  * rest: one or two FEATURES (from different groups) that held 40+ picks, made +4% or more per £1, and beat the rest by
  * 5+ points in BOTH halves of the record (older and newer). With ~200 slices tried per strategy, some will look good by
- * luck, which is why a suggestion is only ever watched (from the day it's added), never bet.
- * Worked out at most every 6 hours; one notification when new suggestions appear.
+ * luck, which is why a suggestion is only ever watched (from the day it's added, quietly), never bet.
+ * Worked out at most every 6 hours.
  */
 import type { EngineDb } from "../storage/engine-db";
 import { getSendingSettings, saveSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
@@ -32,20 +34,24 @@ const FOUND_KEY = "golden_suggestions";
 const TOLD_KEY = "golden_suggestions_told";
 const SIX_HOURS = 6 * 3_600_000;
 
-export const CONFIRM_FROM = 50;
-/** A finder-watched slice is shown quietly, with no notification, until it has this many priced picks. */
-export const CANDIDATE_FROM = 30;
-/** Keeping the badge: the last `recent` priced picks may not lose more than `worstRoi`; once lost, `regainFrom` picks
- * after the loss at `regainRoi` or better win it back. */
-export const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0.03 };
+/** Below this many priced picks a slice is watched quietly (finder-found ones only — no notification yet). */
+export const CANDIDATE_FROM = 50;
+/** A small Live trial (1% stake, with a stop loss) is suggested from here, if it's in profit in both halves. */
+export const TRIAL_FROM = 150;
+/** Full stake is suggested from here, once its own Live trial bets are in profit too. */
+export const FULL_FROM = 300;
+/** Keeping a stage: the last `recent` priced picks may not lose more than `worstRoi`; once lost, `regainFrom` picks
+ * after the loss back above `regainRoi` win it back. */
+export const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0 };
 const BADGES_KEY = "golden_badges";
+const STAGE_RANK = { candidate: 1, trial: 2, full: 3 } as const;
+type ToldStage = keyof typeof STAGE_RANK;
 
 interface Badge {
-  golden: boolean;
-  /** When it last lost the badge; cleared when it wins it back. */
+  /** The highest stage ever notified for (never goes down, even while the stage is currently lost). */
+  stage: ToldStage | null;
+  /** When it last fell to "not holding up"; cleared once it's back to a real stage. */
   lostAt?: string;
-  /** The CANDIDATE_FROM notification has already gone out (never repeated, even if it later drops below it again). */
-  candidateTold?: boolean;
 }
 function badges(db: EngineDb): Record<string, Badge> {
   try {
@@ -239,7 +245,7 @@ export function autoWatchGoldenFinds(db: EngineDb, now = new Date()): CustomSegm
   return added;
 }
 
-export type GoldenStatus = "candidate" | "golden" | "not holding up";
+export type GoldenStatus = "quiet" | "candidate" | "trial" | "full" | "not holding up";
 
 /** The Golden page: each watched slice since its start (Live and Sim together), the rest of its strategy over the same time, its status and its own betting. */
 export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?: boolean } = {}) {
@@ -266,6 +272,21 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
     }
     for (const list of picksOf.values()) list.sort((a, b) => a.at.localeCompare(b.at));
   }
+  const pctOf = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
+  /** The stage its picks alone would earn, ignoring the last-30 and re-proving rules (stage(), below, applies those). */
+  function rawStage(inn: StrategyReturn, picks: Array<{ at: string; stake: number; profit: number; won: boolean }>, ownLive: ReturnType<typeof liveSinceRecord> | null): GoldenStatus {
+    if (inn.counted < CANDIDATE_FROM) return "quiet";
+    if (!(inn.roi !== null && inn.roi > 0)) return "not holding up";
+    if (inn.counted >= TRIAL_FROM) {
+      const mid = picks[Math.floor(picks.length / 2)]!.at;
+      const older = tally(picks.filter((p) => p.at < mid));
+      const newer = tally(picks.filter((p) => p.at >= mid));
+      const bothHalves = older.roi !== null && older.roi > 0 && newer.roi !== null && newer.roi > 0;
+      if (bothHalves && inn.counted >= FULL_FROM && ownLive !== null && ownLive.n > 0 && ownLive.roi !== null && ownLive.roi > 0) return "full";
+      if (bothHalves) return "trial";
+    }
+    return "candidate";
+  }
   const slices = [];
   for (const [key, r] of Object.entries(returns)) {
     for (const s of r.segments ?? []) {
@@ -275,24 +296,25 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
       const recent = tally(picks.slice(-KEEP.recent));
       const lostAt = held[`${key}#${s.id}`]?.lostAt ?? null;
       const regain = lostAt ? tally(picks.filter((p) => p.at >= lostAt)) : null;
-      const pctOf = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
-      const qualifies = inn.roi !== null && inn.roi >= 0.03 && (rest.roi === null || inn.roi > rest.roi);
-      let status: GoldenStatus = "golden";
-      let why: string | null = null;
-      if (inn.counted < CONFIRM_FROM) status = "candidate";
-      else if (!qualifies) {
-        status = "not holding up";
-        why = `${pctOf(inn.roi)} per £1 since it started, against ${pctOf(rest.roi)} for the rest`;
-      } else if (recent.n >= KEEP.recent && recent.roi !== null && recent.roi < KEEP.worstRoi) {
-        status = "not holding up";
-        why = `its last ${recent.n} picks are ${pctOf(recent.roi)} per £1`;
-      } else if (regain && !(regain.n >= KEEP.regainFrom && regain.roi !== null && regain.roi >= KEEP.regainRoi)) {
-        status = "not holding up";
-        why = `re-proving after losing the badge: ${regain.n} of ${KEEP.regainFrom} picks, ${pctOf(regain.roi)} per £1 (needs ${pctOf(KEEP.regainRoi)})`;
-      }
       const auto = s.auto === true;
       const bet = settings.segmentBets[`${key}#${s.id}`] ?? null;
       const ownLive = bet?.live && bet.liveSince ? liveSinceRecord(db, key, s.id, bet.liveSince) : null;
+      const raw = rawStage(inn, picks, ownLive);
+      let status: GoldenStatus = raw;
+      let why: string | null = null;
+      // The strict loss rule, from candidate on: a bad last 30 loses the current stage at once; only 30 good picks
+      // (back in profit) after that win it back.
+      if (raw !== "quiet") {
+        if (raw === "not holding up") {
+          why = `${pctOf(inn.roi)} per £1 since it started`;
+        } else if (recent.n >= KEEP.recent && recent.roi !== null && recent.roi < KEEP.worstRoi) {
+          status = "not holding up";
+          why = `its last ${recent.n} picks are ${pctOf(recent.roi)} per £1`;
+        } else if (regain && !(regain.n >= KEEP.regainFrom && regain.roi !== null && regain.roi > KEEP.regainRoi)) {
+          status = "not holding up";
+          why = `re-proving after losing its stage: ${regain.n} of ${KEEP.regainFrom} picks, ${pctOf(regain.roi)} per £1 (needs to be in profit)`;
+        }
+      }
       slices.push({
         strategyKey: key,
         strategy: displayName(db, key),
@@ -303,10 +325,9 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         custom: s.custom,
         auto,
         // Found by the finder and not yet at CANDIDATE_FROM picks: watched quietly, in its own collapsed section.
-        quiet: auto && inn.counted < CANDIDATE_FROM,
+        quiet: auto && status === "quiet",
         status,
         why,
-        qualifies,
         recent,
         lostAt,
         slice: { live: s.in.live, sim: s.in.sim, all: inn },
@@ -335,9 +356,8 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         custom: s.custom === true,
         auto,
         quiet: auto,
-        status: "candidate" as GoldenStatus,
+        status: "quiet" as GoldenStatus,
         why: null,
-        qualifies: false,
         recent: { n: 0, won: 0, roi: null } as Tally,
         lostAt: null,
         slice: { live: empty(), sim: empty(), all: empty() },
@@ -351,8 +371,9 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
   return {
     slices,
     suggestions: opts.skipFinder ? { at: now.toISOString(), list: [] } : goldenSuggestions(db, now),
-    confirmFrom: CONFIRM_FROM,
     candidateFrom: CANDIDATE_FROM,
+    trialFrom: TRIAL_FROM,
+    fullFrom: FULL_FROM,
     safety: SAFETY,
     // Golden alert notifications: quiet hours on or off (each slice's own switch is on the slice).
     notifyQuiet: notify.quiet,
@@ -389,7 +410,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
   const settings = getSendingSettings(db);
   const live = Object.entries(settings.segmentBets).filter(([, c]) => c.live);
   const report = goldenReport(db, now, { skipFinder: true });
-  await updateBadges(db, report.slices.map((s) => ({ ...s, counted: s.slice.all.counted })), now);
+  await updateBadges(db, report.slices, now);
   if (live.length === 0) return [];
   const off: string[] = [];
   for (const [k, cfg] of live) {
@@ -398,7 +419,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
     const rec = cfg.liveSince ? liveSinceRecord(db, strategyKey, id, cfg.liveSince) : null;
     const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
     let why: string | null = null;
-    if (slice?.status === "not holding up") why = `it's no longer Golden: ${slice.why ?? `${pct(slice.slice.all.roi ?? 0)} per £1 over ${slice.slice.all.counted} picks`}`;
+    if (slice?.status === "not holding up") why = `it's no longer holding up: ${slice.why ?? `${pct(slice.slice.all.roi ?? 0)} per £1 over ${slice.slice.all.counted} picks`}`;
     else if (rec && rec.n >= SAFETY.minBets && rec.roi !== null && rec.roi < SAFETY.worstRoi) why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
     if (!why) continue;
     saveSendingSettings(db, { segmentBets: { [k]: { live: false } } });
@@ -410,42 +431,46 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
   return off;
 }
 
+const STAGE_MESSAGE: Record<ToldStage, (name: string) => { title: string; body: string }> = {
+  candidate: (name) => ({ title: "Golden candidate", body: `${name} has made ${CANDIDATE_FROM}+ priced picks in profit — worth a look.` }),
+  trial: (name) => ({
+    title: "Golden: small Live trial suggested",
+    body: `${name} has made ${TRIAL_FROM}+ priced picks, in profit in both halves of its record. Worth a small Live trial — 1% stake, with a stop loss — the choice is yours.`,
+  }),
+  full: (name) => ({
+    title: "Golden: full stake suggested",
+    body: `${name} has made ${FULL_FROM}+ priced picks and its own Live trial is in profit. Worth its full stake now — the choice is yours.`,
+  }),
+};
+
 /**
- * Hourly, before the Live check: notes which slices hold the badge. One that loses it gets its date (so it has to prove
- * itself again on later picks) and a notification; one that wins it back, or wins it the first time, a notification too.
- * The first run only records where things stand, so nothing is announced for slices that were already Golden.
+ * Hourly, before the Live check: notes each slice's stage. Reaching a new stage (candidate, trial, full) is told once,
+ * ever; losing the current stage on a bad last 30 is told once too, until it's won back. The first run only records
+ * where things stand, so nothing is announced for slices already past a stage.
  */
-export async function updateBadges(
-  db: EngineDb,
-  slices: Array<{ strategyKey: string; id: string; label: string; status: GoldenStatus; why: string | null; auto?: boolean; qualifies?: boolean; counted?: number }>,
-  now = new Date(),
-): Promise<void> {
+export async function updateBadges(db: EngineDb, slices: Array<{ strategyKey: string; id: string; label: string; status: GoldenStatus; why: string | null }>, now = new Date()): Promise<void> {
   const first = db.getSetting(BADGES_KEY) === null;
   const held = badges(db);
   const tell: Array<{ title: string; body: string; tag: string }> = [];
   for (const s of slices) {
     const k = `${s.strategyKey}#${s.id}`;
-    const was = held[k];
+    const was = held[k] ?? { stage: null };
     const name = `${displayName(db, s.strategyKey)}, ${s.label.replace(/^Golden: /, "")}`;
-    // A finder-watched slice that's made it to CANDIDATE_FROM picks and is still beating the rest: told once, and
-    // shown as a Golden candidate from here (the owner's call whether to put it Live stays at CONFIRM_FROM).
-    if (s.auto && !was?.candidateTold && (s.counted ?? 0) >= CANDIDATE_FROM) {
-      if (!first && s.qualifies) tell.push({ title: "Golden candidate", body: `${name} has made ${CANDIDATE_FROM}+ priced picks beating the rest of its strategy — worth a look.`, tag: `golden-candidate-${k}` });
-      held[k] = { ...(held[k] ?? { golden: false }), candidateTold: true };
-    }
-    if (s.status === "golden") {
-      if (!first && !was?.golden)
-        tell.push({
-          title: was?.lostAt ? "Golden again" : "Proved Golden",
-          body: `${name} has ${was?.lostAt ? "won its Golden badge back" : "proved itself Golden"}. Worth putting Live — the stake and switch are yours to set.`,
-          tag: `golden-badge-${k}`,
-        });
-      held[k] = { golden: true, ...(held[k]?.candidateTold ? { candidateTold: true } : {}) };
-    } else if (s.status === "not holding up") {
-      if (was?.golden) {
-        held[k] = { golden: false, lostAt: now.toISOString(), ...(held[k]?.candidateTold ? { candidateTold: true } : {}) };
-        if (!first) tell.push({ title: "Golden badge lost", body: `${name} has lost its Golden badge: ${s.why ?? "it stopped beating the rest"}. It has to prove itself again on new picks.`, tag: `golden-badge-${k}` });
-      } else held[k] = { golden: false, ...(was?.lostAt ? { lostAt: was.lostAt } : {}), ...(held[k]?.candidateTold ? { candidateTold: true } : {}) };
+    const wasRank = was.stage ? STAGE_RANK[was.stage] : 0;
+    if (s.status === "not holding up") {
+      if (was.stage !== null) {
+        if (!first && !was.lostAt) tell.push({ title: "Golden stage lost", body: `${name} has slipped: ${s.why ?? "it stopped being profitable"}. It needs ${KEEP.regainFrom} new picks back in profit to be considered again.`, tag: `golden-stage-${k}` });
+        held[k] = { stage: was.stage, lostAt: now.toISOString() };
+      } else held[k] = { stage: null };
+    } else if (s.status !== "quiet") {
+      const rank = STAGE_RANK[s.status];
+      if (rank > wasRank) {
+        for (let lvl = wasRank + 1; lvl <= rank; lvl++) {
+          const stageName = (Object.keys(STAGE_RANK) as ToldStage[]).find((n) => STAGE_RANK[n] === lvl)!;
+          if (!first) tell.push({ ...STAGE_MESSAGE[stageName](name), tag: `golden-stage-${stageName}-${k}` });
+        }
+      }
+      held[k] = { stage: rank > wasRank ? s.status : was.stage };
     }
   }
   db.setSetting(BADGES_KEY, JSON.stringify(held));

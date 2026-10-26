@@ -1,12 +1,12 @@
 import { Sparkles } from "lucide-react";
 
-/** A watched slice's status (engine golden.ts). */
-export type SliceStatus = "candidate" | "golden" | "not holding up";
+/** A watched slice's stage (engine golden.ts). */
+export type SliceStatus = "quiet" | "candidate" | "trial" | "full" | "not holding up";
 
 /**
  * A watched slice's label. Every slice is named "Golden: …" by the engine, but gold is kept for the ones that have
- * earned it: the word "Golden" is picked out in gold only once the slice is confirmed Golden. Until then (or while its
- * status isn't known) it reads as plain text, so a slice still being proved never looks proven.
+ * earned it: the word "Golden" is picked out in gold only once the slice has reached full stake. Until then (or while
+ * its stage isn't known) it reads as plain text, so a slice still being proved never looks proven.
  */
 export function SegmentLabel({ label, status }: { label: string; status?: SliceStatus | null }) {
   const parts = label.split(/(Golden)/);
@@ -14,7 +14,7 @@ export function SegmentLabel({ label, status }: { label: string; status?: SliceS
     <>
       {parts.map((p, i) =>
         p === "Golden" ? (
-          <span key={i} className={status === "golden" ? "font-semibold text-gold" : "font-medium"}>
+          <span key={i} className={status === "full" ? "font-semibold text-gold" : "font-medium"}>
             Golden
           </span>
         ) : (
@@ -25,9 +25,9 @@ export function SegmentLabel({ label, status }: { label: string; status?: SliceS
   );
 }
 
-/** Of the watched slices an alert is in, the status to show: Golden first, then candidate, then not holding up. */
+/** Of the watched slices an alert is in, the stage to show: full first, then trial, candidate, not holding up. */
 export function bestStatus(statuses: Array<SliceStatus | null>): SliceStatus | null {
-  return (["golden", "candidate", "not holding up"] as const).find((s) => statuses.includes(s)) ?? null;
+  return (["full", "trial", "candidate", "not holding up", "quiet"] as const).find((s) => statuses.includes(s)) ?? null;
 }
 
 /** A slice's name without the engine's "Golden: " in front, for places that show its status separately. */
@@ -36,12 +36,12 @@ export function sliceName(label: string): string {
 }
 
 /**
- * A watched slice's badge: a metal gold chip once it's confirmed Golden; an outlined gold chip while it's a candidate
- * (or its status hasn't loaded); red once it isn't holding up.
+ * A watched slice's badge: a metal gold chip at full stake; an outlined gold chip for a small Live trial suggested, or
+ * a candidate (or its stage not yet loaded); red once it isn't holding up.
  */
-export function GoldenBadge({ status, candidate = "Golden candidate" }: { status: SliceStatus | null | undefined; candidate?: string }) {
+export function GoldenBadge({ status, candidate = "Golden candidate", trial = "Live trial suggested" }: { status: SliceStatus | null | undefined; candidate?: string; trial?: string }) {
   const base = "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs";
-  if (status === "golden")
+  if (status === "full")
     return (
       <span className={`${base} gold-chip font-semibold`}>
         <Sparkles size={12} aria-hidden />
@@ -49,5 +49,5 @@ export function GoldenBadge({ status, candidate = "Golden candidate" }: { status
       </span>
     );
   if (status === "not holding up") return <span className={`${base} bg-loss/15 font-medium text-loss`}>Not holding up</span>;
-  return <span className={`${base} gold-chip-outline font-medium`}>{status === "candidate" ? candidate : "Being watched"}</span>;
+  return <span className={`${base} gold-chip-outline font-medium`}>{status === "trial" ? trial : status === "candidate" ? candidate : "Being watched"}</span>;
 }

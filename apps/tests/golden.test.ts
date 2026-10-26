@@ -5,8 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { recordSimBets, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { autoWatchGoldenFinds, findGolden, goldenReport, loadCustomSegments, unwatchSegment, watchSegment } from "../src/server/golden";
+import { buildFeed, recordSimBets, saveSendingSettings } from "../src/inplayguru/bet-feed";
+import { autoWatchGoldenFinds, CANDIDATE_FROM, findGolden, FULL_FROM, goldenReport, loadCustomSegments, TRIAL_FROM, unwatchSegment, watchSegment } from "../src/server/golden";
 import { segmentsOf, setCustomSegments } from "../src/server/segments";
 
 const alert = (n: number, goals: string, result: "hit" | "miss") =>
@@ -83,4 +83,35 @@ test("a slice built from mixed-case features (favDa2x, favLevel, notJapanBrazil)
   assert.ok(slice, "the watched slice shows on the report");
   assert.equal(slice!.bet?.live, true, "its own betting setting is found despite the mixed-case id it was set with");
   assert.equal(slice!.bet?.stakePct, 2);
+});
+
+test("a watched slice's stages: quiet, then candidate at 50, trial at 150 (both halves in profit), full at 300 (its Live trial also in profit)", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "time to fight": 1 }, strategies: { "time to fight": false }, dailyCap: 1000 });
+  // Bet it Live on its own from the start, so its Live trial record is the same as its overall one.
+  saveSendingSettings(db, { segmentBets: { "time to fight#two-apart": { live: true } } });
+  const alert = (n: number, result?: "hit" | "miss") =>
+    [
+      "🔔 Time to fight", "", "🇫🇷 France Ligue 1", `Home ${n} vs Away ${n}`, "", "Timer: 60'", "Goals: 2 - 0", "Over/Under 2.50 Odds:", "2.00 1.80",
+      ...(result ? ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 1-0", `Full-Time Score: ${result === "hit" ? "3-0" : "2-0"}`, "", result === "hit" ? "✅ Hit" : "❌ Miss"] : []),
+    ].join("\n");
+  const status = () => goldenReport(db, new Date(), { skipFinder: true }).slices.find((s) => s.id === "two-apart")!;
+  let n = 0;
+  // Two wins in three at 2.00: comfortably in profit, the same pattern throughout (so both halves hold up too).
+  const add = (count: number) =>
+    Array.from({ length: count }, (_, i) => (i % 3 === 2 ? "miss" : "hit") as const).forEach((r) => {
+      n++;
+      const at = new Date(Date.now() + n * 1000).toISOString();
+      db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), at);
+      buildFeed(db, { markSent: true });
+      db.upsertLivePick("chat", n, alert(n, r), parseAlert(alert(n, r)), at);
+    });
+  add(CANDIDATE_FROM - 10);
+  assert.equal(status().status, "quiet");
+  add(10);
+  assert.equal(status().status, "candidate");
+  add(TRIAL_FROM - CANDIDATE_FROM);
+  assert.equal(status().status, "trial");
+  add(FULL_FROM - TRIAL_FROM);
+  assert.equal(status().status, "full");
 });

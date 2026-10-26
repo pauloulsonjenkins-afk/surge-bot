@@ -35,11 +35,15 @@ export function GoldenLine({ pick }: { pick: PublicPick }) {
             : "Sim only: not bet";
         const status = !slice
           ? "being watched"
-          : slice.status === "golden"
-            ? "confirmed Golden"
-            : slice.status === "not holding up"
-              ? "not holding up"
-              : `candidate, ${slice.slice.all.counted} of ${golden.data?.confirmFrom ?? 50}`;
+          : slice.status === "full"
+            ? "full stake suggested"
+            : slice.status === "trial"
+              ? "small Live trial suggested"
+              : slice.status === "not holding up"
+                ? "not holding up"
+                : slice.status === "candidate"
+                  ? `candidate, ${slice.slice.all.counted} of ${golden.data?.trialFrom ?? 150}`
+                  : `being watched, ${slice.slice.all.counted} of ${golden.data?.candidateFrom ?? 50}`;
         return (
           <p key={seg.id} className="text-xs text-ink-muted">
             <SegmentLabel label={seg.label} status={slice?.status} /> · {status} · <span className={cfg?.live || (!cfg && strategyLive) ? "font-medium text-ink" : ""}>{what}</span>

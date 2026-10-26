@@ -300,8 +300,8 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
   const status = bestStatus(segs.map((s) => sliceStatus(strategyKey(pick.strategy), s.id)));
 
   return (
-    // The gold edge is kept for an alert in a slice that has proved itself; a candidate only gets the outlined badge.
-    <li className={status === "golden" ? "gold-row" : undefined}>
+    // The gold edge is kept for an alert in a slice at full stake; a candidate or trial only gets the outlined badge.
+    <li className={status === "full" ? "gold-row" : undefined}>
       <button
         type="button"
         aria-expanded={open}

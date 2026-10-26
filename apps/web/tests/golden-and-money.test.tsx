@@ -33,25 +33,29 @@ test("colour: green above zero, red below, and what rounds to zero is plain", ()
   assert.equal(toneOf(null, "text-ink-muted"), "text-ink-muted");
 });
 
-test("Golden badge: metal only once proved; a candidate is outlined; not holding up is red", () => {
-  assert.match(renderToStaticMarkup(<GoldenBadge status="golden" />), /gold-chip font-semibold[^"]*">.*Golden/);
-  const candidate = renderToStaticMarkup(<GoldenBadge status="candidate" candidate="Candidate · 7 of 50" />);
+test("Golden badge: metal only at full stake; a trial or candidate is outlined; not holding up is red", () => {
+  assert.match(renderToStaticMarkup(<GoldenBadge status="full" />), /gold-chip font-semibold[^"]*">.*Golden/);
+  const candidate = renderToStaticMarkup(<GoldenBadge status="candidate" candidate="Candidate · 7 of 150" />);
   assert.match(candidate, /gold-chip-outline/);
-  assert.match(candidate, /Candidate · 7 of 50/);
+  assert.match(candidate, /Candidate · 7 of 150/);
   assert.doesNotMatch(candidate, /gold-chip font/);
+  const trial = renderToStaticMarkup(<GoldenBadge status="trial" trial="Live trial suggested · 150 of 300" />);
+  assert.match(trial, /gold-chip-outline/);
+  assert.match(trial, /Live trial suggested · 150 of 300/);
   assert.match(renderToStaticMarkup(<GoldenBadge status="not holding up" />), /text-loss[^>]*>Not holding up/);
   assert.match(renderToStaticMarkup(<GoldenBadge status={null} />), /Being watched/);
 });
 
-test("Golden label: the word is gold only for a proved slice", () => {
-  assert.match(renderToStaticMarkup(<SegmentLabel label="Golden: 0-0" status="golden" />), /text-gold/);
+test("Golden label: the word is gold only once at full stake", () => {
+  assert.match(renderToStaticMarkup(<SegmentLabel label="Golden: 0-0" status="full" />), /text-gold/);
   assert.doesNotMatch(renderToStaticMarkup(<SegmentLabel label="Golden: 0-0" status="candidate" />), /text-gold/);
   assert.equal(sliceName("Golden: 2+ goals apart"), "2+ goals apart");
 });
 
-test("an alert in several slices shows the best status: Golden, then candidate, then not holding up", () => {
-  assert.equal(bestStatus(["candidate", "golden", null]), "golden");
+test("an alert in several slices shows the best stage: full, then trial, candidate, then not holding up", () => {
+  assert.equal(bestStatus(["candidate", "full", null]), "full");
   assert.equal(bestStatus(["not holding up", "candidate"]), "candidate");
+  assert.equal(bestStatus(["trial", "candidate"]), "trial");
   assert.equal(bestStatus([null, null]), null);
 });
 

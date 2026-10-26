@@ -1,5 +1,5 @@
 /**
- * LAY badges (server/lay-badges.ts): a LAY group proves itself the same way Golden does, from its own settled picks.
+ * LAY badges (server/lay-badges.ts): a LAY group goes through the same stages as Golden, from its own settled picks.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -7,7 +7,7 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { LAY_CHAT, LAY_GROUPS, layText } from "../src/inplayguru/lay-groups";
-import { layGroupRecords, monitorLayBadges } from "../src/server/lay-badges";
+import { CANDIDATE_FROM, layGroupRecords, monitorLayBadges } from "../src/server/lay-badges";
 
 const group = LAY_GROUPS[1]!; // "LAY next goal · Wake-up Call 1 goal apart"
 const header = group.header.toLowerCase();
@@ -28,28 +28,27 @@ function addPicks(db: EngineDb, results: Array<"hit" | "miss">, fromSecsAgo: num
   });
 }
 
-test("a LAY group is a candidate under 50 picks, proved at 50+ winning in both halves, and shown with a badge", () => {
-  const db = new EngineDb(":memory:", () => {});
-  saveSendingSettings(db, { stakes: { [header]: 1 }, dailyCap: 1000 });
-  addPicks(db, Array.from({ length: 20 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 900, 1);
-  assert.equal(layGroupRecords(db).find((r) => r.key === header)!.status, "candidate");
-
-  addPicks(db, Array.from({ length: 30 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 600, 21);
-  const rec = layGroupRecords(db).find((r) => r.key === header)!;
-  assert.equal(rec.n, 50);
-  assert.equal(rec.status, "proved");
-  assert.ok(rec.halves[0]! >= 0.03 && rec.halves[1]! >= 0.03, "beats the rule in both halves");
-});
-
-test("notifies once when proved, and once when it loses the badge on a bad last 30", async () => {
+test("a LAY group is quiet under 100 picks, a candidate at 100+ in profit", () => {
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { stakes: { [header]: 1 }, dailyCap: 1000 });
   addPicks(db, Array.from({ length: 50 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 900, 1);
-  await monitorLayBadges(db, new Date(Date.now() - 700_000)); // first run: records it, says nothing
-  assert.equal(layGroupRecords(db).find((r) => r.key === header)!.status, "proved");
+  assert.equal(layGroupRecords(db).find((r) => r.key === header)!.status, "quiet");
 
-  // The next 30 lose badly: the badge goes even though the group is still up overall.
-  addPicks(db, Array.from({ length: 30 }, (_, i) => (i % 3 === 0 ? "hit" : "miss")), 600, 51);
+  addPicks(db, Array.from({ length: CANDIDATE_FROM - 50 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 600, 51);
+  const rec = layGroupRecords(db).find((r) => r.key === header)!;
+  assert.equal(rec.n, CANDIDATE_FROM);
+  assert.equal(rec.status, "candidate");
+});
+
+test("notifies once when it reaches candidate, and once when it loses the stage on a bad last 30", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { stakes: { [header]: 1 }, dailyCap: 1000 });
+  addPicks(db, Array.from({ length: CANDIDATE_FROM }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 900, 1);
+  await monitorLayBadges(db, new Date(Date.now() - 700_000)); // first run: records it, says nothing
+  assert.equal(layGroupRecords(db).find((r) => r.key === header)!.status, "candidate");
+
+  // The next 30 lose badly: the stage goes even though the group is still up overall.
+  addPicks(db, Array.from({ length: 30 }, (_, i) => (i % 3 === 0 ? "hit" : "miss")), 600, CANDIDATE_FROM + 1);
   const lost = layGroupRecords(db).find((r) => r.key === header)!;
   assert.equal(lost.status, "not holding up");
   assert.match(lost.why!, /last 30 picks/);

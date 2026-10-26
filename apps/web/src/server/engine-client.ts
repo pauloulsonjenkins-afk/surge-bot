@@ -1793,8 +1793,8 @@ export interface LayGroupInfo {
   whole: boolean;
   why: string;
   custom: boolean;
-  /** Its badge (lay-badges.ts): proved after proveFrom picks at +3%+ per £1 of liability in both halves of its record. */
-  badge: { status: "candidate" | "proved" | "not holding up"; n: number; roi: number | null; halves: [number | null, number | null]; why: string | null } | null;
+  /** Its stage (lay-badges.ts): quiet, candidate, a small Live trial suggested, full stake suggested, or not holding up. */
+  badge: { status: "quiet" | "candidate" | "trial" | "full" | "not holding up"; n: number; roi: number | null; halves: [number | null, number | null]; why: string | null } | null;
 }
 export interface LayIdea {
   strategyKey: string;
@@ -1810,7 +1810,12 @@ export interface LayIdea {
 export interface LayReport {
   groups: LayGroupInfo[];
   ideas: { at: string; list: LayIdea[] };
-  proveFrom?: number;
+  /** Below this many priced picks a LAY group is still being watched, not yet a candidate. */
+  candidateFrom?: number;
+  /** A small Live trial (1% liability, with a stop loss) is suggested from this many picks, if in profit in both halves. */
+  trialFrom?: number;
+  /** Full stake is suggested from this many picks, once its own Live bets are themselves in profit. */
+  fullFrom?: number;
 }
 
 export function getLayReport(): Promise<LayReport> {
@@ -1952,12 +1957,12 @@ export interface GoldenSlice {
   auto?: boolean;
   /** Still under CANDIDATE_FROM picks, added by the finder: shown in its own collapsed section, not the main list. */
   quiet?: boolean;
-  status: "candidate" | "golden" | "not holding up";
-  /** Why it isn't (or is no longer) Golden, in words; null when it is, or is still a candidate. */
+  status: "quiet" | "candidate" | "trial" | "full" | "not holding up";
+  /** Why it isn't (or is no longer) holding up, in words; null otherwise. */
   why?: string | null;
-  /** Its last 30 priced picks: once Golden, these must not lose more than 5% per £1. */
+  /** Its last 30 priced picks: from candidate on, these must not lose more than 5% per £1. */
   recent?: { n: number; won: number; roi: number | null };
-  /** When it last lost the badge (it must re-prove itself on picks after this); null if never. */
+  /** When it last lost its stage (it must re-prove itself on picks after this); null if never. */
   lostAt?: string | null;
   slice: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
   rest: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
@@ -1979,9 +1984,12 @@ export interface GoldenSuggestion {
 export interface GoldenReport {
   slices: GoldenSlice[];
   suggestions: { at: string; list: GoldenSuggestion[] };
-  confirmFrom: number;
-  /** Below this many priced picks a finder-watched slice is shown quietly, with no notification. */
+  /** Below this many priced picks a finder-watched slice is shown quietly, with no notification; at it, a candidate. */
   candidateFrom?: number;
+  /** A small Live trial (1%, with a stop loss) is suggested from this many picks, if in profit in both halves. */
+  trialFrom?: number;
+  /** Full stake is suggested from this many picks, once the Live trial is itself in profit. */
+  fullFrom?: number;
   /** The Golden safety check: back to Sim after this many own Live bets below this return. */
   safety?: { minBets: number; worstRoi: number };
   /** Golden alert notifications: none between 23:00 and 07:00 UK while on. */

@@ -104,7 +104,7 @@ import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
-import { layGroupRecords, PROVE_FROM } from "./lay-badges";
+import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
 import { layGroups, unwatchLayGroup, watchLayGroup } from "../inplayguru/lay-groups";
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
@@ -157,7 +157,9 @@ function layReport(db: EngineDb): Record<string, unknown> {
       };
     }),
     ideas: { at: ideas.at, list: ideas.list.filter((i) => !whole.has(i.strategyKey) && !laid.has(`${i.strategyKey}#${[...i.rule].sort().join("+")}`)) },
-    proveFrom: PROVE_FROM,
+    candidateFrom: LAY_CANDIDATE_FROM,
+    trialFrom: LAY_TRIAL_FROM,
+    fullFrom: LAY_FULL_FROM,
   };
 }
 

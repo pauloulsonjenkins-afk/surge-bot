@@ -1,6 +1,6 @@
 /**
  * The Golden safety check: a slice bet Live on its own goes back to Sim when its own Live bets lose more than 5% per
- * £1 over 30+ bets (or it stops being Golden). Turning it back on is the admin's.
+ * £1 over 30+ bets (or it stops holding up). Turning it back on is the admin's.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -44,7 +44,7 @@ test("left Live while it's winning, or before 30 bets", async () => {
   assert.deepEqual(await monitorGoldenBets(setup(Array.from({ length: 10 }, () => "miss"))), []);
 });
 
-test("Golden has to keep earning it: a bad last 30 loses the badge at once, and only 30 good picks after win it back", async () => {
+test("a watched slice has to keep earning its stage: a bad last 30 loses it at once, and only 30 good picks after win it back", async () => {
   const { goldenReport } = await import("../src/server/golden");
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { enabled: true, stakes: { "time to fight": 1 }, strategies: { "time to fight": false }, dailyCap: 1000, maxAgeMinutes: 60 });
@@ -59,11 +59,11 @@ test("Golden has to keep earning it: a bad last 30 loses the badge at once, and 
       db.upsertLivePick("chat", n, alert(n, r), parseAlert(alert(n, r)), at, at);
     });
   const status = () => goldenReport(db, new Date(), { skipFinder: true }).slices.find((s) => s.id === "two-apart")!;
-  // 60 picks, two wins in three at 2.00: Golden.
+  // 60 picks, two wins in three at 2.00: in profit, so a candidate (50+, under the 150 needed for a Live trial).
   add(Array.from({ length: 60 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 900);
-  assert.equal(status().status, "golden");
+  assert.equal(status().status, "candidate");
   await monitorGoldenBets(db, new Date(T - 700_000)); // first run: records it, says nothing
-  // The next 30 lose badly: still well up overall (+10%), but the badge goes.
+  // The next 30 lose badly: still well up overall (+10%), but the stage goes.
   add(Array.from({ length: 30 }, (_, i) => (i % 3 === 0 ? "hit" : "miss")), 600);
   assert.equal(status().status, "not holding up");
   assert.match(status().why!, /last 30 picks/);
@@ -72,7 +72,7 @@ test("Golden has to keep earning it: a bad last 30 loses the badge at once, and 
   add(Array.from({ length: 20 }, () => "hit"), 300);
   assert.equal(status().status, "not holding up");
   assert.match(status().why!, /re-proving/);
-  // 30 good picks after the loss: Golden again.
+  // 30 good picks after the loss: a candidate again.
   add(Array.from({ length: 10 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 100);
-  assert.equal(status().status, "golden");
+  assert.equal(status().status, "candidate");
 });

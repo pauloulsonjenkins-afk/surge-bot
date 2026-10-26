@@ -28,6 +28,8 @@ function LayCard({
   custom,
   header,
   badge,
+  trialFrom,
+  fullFrom,
   bet,
   settings,
   bank,
@@ -39,6 +41,8 @@ function LayCard({
   custom: boolean;
   header: string | null;
   badge?: LayGroupInfo["badge"];
+  trialFrom: number;
+  fullFrom: number;
   bet?: SendingStrategy;
   settings?: SendingSettings;
   bank?: SendingState["bank"];
@@ -58,7 +62,13 @@ function LayCard({
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
             {names.name(row.label)} <ModeBadge mode={live ? "live" : "sim"} />
-            {badge && <GoldenBadge status={badge.status === "proved" ? "golden" : badge.status} candidate={`Candidate · ${badge.n}`} />}
+            {badge && (
+              <GoldenBadge
+                status={badge.status}
+                candidate={`Candidate · ${badge.n} of ${trialFrom}`}
+                trial={`Live trial suggested · ${badge.n} of ${fullFrom}`}
+              />
+            )}
           </span>
           <span className="mt-0.5 block text-xs text-ink-muted">{why || "InPlayGuru's own lay strategy."}</span>
           {/* Live or Sim, as on every strategy card (asks first before real money). */}
@@ -206,6 +216,8 @@ export function LaySection({
   const info = new Map((lay.data?.groups ?? []).map((g) => [g.key, g]));
   const sorted = [...rows].sort((a, b) => Number(b.sendingOn) - Number(a.sendingOn) || a.label.localeCompare(b.label));
   const ideas = lay.data?.ideas.list ?? [];
+  const trialFrom = lay.data?.trialFrom ?? 300;
+  const fullFrom = lay.data?.fullFrom ?? 500;
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-line bg-surface p-3.5 text-xs text-ink-muted">
@@ -231,6 +243,8 @@ export function LaySection({
                 custom={g?.custom ?? false}
                 header={g?.header ?? null}
                 badge={g?.badge ?? null}
+                trialFrom={trialFrom}
+                fullFrom={fullFrom}
                 bet={betOf(r.label)}
                 settings={settings}
                 bank={bank}
