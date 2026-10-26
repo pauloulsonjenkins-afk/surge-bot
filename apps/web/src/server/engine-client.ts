@@ -2052,3 +2052,22 @@ export function fetchClaudeVerdictCheck(): Promise<ClaudeVerdictCheck> {
 export function setClaudeBadgeVisible(badgeVisible: boolean): Promise<ClaudeVerdictCheck> {
   return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check", { method: "PUT", body: { badgeVisible } });
 }
+
+/** Claude's latest daily and weekly written notes (engine claude-review.ts). Advice to read, never a setting. */
+export interface ClaudeReviewNote {
+  kind: "daily" | "weekly";
+  note: string;
+  generatedAt: string;
+}
+export interface ClaudeReviews {
+  configured: boolean;
+  notes: Partial<Record<"daily" | "weekly", ClaudeReviewNote>>;
+}
+export function fetchClaudeReviews(): Promise<ClaudeReviews> {
+  return engineCall<ClaudeReviews>("/internal/claude-review", "Claude's review");
+}
+
+/** Ask Claude one question about one pick (engine claude-ask.ts). Advice only. */
+export function askClaudeAboutPick(id: number, question: string): Promise<{ answer: string }> {
+  return engineCall<{ answer: string }>("/internal/picks/ask", "Claude", { method: "POST", body: { id, question }, timeoutMs: 60000 });
+}
