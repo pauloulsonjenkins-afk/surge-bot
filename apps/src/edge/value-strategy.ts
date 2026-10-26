@@ -139,7 +139,7 @@ function detailFor(card: EdgeCard, trend: EdgeTrend, selection: string): ParsedA
     goalsHome: null,
     goalsAway: null,
     stats: {},
-    odds: { preMatch1x2: null, live1x2: null, overUnderLine: null, over: null, under: null },
+    odds: { preMatch1x2: null, live1x2: null, overUnderLine: null, over: null, under: null, lines: [] },
     matched: null,
     strikeRate: null,
     freePick: null,

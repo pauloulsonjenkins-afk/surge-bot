@@ -93,9 +93,17 @@ export interface ParsedAlert {
   odds: {
     preMatch1x2: [number, number, number] | null;
     live1x2: [number, number, number] | null;
+    /** Unchanged from before owner-added tags existed: the last "Over/Under X Odds:" block found, which is the only
+     * one every alert used to carry. Every market here still prices off this. */
     overUnderLine: number | null;
     over: number | null;
     under: number | null;
+    /**
+     * Every "Over/Under X Odds:" block found, in the order they appear — e.g. an owner-added tag giving both
+     * Over 1.5 and Over 2.5 prices on the same alert. Purely additive: `overUnderLine`/`over`/`under` above are
+     * set exactly as before, so no existing code reading them is affected.
+     */
+    lines: Array<{ line: number; over: number; under: number }>;
   };
 
   matched: number | null;
@@ -387,6 +395,7 @@ export function parseAlert(text: string): ParsedAlert {
     overUnderLine: null,
     over: null,
     under: null,
+    lines: [],
   };
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i] ?? "";
@@ -396,11 +405,16 @@ export function parseAlert(text: string): ParsedAlert {
     else {
       const ou = l.match(/^Over\/Under\s+(\d+(?:\.\d+)?)\s+Odds:?$/i);
       if (ou?.[1]) {
-        odds.overUnderLine = Number(ou[1]);
+        const line = Number(ou[1]);
+        odds.overUnderLine = line;
         const p = pair(next);
         if (p) {
           odds.over = p[0];
           odds.under = p[1];
+          // Owner-added tags (phase 3, docs/claude-in-goalbrew.md): a second (or third) Over/Under block on the
+          // same alert, e.g. Over 1.5 and Over 2.5 prices together. Collected in order; the singular fields above
+          // are untouched, so this is purely additive.
+          odds.lines.push({ line, over: p[0], under: p[1] });
         }
       }
     }

@@ -37,5 +37,5 @@ const OPEN_MS = 48 * 60 * 60 * 1000;
  * Which picks were bet is private, as on /api/stats (which keeps the Live / Sim split and the money to the admin).
  */
 function hidePrivate(p: PublicPick): PublicPick {
-  return { ...p, sentAt: null, exchange: null, exchangeEvent: null, exchangeOdds: null, marketCheck: null, marketCheckDetail: null, exchangeCandidates: null };
+  return { ...p, sentAt: null, exchange: null, exchangeEvent: null, exchangeOdds: null, marketCheck: null, marketCheckDetail: null, exchangeCandidates: null, claudeVerdict: null };
 }

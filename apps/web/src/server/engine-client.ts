@@ -68,6 +68,12 @@ export interface LivePick {
   waitingClearedAt?: string | null;
   /** Watched slices this pick is in, e.g. Second Pour's Golden (missing on an older engine). */
   segments?: Array<{ id: string; label: string }>;
+  /**
+   * Claude's advisory second opinion on this one alert (server/claude-check.ts), when a verdict has landed —
+   * null until it does, or if ANTHROPIC_API_KEY isn't set on the engine. Never used to place, skip or gate a bet;
+   * admin display only.
+   */
+  claudeVerdict?: { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string; checkedAt: string } | null;
   /** Not found on Betfair: the nearest events its search returned, to choose from (missing on an older engine). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
@@ -159,6 +165,11 @@ export interface PublicPick {
   waitingClearedAt?: string | null;
   /** Watched slices this pick is in, e.g. Second Pour's Golden. */
   segments?: Array<{ id: string; label: string }>;
+  /**
+   * Claude's advisory second opinion on this one alert (server/claude-check.ts), when a verdict has landed
+   * (admin only — stripped for everyone else, like which picks were bet). Never used to place, skip or gate a bet.
+   */
+  claudeVerdict?: { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string; checkedAt: string } | null;
   /** Not found on Betfair: the nearest events its search returned (admin only). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   flags: string[];
@@ -202,6 +213,7 @@ export function toPublicPick(p: LivePick): PublicPick {
     marketCheckDetail: p.marketCheckDetail ?? null,
     waitingClearedAt: p.waitingClearedAt ?? null,
     segments: p.segments ?? [],
+    claudeVerdict: p.claudeVerdict ?? null,
     exchangeCandidates: p.exchangeCandidates ?? null,
     flags: p.flags,
     detail: p.detail
@@ -2010,4 +2022,33 @@ export type GoldenActionBody =
 export function goldenAction(body: GoldenActionBody): Promise<GoldenReport> {
   const path = { watch: "/internal/golden/watch", unwatch: "/internal/golden/unwatch", notify: "/internal/golden/notify", quiet: "/internal/golden/notify" }[body.action];
   return engineCall<GoldenReport>(path, "Golden", { method: "POST", body, timeoutMs: 30000 });
+}
+
+/**
+ * Claude's per-alert verdicts (server/claude-check.ts) compared against settled results, by verdict, once enough
+ * have settled (server/claude-verdict-check.ts). Advisory only: the badge switch below only shows/hides a Live
+ * tab badge, it never touches a bet.
+ */
+export interface ClaudeVerdictRow {
+  n: number;
+  hits: number;
+  hitRate: number | null;
+  counted: number;
+  roi: number | null;
+}
+export interface ClaudeVerdictCheck {
+  settledCount: number;
+  threshold: number;
+  ready: boolean;
+  byVerdict: { stronger: ClaudeVerdictRow; in_line: ClaudeVerdictRow; weaker: ClaudeVerdictRow };
+  summary: string;
+  badgeVisible: boolean;
+}
+
+export function fetchClaudeVerdictCheck(): Promise<ClaudeVerdictCheck> {
+  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check");
+}
+
+export function setClaudeBadgeVisible(badgeVisible: boolean): Promise<ClaudeVerdictCheck> {
+  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check", { method: "PUT", body: { badgeVisible } });
 }
