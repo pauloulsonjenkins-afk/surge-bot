@@ -2006,3 +2006,32 @@ export function goldenAction(body: GoldenActionBody): Promise<GoldenReport> {
   const path = { watch: "/internal/golden/watch", unwatch: "/internal/golden/unwatch", notify: "/internal/golden/notify", quiet: "/internal/golden/notify" }[body.action];
   return engineCall<GoldenReport>(path, "Golden", { method: "POST", body, timeoutMs: 30000 });
 }
+
+/**
+ * Claude's per-alert verdicts (server/claude-check.ts) compared against settled results, by verdict, once enough
+ * have settled (server/claude-verdict-check.ts). Advisory only: the badge switch below only shows/hides a Live
+ * tab badge, it never touches a bet.
+ */
+export interface ClaudeVerdictRow {
+  n: number;
+  hits: number;
+  hitRate: number | null;
+  counted: number;
+  roi: number | null;
+}
+export interface ClaudeVerdictCheck {
+  settledCount: number;
+  threshold: number;
+  ready: boolean;
+  byVerdict: { stronger: ClaudeVerdictRow; in_line: ClaudeVerdictRow; weaker: ClaudeVerdictRow };
+  summary: string;
+  badgeVisible: boolean;
+}
+
+export function fetchClaudeVerdictCheck(): Promise<ClaudeVerdictCheck> {
+  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check");
+}
+
+export function setClaudeBadgeVisible(badgeVisible: boolean): Promise<ClaudeVerdictCheck> {
+  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check", { method: "PUT", body: { badgeVisible } });
+}

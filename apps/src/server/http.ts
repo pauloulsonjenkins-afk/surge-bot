@@ -10,6 +10,7 @@
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
  *   GET  /internal/claude-review                  Claude's latest daily/weekly written notes (advisory, see claude-review.ts) (admin site only)
  *   POST /internal/picks/ask {id, question}        ask Claude about one pick (advisory, see claude-ask.ts) (admin site only)
+ *   GET/PUT /internal/claude-verdict-check          Claude's per-alert verdicts vs settled results, and the badge's shadow-mode switch (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
  *   GET  /internal/notifications               every notification sent to the admin, last 60 days (admin site only)
  *   GET  /internal/lay-groups                  the LAY groups (what each lays and why) and the lay ideas (admin site only)
@@ -112,6 +113,7 @@ import { goldenReport, unwatchSegment, watchSegment } from "./golden";
 import { setGoldenNotify } from "./golden-notify";
 import { claudeReviewConfigured, getClaudeReviewNotes } from "./claude-review";
 import { askAboutPick, claudeAskConfigured } from "./claude-ask";
+import { claudeBadgeVisible, computeClaudeVerdictCheck, setClaudeBadgeVisible } from "./claude-verdict-check";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -364,10 +366,12 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           // Profit per settled pick, for the admin's Trade Log. Worked out exactly as Win/Loss does.
           const oldest = picks.reduce<string | null>((min, p) => (min === null || p.firstSeenAt < min ? p.firstSeenAt : min), null);
           const profits = oldest ? computePickProfits(db, oldest) : {};
-          // Claude's per-alert second opinion (claude-check.ts), when one has landed: advisory only, shown as a badge.
-          const verdicts = db.getClaudeVerdicts(picks.map((p) => p.id));
+          // Claude's per-alert second opinion (claude-check.ts): shadow mode by default (claude-verdict-check.ts) —
+          // verdicts are stored and the verdict-check page can read them, but nothing is shown here as a badge
+          // until the admin turns it on, once the check shows the warnings actually predict worse results.
+          const verdicts = claudeBadgeVisible(db) ? db.getClaudeVerdicts(picks.map((p) => p.id)) : null;
           // Watched slices each pick is in (e.g. Second Pour's Golden), for the Live tab's badge.
-          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), claudeVerdict: verdicts.get(p.id) ?? null })) };
+          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), claudeVerdict: verdicts?.get(p.id) ?? null })) };
         }),
       );
       return;
@@ -487,6 +491,21 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         log.warn(`Ask about pick ${id} failed: ${err instanceof Error ? err.message : String(err)}.`);
         send(res, 502, { error: "claude_failed" });
       }
+      return;
+    }
+
+    // Claude's per-alert verdicts vs settled results, and the badge's shadow-mode switch (claude-verdict-check.ts).
+    if (path === "/internal/claude-verdict-check" && (req.method === "GET" || req.method === "PUT")) {
+      if (!requireAdmin(req, res)) return;
+      if (req.method === "PUT") {
+        const body = await readJsonBody(req);
+        if (typeof body.badgeVisible !== "boolean") {
+          send(res, 400, { error: "badgeVisible_must_be_boolean" });
+          return;
+        }
+        setClaudeBadgeVisible(db, body.badgeVisible);
+      }
+      send(res, 200, { ...computeClaudeVerdictCheck(db) });
       return;
     }
 
