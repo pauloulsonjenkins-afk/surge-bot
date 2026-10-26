@@ -33,6 +33,8 @@ const TOLD_KEY = "golden_suggestions_told";
 const SIX_HOURS = 6 * 3_600_000;
 
 export const CONFIRM_FROM = 50;
+/** A finder-watched slice is shown quietly, with no notification, until it has this many priced picks. */
+export const CANDIDATE_FROM = 30;
 /** Keeping the badge: the last `recent` priced picks may not lose more than `worstRoi`; once lost, `regainFrom` picks
  * after the loss at `regainRoi` or better win it back. */
 export const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0.03 };
@@ -42,6 +44,8 @@ interface Badge {
   golden: boolean;
   /** When it last lost the badge; cleared when it wins it back. */
   lostAt?: string;
+  /** The CANDIDATE_FROM notification has already gone out (never repeated, even if it later drops below it again). */
+  candidateTold?: boolean;
 }
 function badges(db: EngineDb): Record<string, Badge> {
   try {
@@ -70,6 +74,12 @@ export function loadCustomSegments(db: EngineDb): CustomSegment[] {
   } catch {
     list = [];
   }
+  // Its own betting (segmentBets) is always keyed lower-case; an id saved with mixed case (older slices) would never
+  // be found there, so normalize it once here rather than leaving that mismatch to every lookup site.
+  if (list.some((c) => c.id !== c.id.toLowerCase())) {
+    list = list.map((c) => ({ ...c, id: c.id.toLowerCase() }));
+    db.setSetting(CUSTOM_KEY, JSON.stringify(list));
+  }
   setCustomSegments(list);
   return list;
 }
@@ -79,19 +89,19 @@ function saveCustom(db: EngineDb, list: CustomSegment[]): void {
   setCustomSegments(list);
 }
 
-const ruleId = (rule: Feature[]) => [...rule].sort().join("+");
+const ruleId = (rule: Feature[]) => [...rule].sort().join("+").toLowerCase();
 
-/** Starts watching a suggested slice from now. */
-export function watchSegment(db: EngineDb, strategyKey: string, rule: Feature[], now = new Date()): CustomSegment {
+/** Starts watching a suggested slice from now. `auto` marks one the finder added itself (watched quietly). */
+export function watchSegment(db: EngineDb, strategyKey: string, rule: Feature[], now = new Date(), auto = false): CustomSegment {
   // The finder makes one or two parts; a slice set up by hand may add a third (e.g. leaving out some countries).
   if (!Array.isArray(rule) || rule.length === 0 || rule.length > 3 || !rule.every((r) => r in FEATURES)) throw new Error("That isn't a rule the finder makes.");
   const key = strategyKey.toLowerCase();
   const id = `f-${ruleId(rule)}`;
   const list = loadCustomSegments(db);
   if (segmentsOf(key).some((s) => s.id === id || (s.rule && ruleId(s.rule) === ruleId(rule)))) throw new Error("That one is already being watched.");
-  const c: CustomSegment = { strategyKey: key, id, rule, since: now.toISOString() };
+  const c: CustomSegment = { strategyKey: key, id, rule, since: now.toISOString(), ...(auto ? { auto: true } : {}) };
   saveCustom(db, [...list, c]);
-  log.info(`Golden: now watching ${ruleLabel(rule)} for ${displayName(db, key)}.`);
+  log.info(`Golden: now watching ${ruleLabel(rule)} for ${displayName(db, key)}${auto ? " (found by the finder, watched quietly)" : ""}.`);
   return c;
 }
 
@@ -202,8 +212,11 @@ export function goldenSuggestions(db: EngineDb, now = new Date(), force = false)
   return fresh;
 }
 
-/** Hourly: one notification when the finder has new suggestions. */
-export async function notifyGoldenSuggestions(db: EngineDb, now = new Date()): Promise<number> {
+/**
+ * Hourly: the finder's new ideas are watched at once, quietly (no notification) and counted from today. Each is kept
+ * on `TOLD_KEY` once handled, so stopping one by hand (Golden page) doesn't bring it straight back next run.
+ */
+export function autoWatchGoldenFinds(db: EngineDb, now = new Date()): CustomSegment[] {
   const { list } = goldenSuggestions(db, now);
   let told: string[] = [];
   try {
@@ -213,17 +226,17 @@ export async function notifyGoldenSuggestions(db: EngineDb, now = new Date()): P
   }
   const id = (g: GoldenSuggestion) => `${g.strategyKey}#${ruleId(g.rule)}`;
   const fresh = list.filter((g) => !told.includes(id(g)));
-  if (fresh.length === 0) return 0;
+  if (fresh.length === 0) return [];
   db.setSetting(TOLD_KEY, JSON.stringify([...told, ...fresh.map(id)].slice(-200)));
-  const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
-  const first = fresh[0]!;
-  await sendPush(db, {
-    title: fresh.length === 1 ? "Golden finder: an idea to watch" : `Golden finder: ${fresh.length} ideas to watch`,
-    body: `${first.strategy}, ${first.label.replace(/^Golden: /, "")}: ${pct(first.slice.roi)} per £1 over ${first.slice.n} picks (the rest ${pct(first.rest.roi)}).${fresh.length > 1 ? ` And ${fresh.length - 1} more.` : ""} Tap to watch it.`,
-    url: "/more/admin/golden",
-    tag: "golden-finder",
-  });
-  return fresh.length;
+  const added: CustomSegment[] = [];
+  for (const g of fresh) {
+    try {
+      added.push(watchSegment(db, g.strategyKey, g.rule, now, true));
+    } catch (err) {
+      log.warn(`Golden finder: couldn't watch ${g.label} for ${g.strategy}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return added;
 }
 
 export type GoldenStatus = "candidate" | "golden" | "not holding up";
@@ -263,10 +276,11 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
       const lostAt = held[`${key}#${s.id}`]?.lostAt ?? null;
       const regain = lostAt ? tally(picks.filter((p) => p.at >= lostAt)) : null;
       const pctOf = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
+      const qualifies = inn.roi !== null && inn.roi >= 0.03 && (rest.roi === null || inn.roi > rest.roi);
       let status: GoldenStatus = "golden";
       let why: string | null = null;
       if (inn.counted < CONFIRM_FROM) status = "candidate";
-      else if (!(inn.roi !== null && inn.roi >= 0.03 && (rest.roi === null || inn.roi > rest.roi))) {
+      else if (!qualifies) {
         status = "not holding up";
         why = `${pctOf(inn.roi)} per £1 since it started, against ${pctOf(rest.roi)} for the rest`;
       } else if (recent.n >= KEEP.recent && recent.roi !== null && recent.roi < KEEP.worstRoi) {
@@ -276,6 +290,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         status = "not holding up";
         why = `re-proving after losing the badge: ${regain.n} of ${KEEP.regainFrom} picks, ${pctOf(regain.roi)} per £1 (needs ${pctOf(KEEP.regainRoi)})`;
       }
+      const auto = s.auto === true;
       const bet = settings.segmentBets[`${key}#${s.id}`] ?? null;
       const ownLive = bet?.live && bet.liveSince ? liveSinceRecord(db, key, s.id, bet.liveSince) : null;
       slices.push({
@@ -286,8 +301,12 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         label: s.label,
         since: s.since,
         custom: s.custom,
+        auto,
+        // Found by the finder and not yet at CANDIDATE_FROM picks: watched quietly, in its own collapsed section.
+        quiet: auto && inn.counted < CANDIDATE_FROM,
         status,
         why,
+        qualifies,
         recent,
         lostAt,
         slice: { live: s.in.live, sim: s.in.sim, all: inn },
@@ -305,6 +324,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
     for (const s of segmentsOf(key)) {
       if (slices.some((x) => x.strategyKey === key && x.id === s.id)) continue;
       const bet = settings.segmentBets[`${key}#${s.id}`] ?? null;
+      const auto = s.auto === true;
       slices.push({
         strategyKey: key,
         strategy: displayName(db, key),
@@ -313,8 +333,11 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         label: s.label,
         since: s.since,
         custom: s.custom === true,
+        auto,
+        quiet: auto,
         status: "candidate" as GoldenStatus,
         why: null,
+        qualifies: false,
         recent: { n: 0, won: 0, roi: null } as Tally,
         lostAt: null,
         slice: { live: empty(), sim: empty(), all: empty() },
@@ -329,6 +352,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
     slices,
     suggestions: opts.skipFinder ? { at: now.toISOString(), list: [] } : goldenSuggestions(db, now),
     confirmFrom: CONFIRM_FROM,
+    candidateFrom: CANDIDATE_FROM,
     safety: SAFETY,
     // Golden alert notifications: quiet hours on or off (each slice's own switch is on the slice).
     notifyQuiet: notify.quiet,
@@ -365,7 +389,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
   const settings = getSendingSettings(db);
   const live = Object.entries(settings.segmentBets).filter(([, c]) => c.live);
   const report = goldenReport(db, now, { skipFinder: true });
-  await updateBadges(db, report.slices, now);
+  await updateBadges(db, report.slices.map((s) => ({ ...s, counted: s.slice.all.counted })), now);
   if (live.length === 0) return [];
   const off: string[] = [];
   for (const [k, cfg] of live) {
@@ -393,7 +417,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
  */
 export async function updateBadges(
   db: EngineDb,
-  slices: Array<{ strategyKey: string; id: string; label: string; status: GoldenStatus; why: string | null }>,
+  slices: Array<{ strategyKey: string; id: string; label: string; status: GoldenStatus; why: string | null; auto?: boolean; qualifies?: boolean; counted?: number }>,
   now = new Date(),
 ): Promise<void> {
   const first = db.getSetting(BADGES_KEY) === null;
@@ -403,14 +427,25 @@ export async function updateBadges(
     const k = `${s.strategyKey}#${s.id}`;
     const was = held[k];
     const name = `${displayName(db, s.strategyKey)}, ${s.label.replace(/^Golden: /, "")}`;
+    // A finder-watched slice that's made it to CANDIDATE_FROM picks and is still beating the rest: told once, and
+    // shown as a Golden candidate from here (the owner's call whether to put it Live stays at CONFIRM_FROM).
+    if (s.auto && !was?.candidateTold && (s.counted ?? 0) >= CANDIDATE_FROM) {
+      if (!first && s.qualifies) tell.push({ title: "Golden candidate", body: `${name} has made ${CANDIDATE_FROM}+ priced picks beating the rest of its strategy — worth a look.`, tag: `golden-candidate-${k}` });
+      held[k] = { ...(held[k] ?? { golden: false }), candidateTold: true };
+    }
     if (s.status === "golden") {
-      if (!first && !was?.golden) tell.push({ title: was?.lostAt ? "Golden again" : "Proved Golden", body: `${name} has ${was?.lostAt ? "won its Golden badge back" : "proved itself Golden"}.`, tag: `golden-badge-${k}` });
-      held[k] = { golden: true };
+      if (!first && !was?.golden)
+        tell.push({
+          title: was?.lostAt ? "Golden again" : "Proved Golden",
+          body: `${name} has ${was?.lostAt ? "won its Golden badge back" : "proved itself Golden"}. Worth putting Live — the stake and switch are yours to set.`,
+          tag: `golden-badge-${k}`,
+        });
+      held[k] = { golden: true, ...(held[k]?.candidateTold ? { candidateTold: true } : {}) };
     } else if (s.status === "not holding up") {
       if (was?.golden) {
-        held[k] = { golden: false, lostAt: now.toISOString() };
+        held[k] = { golden: false, lostAt: now.toISOString(), ...(held[k]?.candidateTold ? { candidateTold: true } : {}) };
         if (!first) tell.push({ title: "Golden badge lost", body: `${name} has lost its Golden badge: ${s.why ?? "it stopped beating the rest"}. It has to prove itself again on new picks.`, tag: `golden-badge-${k}` });
-      } else held[k] = { golden: false, ...(was?.lostAt ? { lostAt: was.lostAt } : {}) };
+      } else held[k] = { golden: false, ...(was?.lostAt ? { lostAt: was.lostAt } : {}), ...(held[k]?.candidateTold ? { candidateTold: true } : {}) };
     }
   }
   db.setSetting(BADGES_KEY, JSON.stringify(held));

@@ -594,6 +594,8 @@ export interface SegmentReturns {
   since: string;
   /** Added from the Golden finder. */
   custom: boolean;
+  /** Added by the finder itself, quietly (golden.ts); still false once it's promoted, since promotion only notifies. */
+  auto: boolean;
   in: ModeReturns;
   out: ModeReturns;
 }
@@ -679,7 +681,7 @@ export function computeStrategyReturns(
       ...(t.byBet ? { byBet: Object.fromEntries([...t.byBet].map(([k, v]) => [k, done(v)])) } : {}),
       ...(t.byHand ? { byHand: t.byHand.result() } : {}),
       ...(t.segs?.size
-        ? { segments: segmentsOf(key).filter((s) => t.segs!.has(s.id)).map((s) => ({ id: s.id, label: s.label, since: s.since, custom: s.custom === true, in: done(t.segs!.get(s.id)!.in), out: done(t.segs!.get(s.id)!.out) })) }
+        ? { segments: segmentsOf(key).filter((s) => t.segs!.has(s.id)).map((s) => ({ id: s.id, label: s.label, since: s.since, custom: s.custom === true, auto: s.auto === true, in: done(t.segs!.get(s.id)!.in), out: done(t.segs!.get(s.id)!.out) })) }
         : {}),
     };
   }

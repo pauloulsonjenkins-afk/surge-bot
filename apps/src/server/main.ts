@@ -34,7 +34,8 @@ import { startValueSettling } from "../edge/value-strategy";
 import { startProbeOnce } from "../fixtures/probe";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { logHorseResults } from "./horse-results";
-import { loadCustomSegments, monitorGoldenBets, notifyGoldenSuggestions } from "./golden";
+import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
+import { monitorLayBadges } from "./lay-badges";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();
@@ -169,10 +170,16 @@ async function main(): Promise<void> {
     void notifyAdvice(db).catch((err) => log.warn(`Strategy suggestions failed: ${err instanceof Error ? err.message : String(err)}`));
     // Golden safety: a slice bet Live on its own goes back to Sim when it stops earning it (one notification each).
     void monitorGoldenBets(db).catch((err) => log.warn(`Golden safety check failed: ${err instanceof Error ? err.message : String(err)}`));
-    // Golden finder: one notification when it has new slices to suggest watching.
-    void notifyGoldenSuggestions(db).catch((err) => log.warn(`Golden finder failed: ${err instanceof Error ? err.message : String(err)}`));
+    // Golden finder: new ideas are watched at once, quietly (no notification; golden.ts notifies at 30 and 50 picks).
+    try {
+      autoWatchGoldenFinds(db);
+    } catch (err) {
+      log.warn(`Golden finder failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
     // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.
     void notifyLeagueMilestones(db).catch((err) => log.warn(`League milestones failed: ${err instanceof Error ? err.message : String(err)}`));
+    // LAY badges: the same idea as Golden, for LAY groups (one notification each way).
+    void monitorLayBadges(db).catch((err) => log.warn(`LAY badges failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3_600_000);
   adviceCheck.unref();
 

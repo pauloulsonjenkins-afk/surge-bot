@@ -81,6 +81,7 @@ export default function GoldenPage() {
   // Fixed when the page opens: only used to tell a start date still to come from one already passed.
   const [now] = useState(() => Date.now());
   const confirmFrom = data?.confirmFrom ?? 50;
+  const candidateFrom = data?.candidateFrom ?? 30;
   const worst = Math.abs((data?.safety?.worstRoi ?? -0.05) * 100);
   const minBets = data?.safety?.minBets ?? 30;
 
@@ -97,7 +98,9 @@ export default function GoldenPage() {
     if (ok) act.mutate({ action: "unwatch", strategyKey: s.strategyKey, id: s.id });
   };
   const checked = data ? new Date(data.suggestions.at) : null;
-  const golden = data?.slices.filter((s) => s.status === "golden").length ?? 0;
+  const mainSlices = data?.slices.filter((s) => !s.quiet) ?? [];
+  const quietSlices = data?.slices.filter((s) => s.quiet) ?? [];
+  const golden = mainSlices.filter((s) => s.status === "golden").length;
 
   return (
     // The admin layout already gives the page its side margins, so none here (they were doubled before).
@@ -141,14 +144,14 @@ export default function GoldenPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
-          <Card title="Being watched" subtitle={data.slices.length > 0 ? `${data.slices.length} watched · ${golden} proved Golden` : undefined}>
-            {data.slices.length > 0 && (
+          <Card title="Being watched" subtitle={mainSlices.length > 0 ? `${mainSlices.length} watched · ${golden} proved Golden` : undefined}>
+            {mainSlices.length > 0 && (
               <div className="mb-4 rounded-md bg-surface-2 p-3 text-xs text-ink-muted">
                 <p>
                   <span className="font-medium text-ink">Alert notifications.</span> Switch &ldquo;Notify me&rdquo; on for a slice to get a notification on
                   your phone the moment one of its alerts arrives: the match, the bet, the price and whether GoalBrew bets it. One per alert, even if
                   it&apos;s in several slices. Each notification has a &ldquo;Mute these&rdquo; button.{" "}
-                  {data.slices.filter((s) => s.notify).length} switched on.
+                  {mainSlices.filter((s) => s.notify).length} switched on.
                 </p>
                 <button
                   type="button"
@@ -163,11 +166,11 @@ export default function GoldenPage() {
                 {act.error && <p className="mt-2 text-destructive">Couldn&apos;t save that: {act.error.message}</p>}
               </div>
             )}
-            {data.slices.length === 0 ? (
+            {mainSlices.length === 0 ? (
               <p className="text-sm text-ink-muted">Nothing is being watched yet.</p>
             ) : (
               <div className="space-y-5">
-                {byStrategy(data.slices).map((g) => (
+                {byStrategy(mainSlices).map((g) => (
                   <section key={g.strategy}>
                     <h3 className="text-sm font-semibold text-ink">{g.strategy}</h3>
                     <ul className="mt-1 divide-y divide-line">
@@ -257,6 +260,33 @@ export default function GoldenPage() {
               </div>
             )}
           </Card>
+
+          {quietSlices.length > 0 && (
+            <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm">
+              <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">
+                Watched quietly by the finder ({quietSlices.length})
+              </summary>
+              <div className="space-y-1 pb-3">
+                <p className="text-xs text-ink-muted">
+                  New ideas the finder found itself, counted from the day found. No notifications yet: once one reaches {candidateFrom} priced picks
+                  still beating the rest of its strategy, you&apos;ll be told it&apos;s a candidate; at {confirmFrom}, proved Golden.
+                </p>
+                <ul className="divide-y divide-line">
+                  {quietSlices.map((s) => (
+                    <li key={`${s.strategyKey}#${s.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs">
+                      <span className="min-w-0">
+                        <span className="block text-ink-muted">{s.strategy}</span>
+                        <span className="block font-medium text-ink">{sliceName(s.label)}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-ink-muted">
+                        {s.slice.all.counted} of {candidateFrom}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          )}
 
           <Card
             title="Suggested by the Golden finder"

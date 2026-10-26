@@ -1793,6 +1793,8 @@ export interface LayGroupInfo {
   whole: boolean;
   why: string;
   custom: boolean;
+  /** Its badge (lay-badges.ts): proved after proveFrom picks at +3%+ per £1 of liability in both halves of its record. */
+  badge: { status: "candidate" | "proved" | "not holding up"; n: number; roi: number | null; halves: [number | null, number | null]; why: string | null } | null;
 }
 export interface LayIdea {
   strategyKey: string;
@@ -1808,6 +1810,7 @@ export interface LayIdea {
 export interface LayReport {
   groups: LayGroupInfo[];
   ideas: { at: string; list: LayIdea[] };
+  proveFrom?: number;
 }
 
 export function getLayReport(): Promise<LayReport> {
@@ -1945,6 +1948,10 @@ export interface GoldenSlice {
   label: string;
   since: string;
   custom: boolean;
+  /** Added by the finder itself, watched quietly (no notification) until CANDIDATE_FROM picks. */
+  auto?: boolean;
+  /** Still under CANDIDATE_FROM picks, added by the finder: shown in its own collapsed section, not the main list. */
+  quiet?: boolean;
   status: "candidate" | "golden" | "not holding up";
   /** Why it isn't (or is no longer) Golden, in words; null when it is, or is still a candidate. */
   why?: string | null;
@@ -1973,6 +1980,8 @@ export interface GoldenReport {
   slices: GoldenSlice[];
   suggestions: { at: string; list: GoldenSuggestion[] };
   confirmFrom: number;
+  /** Below this many priced picks a finder-watched slice is shown quietly, with no notification. */
+  candidateFrom?: number;
   /** The Golden safety check: back to Sim after this many own Live bets below this return. */
   safety?: { minBets: number; worstRoi: number };
   /** Golden alert notifications: none between 23:00 and 07:00 UK while on. */

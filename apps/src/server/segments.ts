@@ -66,6 +66,8 @@ export interface Segment {
   rule?: Feature[];
   /** Added from the Golden finder (can be stopped); built-in ones can't. */
   custom?: boolean;
+  /** Added by the finder itself, watched quietly with no notification until it proves itself (golden.ts). */
+  auto?: boolean;
 }
 
 /** The pre-match favourite (the live price when the alert has no pre-match one), or null. */
@@ -188,6 +190,8 @@ export interface CustomSegment {
   id: string;
   rule: Feature[];
   since: string;
+  /** Added by the finder itself (golden.ts), not by the admin tapping "Watch it". */
+  auto?: boolean;
 }
 
 let custom: CustomSegment[] = [];
@@ -201,6 +205,6 @@ export function setCustomSegments(list: CustomSegment[]): void {
 export function segmentsOf(strategyKey: string): Segment[] {
   const own = custom
     .filter((c) => c.strategyKey === strategyKey)
-    .map((c): Segment => ({ id: c.id, label: ruleLabel(c.rule), since: c.since, rule: c.rule, test: ruleTest(c.rule), custom: true }));
+    .map((c): Segment => ({ id: c.id, label: ruleLabel(c.rule), since: c.since, rule: c.rule, test: ruleTest(c.rule), custom: true, auto: c.auto === true }));
   return [...(SEGMENTS[strategyKey] ?? []), ...own];
 }
