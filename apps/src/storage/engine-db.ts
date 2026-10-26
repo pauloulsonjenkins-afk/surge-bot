@@ -583,6 +583,36 @@ export interface AppUserRow {
   lastLoginAt: string | null;
 }
 
+/** Claude's per-alert second opinion (server/claude-check.ts). Advisory only: see its file header. */
+export interface ClaudeVerdict {
+  pickId: number;
+  verdict: "stronger" | "in_line" | "weaker";
+  confidence: "low" | "medium" | "high";
+  note: string;
+  model: string;
+  checkedAt: string;
+}
+
+interface RawClaudeVerdict {
+  pick_id: number;
+  verdict: string;
+  confidence: string;
+  note: string;
+  model: string;
+  checked_at: string;
+}
+
+function mapClaudeVerdict(row: RawClaudeVerdict): ClaudeVerdict {
+  return {
+    pickId: row.pick_id,
+    verdict: row.verdict === "stronger" || row.verdict === "weaker" ? row.verdict : "in_line",
+    confidence: row.confidence === "low" || row.confidence === "high" ? row.confidence : "medium",
+    note: row.note,
+    model: row.model,
+    checkedAt: row.checked_at,
+  };
+}
+
 export class EngineDb {
   private readonly db: Database.Database;
   private readonly onChange: () => void;
@@ -646,6 +676,17 @@ export class EngineDb {
 
       -- Alerts deleted with a strategy. Telegram still holds those messages, so without this note the
       -- catch-up sync (or a full-time edit) would put them straight back.
+      -- Claude's per-alert second opinion (server/claude-check.ts): one row per pick, advisory only, never read
+      -- by the bet feed or direct betting. Missing a row just means no verdict yet, or the check failed quietly.
+      CREATE TABLE IF NOT EXISTS claude_verdicts (
+        pick_id     INTEGER PRIMARY KEY,
+        verdict     TEXT NOT NULL,
+        confidence  TEXT NOT NULL,
+        note        TEXT NOT NULL,
+        model       TEXT NOT NULL,
+        checked_at  TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS deleted_picks (
         chat_id     TEXT NOT NULL,
         message_id  INTEGER NOT NULL,
@@ -2991,6 +3032,33 @@ export class EngineDb {
       .prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
       .run(key, value);
     this.onChange();
+  }
+
+  /** Claude's per-alert second opinion (server/claude-check.ts): advisory only, never read by the bet feed. */
+  saveClaudeVerdict(pickId: number, v: { verdict: ClaudeVerdict["verdict"]; confidence: ClaudeVerdict["confidence"]; note: string; model: string }, at: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO claude_verdicts (pick_id, verdict, confidence, note, model, checked_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(pick_id) DO UPDATE SET verdict = excluded.verdict, confidence = excluded.confidence, note = excluded.note, model = excluded.model, checked_at = excluded.checked_at`,
+      )
+      .run(pickId, v.verdict, v.confidence, v.note, v.model, at);
+    this.onChange();
+  }
+
+  getClaudeVerdict(pickId: number): ClaudeVerdict | null {
+    const row = this.db.prepare(`SELECT * FROM claude_verdicts WHERE pick_id = ?`).get(pickId) as RawClaudeVerdict | undefined;
+    return row ? mapClaudeVerdict(row) : null;
+  }
+
+  /** Every stored verdict for these picks, keyed by pick id (for the Live tab's badge, in one query). */
+  getClaudeVerdicts(pickIds: number[]): Map<number, ClaudeVerdict> {
+    const out = new Map<number, ClaudeVerdict>();
+    if (pickIds.length === 0) return out;
+    const placeholders = pickIds.map(() => "?").join(",");
+    const rows = this.db.prepare(`SELECT * FROM claude_verdicts WHERE pick_id IN (${placeholders})`).all(...pickIds) as RawClaudeVerdict[];
+    for (const row of rows) out.set(row.pick_id, mapClaudeVerdict(row));
+    return out;
   }
 
   /**

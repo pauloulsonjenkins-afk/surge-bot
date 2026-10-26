@@ -4,10 +4,12 @@
  *   GET  /health                               DigitalOcean's health check
  *   POST /webhooks/inplayguru/<path token>     InPlayGuru picks
  *   GET  /internal/picks                        recent captured picks (admin site only)
- *   GET  /internal/live[?hours=N|?date=D]       parsed alerts for the Live tab and Results page, optionally for a window (admin site only)
+ *   GET  /internal/live[?hours=N|?date=D]       parsed alerts for the Live tab and Results page, optionally for a window; each pick carries its Claude verdict when one exists (advisory only, see claude-check.ts) (admin site only)
  *   GET  /internal/live/days                    UK days that have picks, with counts, for the Results page (admin site only)
  *   GET  /internal/stats?days=N|since=ISO[&strategy=X]  hit-rate figures for Dashboard / Strategies, optionally for one strategy (admin site only)
  *   GET  /internal/schedule?date=YYYY-MM-DD     the day's matches from API-Football, for the Schedule tab (admin site only)
+ *   GET  /internal/claude-review                  Claude's latest daily/weekly written notes (advisory, see claude-review.ts) (admin site only)
+ *   POST /internal/picks/ask {id, question}        ask Claude about one pick (advisory, see claude-ask.ts) (admin site only)
  *   GET/POST /internal/fresh-start              count all figures from now (or undo it); nothing is deleted (admin site only)
  *   GET  /internal/notifications               every notification sent to the admin, last 60 days (admin site only)
  *   GET  /internal/lay-groups                  the LAY groups (what each lays and why) and the lay ideas (admin site only)
@@ -108,6 +110,8 @@ import { layGroups, unwatchLayGroup, watchLayGroup } from "../inplayguru/lay-gro
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
 import { setGoldenNotify } from "./golden-notify";
+import { claudeReviewConfigured, getClaudeReviewNotes } from "./claude-review";
+import { askAboutPick, claudeAskConfigured } from "./claude-ask";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -360,8 +364,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           // Profit per settled pick, for the admin's Trade Log. Worked out exactly as Win/Loss does.
           const oldest = picks.reduce<string | null>((min, p) => (min === null || p.firstSeenAt < min ? p.firstSeenAt : min), null);
           const profits = oldest ? computePickProfits(db, oldest) : {};
+          // Claude's per-alert second opinion (claude-check.ts), when one has landed: advisory only, shown as a badge.
+          const verdicts = db.getClaudeVerdicts(picks.map((p) => p.id));
           // Watched slices each pick is in (e.g. Second Pour's Golden), for the Live tab's badge.
-          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p) })) };
+          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), claudeVerdict: verdicts.get(p.id) ?? null })) };
         }),
       );
       return;
@@ -445,6 +451,42 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           lastError: status.lastError,
         },
       });
+      return;
+    }
+
+    // Claude's daily/weekly written review notes (claude-review.ts): text to read, never a setting to apply.
+    if (req.method === "GET" && path === "/internal/claude-review") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, { configured: claudeReviewConfigured(), notes: getClaudeReviewNotes(db) });
+      return;
+    }
+
+    // "Ask about this pick" (claude-ask.ts): owner-triggered, one question about one alert. Never gates or places a bet.
+    if (req.method === "POST" && path === "/internal/picks/ask") {
+      if (!requireAdmin(req, res)) return;
+      const body = await readJsonBody(req);
+      const id = Number(body.id);
+      const question = typeof body.question === "string" ? body.question.trim().slice(0, 500) : "";
+      if (!Number.isFinite(id) || !question) {
+        send(res, 400, { error: "id_and_question_required" });
+        return;
+      }
+      const pick = db.getLivePick(id);
+      if (!pick) {
+        send(res, 404, { error: "pick_not_found" });
+        return;
+      }
+      if (!claudeAskConfigured()) {
+        send(res, 503, { error: "not_configured" });
+        return;
+      }
+      try {
+        const answer = await askAboutPick(db, pick, question);
+        send(res, 200, { answer });
+      } catch (err) {
+        log.warn(`Ask about pick ${id} failed: ${err instanceof Error ? err.message : String(err)}.`);
+        send(res, 502, { error: "claude_failed" });
+      }
       return;
     }
 
