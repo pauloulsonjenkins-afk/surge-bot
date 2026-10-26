@@ -104,6 +104,7 @@ import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
+import { layGroupRecords, PROVE_FROM } from "./lay-badges";
 import { layGroups, unwatchLayGroup, watchLayGroup } from "../inplayguru/lay-groups";
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
@@ -138,11 +139,25 @@ class BodyTooLarge extends Error {}
 function layReport(db: EngineDb): Record<string, unknown> {
   const groups = layGroups(db);
   const ideas = layIdeas(db);
+  const records = new Map(layGroupRecords(db).map((r) => [r.key, r]));
   const laid = new Set(groups.filter((g) => g.lays).map((g) => `${g.lays}#${[...(g.rule ?? [])].sort().join("+")}`));
   const whole = new Set(groups.filter((g) => g.whole && g.lays).map((g) => g.lays!));
   return {
-    groups: groups.map((g) => ({ key: g.header.toLowerCase(), header: g.header, lays: g.lays, laysName: g.lays ? displayName(db, g.lays) : null, whole: !!g.whole, why: g.why, custom: !!g.rule })),
+    groups: groups.map((g) => {
+      const rec = records.get(g.header.toLowerCase());
+      return {
+        key: g.header.toLowerCase(),
+        header: g.header,
+        lays: g.lays,
+        laysName: g.lays ? displayName(db, g.lays) : null,
+        whole: !!g.whole,
+        why: g.why,
+        custom: !!g.rule,
+        badge: rec ? { status: rec.status, n: rec.n, roi: rec.roi, halves: rec.halves, why: rec.why } : null,
+      };
+    }),
     ideas: { at: ideas.at, list: ideas.list.filter((i) => !whole.has(i.strategyKey) && !laid.has(`${i.strategyKey}#${[...i.rule].sort().join("+")}`)) },
+    proveFrom: PROVE_FROM,
   };
 }
 

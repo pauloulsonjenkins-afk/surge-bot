@@ -7,6 +7,8 @@ import { useLayGroupAction, useLayGroups, type LayIdea } from "@/queries/use-lay
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { ModeBadge } from "@/components/ui/ModeToggle";
+import { GoldenBadge } from "@/components/ui/SegmentLabel";
+import type { LayGroupInfo } from "@/server/engine-client";
 import { ClashSummary } from "@/components/admin/ClashSummary";
 import { BetSettings, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
 import { gbp } from "@/lib/format";
@@ -25,6 +27,7 @@ function LayCard({
   why,
   custom,
   header,
+  badge,
   bet,
   settings,
   bank,
@@ -35,6 +38,7 @@ function LayCard({
   why: string;
   custom: boolean;
   header: string | null;
+  badge?: LayGroupInfo["badge"];
   bet?: SendingStrategy;
   settings?: SendingSettings;
   bank?: SendingState["bank"];
@@ -54,6 +58,7 @@ function LayCard({
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
             {names.name(row.label)} <ModeBadge mode={live ? "live" : "sim"} />
+            {badge && <GoldenBadge status={badge.status === "proved" ? "golden" : badge.status} candidate={`Candidate · ${badge.n}`} />}
           </span>
           <span className="mt-0.5 block text-xs text-ink-muted">{why || "InPlayGuru's own lay strategy."}</span>
           {/* Live or Sim, as on every strategy card (asks first before real money). */}
@@ -217,7 +222,21 @@ export function LaySection({
         <ul className="space-y-2">
           {sorted.map((r) => {
             const g = info.get(r.label.toLowerCase());
-            return <LayCard key={r.label} row={r} lays={g?.lays ?? null} why={g?.why ?? ""} custom={g?.custom ?? false} header={g?.header ?? null} bet={betOf(r.label)} settings={settings} bank={bank} all={all} />;
+            return (
+              <LayCard
+                key={r.label}
+                row={r}
+                lays={g?.lays ?? null}
+                why={g?.why ?? ""}
+                custom={g?.custom ?? false}
+                header={g?.header ?? null}
+                badge={g?.badge ?? null}
+                bet={betOf(r.label)}
+                settings={settings}
+                bank={bank}
+                all={all}
+              />
+            );
           })}
         </ul>
       )}
