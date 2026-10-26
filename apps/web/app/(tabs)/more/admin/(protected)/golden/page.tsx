@@ -106,7 +106,7 @@ export default function GoldenPage() {
   return (
     // The admin layout already gives the page its side margins, so none here (they were doubled before).
     <div className="space-y-5">
-      <PageHeader title="Golden" subtitle="Parts of a strategy that may be worth more than the rest. Gold means proved; an outline means still being proved." />
+      <PageHeader title="Golden" subtitle="Parts of a strategy that beat the rest. Gold: proved. Outline: still proving." />
       {/* The colour key: the same rule for every figure on the page. */}
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
         <span>

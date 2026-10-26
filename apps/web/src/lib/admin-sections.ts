@@ -16,11 +16,19 @@ export const ADMIN_GROUPS = [
     daily: true,
     items: [
       { href: "/more/admin/today", label: "Today", description: "One glance: betting on or off, today's result, money out, limits, alert health, speed and why picks weren't placed." },
-      { href: "/more/admin/day", label: "Today's strategies", short: "Day", description: "Each strategy today: Live or Sim, wins, profit and return, and Sim ones worth a look for Live." },
       { href: "/more/admin/strategies", label: "Strategies", description: "Each strategy's results, Live / Sim, stake, minimum odds and stop loss." },
       { href: "/more/admin/sending", label: "Betting", description: "Bets placed on Betfair, the on / off switch and safety limits, and the check against Betfair's real results." },
       { href: "/more/admin/golden", label: "Golden", description: "Parts of a strategy that may be worth more than the rest: being watched, confirmed, and new ones the finder suggests." },
+    ],
+  },
+  {
+    // Looked at now and then, not every day: kept off the phone's admin row (27 Oct 2026 tidy-up).
+    label: "Insights",
+    daily: false,
+    items: [
+      { href: "/more/admin/day", label: "Today's strategies", short: "Day", description: "Each strategy today: Live or Sim, wins, profit and return, and Sim ones worth a look for Live." },
       { href: "/more/admin/claude", label: "Claude verdict check", description: "Whether Claude's per-alert warnings actually predict a worse result, once enough have settled, and the Live tab badge's on/off switch." },
+      { href: "/more/admin/notifications", label: "Notifications", short: "Alerts", description: "Every notification GoalBrew sent you in the last 60 days." },
     ],
   },
   {
@@ -40,7 +48,6 @@ export const ADMIN_GROUPS = [
     daily: false,
     items: [
       { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, trials and full access, and the members' rules." },
-      { href: "/more/admin/notifications", label: "Notifications", short: "Alerts", description: "Every notification GoalBrew sent you in the last 60 days." },
       { href: "/more/admin/settings", label: "Settings", description: "Public view, Telegram and webhook alerts, download every pick, fresh start." },
       { href: "/more/admin/results", label: "Fix a result", short: "Fixes", description: "Correct a hit or miss, or remove a pick." },
     ],

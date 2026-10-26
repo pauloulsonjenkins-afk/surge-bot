@@ -41,7 +41,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader as="h2" title="Notifications" subtitle="Everything GoalBrew sent to your phone in the last 60 days, newest first. Tap one to open its page." />
+      <PageHeader as="h2" title="Notifications" subtitle="What GoalBrew sent you, last 60 days. Tap one to open it." />
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show">
         {KINDS.map((k) => (
           <button

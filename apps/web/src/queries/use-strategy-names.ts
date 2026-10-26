@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StrategyNameInfo } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
-import { useHydrated } from "./use-me";
+import { useHydrated, useMe } from "./use-me";
 
 export type { StrategyNameInfo };
 
@@ -40,11 +40,14 @@ function remembered(): Names | undefined {
 }
 
 /**
- * The names the app shows for strategies. `name(raw)` turns InPlayGuru's name ("Time to fight") into the app's
- * ("Wake-up Call"), falling back to InPlayGuru's own; `info(raw)` also has the description, trigger and bet (admin).
+ * The names the app shows for strategies. For the ADMIN (since 27 Oct 2026) that is InPlayGuru's own name ("Time to
+ * fight"): one name everywhere the owner works. Everyone else sees the app's coffee name ("Wake-up Call"), falling
+ * back to InPlayGuru's own; `info(raw)` also has the description, trigger and bet (admin).
  */
 export function useStrategyNames() {
   const hydrated = useHydrated();
+  const { data: me } = useMe();
+  const admin = !!me?.admin;
   const query = useQuery<{ names: Names }>({
     queryKey: KEY,
     queryFn: ({ signal }) => getJson<{ names: Names }>("/api/strategy-names", "strategy names", signal),
@@ -66,25 +69,30 @@ export function useStrategyNames() {
     }
   }, [names, query.isPlaceholderData]);
 
+  // What a strategy is called for this viewer: the admin always sees InPlayGuru's name.
+  const shownName = (raw: string) => (admin ? titleIfLower(strategyLabel(raw)) : (names?.[strategyKey(raw)]?.name ?? strategyLabel(raw)));
   return useMemo(
     () => ({
-      name: (raw: string) => names?.[strategyKey(raw)]?.name ?? strategyLabel(raw),
+      name: shownName,
       /** "Boiling Point (Blistering Momentum)": the app's name with the original one in brackets, when they differ. */
       full: (raw: string) => {
-        const shown = names?.[strategyKey(raw)]?.name ?? strategyLabel(raw);
+        const shown = shownName(raw);
         const original = titleIfLower(strategyLabel(raw));
         return shown.toLowerCase() === original.toLowerCase() ? shown : `${shown} (${original})`;
       },
       /** The two halves of `full`, for showing the original name smaller (null when it's the same name). */
       parts: (raw: string) => {
-        const shown = names?.[strategyKey(raw)]?.name ?? strategyLabel(raw);
+        const shown = shownName(raw);
         const original = titleIfLower(strategyLabel(raw));
         return { name: shown, original: shown.toLowerCase() === original.toLowerCase() ? null : original };
       },
       info: (raw: string) => names?.[strategyKey(raw)],
+      /** The members' (coffee) name, for the admin's rename box. */
+      memberName: (raw: string) => names?.[strategyKey(raw)]?.name ?? strategyLabel(raw),
       names,
     }),
-    [names],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [names, admin],
   );
 }
 

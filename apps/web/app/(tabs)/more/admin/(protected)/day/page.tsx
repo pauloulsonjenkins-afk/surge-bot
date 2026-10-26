@@ -58,7 +58,7 @@ export default function DayPage() {
       <PageHeader
         as="h2"
         title="Today's strategies"
-        subtitle="How each strategy is doing today (UK day), settled bets only. Live is real money; Sim is what the picks would have made."
+        subtitle="Each strategy today, settled bets only. Live is real money; Sim is what it would have made."
       />
       <Segmented label="Show" value={mode} onChange={setMode} options={[{ value: "live", label: "Live" }, { value: "sim", label: "Sim" }]} />
 

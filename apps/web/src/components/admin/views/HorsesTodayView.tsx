@@ -473,7 +473,7 @@ export default function HorsesPage() {
       <PageHeader
         as="h2"
         title="Today’s bets"
-        subtitle="Your daily NAP and choices, and their results. The day’s tips come in automatically, but amounts and odds are always yours to set; nothing here is bet automatically."
+        subtitle="Today's NAP and choices. Nothing here is bet automatically."
       />
       {data?.importStatus && (
         <p className={`text-xs ${data.importStatus.ok ? "text-ink-muted" : "text-destructive"}`}>

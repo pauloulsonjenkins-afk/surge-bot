@@ -191,8 +191,18 @@ export function listStrategyNames(db: EngineDb): Record<string, StrategyInfo & {
   return out;
 }
 
-/** What the app shows for a strategy: its name here, else InPlayGuru's own. */
-export function displayName(db: EngineDb, raw: string): string {
+/**
+ * What the ADMIN side shows for a strategy (notifications, reviews, Golden, LAY): InPlayGuru's own name, title-cased
+ * when it's all lower case. Since 27 Oct 2026 the coffee names (and the admin's own names) are for members only
+ * (members/catalogue.ts reads listStrategyNames): one name everywhere the owner works is simpler.
+ */
+export function displayName(_db: EngineDb, raw: string): string {
+  const label = strategyLabel(raw);
+  return label === label.toLowerCase() ? label.replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : label;
+}
+
+/** The members' name for a strategy: its coffee name or the admin's own, else InPlayGuru's. */
+export function memberName(db: EngineDb, raw: string): string {
   return listStrategyNames(db)[strategyKey(raw)]?.name ?? strategyLabel(raw);
 }
 

@@ -40,6 +40,9 @@ const EquityCurve = dynamic(() => import("@/components/admin/EquityCurve").then(
   loading: () => <Skeleton className="h-48 w-full" />,
 });
 
+/** A strategy with no alert for this many days (and not Live) goes into the collapsed Inactive section. */
+const INACTIVE_DAYS = 14;
+
 const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 
@@ -476,7 +479,7 @@ function AboutStrategy({ label }: { label: string }) {
         </dl>
       )}
       <label className="block text-ink-muted">
-        Name in the app
+        Members&apos; name (what members see; you see InPlayGuru&apos;s name)
         <input
           value={name}
           maxLength={40}
@@ -843,7 +846,7 @@ function StrategyCard({
               onClick={() => setAbout((v) => !v)}
               className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
             >
-              {about ? "Close" : "About and rename"}
+              {about ? "Close" : "About and members' name"}
             </button>
             {row.mergedInto ? (
               <button
@@ -943,6 +946,9 @@ export default function StrategiesPage() {
   // Today's suggestions, so each card says the same as Today (one set of rules, in the engine).
   const today = useToday();
   const allAdvice = useMemo<StrategyAdvice[]>(() => today.data?.advice ?? [], [today.data]);
+  // Strategies with no alert for INACTIVE_DAYS (retired, or deleted in InPlayGuru) and not Live: listed apart.
+  const [loadedAt] = useState(() => Date.now());
+  const isInactive = (r: AdminStrategy) => !r.sendingOn && (!r.lastAlertAt || loadedAt - Date.parse(r.lastAlertAt) > INACTIVE_DAYS * 86_400_000);
   const names = useStrategyNames();
   const adviceOf = useMemo(() => new Map(allAdvice.filter((a) => a.kind !== "league-block").map((a) => [a.key.toLowerCase(), a])), [allAdvice]);
   const betOf = useMemo(() => {
@@ -965,8 +971,10 @@ export default function StrategiesPage() {
   const [layout, setLayout] = useState<"weekly" | "cards">("weekly");
   // Back bets, or the LAY section (lays bet against something, so they get their own view).
   const [side, setSide] = useState<"back" | "lay">("back");
+  const [showOptions, setShowOptions] = useState(false);
   const weeksData = useStrategyWeeks();
   const strategies = useMemo(() => data?.strategies ?? [], [data]);
+  const inactive = strategies.filter((r) => isInactive(r) && !isLayRow(r));
   const ignored = data?.ignored ?? [];
 
   const includesOf = useMemo(() => {
@@ -1088,8 +1096,7 @@ export default function StrategiesPage() {
         title="Strategies"
         subtitle={
           <>
-            Every strategy in one place: its results, its Live / Sim switch, and (tap it) its stake, minimum odds, stop loss, rename, merge and delete.
-            Ranked by the return on each £1 staked. Betting on or off for everything, and the safety limits, are on{" "}
+            Each strategy&apos;s results and Live / Sim switch; tap one for its stake and limits. Overall limits are on{" "}
             <Link href="/more/admin/sending?tab=limits" className="text-accent underline">
               Betting
             </Link>
@@ -1126,7 +1133,18 @@ export default function StrategiesPage() {
 
       {side === "lay" && data && <LaySection rows={strategies.filter(isLayRow)} all={strategies} betOf={betOf} settings={sending.data?.settings} bank={sending.data?.bank} />}
 
-      <div className={`flex flex-wrap items-center gap-3 ${side === "lay" ? "hidden" : ""}`}>
+      {/* On a phone the view switches sit behind one button, so the strategies come first. */}
+      {side !== "lay" && (
+        <button
+          type="button"
+          aria-expanded={showOptions}
+          onClick={() => setShowOptions((v) => !v)}
+          className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink sm:hidden"
+        >
+          {showOptions ? "Hide view options" : "View options"}
+        </button>
+      )}
+      <div className={`flex-wrap items-center gap-3 ${side === "lay" ? "hidden" : showOptions ? "flex" : "hidden sm:flex"}`}>
         <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "weekly", label: "Weekly" }, { value: "cards", label: "Cards" }]} />
         {layout === "cards" && <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />}
         <Segmented label="Whose figures" value={view} onChange={setView} options={VIEWS} />
@@ -1229,7 +1247,7 @@ export default function StrategiesPage() {
             // Best first by the chosen figure (in the section's own mode), so what to act on is at the top and bottom.
             const valueOf = (r: AdminStrategy) => sortValue(r, view === "own" ? ownMode(r).mode : m, sortBy) ?? -Infinity;
             const group = strategies
-              .filter((r) => modeOf(r) === m && !isLayRow(r))
+              .filter((r) => modeOf(r) === m && !isLayRow(r) && !isInactive(r))
               .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
             const renderCard = (r: AdminStrategy) => (
@@ -1282,6 +1300,15 @@ export default function StrategiesPage() {
                   />
                 ) : (
                 <ul className="space-y-2">{group.filter((r) => hasPicks(r, m)).map(renderCard)}</ul>
+                )}
+                {/* No alert for 14 days (retired or deleted in InPlayGuru): out of the way, record kept. */}
+                {m === "sim" && inactive.length > 0 && (
+                  <details className="rounded-xl border border-line bg-surface p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-ink">
+                      Inactive <span className="font-normal text-ink-muted">· {inactive.length} · no alerts for {INACTIVE_DAYS}+ days</span>
+                    </summary>
+                    <ul className="mt-2 space-y-2">{inactive.map(renderCard)}</ul>
+                  </details>
                 )}
                 {layout === "cards" && group.some((r) => !hasPicks(r, m)) && (
                   <details className="rounded-xl border border-line bg-surface p-3">

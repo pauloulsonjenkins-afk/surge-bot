@@ -176,9 +176,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         title="Profit"
         subtitle={
           <>
-          Bets matched on Betfair count at their real stake, price and profit. Everything else (Sim picks, bets placed by
-          hand, and picks from before Betfair was checked) is estimated from the alert’s odds and the strategy’s stake.
-          Picks sent but never placed staked nothing.
+          Real Betfair bets at their real figures; everything else estimated from the alert&apos;s odds.
           </>
         }
       />
