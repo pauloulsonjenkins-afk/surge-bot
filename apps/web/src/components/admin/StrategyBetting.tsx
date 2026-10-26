@@ -15,7 +15,14 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
  */
 export type SendingStrategy = SendingState["strategies"][number];
 
-const SENDABLE = new Set(["OVER_1_5", "TWO_MORE_GOALS", "NO_MORE_GOALS", "NEXT_GOAL", "BOTH_TEAMS_TO_SCORE", "UNDERDOG_DOUBLE_CHANCE", "FAVOURITE_TO_WIN", "HOME_TO_WIN", "FIRST_HALF_GOALS", "AWAY_WIN_LAY", "NEXT_GOAL_LAY", "HOME_WIN_LAY", "EDGE_VALUE"]);
+/**
+ * Markets that need a Betfair market code set under Betting first (Sending > Bet wording), because InPlayGuru's alert
+ * doesn't carry enough to work one out on its own. Every other market (the engine's MarketCode, see parse-alert.ts,
+ * plus EDGE_VALUE) is ready to bet as soon as a stake is set: NOTHING NEEDS ADDING HERE for a new fixed-line or
+ * next-goal strategy (Over 2.5, two more goals, no more goals, ...) — canBet below defaults to "ready" and only this
+ * set has to be kept in sync, which almost never changes.
+ */
+const NEEDS_CONFIG = new Set(["FIRST_HALF_CORNERS", "FAVOURITE_TO_SCORE"]);
 
 /** A strategy that LAYS (Away Win Lay): its stake is the liability, and it has a maximum lay price, not minimum odds. */
 const isLay = (s: SendingStrategy) => s.market === "AWAY_WIN_LAY" || s.market === "NEXT_GOAL_LAY" || s.market === "HOME_WIN_LAY";
@@ -25,12 +32,11 @@ const layWinsOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "no mo
 
 /** Whether this strategy's market can be bet (some need a Betfair market code set under Sending > Bet wording first). */
 export function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
-  return (
-    s.market !== null &&
-    (SENDABLE.has(s.market) ||
-      (s.market === "FIRST_HALF_CORNERS" && !!settings.firstHalfCornersMarketType) ||
-      (s.market === "FAVOURITE_TO_SCORE" && !!settings.favouriteScoresHomeMarketType && !!settings.favouriteScoresAwayMarketType))
-  );
+  if (s.market === null) return false;
+  if (!NEEDS_CONFIG.has(s.market)) return true;
+  if (s.market === "FIRST_HALF_CORNERS") return !!settings.firstHalfCornersMarketType;
+  if (s.market === "FAVOURITE_TO_SCORE") return !!settings.favouriteScoresHomeMarketType && !!settings.favouriteScoresAwayMarketType;
+  return false;
 }
 
 /** "£2.00", or "2% of balance (£5.00 now)" for a percentage stake. */
