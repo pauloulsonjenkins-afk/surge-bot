@@ -9,7 +9,7 @@ import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { loadServerEnv } from "./server-env";
-import { createEngineHttpServer, disconnectLoginClient } from "./http";
+import { createEngineHttpServer, disconnectLoginClient, warmReportCache } from "./http";
 import { EngineDb } from "../storage/engine-db";
 import { BackupScheduler, leaseIsLive, SpacesSync } from "../storage/spaces-sync";
 import { createTelegramClient } from "../telegram/client";
@@ -136,6 +136,14 @@ async function main(): Promise<void> {
         "Add the signing secret once InPlayGuru provides it.",
     );
   }
+
+  // Today and Strategies are the two most-viewed, heaviest pages (Today polls every 15s): worked out here, between
+  // requests, so an admin's view is (almost) always a cache hit instead of holding up this one thread while they wait
+  // (phase 3 of the 27 Oct 2026 site tidy-up). Once now, then every 45s; cachedReport skips the work when nothing's
+  // changed since the last time, so a quiet period costs almost nothing.
+  warmReportCache(db);
+  const reportWarm = setInterval(() => warmReportCache(db), 45_000);
+  reportWarm.unref();
 
   // Simulated bets are recorded as alerts arrive; this sweep also catches a Live strategy's pick that aged out
   // without being sent, so it is counted as not placed.

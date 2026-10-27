@@ -101,7 +101,7 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { ALL_TIME, computeHitRateContext, computePickProfits, computeSparks, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
-import { cachedReport, clearReportCache } from "./report-cache";
+import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
 import { applyAdvice, visibleAdvice } from "./strategy-advice";
@@ -167,6 +167,47 @@ function layReport(db: EngineDb): Record<string, unknown> {
     trialFrom: LAY_TRIAL_FROM,
     fullFrom: LAY_FULL_FROM,
   };
+}
+
+/**
+ * The Strategies page's figures (also the background warmer's, main.ts): every settled pick, read once for the money
+ * figures, recent form and sparklines. Exported so the engine can work it out ahead of time, between requests, rather
+ * than only when the admin happens to load the page (phase 3 of the 27 Oct 2026 site tidy-up).
+ */
+export function buildStrategiesReport(db: EngineDb, since: string | null): Record<string, unknown> {
+  const { timed, done } = reportTimings("Strategies page data");
+  const settings = getSendingSettings(db);
+  const rows = timed("read", () => db.listResultsForWinLoss(ALL_TIME));
+  const returns = timed("returns", () => computeStrategyReturns(db, since, { fromRuleChange: true, rows }));
+  const form = timed("form", () => computeStrategyForm(db, new Date(), rows));
+  const sparks = timed("sparks", () => computeSparks(db, new Date(), rows));
+  const today = timed("today", () => computeStrategyReturns(db, ukDayBounds(ukDateOf(new Date())).from, { rows }));
+  const strategies = timed("list", () =>
+    db.listStrategiesForAdmin(since).map((x) => ({
+      ...x,
+      returns: returns[x.label.toLowerCase()] ?? null,
+      form: form[x.label.toLowerCase()] ?? null,
+      spark: sparks[x.label.toLowerCase()] ?? [],
+      today: today[x.label.toLowerCase()] ? { live: today[x.label.toLowerCase()]!.live, sim: today[x.label.toLowerCase()]!.sim } : null,
+      sendingOn: settings.strategies[x.label.toLowerCase()] === true,
+      mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
+      stake: currentStake(db, settings, x.label.toLowerCase()),
+    })),
+  );
+  return { ignored: Object.values(db.getIgnoredStrategies()).sort(), since, strategies, timings: done(), at: new Date().toISOString() };
+}
+
+/**
+ * Works out the heaviest, most-viewed admin reports ahead of time, so a view is (almost) always a cache hit instead of
+ * holding up the engine's one thread (which also places bets) while the admin waits. Call every 30-60s; never throws.
+ */
+export function warmReportCache(db: EngineDb): void {
+  try {
+    cachedReport(db, "today", () => todaySnapshot(db), Date.now(), TODAY_TTL_MS);
+    cachedReport(db, `strategies:null`, () => buildStrategiesReport(db, null));
+  } catch (err) {
+    log.warn(`Warming the report cache failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 function send(res: ServerResponse, status: number, body: Record<string, unknown>, closeConnection = false): void {
@@ -1022,7 +1063,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (req.method === "GET" && (path === "/internal/today" || path === "/internal/not-placed")) {
       if (!requireAdmin(req, res)) return;
       if (path === "/internal/today") {
-        send(res, 200, { ...todaySnapshot(db) });
+        // Reused for up to a minute, and warmed in the background (see above): the page polls every 15s, so this was
+        // the single busiest uncached report on the engine's one thread until 27 Oct 2026.
+        send(res, 200, { ...cachedReport(db, "today", () => todaySnapshot(db), Date.now(), TODAY_TTL_MS) });
         return;
       }
       const days = Math.min(365, Math.max(1, Number(new URL(rawUrl, "http://internal").searchParams.get("days")) || 30));
@@ -1280,37 +1323,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const sinceParam = new URL(rawUrl, "http://internal").searchParams.get("since");
       const sinceMs = sinceParam ? Date.parse(sinceParam) : NaN;
       const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
-      // Reused for up to a minute (report-cache.ts).
-      send(
-        res,
-        200,
-        cachedReport(db, `strategies:${since}`, () => {
-          const { timed, done } = reportTimings("Strategies page data");
-          const settings = getSendingSettings(db);
-          // Every settled pick, read once for both the money figures and the recent form.
-          const rows = timed("read", () => db.listResultsForWinLoss(ALL_TIME));
-          // Money counts from a rule change like the record does; the figures from before come back as `before`.
-          const returns = timed("returns", () => computeStrategyReturns(db, since, { fromRuleChange: true, rows }));
-          const form = timed("form", () => computeStrategyForm(db, new Date(), rows));
-          const sparks = timed("sparks", () => computeSparks(db, new Date(), rows));
-          // Today (UK day) on its own, Live and Sim apart, for the card's "Today" line.
-          const today = timed("today", () => computeStrategyReturns(db, ukDayBounds(ukDateOf(new Date())).from, { rows }));
-          const strategies = timed("list", () =>
-            db.listStrategiesForAdmin(since).map((x) => ({
-              ...x,
-              returns: returns[x.label.toLowerCase()] ?? null,
-              form: form[x.label.toLowerCase()] ?? null,
-              spark: sparks[x.label.toLowerCase()] ?? [],
-              today: today[x.label.toLowerCase()] ? { live: today[x.label.toLowerCase()]!.live, sim: today[x.label.toLowerCase()]!.sim } : null,
-              sendingOn: settings.strategies[x.label.toLowerCase()] === true,
-              // Live only when both this strategy's switch and the master switch are on; otherwise its picks are simulated.
-              mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
-              stake: currentStake(db, settings, x.label.toLowerCase()),
-            })),
-          );
-          return { ignored: Object.values(db.getIgnoredStrategies()).sort(), since, strategies, timings: done(), at: new Date().toISOString() };
-        }),
-      );
+      // Reused for up to a minute, and warmed in the background every 45s so a view is (almost) always instant
+      // (report-cache.ts, the warmer in main.ts: warmReportCache).
+      send(res, 200, cachedReport(db, `strategies:${since}`, () => buildStrategiesReport(db, since)));
       return;
     }
 

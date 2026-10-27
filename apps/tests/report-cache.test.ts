@@ -11,7 +11,8 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { saveBank } from "../src/inplayguru/stake";
-import { cachedReport, clearReportCache, REPORT_TTL_MS } from "../src/server/report-cache";
+import { cachedReport, clearReportCache, REPORT_TTL_MS, TODAY_TTL_MS } from "../src/server/report-cache";
+import { warmReportCache } from "../src/server/http";
 import { ALL_TIME, computeStrategyForm, computeStrategyReturns, saveWinLossSettings } from "../src/server/winloss";
 import { computeLeagueReturns } from "../src/server/league-returns";
 import { applyAdvice, autoApplyStakes, visibleAdvice } from "../src/server/strategy-advice";
@@ -64,6 +65,28 @@ test("a report asked for again within a minute is reused, and worked out again a
   assert.equal(runs(), 1);
   report(t + REPORT_TTL_MS);
   assert.equal(runs(), 2, "a minute on: worked out again");
+});
+
+test("Today keeps its own much shorter reuse window: 10 seconds, not a minute, since it's about risk right now", () => {
+  const db = engine();
+  let runs = 0;
+  const today = (now: number) => cachedReport(db, "today-test", () => ({ runs: ++runs }), now, TODAY_TTL_MS);
+  const t = Date.now();
+  today(t);
+  today(t + TODAY_TTL_MS - 1);
+  assert.equal(runs, 1, "still within its 10s window");
+  today(t + TODAY_TTL_MS);
+  assert.equal(runs, 2, "worked out again after 10s, well before the usual minute");
+});
+
+test("the background warmer fills Today and Strategies ahead of a request, and doesn't throw on a broken db", () => {
+  const db = engine();
+  clearReportCache(db);
+  warmReportCache(db);
+  const t = Date.now();
+  assert.equal(cachedReport(db, "today", () => ({ ran: true }), t, TODAY_TTL_MS).ran, undefined, "already warm: the kept body, not a fresh compute");
+  assert.equal(cachedReport(db, "strategies:null", () => ({ ran: true }), t).ran, undefined, "already warm: the kept body, not a fresh compute");
+  assert.doesNotThrow(() => warmReportCache(undefined as never), "never throws past its own boundary");
 });
 
 test("a result written starts it afresh, and the new result is in the figures", () => {

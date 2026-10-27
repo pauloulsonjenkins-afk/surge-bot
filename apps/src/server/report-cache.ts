@@ -13,6 +13,11 @@
  * shows straight away.
  *
  * Only for showing. Apply, the automatic stakes and the hourly checks never use it: they work their figures out anew.
+ *
+ * TODAY is the one exception to the minute-long reuse: its own subtitle is "what's at risk right now" (the open bet
+ * queue, alert health), none of which `inputsStamp` below tracks (they aren't a "result" or a settings change). It is
+ * kept for only 10 seconds instead (added 27 Oct 2026, the site's speed pass) - comfortably under its own 15-second
+ * poll, so a burst of requests in that window still shares one computation, without masking live operational state.
  */
 import type { EngineDb } from "../storage/engine-db";
 import { getSendingSettings } from "../inplayguru/bet-feed";
@@ -20,6 +25,8 @@ import { getBank } from "../inplayguru/stake";
 import { getWinLossSettings } from "./winloss";
 
 export const REPORT_TTL_MS = 60_000;
+/** Today's own, much shorter reuse window (see above). */
+export const TODAY_TTL_MS = 10_000;
 
 const cache = new WeakMap<EngineDb, Map<string, { at: number; stamp: string; body: Record<string, unknown> }>>();
 
@@ -29,13 +36,13 @@ function inputsStamp(db: EngineDb): string {
 }
 
 /** The report under `key`: the one kept, while it still holds (above), else worked out now and kept. */
-export function cachedReport(db: EngineDb, key: string, compute: () => Record<string, unknown>, now = Date.now()): Record<string, unknown> {
+export function cachedReport(db: EngineDb, key: string, compute: () => Record<string, unknown>, now = Date.now(), ttlMs = REPORT_TTL_MS): Record<string, unknown> {
   let byKey = cache.get(db);
   if (!byKey) cache.set(db, (byKey = new Map()));
   const stamp = inputsStamp(db);
   const hit = byKey.get(key);
   const age = hit ? now - hit.at : -1;
-  if (hit && hit.stamp === stamp && age >= 0 && age < REPORT_TTL_MS) return hit.body;
+  if (hit && hit.stamp === stamp && age >= 0 && age < ttlMs) return hit.body;
   const body = compute();
   byKey.set(key, { at: now, stamp, body });
   // Oldest first out, so a run of different requests (each "since" date) can't grow it without limit.
