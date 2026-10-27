@@ -76,7 +76,7 @@ async function writeNote(db: EngineDb, anthropic: Anthropic, key: string, s: Sli
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 900,
+      max_tokens: 2000,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: JSON.stringify(digestFor(s)) }],
     });

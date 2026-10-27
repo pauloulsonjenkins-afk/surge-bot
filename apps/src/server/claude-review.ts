@@ -21,6 +21,7 @@ import { displayName } from "../inplayguru/strategy-names";
 import { CANDIDATE_FROM, FULL_FROM, goldenReport, TRIAL_FROM } from "./golden";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { ukWeekStart } from "../members/time";
+import { truncateNote } from "./claude-check";
 import { log } from "./log";
 
 const MODEL = "claude-sonnet-5-5";
@@ -119,9 +120,11 @@ async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date
   if (!anthropic) return;
   try {
     const digest = buildDigest(db, from, now);
+    // Plenty of room: Sonnet thinks before it writes, and that thinking counts against max_tokens. At 600 the note
+    // was regularly stopping mid-sentence (seen on Today, 27 Oct 2026: "...matched odds home (39 settled, +17.4").
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 600,
+      max_tokens: 4000,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: JSON.stringify(digest) }],
     });
@@ -130,8 +133,13 @@ async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date
       log.warn(`Claude ${kind} review: no text in the reply.`);
       return;
     }
+    // Still cut off: keep the previous note rather than show one that stops mid-sentence.
+    if (response.stop_reason === "max_tokens") {
+      log.warn(`Claude ${kind} review: cut off by max_tokens, not saved.`);
+      return;
+    }
     const all = loadNotes(db);
-    all[kind] = { kind, note: note.slice(0, 3000), generatedAt: now.toISOString() };
+    all[kind] = { kind, note: truncateNote(note, 3000), generatedAt: now.toISOString() };
     db.setSetting(SETTINGS_KEY, JSON.stringify(all));
     log.info(`Claude ${kind} review note written (${note.length} chars).`);
   } catch (err) {

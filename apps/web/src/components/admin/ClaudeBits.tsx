@@ -82,6 +82,20 @@ export function ClaudeVerdict({ pickId, v }: { pickId: number; v: Verdict }) {
   );
 }
 
+/** One review note: four lines to start, the rest a tap away, so a long note never pushes the page down. */
+function ReviewNote({ label, at, note }: { label: string; at: string; note: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button type="button" aria-expanded={open} onClick={() => setOpen((x) => !x)} className="block w-full text-left">
+      <span className="block text-xs font-medium text-ink-muted">
+        {label} · {when.format(new Date(at))}
+      </span>
+      <span className={`mt-0.5 block whitespace-pre-line text-sm text-ink ${open ? "" : "line-clamp-4"}`}>{note}</span>
+      <span className="mt-0.5 block text-xs text-accent">{open ? "Show less" : "Read all"}</span>
+    </button>
+  );
+}
+
 /** Claude's latest daily and weekly notes, for the Today page. Advice to read; it never changes a setting. */
 export function ClaudeReviewCard() {
   const q = useQuery({
@@ -103,12 +117,7 @@ export function ClaudeReviewCard() {
       ) : (
         <div className="mt-2 space-y-3">
           {list.map((n) => (
-            <div key={n.kind}>
-              <p className="text-xs font-medium text-ink-muted">
-                {n.kind === "daily" ? "Today" : "This week"} · {when.format(new Date(n.generatedAt))}
-              </p>
-              <p className="mt-0.5 whitespace-pre-line text-sm text-ink">{n.note}</p>
-            </div>
+            <ReviewNote key={n.kind} label={n.kind === "daily" ? "Today" : "This week"} at={n.generatedAt} note={n.note} />
           ))}
           <p className="text-xs text-ink-muted">Advice to read, not a setting: nothing changes unless you change it.</p>
         </div>

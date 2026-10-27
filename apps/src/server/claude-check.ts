@@ -205,7 +205,7 @@ export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = n
     const context = buildAlertContext(db, pick, now);
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 1000,
+      max_tokens: 2000,
       system: SYSTEM_PROMPT,
       tools: [VERDICT_TOOL],
       tool_choice: { type: "tool", name: VERDICT_TOOL.name },
