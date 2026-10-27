@@ -8,6 +8,7 @@ import { computeStrategyReturns, type StrategyReturn } from "./winloss";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { requestDailyClaudeReview } from "./claude-review";
+import { requestGoldenReviews } from "./claude-golden-review";
 import { log } from "./log";
 
 /** When the summary goes out, UK time (HH:MM). */
@@ -98,7 +99,10 @@ export function startDailySummary(db: EngineDb): () => void {
       log.info(`Daily summary ${slot} sent to ${reached} device(s): ${message.title}`);
       // Claude's written note on the day so far (claude-review.ts): once a day, at the last slot, with the fullest
       // picture. Fire-and-forget, never delays this push.
-      if (slot.endsWith(SUMMARY_TIMES[SUMMARY_TIMES.length - 1]!)) requestDailyClaudeReview(db);
+      if (slot.endsWith(SUMMARY_TIMES[SUMMARY_TIMES.length - 1]!)) {
+        requestDailyClaudeReview(db);
+        requestGoldenReviews(db);
+      }
     } catch (err) {
       log.error(`Daily summary failed: ${err instanceof Error ? err.message : String(err)}`);
     }

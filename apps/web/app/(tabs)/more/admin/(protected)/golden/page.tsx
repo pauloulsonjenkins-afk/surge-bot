@@ -242,6 +242,12 @@ export default function GoldenPage() {
                               <Side r={s.slice.all} name="This part · Live + Sim" split={s.slice} />
                               <Side r={s.rest.all} name={`Rest of ${s.strategy}`} split={s.rest} />
                             </div>
+                            {s.claudeNote && (
+                              <p className="rounded-md bg-surface-2/60 px-2.5 py-2 text-xs text-ink">
+                                <span className="font-medium text-ink-muted">Claude: </span>
+                                {s.claudeNote.note}
+                              </p>
+                            )}
                             {s.bet?.live && (
                               <p className="text-xs text-ink-muted">
                                 Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}

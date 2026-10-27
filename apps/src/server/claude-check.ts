@@ -16,7 +16,8 @@ import type { EngineDb, LivePick } from "../storage/engine-db";
 import { pickFacts, pickSegments, strategyLabel } from "../inplayguru/bet-feed";
 import { layGroups } from "../inplayguru/lay-groups";
 import { computeStrategyForm } from "./winloss";
-import { leagueProfiles } from "../history/football-data";
+import { historyMatches, leagueProfiles } from "../history/football-data";
+import { edgeCard } from "../edge/edge";
 import { log } from "./log";
 
 /** Cheap by design (see docs/claude-in-goalbrew.md § 3): a bounded classification call, not a chat. */
@@ -26,6 +27,10 @@ const SYSTEM_PROMPT = [
   "You are a second opinion on in-play football betting alerts for GoalBrew, a betting assistant.",
   "You never place, skip, or recommend placing a bet. You only judge whether THIS one alert looks stronger, in",
   "line with, or weaker than its strategy's own usual pattern, using only the data given.",
+  "recentFormAndHeadToHead, when given, is the two teams' recent results and head-to-head record: weigh it alongside",
+  "the in-play stats, and say in the note when it points the same way or the opposite way to the alert. It is null",
+  "for most leagues (data only covers the main European leagues) - when null, judge from the in-play stats alone and",
+  "don't speculate about either team's history.",
   "If the data given doesn't support a confident view, answer in_line with low confidence rather than guessing.",
   "Always answer by calling the give_verdict tool exactly once. Never reply in plain text.",
 ].join(" ");
@@ -74,10 +79,22 @@ function leagueProfileFor(country: string | null) {
 }
 
 /**
+ * The two teams' recent goals/form and head-to-head (edge/edge.ts's own trends, built from football-data.co.uk's
+ * results): reused as-is rather than recomputed, so this always agrees with what Edge shows members. Only the main
+ * European and a handful of other leagues are on file, so most lower-league and non-European alerts (most of what
+ * InPlayGuru actually sends) get null here - that's expected, not a bug, and Claude is told not to guess past it.
+ */
+function headToHeadFor(pick: LivePick, now: Date): string[] | null {
+  if (!pick.home || !pick.away) return null;
+  const card = edgeCard({ div: "", league: "", country: "", kickoff: now.toISOString(), home: pick.home, away: pick.away }, historyMatches(), now);
+  return card.trends.length > 0 ? card.trends.map((t) => t.text) : null;
+}
+
+/**
  * The context sent to Claude: the alert itself, plus what the engine already knows around it. Exported so
  * claude-ask.ts (phase 4, "ask about this pick") can reuse exactly the same context-assembly.
  */
-export function buildAlertContext(db: EngineDb, pick: LivePick): Record<string, unknown> {
+export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()): Record<string, unknown> {
   const d = pick.detail;
   const strategyKey = strategyLabel(pick.strategy).toLowerCase();
   const form = computeStrategyForm(db)[strategyKey]?.recent ?? null;
@@ -98,6 +115,9 @@ export function buildAlertContext(db: EngineDb, pick: LivePick): Record<string, 
     goldenSlicesThisAlertIsIn: pickSegments(pick).map((s) => s.label),
     knownLosingPatternsThisAlertMatches: lays.map((g) => g.why),
     leagueHistoricProfile: leagueProfileFor(d?.country ?? null),
+    // Recent form and head-to-head for the two teams (null for a league with no football-data.co.uk file on it -
+    // most of what InPlayGuru sends - which is expected, not missing data to guess around).
+    recentFormAndHeadToHead: headToHeadFor(pick, now),
   };
 }
 
@@ -143,7 +163,7 @@ export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = n
     }
   };
   try {
-    const context = buildAlertContext(db, pick);
+    const context = buildAlertContext(db, pick, now);
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 400,

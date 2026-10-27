@@ -1987,6 +1987,8 @@ export interface GoldenSlice {
   ownLive?: { n: number; won: number; staked: number; profit: number; roi: number | null } | null;
   /** A phone notification for each new alert in this slice (golden-notify.ts). */
   notify?: boolean;
+  /** Claude's one or two sentence summary of whether it's proving itself (server/claude-golden-review.ts), refreshed daily. Null until the first run after it's no longer quiet, or with no API key set. */
+  claudeNote?: { note: string; generatedAt: string } | null;
 }
 export interface GoldenSuggestion {
   strategyKey: string;
@@ -2010,6 +2012,8 @@ export interface GoldenReport {
   safety?: { minBets: number; worstRoi: number };
   /** Golden alert notifications: none between 23:00 and 07:00 UK while on. */
   notifyQuiet?: boolean;
+  /** Whether the engine has an API key to ask Claude for slice summaries at all. */
+  claudeConfigured?: boolean;
 }
 
 export function fetchGolden(): Promise<GoldenReport> {

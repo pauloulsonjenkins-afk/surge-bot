@@ -6,7 +6,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
-import { claudeConfigured, lastCheckFailure, parseVerdict } from "../src/server/claude-check";
+import { parseAlert } from "../src/inplayguru/parse-alert";
+import { buildAlertContext, claudeConfigured, lastCheckFailure, parseVerdict } from "../src/server/claude-check";
 
 test("without an API key, claudeConfigured is false", () => {
   // No ANTHROPIC_API_KEY in the test environment: the module's lazily-cached client is never built.
@@ -30,6 +31,18 @@ test("parseVerdict reads the tool call's own structured input, not text to re-pa
   // A very long note is trimmed to a sane length rather than rejected.
   const long = "x".repeat(900);
   assert.equal(parseVerdict({ verdict: "in_line", confidence: "low", note: long })!.note.length, 600);
+});
+
+test("buildAlertContext carries head-to-head alongside everything else, and never throws with no league history loaded", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const text = ["🔔 Blistering Momentum", "", "🇫🇷 France Ligue 1 (3rd vs 9th)", "Lens vs Lille", "", "Timer: 60'", "Goals: 1 - 0", "Over/Under 1.50 Odds:", "1.80 2.00"].join("\n");
+  db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
+  const pick = db.getLivePickByMessage("chat", 1)!;
+  const context = buildAlertContext(db, pick, new Date());
+  assert.ok("recentFormAndHeadToHead" in context, "the field is always present, even when null");
+  // No league history file is downloaded in a test run, so it's null here; edge.test.ts exercises edgeCard's own
+  // h2h/form logic directly with synthetic match rows.
+  assert.equal(context.recentFormAndHeadToHead, null);
 });
 
 test("the last per-alert check failure is remembered for the admin page, and cleared once one succeeds", () => {

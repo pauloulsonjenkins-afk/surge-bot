@@ -113,6 +113,7 @@ import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
 import { setGoldenNotify } from "./golden-notify";
 import { claudeReviewConfigured, getClaudeReviewNotes } from "./claude-review";
+import { claudeGoldenConfigured, getGoldenNotes } from "./claude-golden-review";
 import { askAboutPick, claudeAskConfigured } from "./claude-ask";
 import { claudeBadgeVisible, computeClaudeVerdictCheck, setClaudeBadgeVisible } from "./claude-verdict-check";
 import { FEATURES, type Feature } from "./segments";
@@ -718,7 +719,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const golden = () => {
         const { timed, done } = reportTimings("Golden page data");
         const report = timed("golden", () => goldenReport(db));
-        return { ...report, timings: done(), at: new Date().toISOString() };
+        const notes = getGoldenNotes(db);
+        const slices = report.slices.map((s) => ({ ...s, claudeNote: notes[`${s.strategyKey}#${s.id}`] ?? null }));
+        return { ...report, slices, claudeConfigured: claudeGoldenConfigured(), timings: done(), at: new Date().toISOString() };
       };
       // After a change, worked out anew; otherwise reused for up to a minute (report-cache.ts).
       send(res, 200, req.method === "GET" ? cachedReport(db, "golden", golden) : golden());
