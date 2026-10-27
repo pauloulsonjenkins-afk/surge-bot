@@ -12,6 +12,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { EngineDb } from "../storage/engine-db";
 import { goldenReport, type GoldenStatus } from "./golden";
+import { truncateNote } from "./claude-check";
 import { log } from "./log";
 
 const MODEL = "claude-haiku-5-5";
@@ -85,7 +86,7 @@ async function writeNote(db: EngineDb, anthropic: Anthropic, key: string, s: Sli
       return;
     }
     const all = loadNotes(db);
-    all[key] = { note: note.slice(0, 600), status: s.status, generatedAt: now.toISOString() };
+    all[key] = { note: truncateNote(note), status: s.status, generatedAt: now.toISOString() };
     db.setSetting(NOTES_KEY, JSON.stringify(all));
   } catch (err) {
     log.warn(`Claude Golden review for ${key} failed: ${err instanceof Error ? err.message : String(err)}.`);

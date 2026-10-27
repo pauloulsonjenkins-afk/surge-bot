@@ -56,7 +56,7 @@ const VERDICT_TOOL = {
     properties: {
       verdict: { type: "string", enum: ["stronger", "in_line", "weaker"] },
       confidence: { type: "string", enum: ["low", "medium", "high"] },
-      note: { type: "string", description: "1-3 sentences, concrete, no filler." },
+      note: { type: "string", description: "2-4 sentences, concrete, no filler. Finish the thought - never trail off or leave a sentence half-written." },
     },
     required: ["verdict", "confidence", "note"],
   },
@@ -140,13 +140,28 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
   };
 }
 
+/** How long a note is allowed to run before it's trimmed (truncateNote below). */
+const NOTE_LIMIT = 900;
+
+/**
+ * Cuts `s` to at most `limit` characters without stopping mid-word: a hard slice chopped a real note off as
+ * "...Recent strat" (27 Oct 2026, spotted on the Live tab) instead of a sentence. Backs up to the last space within
+ * the limit, and marks a genuine cut with "…" so it reads as unfinished rather than complete.
+ */
+export function truncateNote(s: string, limit = NOTE_LIMIT): string {
+  if (s.length <= limit) return s;
+  const cut = s.slice(0, limit);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 /** The give_verdict tool call's input, already parsed JSON from the SDK (not text to re-parse). */
 export function parseVerdict(input: unknown): { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string } | null {
   if (!input || typeof input !== "object") return null;
   const p = input as Record<string, unknown>;
   const verdict = p.verdict === "stronger" || p.verdict === "weaker" || p.verdict === "in_line" ? p.verdict : null;
   const confidence = p.confidence === "low" || p.confidence === "medium" || p.confidence === "high" ? p.confidence : null;
-  const note = typeof p.note === "string" ? p.note.trim().slice(0, 600) : null;
+  const note = typeof p.note === "string" ? truncateNote(p.note.trim()) : null;
   if (!verdict || !confidence || !note) return null;
   return { verdict, confidence, note };
 }
@@ -185,7 +200,7 @@ export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = n
     const context = buildAlertContext(db, pick, now);
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 400,
+      max_tokens: 600,
       system: SYSTEM_PROMPT,
       tools: [VERDICT_TOOL],
       tool_choice: { type: "tool", name: VERDICT_TOOL.name },

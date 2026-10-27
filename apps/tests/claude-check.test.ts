@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { buildAlertContext, claudeConfigured, lastCheckFailure, parseVerdict } from "../src/server/claude-check";
+import { buildAlertContext, claudeConfigured, lastCheckFailure, parseVerdict, truncateNote } from "../src/server/claude-check";
 
 test("without an API key, claudeConfigured is false", () => {
   // No ANTHROPIC_API_KEY in the test environment: the module's lazily-cached client is never built.
@@ -28,9 +28,20 @@ test("parseVerdict reads the tool call's own structured input, not text to re-pa
   assert.equal(parseVerdict({ verdict: "weaker", confidence: "high", note: 5 }), null, "note isn't text");
   assert.equal(parseVerdict(null), null);
   assert.equal(parseVerdict("not an object"), null);
-  // A very long note is trimmed to a sane length rather than rejected.
-  const long = "x".repeat(900);
-  assert.equal(parseVerdict({ verdict: "in_line", confidence: "low", note: long })!.note.length, 600);
+  // A very long note is trimmed to a sane length rather than rejected, on a word boundary (truncateNote below).
+  const long = "x".repeat(1200);
+  assert.ok(parseVerdict({ verdict: "in_line", confidence: "low", note: long })!.note.endsWith("…"));
+});
+
+test("truncateNote never stops mid-word: a real note was once hard-cut to 'Recent strat' (27 Oct 2026, seen on the Live tab)", () => {
+  const short = "Momentum favours the home side.";
+  assert.equal(truncateNote(short), short, "well under the limit: untouched");
+  // "word " is 5 chars; a 103-char cutoff lands mid-word ("...word wo|rd...") unless it backs up to the space.
+  const long = `${"word ".repeat(200)}tail`;
+  const cut = truncateNote(long, 103);
+  assert.equal(cut, `${"word ".repeat(19)}word…`, "backs up to the last whole word before the mark, never a partial one");
+  // No space the whole way through the cut: nothing to back up to, so it marks the hard cut rather than return nothing.
+  assert.ok(truncateNote("x".repeat(200), 100).endsWith("…"));
 });
 
 test("buildAlertContext carries head-to-head alongside everything else, and never throws with no league history loaded", () => {
