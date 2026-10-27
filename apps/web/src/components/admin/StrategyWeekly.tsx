@@ -108,7 +108,8 @@ export function StrategyWeekly({
   const keys = rows.flatMap((r) => [r.label.toLowerCase(), ...Object.keys(data.strategies).filter((k) => k.startsWith(`${r.label.toLowerCase()}#`))]);
   const firstWeek = data.weeks.findIndex((_, i) => keys.some((k) => (data.strategies[k]?.weeks[i]?.[modeOf(k.split("#")[0]!)]?.picks ?? 0) > 0));
   const from = firstWeek < 0 ? data.weeks.length - 1 : firstWeek;
-  const shownWeeks = data.weeks.slice(from);
+  // Most recent week first, so the columns read newest-to-oldest left to right.
+  const shownWeeks = data.weeks.slice(from).reverse();
   // The name, then the two columns you act on (last 7 days, trend), then the weeks. The name stays put while the rest
   // scrolls sideways on a phone.
   const cols = { gridTemplateColumns: `minmax(0,2.4fr) minmax(0,1.5fr) minmax(0,1.5fr) repeat(${shownWeeks.length},minmax(0,1fr))` };
@@ -116,7 +117,8 @@ export function StrategyWeekly({
   const grid = "grid items-center gap-1";
   const line = (key: string, name: React.ReactNode, mode: Mode, total = false, slice = false) => {
     const s = data.strategies[key];
-    const weeks = shownWeeks.map((_, j) => s?.weeks[from + j]?.[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
+    // shownWeeks is newest-first; data.strategies[].weeks is oldest-first, so index back from the end.
+    const weeks = shownWeeks.map((_, j) => s?.weeks[data.weeks.length - 1 - j]?.[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
     const last7 = s?.last7[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 };
     const trend = trendOf(last7, s?.prev28[mode] ?? last7);
     const isOpen = open === key && !total && !slice;
