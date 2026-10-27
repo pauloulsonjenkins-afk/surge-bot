@@ -688,6 +688,41 @@ export function computeStrategyReturns(
   return out;
 }
 
+/**
+ * For each strategy with a recorded mode-switch date (SendingSettings.modeSince, set whenever its Live/Sim switch is
+ * flipped), its return in its CURRENT mode only, from that switch on. The Strategies page's "Own mode" headline uses
+ * this instead of that mode's whole history: reported 27 Oct 2026 - switching Favourite pressure level to Sim
+ * immediately showed its big, mostly pre-switch Sim record as if it were evidence the switch had already paid off,
+ * when almost none of that record happened since the decision. A strategy with no recorded switch date (never
+ * toggled since this was added) is left out; the page falls back to the whole-history figure for those.
+ */
+export function computeSinceModeReturns(db: EngineDb, modeSince: Record<string, string>, currentMode: Record<string, "live" | "sim">, rows?: ResultRow[]): Record<string, StrategyReturn> {
+  const { commission, price } = pricingInputs(db);
+  const earliest = Object.values(modeSince).sort()[0] ?? null;
+  if (earliest === null) return {};
+  const tallies = new Map<string, ReturnTally>();
+  for (const r of settledSince(db, earliest, rows)) {
+    const { key, priced, odds } = price(r);
+    const since = modeSince[key];
+    const mode = currentMode[key];
+    if (!since || !mode || r.firstSeenAt < since) continue;
+    let t = tallies.get(key);
+    if (!t) tallies.set(key, (t = new ReturnTally(commission)));
+    if (r.byHand) {
+      if (mode === "sim" && r.simShadow) {
+        const shadow = { ...r, placement: "sim" as const, sent: false, sim: r.simShadow, betStake: null, betProfit: null, betOdds: null, takenOdds: null, sentStake: null };
+        const s = price(shadow);
+        t.add(shadow, s.priced, s.odds);
+      }
+      continue;
+    }
+    if (mode === "live" ? isLivePlacement(r.placement) : r.placement === "sim") t.add(r, priced, odds);
+  }
+  const out: Record<string, StrategyReturn> = {};
+  for (const [key, t] of tallies) out[key] = t.result();
+  return out;
+}
+
 /** One strategy's running profit, pick by pick, with the same figures as computeStrategyReturns. */
 export function computeStrategyEquity(db: EngineDb, label: string, mode: PickMode): { points: EquityPoint[]; summary: StrategyReturn } {
   const { commission, price } = pricingInputs(db);

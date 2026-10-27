@@ -918,6 +918,10 @@ export interface AdminStrategy {
   } | null;
   /** Today (UK day) only, Live and Sim apart. */
   today?: { live: StrategyReturn; sim: StrategyReturn } | null;
+  /** Its CURRENT mode's return since that mode was last switched on (null if never recorded, or never switched) — not that mode's whole history, which can be mostly old data from before the switch. */
+  sinceMode?: StrategyReturn | null;
+  /** When its Live/Sim switch was last flipped, either way. Null if never recorded. */
+  modeSince?: string | null;
   /** Running profit over its last 30 priced bets, oldest first (engine computeSparks), for the card's sparkline. */
   spark?: number[];
   /** Recent form: the last 20 settled picks, and the last 7 days (mirrors StrategyForm in the engine's winloss.ts). */

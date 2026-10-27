@@ -561,6 +561,7 @@ function LiveSimToday({ row }: { row: AdminStrategy }) {
 function StrategyCard({
   row,
   mode: pickMode,
+  ownView = false,
   borrowed = false,
   last7,
   prev28,
@@ -592,6 +593,8 @@ function StrategyCard({
   row: AdminStrategy;
   /** Whose figures the card shows: its own mode, or the one chosen at the top of the page. */
   mode: "all" | "live" | "sim";
+  /** True when `mode` is "Own mode" auto-following the strategy's current switch, not an explicit Live/Sim/All pick: the headline then counts from when that switch was last flipped, not that mode's whole history (see `row.sinceMode`). */
+  ownView?: boolean;
   /** Own mode is showing the other mode's record, because its current mode has too few priced picks yet. */
   borrowed?: boolean;
   /** Its last 7 days and the 28 before, in the card's mode (Strategies → Weekly data), for the collapsed card. */
@@ -616,13 +619,22 @@ function StrategyCard({
   const [target, setTarget] = useState("");
   const live = record(row.liveHits ?? 0, row.liveMisses ?? 0);
   const sim = record(row.simHits ?? 0, row.simMisses ?? 0);
-  // The headline figures follow the All / Live / Sim choice.
-  const shown = pickMode === "live" ? live : pickMode === "sim" ? sim : record(row.hits, row.misses);
+  /**
+   * Own mode (not an explicit Live/Sim/All pick, and not borrowing the other mode for want of data): counted from
+   * when this mode was last switched on, not its whole history. Reported 27 Oct 2026 - switching a strategy to Sim
+   * immediately showed its big, mostly pre-switch Sim record as if it were evidence the switch had already paid off.
+   * Null (falls back to the whole-history figure below) for a strategy whose switch predates this, or that's never
+   * been flipped since.
+   */
+  const sinceSwitch = ownView && !borrowed && pickMode !== "all" ? (row.sinceMode ?? null) : null;
+  // The headline figures follow the All / Live / Sim choice, or since-switch when that applies.
+  const shown = sinceSwitch ? record(sinceSwitch.hits ?? 0, sinceSwitch.settled - (sinceSwitch.hits ?? 0)) : pickMode === "live" ? live : pickMode === "sim" ? sim : record(row.hits, row.misses);
   const { hits, misses, settled, hitRate } = shown;
-  const money = returnsFor(row, pickMode);
-  // The rule change's "before" figures in the same mode (the headline counts from the change).
+  const money = sinceSwitch ?? returnsFor(row, pickMode);
+  // The rule change's "before" figures in the same mode (the headline counts from the change). Not shown alongside
+  // since-switch figures: that "before" is about a rule change, a different event from the mode switch.
   const beforeAll = row.returns?.before;
-  const before = beforeAll ? (pickMode === "all" ? (beforeAll.all ?? null) : beforeAll[pickMode]) : null;
+  const before = sinceSwitch ? null : beforeAll ? (pickMode === "all" ? (beforeAll.all ?? null) : beforeAll[pickMode]) : null;
   const good = advice ? isGoodAdvice(advice) : false;
   const options = all.filter((o) => o.label !== row.label);
   const names = useStrategyNames();
@@ -648,23 +660,25 @@ function StrategyCard({
     otherMoney && otherMoney.counted >= SAMPLE && otherMoney.roi !== null && money && money.roi !== null && (otherMoney.roi > 0) !== (money.roi > 0)
       ? `${other === "live" ? "Live" : "Sim"} ${roiText(otherMoney.roi)} (${otherMoney.counted})`
       : null;
+  const sinceDay = sinceSwitch && row.modeSince ? shortDay.format(new Date(row.modeSince)) : null;
+  const sinceTag = sinceDay ? ` since ${sinceDay}` : "";
   const headline =
     sortBy === "adjusted"
       ? {
           value: roiText(adj),
           tone: roiTone(adj),
-          sub: money && money.staked > 0 ? `adjusted · ${roiText(money.roi)} on ${money.counted} priced` : "adjusted return per £1",
+          sub: money && money.staked > 0 ? `adjusted · ${roiText(money.roi)} on ${money.counted} priced${sinceTag}` : `adjusted return per £1${sinceTag || " (too few picks since)"}`,
         }
       : sortBy === "profit"
       ? {
           value: money && money.staked > 0 ? gbp(money.profit) : "–",
           tone: roiTone(money && money.staked > 0 ? money.profit : null),
-          sub: money && money.staked > 0 ? `${roiText(money.roi)} return` : "profit",
+          sub: money && money.staked > 0 ? `${roiText(money.roi)} return${sinceTag}` : `profit${sinceTag || " (too few picks since)"}`,
         }
       : {
           value: roiText(money?.roi ?? null),
           tone: roiTone(money?.roi ?? null),
-          sub: money && money.staked > 0 ? `${gbp(money.profit)} on ${gbp(money.staked, false)}` : "return per £1",
+          sub: money && money.staked > 0 ? `${gbp(money.profit)} on ${gbp(money.staked, false)}${sinceTag}` : `return per £1${sinceTag || (sinceSwitch ? " (too few picks since)" : "")}`,
         };
   // Too few priced picks to act on: the figures still show, but faded.
   const thin = (money?.counted ?? 0) < SAMPLE;
@@ -1272,6 +1286,7 @@ export default function StrategiesPage() {
                 key={r.label}
                 row={r}
                 mode={view === "own" ? ownMode(r).mode : view}
+                ownView={view === "own"}
                 borrowed={view === "own" && ownMode(r).borrowed}
                 all={strategies}
                 sortBy={sortBy}

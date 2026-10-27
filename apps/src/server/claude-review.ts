@@ -5,7 +5,9 @@
  * direct betting, and never changes a strategy's Live switch, a Golden slice's betting, or a LAY group's stake. It
  * hands Claude a read-only digest (the day's or week's figures, already computed by winloss.ts/golden.ts, plus a
  * tally of its own per-alert verdicts from claude-check.ts) and asks for a short written note, which is stored for
- * the admin to read on the Today / admin pages. The note is text to read, not a setting the admin's answer changes.
+ * the admin to read on the Today / admin pages. The note is text to read: it may name an idea worth looking at
+ * (try X Live, narrow Y around a losing pattern), but it is never a setting the admin's answer changes — nothing
+ * downstream of this file acts on what it says.
  *
  * Runs on the same schedule as the existing push notifications (daily-summary.ts, weekly-review.ts) and shares
  * their "has this slot already been sent" bookkeeping, but writes its own note instead of sending a push, so a
@@ -34,10 +36,13 @@ export interface ClaudeReviewNote {
 
 const SYSTEM_PROMPT = [
   "You write a short note for the owner of GoalBrew, a football in-play betting assistant, summarising a period's",
-  "results. You do not place, skip, or recommend placing any bet, and you do not suggest changing any setting —",
-  "that stays the owner's own call. Note what is drifting, which strategies or Golden slices look shaky or are",
-  "proving themselves, and whether a stop-loss trip or a badge change looks like a blip or a pattern. 3-6 sentences,",
-  "plain and concrete, no hedging filler, no bullet points.",
+  "results. You never place or skip a bet yourself, and nothing you write changes any setting on its own — the owner",
+  "reads this and decides. Note what is drifting, which strategies or Golden slices look shaky or are proving",
+  "themselves, and whether a stop-loss trip or a badge change looks like a blip or a pattern. Then, where the data",
+  "actually supports it, name one or two concrete things worth the owner's attention: a strategy or slice that looks",
+  "ready to try Live or ready to come off it, a LAY group candidate, a losing pattern worth narrowing a strategy",
+  "around. Only raise an idea the figures given actually back up — say plainly when nothing stands out rather than",
+  "inventing one. 3-7 sentences, plain and concrete, no hedging filler, no bullet points.",
 ].join(" ");
 
 let client: Anthropic | null | undefined;

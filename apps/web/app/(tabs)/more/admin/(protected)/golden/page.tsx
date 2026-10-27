@@ -80,6 +80,9 @@ export default function GoldenPage() {
   const [betting, setBetting] = useState<string | null>(null);
   // Fixed when the page opens: only used to tell a start date still to come from one already passed.
   const [now] = useState(() => Date.now());
+  // Filters for "Being watched", below the colour key: by strategy/alert name, and by whether it's making money.
+  const [search, setSearch] = useState("");
+  const [resultFilter, setResultFilter] = useState<"all" | "profit" | "loss">("all");
   const candidateFrom = data?.candidateFrom ?? 50;
   const trialFrom = data?.trialFrom ?? 150;
   const fullFrom = data?.fullFrom ?? 300;
@@ -99,9 +102,20 @@ export default function GoldenPage() {
     if (ok) act.mutate({ action: "unwatch", strategyKey: s.strategyKey, id: s.id });
   };
   const checked = data ? new Date(data.suggestions.at) : null;
-  const mainSlices = data?.slices.filter((s) => !s.quiet) ?? [];
+  const allMainSlices = data?.slices.filter((s) => !s.quiet) ?? [];
   const quietSlices = data?.slices.filter((s) => s.quiet) ?? [];
-  const golden = mainSlices.filter((s) => s.status === "full").length;
+  const golden = allMainSlices.filter((s) => s.status === "full").length;
+  const term = search.trim().toLowerCase();
+  const mainSlices = allMainSlices.filter((s) => {
+    if (term && !s.strategy.toLowerCase().includes(term) && !sliceName(s.label).toLowerCase().includes(term)) return false;
+    if (resultFilter !== "all") {
+      const roi = s.slice.all.roi;
+      if (roi === null) return false;
+      if (resultFilter === "profit" && roi <= 0) return false;
+      if (resultFilter === "loss" && roi > 0) return false;
+    }
+    return true;
+  });
 
   return (
     // The admin layout already gives the page its side margins, so none here (they were doubled before).
@@ -150,14 +164,41 @@ export default function GoldenPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
-          <Card title="Being watched" subtitle={mainSlices.length > 0 ? `${mainSlices.length} watched · ${golden} proved Golden` : undefined}>
-            {mainSlices.length > 0 && (
+          <Card
+            title="Being watched"
+            subtitle={allMainSlices.length > 0 ? `${mainSlices.length} of ${allMainSlices.length} shown · ${golden} proved Golden` : undefined}
+          >
+            {allMainSlices.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Filter by strategy or alert…"
+                  className="min-h-11 min-w-0 flex-1 rounded-md border border-line bg-surface px-3 text-sm text-ink"
+                />
+                <div className="flex min-h-11 items-center gap-1 rounded-md bg-surface-2 p-1 text-xs">
+                  {(["all", "profit", "loss"] as const).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      aria-pressed={resultFilter === f}
+                      onClick={() => setResultFilter(f)}
+                      className={`min-h-9 rounded px-2.5 font-medium ${resultFilter === f ? "bg-surface text-ink shadow-sm" : "text-ink-muted"}`}
+                    >
+                      {f === "all" ? "All" : f === "profit" ? "Making money" : "Losing"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {allMainSlices.length > 0 && (
               <div className="mb-4 rounded-md bg-surface-2 p-3 text-xs text-ink-muted">
                 <p>
                   <span className="font-medium text-ink">Alert notifications.</span> Switch &ldquo;Notify me&rdquo; on for a slice to get a notification on
                   your phone the moment one of its alerts arrives: the match, the bet, the price and whether GoalBrew bets it. One per alert, even if
                   it&apos;s in several slices. Each notification has a &ldquo;Mute these&rdquo; button.{" "}
-                  {mainSlices.filter((s) => s.notify).length} switched on.
+                  {allMainSlices.filter((s) => s.notify).length} switched on.
                 </p>
                 <button
                   type="button"
@@ -173,7 +214,7 @@ export default function GoldenPage() {
               </div>
             )}
             {mainSlices.length === 0 ? (
-              <p className="text-sm text-ink-muted">Nothing is being watched yet.</p>
+              <p className="text-sm text-ink-muted">{allMainSlices.length === 0 ? "Nothing is being watched yet." : "Nothing matches that filter."}</p>
             ) : (
               <div className="space-y-5">
                 {byStrategy(mainSlices).map((g) => (

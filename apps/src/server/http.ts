@@ -99,7 +99,7 @@ import { currentStake, getBank } from "../inplayguru/stake";
 import { addMatchName, betPickNow, pickSegments, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
-import { ALL_TIME, computeHitRateContext, computePickProfits, computeSparks, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
+import { ALL_TIME, computeHitRateContext, computePickProfits, computeSinceModeReturns, computeSparks, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
@@ -182,6 +182,10 @@ export function buildStrategiesReport(db: EngineDb, since: string | null): Recor
   const form = timed("form", () => computeStrategyForm(db, new Date(), rows));
   const sparks = timed("sparks", () => computeSparks(db, new Date(), rows));
   const today = timed("today", () => computeStrategyReturns(db, ukDayBounds(ukDateOf(new Date())).from, { rows }));
+  const modeOf = (key: string): "live" | "sim" => (settings.enabled && settings.strategies[key] === true ? "live" : "sim");
+  const currentMode: Record<string, "live" | "sim"> = {};
+  for (const key of Object.keys(settings.modeSince)) currentMode[key] = modeOf(key);
+  const sinceMode = timed("sinceMode", () => computeSinceModeReturns(db, settings.modeSince, currentMode, rows));
   const strategies = timed("list", () =>
     db.listStrategiesForAdmin(since).map((x) => ({
       ...x,
@@ -190,8 +194,10 @@ export function buildStrategiesReport(db: EngineDb, since: string | null): Recor
       spark: sparks[x.label.toLowerCase()] ?? [],
       today: today[x.label.toLowerCase()] ? { live: today[x.label.toLowerCase()]!.live, sim: today[x.label.toLowerCase()]!.sim } : null,
       sendingOn: settings.strategies[x.label.toLowerCase()] === true,
-      mode: settings.enabled && settings.strategies[x.label.toLowerCase()] === true ? "live" : "sim",
+      mode: modeOf(x.label.toLowerCase()),
       stake: currentStake(db, settings, x.label.toLowerCase()),
+      sinceMode: sinceMode[x.label.toLowerCase()] ?? null,
+      modeSince: settings.modeSince[x.label.toLowerCase()] ?? null,
     })),
   );
   return { ignored: Object.values(db.getIgnoredStrategies()).sort(), since, strategies, timings: done(), at: new Date().toISOString() };

@@ -53,6 +53,8 @@ export interface SendingSettings {
   enabled: boolean;
   /** Per-strategy switches, keyed by lower-case strategy name. Missing = off. */
   strategies: Record<string, boolean>;
+  /** When each strategy's Live/Sim switch was last flipped (either way), keyed the same way. Missing = never recorded (added 27 Oct 2026; older switches have no date). What the Strategies page's "Own mode" headline counts its figures from, instead of that mode's whole history. */
+  modeSince: Record<string, string>;
   /**
    * A watched slice bet on its own (server/segments.ts), keyed "strategy key#slice id", e.g. Second Pour's Golden
    * alerts: Live or Sim regardless of the strategy's own switch, at its own stake (else the strategy's).
@@ -130,6 +132,7 @@ export interface SegmentBet {
 export const DEFAULT_SENDING: SendingSettings = {
   enabled: false,
   strategies: {},
+  modeSince: {},
   segmentBets: {},
   stakes: {},
   stakePct: {},
@@ -217,6 +220,10 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   if (raw.strategies && typeof raw.strategies === "object") {
     for (const [k, v] of Object.entries(raw.strategies)) strategies[k.toLowerCase()] = v === true;
   }
+  const modeSince: Record<string, string> = {};
+  if (raw.modeSince && typeof raw.modeSince === "object") {
+    for (const [k, v] of Object.entries(raw.modeSince)) if (typeof v === "string") modeSince[k.toLowerCase()] = v;
+  }
   const segmentBets: Record<string, SegmentBet> = {};
   if (raw.segmentBets && typeof raw.segmentBets === "object") {
     for (const [k, v] of Object.entries(raw.segmentBets)) {
@@ -256,6 +263,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   return {
     enabled: raw.enabled === true,
     strategies,
+    modeSince,
     segmentBets,
     stakes,
     stakePct,
@@ -338,7 +346,7 @@ export function withSegmentStake(settings: SendingSettings, key: string, cfg: Se
 /** Applies a partial update from the admin page and saves the merged, validated result. */
 export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>): SendingSettings {
   const current = getSendingSettings(db);
-  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds }, segmentBets: { ...current.segmentBets } };
+  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, modeSince: { ...current.modeSince }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds }, segmentBets: { ...current.segmentBets } };
   // A watched slice's own betting: { "strategy#slice": { live, stakePct, stake } }, or null to go back to the strategy's.
   if (patch.segmentBets && typeof patch.segmentBets === "object") {
     for (const [k, v] of Object.entries(patch.segmentBets as Record<string, unknown>)) {
@@ -407,8 +415,14 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
   }
   if (patch.maxStake !== undefined) next.maxStake = clampInt(patch.maxStake, 1, 500, current.maxStake);
   if (patch.strategies && typeof patch.strategies === "object") {
+    const now = new Date().toISOString();
     for (const [k, v] of Object.entries(patch.strategies as Record<string, unknown>)) {
-      if (typeof v === "boolean") next.strategies[k.toLowerCase()] = v;
+      if (typeof v !== "boolean") continue;
+      const key = k.toLowerCase();
+      // Recorded whichever way it flips (true or false), not just going Live: the Strategies page's "Own mode"
+      // headline counts from here, in whichever mode is current.
+      if ((current.strategies[key] === true) !== v) next.modeSince[key] = now;
+      next.strategies[key] = v;
     }
   }
   if (patch.maxAgeMinutes !== undefined) next.maxAgeMinutes = clampInt(patch.maxAgeMinutes, 1, 60, current.maxAgeMinutes);
