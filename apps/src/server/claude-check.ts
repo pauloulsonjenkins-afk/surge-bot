@@ -16,7 +16,7 @@ import type { EngineDb, LivePick } from "../storage/engine-db";
 import { pickFacts, pickSegments, strategyLabel } from "../inplayguru/bet-feed";
 import { layGroups } from "../inplayguru/lay-groups";
 import { computeStrategyForm } from "./winloss";
-import { historyMatches, leagueProfiles } from "../history/football-data";
+import { historyMatches, leagueProfiles, tablePositions } from "../history/football-data";
 import { edgeCard } from "../edge/edge";
 import { log } from "./log";
 
@@ -32,10 +32,11 @@ const SYSTEM_PROMPT = [
   "MORE likely (a team pushing hard for another goal, on a lay of more goals) make the alert WEAKER, not stronger -",
   "say so plainly rather than reading pressure as automatically good. For an ordinary (non-LAY) bet, pressure or form",
   "pointing towards the selection happening makes it stronger, as usual.",
-  "recentFormAndHeadToHead, when given, is the two teams' recent results and head-to-head record: weigh it alongside",
-  "the in-play stats, and say in the note when it points the same way or the opposite way to the alert. It is null",
-  "for most leagues (data only covers the main European leagues) - when null, judge from the in-play stats alone and",
-  "don't speculate about either team's history.",
+  "recentFormAndHeadToHead and leagueTablePosition, when given, are the two teams' recent results, head-to-head",
+  "record and current league position: weigh them alongside the in-play stats, and say in the note when they point",
+  "the same way or the opposite way to the alert (e.g. a team near the bottom pressing hard is weaker evidence than",
+  "the same pressure from a team near the top). Both are null for most leagues (data only covers the main European",
+  "leagues) - when null, judge from the in-play stats alone and don't speculate about either team's history.",
   "If the data given doesn't support a confident view, answer in_line with low confidence rather than guessing.",
   "Always answer by calling the give_verdict tool exactly once. Never reply in plain text.",
 ].join(" ");
@@ -95,6 +96,17 @@ function headToHeadFor(pick: LivePick, now: Date): string[] | null {
   return card.trends.length > 0 ? card.trends.map((t) => t.text) : null;
 }
 
+/** Each side's league position right now, computed from results already on file - free, no new data source. */
+function tablePositionsFor(pick: LivePick, now: Date): { home: string | null; away: string | null } | null {
+  if (!pick.home || !pick.away) return null;
+  const positions = tablePositions(historyMatches(), pick.home, pick.away, now);
+  if (!positions) return null;
+  return {
+    home: positions.home ? `${positions.home.position} of ${positions.home.of}` : null,
+    away: positions.away ? `${positions.away.position} of ${positions.away.of}` : null,
+  };
+}
+
 /**
  * The context sent to Claude: the alert itself, plus what the engine already knows around it. Exported so
  * claude-ask.ts (phase 4, "ask about this pick") can reuse exactly the same context-assembly.
@@ -123,6 +135,8 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
     // Recent form and head-to-head for the two teams (null for a league with no football-data.co.uk file on it -
     // most of what InPlayGuru sends - which is expected, not missing data to guess around).
     recentFormAndHeadToHead: headToHeadFor(pick, now),
+    // Current league position for each side, computed from results already on file. Same coverage gap as above.
+    leagueTablePosition: tablePositionsFor(pick, now),
   };
 }
 

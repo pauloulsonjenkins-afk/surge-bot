@@ -40,9 +40,11 @@ test("buildAlertContext carries head-to-head alongside everything else, and neve
   const pick = db.getLivePickByMessage("chat", 1)!;
   const context = buildAlertContext(db, pick, new Date());
   assert.ok("recentFormAndHeadToHead" in context, "the field is always present, even when null");
-  // No league history file is downloaded in a test run, so it's null here; edge.test.ts exercises edgeCard's own
-  // h2h/form logic directly with synthetic match rows.
+  assert.ok("leagueTablePosition" in context, "the field is always present, even when null");
+  // No league history file is downloaded in a test run, so both are null here; edge.test.ts and
+  // football-data.test.ts exercise edgeCard's and tablePositions' own logic directly with synthetic match rows.
   assert.equal(context.recentFormAndHeadToHead, null);
+  assert.equal(context.leagueTablePosition, null);
 });
 
 test("the last per-alert check failure is remembered for the admin page, and cleared once one succeeds", () => {

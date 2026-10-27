@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DIVISIONS, leagueProfiles, parseCsv, splitCsvLine, testAwayLay, type HistoricMatch } from "../src/history/football-data";
+import { DIVISIONS, leagueProfiles, leagueTable, parseCsv, splitCsvLine, tablePositions, testAwayLay, type HistoricMatch } from "../src/history/football-data";
 
 const E0 = DIVISIONS.find((d) => d.code === "E0")!;
 const NOW = new Date("2026-10-08T12:00:00Z");
@@ -33,6 +33,31 @@ test("profiles count home, draw and away wins", () => {
   assert.equal(p.awayPct, 25);
   assert.equal(p.homeEdge, 25);
   assert.equal(p.firstHalfGoalPct, 0);
+});
+
+const row = (date: string, home: string, away: string, fthg: number, ftag: number): HistoricMatch => ({
+  div: "E0", season: 2025, date, home, away, fthg, ftag, hthg: 0, htag: 0, corners: null, cards: null, odds: null,
+});
+
+// Top beats Mid 3-0, beats Bottom (away) 2-0, then Mid draws Bottom 1-1: Top 6pts/+5, Bottom 1pt/-2, Mid 1pt/-3 -
+// Bottom outranks Mid on goal difference despite the same points.
+const SMALL_LEAGUE = [row("2025-08-10", "Top", "Mid", 3, 0), row("2025-08-17", "Bottom", "Top", 0, 2), row("2025-08-24", "Mid", "Bottom", 1, 1)];
+
+test("leagueTable: points, then goal difference, from results so far - nothing from on or after the cutoff counts", () => {
+  const table = leagueTable([...SMALL_LEAGUE, row("2025-09-01", "Top", "Mid", 9, 0)], "E0", 2025, "2025-09-01");
+  assert.deepEqual(table.map((t) => t.team), ["Top", "Bottom", "Mid"]);
+  assert.equal(table[0]!.points, 6);
+  assert.equal(table[0]!.played, 2);
+  assert.equal(table[0]!.goalDiff, 5);
+});
+
+test("tablePositions: each side's spot in its table right now, from results already on file - free, no new source", () => {
+  const now = new Date("2025-09-01T12:00:00Z");
+  assert.deepEqual(tablePositions(SMALL_LEAGUE, "Top", "Mid", now), { home: { position: 1, of: 3 }, away: { position: 3, of: 3 } });
+  // A team never seen (not on file at all) still resolves via the other side's division/season.
+  assert.deepEqual(tablePositions(SMALL_LEAGUE, "Top", "Nowhere FC", now), { home: { position: 1, of: 3 }, away: null });
+  // Neither side on file: null outright (most lower-league/non-European alerts).
+  assert.equal(tablePositions(SMALL_LEAGUE, "Nowhere FC", "Nowhere Else FC", now), null);
 });
 
 test("away lay: a win pays the lay stake less commission, an away win loses the £1 liability; prices out of range are skipped", () => {

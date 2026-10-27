@@ -259,6 +259,61 @@ export function historyMatches(): HistoricMatch[] {
   return matches;
 }
 
+export interface TableRow {
+  team: string;
+  played: number;
+  points: number;
+  goalDiff: number;
+}
+
+/** One division's table so far in `season`, from matches strictly before `before` (YYYY-MM-DD). Ranked by points, then goal difference. */
+export function leagueTable(history: HistoricMatch[], div: string, season: number, before: string): TableRow[] {
+  const rows = new Map<string, { played: number; points: number; gf: number; ga: number }>();
+  const get = (team: string) => rows.get(team) ?? rows.set(team, { played: 0, points: 0, gf: 0, ga: 0 }).get(team)!;
+  for (const m of history) {
+    if (m.div !== div || m.season !== season || m.date >= before) continue;
+    const h = get(m.home);
+    const a = get(m.away);
+    h.played++;
+    a.played++;
+    h.gf += m.fthg;
+    h.ga += m.ftag;
+    a.gf += m.ftag;
+    a.ga += m.fthg;
+    if (m.fthg > m.ftag) h.points += 3;
+    else if (m.fthg < m.ftag) a.points += 3;
+    else {
+      h.points += 1;
+      a.points += 1;
+    }
+  }
+  return [...rows.entries()].map(([team, r]) => ({ team, played: r.played, points: r.points, goalDiff: r.gf - r.ga })).sort((x, y) => y.points - x.points || y.goalDiff - x.goalDiff);
+}
+
+/**
+ * Where the two teams in a fixture stand in their league right now, computed from results already on file - no new
+ * data source, free. Finds each team's division and current season from its most recent match before `now`, builds
+ * that division's table from the season's results so far, and reads off each side's position. Null when neither
+ * team has a recent match on file (most lower leagues and non-European alerts, same gap as the h2h/form trends).
+ */
+export function tablePositions(history: HistoricMatch[], home: string, away: string, now: Date): { home: { position: number; of: number } | null; away: { position: number; of: number } | null } | null {
+  const before = now.toISOString().slice(0, 10);
+  const latestOf = (team: string) =>
+    history
+      .filter((m) => (m.home === team || m.away === team) && m.date < before)
+      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
+  const ref = latestOf(home) ?? latestOf(away);
+  if (!ref) return null;
+  const table = leagueTable(history, ref.div, ref.season, before);
+  if (table.length === 0) return null;
+  const positionOf = (team: string): { position: number; of: number } | null => {
+    const i = table.findIndex((t) => t.team === team);
+    return i < 0 ? null : { position: i + 1, of: table.length };
+  };
+  const result = { home: positionOf(home), away: positionOf(away) };
+  return result.home || result.away ? result : null;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Downloads a football-data.co.uk file (also used for its upcoming-fixtures files by edge/edge.ts). */
