@@ -28,8 +28,9 @@ test("parseVerdict reads the tool call's own structured input, not text to re-pa
   assert.equal(parseVerdict({ verdict: "weaker", confidence: "high", note: 5 }), null, "note isn't text");
   assert.equal(parseVerdict(null), null);
   assert.equal(parseVerdict("not an object"), null);
-  // A very long note is trimmed to a sane length rather than rejected, on a word boundary (truncateNote below).
-  const long = "x".repeat(1200);
+  // A genuinely runaway note is trimmed rather than rejected, on a word boundary (truncateNote below) - the normal
+  // case is a short note that fits well inside the limit and goes through untouched.
+  const long = "x".repeat(2500);
   assert.ok(parseVerdict({ verdict: "in_line", confidence: "low", note: long })!.note.endsWith("…"));
 });
 

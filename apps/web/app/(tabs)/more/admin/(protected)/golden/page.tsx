@@ -54,6 +54,18 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
   );
 }
 
+/** Claude's slice summary, clamped to two lines with a tap to read the rest - the note is never cut short to fit; the engine gives it plenty of room, and reading it in full is a tap away. */
+function ClaudeNote({ note }: { note: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full rounded-md bg-surface-2/60 px-2.5 py-2 text-left text-xs text-ink">
+      <span className="font-medium text-ink-muted">Claude: </span>
+      <span className={open ? "" : "line-clamp-2"}>{note}</span>
+      {!open && <span className="ml-1 whitespace-nowrap text-accent">more</span>}
+    </button>
+  );
+}
+
 function betText(s: GoldenSlice): string {
   if (!s.bet) return `Bet like the rest of ${s.strategy}: ${s.strategyLive ? "Live" : "Sim"}.`;
   const stake = s.bet.stakePct != null ? `${s.bet.stakePct}% of the balance` : s.bet.stake != null ? `£${s.bet.stake}` : `${s.strategy}'s stake`;
@@ -242,12 +254,7 @@ export default function GoldenPage() {
                               <Side r={s.slice.all} name="This part · Live + Sim" split={s.slice} />
                               <Side r={s.rest.all} name={`Rest of ${s.strategy}`} split={s.rest} />
                             </div>
-                            {s.claudeNote && (
-                              <p className="rounded-md bg-surface-2/60 px-2.5 py-2 text-xs text-ink">
-                                <span className="font-medium text-ink-muted">Claude: </span>
-                                {s.claudeNote.note}
-                              </p>
-                            )}
+                            {s.claudeNote && <ClaudeNote note={s.claudeNote.note} />}
                             {s.bet?.live && (
                               <p className="text-xs text-ink-muted">
                                 Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}

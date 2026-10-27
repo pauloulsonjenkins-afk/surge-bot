@@ -140,8 +140,13 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
   };
 }
 
-/** How long a note is allowed to run before it's trimmed (truncateNote below). */
-const NOTE_LIMIT = 900;
+/**
+ * How long a note is allowed to run before it's trimmed (truncateNote below). Generous: with max_tokens giving
+ * Claude plenty of room (checkAlertWithClaude, claude-golden-review.ts), this is a backstop against a genuinely
+ * runaway reply, not the normal case - the Live/Golden pages clamp a long note to a couple of lines with a tap to
+ * expand, rather than the engine deciding how much of it is worth keeping.
+ */
+const NOTE_LIMIT = 2000;
 
 /**
  * Cuts `s` to at most `limit` characters without stopping mid-word: a hard slice chopped a real note off as
@@ -200,7 +205,7 @@ export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = n
     const context = buildAlertContext(db, pick, now);
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 600,
+      max_tokens: 1000,
       system: SYSTEM_PROMPT,
       tools: [VERDICT_TOOL],
       tool_choice: { type: "tool", name: VERDICT_TOOL.name },

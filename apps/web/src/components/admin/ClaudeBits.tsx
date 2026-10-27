@@ -42,9 +42,10 @@ export function ClaudeVerdict({ pickId, v }: { pickId: number; v: Verdict }) {
 
   return (
     <div className={`rounded-md text-xs ${open ? "border border-line bg-surface-2/40 p-2" : ""}`}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((x) => !x)} className={`text-left ${v.verdict === "weaker" ? "text-warn" : "text-ink-muted"}`}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((x) => !x)} className={`block w-full text-left ${v.verdict === "weaker" ? "text-warn" : "text-ink-muted"}`}>
         <span className="font-medium underline decoration-dotted underline-offset-2">{LABEL[v.verdict]}</span>{" "}
-        {!open && <span>{v.note}</span>}
+        {/* Clamped: the note is never cut short to fit (the engine gives it plenty of room) - this is just the collapsed preview, full text a tap away. */}
+        {!open && <span className="line-clamp-2 align-bottom">{v.note}</span>}
       </button>
       {open && (
         <div className="mt-1.5 space-y-2">
