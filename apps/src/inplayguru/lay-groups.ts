@@ -24,6 +24,7 @@ import { getSendingSettings, pickFacts, saveSendingSettings, segmentBetFor, stra
 import { leagueCountryFromText, parseAlert } from "./parse-alert";
 import { clashOf, exposureOf } from "./clash";
 import { ruleLabel, ruleTest, type AlertFacts, type Feature } from "../server/segments";
+import { checkAlertWithClaude } from "../server/claude-check";
 import { log } from "../server/log";
 
 export const LAY_CHAT = "lay";
@@ -172,6 +173,11 @@ export function syncLayPicks(db: EngineDb, now = new Date()): number {
       laidScores.add(matchScore(p));
       changed++;
       log.info(`LAY pick made from pick ${p.id} (${p.home} v ${p.away}, ${p.goalsHome}-${p.goalsAway}): ${group.header}.`);
+      // Claude's second opinion (claude-check.ts): fire-and-forget, as for any other new alert. LAY picks never
+      // go through listener.ts/receiver.ts (they're made here, not received from InPlayGuru), so without this
+      // line they never got one at all.
+      const stored = db.getLivePickByMessage(LAY_CHAT, p.id);
+      if (stored) void checkAlertWithClaude(db, stored, now);
     }
   }
   // The source's later edits (half-time, full time): copied to its LAY, up to four days on, until it settles.
