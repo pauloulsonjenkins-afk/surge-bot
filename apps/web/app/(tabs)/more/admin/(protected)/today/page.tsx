@@ -82,6 +82,9 @@ function KillSwitch({ on }: { on: boolean }) {
   );
 }
 
+/** engine today.ts's category for picks from before GoalBrew placed its own bets. */
+const OLD_BOT = "Old bot";
+
 function NotPlaced() {
   const [days, setDays] = useState(30);
   const { data, error } = useNotPlaced(days);
@@ -111,9 +114,11 @@ function NotPlaced() {
             <span className="font-semibold tabular-nums">{data.notPlaced}</span> of {data.sent} not placed{" "}
             <span className="text-ink-muted">({Math.round((1000 * data.notPlaced) / data.sent) / 10}%)</span>
           </p>
+          {/* The biggest bucket is usually history from before GoalBrew placed its own bets: nothing to act on, so it sits
+              under the real problems as a note instead of leading the list. */}
           {data.byCategory.length > 0 && (
             <ul className="space-y-3">
-              {data.byCategory.map((c) => (
+              {data.byCategory.filter((c) => !c.category.startsWith(OLD_BOT)).map((c) => (
                 <li key={c.category}>
                   <div className="flex items-baseline justify-between gap-3 text-sm">
                     <span className="font-medium text-ink">{c.category}</span>
@@ -132,6 +137,14 @@ function NotPlaced() {
               ))}
             </ul>
           )}
+          {(() => {
+            const old = data.byCategory.find((c) => c.category.startsWith(OLD_BOT));
+            return old ? (
+              <p className="text-xs text-ink-muted">
+                Not counted above: {old.count} older picks ({old.share}%) from before GoalBrew placed its own bets, with no reason recorded. Nothing to fix.
+              </p>
+            ) : null;
+          })()}
           <details>
             <summary className="cursor-pointer text-sm font-medium text-ink">By strategy</summary>
             <ul className="mt-2 divide-y divide-line">
@@ -162,6 +175,13 @@ function Tiles({ d }: { d: TodaySnapshot }) {
   // the daily results and every safety notice reached nobody (a 14-hour outage went unnoticed overnight).
   const push = useQuery({ queryKey: ["push"], queryFn: ({ signal }) => getJson<{ devices: unknown[] }>("/api/admin/push", "notification settings", signal), staleTime: 5 * 60_000 });
   const noDevices = push.data !== undefined && push.data.devices.length === 0;
+  // Any of the folded health checks off: the "Systems" line opens itself and turns amber.
+  const systemsWarn =
+    (bankAge !== null && bankAge > 30 * 60_000) ||
+    d.limits.matchCap === 0 ||
+    !tg.ok ||
+    (d.queue.sentToday >= 5 && d.queue.notPlacedToday / d.queue.sentToday > 0.3) ||
+    !!d.betting.betfair.lastError;
   return (
     <>
       {noDevices && (
@@ -186,7 +206,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
         <Tile
           label="Betting"
           value={d.betting.on ? (d.betting.breaker.open ? "Paused" : "On") : "Off"}
@@ -194,6 +214,29 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           warn={d.betting.on && d.betting.breaker.open}
         />
         <Tile label="Live today" value={<span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
+        <Tile
+          label="Daily loss stop"
+          value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}
+          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet, false)} of it used today` : "None used: Live isn't down today") : undefined}
+          warn={d.limits.dailyLossLimit === 0 || d.limits.lossStop !== null}
+        >
+          {d.limits.dailyLossLimit === 0 && (
+            <Link href="/more/admin/sending?tab=limits" className="mt-1 block text-xs text-warn underline">
+              Set one on Betting
+            </Link>
+          )}
+        </Tile>
+      </div>
+
+      {/* The rest of the health checks fold into one line while all is well, and open by themselves the moment one needs a look. */}
+      <details key={systemsWarn ? "warn" : "ok"} open={systemsWarn} className={`rounded-xl border px-3 ${systemsWarn ? "border-warn/60 bg-warn/5" : "border-line bg-surface"}`}>
+        <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-2 text-sm text-ink">
+          <span className="font-medium">{systemsWarn ? "Systems: needs a look" : "Systems: all OK"}</span>
+          <span className="text-xs text-ink-muted">
+            balance {d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`} · £{d.exposure.openStake.toFixed(2)} out · {d.alerts.lastHour} alerts in the last hour · {d.queue.waiting + d.queue.placing} waiting
+          </span>
+        </summary>
+        <div className="grid grid-cols-2 gap-2 pb-3 lg:grid-cols-4">
         <Tile
           label="Betfair balance"
           value={d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`}
@@ -216,18 +259,6 @@ function Tiles({ d }: { d: TodaySnapshot }) {
             </Link>
           )}
         </Tile>
-        <Tile
-          label="Daily loss stop"
-          value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}
-          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet, false)} of it used today` : "None used: Live isn't down today") : undefined}
-          warn={d.limits.dailyLossLimit === 0 || d.limits.lossStop !== null}
-        >
-          {d.limits.dailyLossLimit === 0 && (
-            <Link href="/more/admin/sending?tab=limits" className="mt-1 block text-xs text-warn underline">
-              Set one on Betting
-            </Link>
-          )}
-        </Tile>
         <Tile label="Alerts" value={`${d.alerts.lastHour} in the last hour`} sub={`last ${ago(tg.lastAlertAt)} · Telegram ${tg.ok ? "OK" : "problem"}`} warn={!tg.ok} />
         <Tile
           label="Bets in progress"
@@ -241,7 +272,8 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           sub={d.betting.betfair.configured ? `last answered ${ago(d.betting.betfair.lastOkAt)}` : undefined}
           warn={!!d.betting.betfair.lastError}
         />
-      </div>
+        </div>
+      </details>
 
       {d.advice && d.advice.length > 0 && (
         <Card title="Suggestions" subtitle="From results since each strategy's rules last changed. Nothing changes until you press Apply; you get one notification per new suggestion.">
@@ -314,8 +346,8 @@ export default function TodayPage() {
       {error ? (
         <QueryError error={error} next="/more/admin/today" />
       ) : isLoading || !data ? (
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-          {Array.from({ length: 8 }, (_, i) => (
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }, (_, i) => (
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>

@@ -1164,18 +1164,27 @@ export default function StrategiesPage() {
 
       {side === "lay" && data && <LaySection rows={strategies.filter(isLayRow)} all={strategies} betOf={betOf} settings={sending.data?.settings} bank={sending.data?.bank} />}
 
-      {/* On a phone the view switches sit behind one button, so the strategies come first. */}
+      {/* The view switches sit behind one button on every screen (27 Oct 2026 tidy-up), with what's chosen written on it, so the strategies come first. */}
       {side !== "lay" && (
         <button
           type="button"
           aria-expanded={showOptions}
           onClick={() => setShowOptions((v) => !v)}
-          className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink sm:hidden"
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md border border-line px-3 py-1.5 text-left text-xs font-medium text-ink"
         >
-          {showOptions ? "Hide view options" : "View options"}
+          <span className="min-w-0 truncate">
+            {showOptions ? "Hide view options" : "View options"}
+            {!showOptions && (
+              <span className="font-normal text-ink-muted">
+                {" "}
+                · {layout === "weekly" ? "Weekly" : `Cards, ${PERIODS.find((p) => p.value === period)?.label ?? period}`} · {VIEWS.find((v) => v.value === view)?.label ?? view} · by {SORTS.find((s) => s.value === sortBy)?.label ?? sortBy}
+              </span>
+            )}
+          </span>
+          <ChevronDown size={14} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${showOptions ? "rotate-180" : ""}`} />
         </button>
       )}
-      <div className={`flex-wrap items-center gap-3 ${side === "lay" ? "hidden" : showOptions ? "flex" : "hidden sm:flex"}`}>
+      <div className={`flex-wrap items-center gap-3 ${side === "lay" ? "hidden" : showOptions ? "flex" : "hidden"}`}>
         <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: "weekly", label: "Weekly" }, { value: "cards", label: "Cards" }]} />
         {layout === "cards" && <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS} />}
         <Segmented label="Whose figures" value={view} onChange={setView} options={VIEWS} />
@@ -1206,7 +1215,8 @@ export default function StrategiesPage() {
 
       {data && strategies.length > 0 && <PriceCheck />}
 
-      {data && strategies.length > 0 && (
+      {/* Deleting several at once is rare: its button lives with the view options, and stays out once you're mid-selection. */}
+      {data && strategies.length > 0 && (showOptions || selecting) && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <button

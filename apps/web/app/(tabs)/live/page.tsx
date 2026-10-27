@@ -248,9 +248,11 @@ function ManualBet({ pick, placement }: { pick: LivePick; placement?: Placement 
   }
   // A bet that went on through the betting software needs nothing here.
   if (placement && (placement.state === "matched" || placement.state === "won" || placement.state === "lost")) return null;
+  // Folded away until wanted (27 Oct 2026 tidy-up): most picks are never bet by hand, and this form was on every one.
   return (
-    <div className="space-y-1.5 rounded-md bg-surface-2 p-2.5">
-      <p className="text-xs font-medium text-ink">Placed it yourself?</p>
+    <details className="rounded-md bg-surface-2 px-2.5 text-xs">
+      <summary className="flex min-h-9 cursor-pointer items-center font-medium text-ink">Placed it yourself?</summary>
+      <div className="space-y-1.5 pb-2.5">
       <div className="flex flex-wrap items-end gap-2 text-xs text-ink-muted">
         <label>
           Stake (£)
@@ -271,7 +273,8 @@ function ManualBet({ pick, placement }: { pick: LivePick; placement?: Placement 
       </div>
       <p className="text-xs text-ink-muted">It then counts as a live bet at your stake and price, and settles with the alert&rsquo;s result.</p>
       {save.error && <p className="text-xs text-destructive">{save.error.message}</p>}
-    </div>
+      </div>
+    </details>
   );
 }
 
@@ -348,7 +351,14 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
       {open && (
         <div className="space-y-3 border-t border-line bg-surface-2/40 py-3 pl-16 pr-3">
           <p className="text-xs text-ink-muted">
-            {[pick.competition, preMatch ? "Pre-match alert" : `Alert at ${minute}`, fmtTime(pick.firstSeenAt)].filter(Boolean).join(" · ")}
+            {[
+              pick.competition,
+              preMatch ? "Pre-match alert" : `Alert at ${minute}`,
+              fmtTime(pick.firstSeenAt),
+              pick.detail?.matched != null && pick.detail.strikeRate != null ? `${formatCurrency(pick.detail.matched)} matched · ${pick.detail.strikeRate}% strike rate` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
 
           {shownStats.length > 0 && (
@@ -391,12 +401,6 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
           {admin && !pick.sentAt && !placement?.manual && !waiting && pick.status !== "settled" && <BetForReal pick={pick} />}
 
           {admin && <ManualBet pick={pick} placement={placement} />}
-
-          {pick.detail?.matched != null && pick.detail.strikeRate != null && (
-            <p className="text-xs text-ink-muted">
-              {formatCurrency(pick.detail.matched)} matched · {pick.detail.strikeRate}% strike rate
-            </p>
-          )}
         </div>
       )}
 
