@@ -175,9 +175,6 @@ function cleanStake(v: unknown): number | null {
   return Number.isFinite(n) && n > 0 && n <= 500 ? Math.round(n * 100) / 100 : null;
 }
 
-/** Lowest price Betfair allows; sent as MinPrice when a strategy has no minimum, which means "no limit". */
-const NO_MINIMUM_PRICE = 1.01;
-
 function cleanMinOdds(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) && n >= 1.01 && n <= 1000 ? Math.round(n * 100) / 100 : null;
@@ -488,7 +485,6 @@ interface FeedSkip {
 export interface FeedResult {
   rows: FeedRow[];
   skipped: FeedSkip[];
-  csv: string;
   /** Picks handed over for the first time in this call. */
   newlySent: number;
   /** Set when nothing can be sent for a global reason, e.g. the master switch is off. */
@@ -549,35 +545,6 @@ function parseAliases(text: string): Map<string, string> {
     if (from && to) map.set(from, to);
   }
   return map;
-}
-
-/** One quoted CSV field. Quotes are dropped and line breaks become spaces, so no value can break a row in two. */
-function csvField(v: string): string {
-  return `"${v.replace(/"/g, "").replace(/[\r\n]+/g, " ")}"`;
-}
-
-/**
- * The file the betting software reads. The MinPrice column is only added once at least one strategy has a
- * minimum odds set, so until you use the feature the file is exactly what it was before. From then on every
- * row carries it, with 1.01 (the lowest Betfair price, i.e. no limit) for strategies without a minimum.
- */
-export function toCsv(rows: FeedRow[], includeMinPrice = false): string {
-  const cols = ["Provider", "MarketType", "SelectionName", "EventName", "BetType", "Size", ...(includeMinPrice ? ["MinPrice"] : [])];
-  const header = cols.map(csvField).join(",");
-  const lines = rows.map((r) =>
-    [
-      r.provider,
-      r.marketType,
-      r.selectionName,
-      r.eventName,
-      r.betType,
-      r.stake.toFixed(2),
-      ...(includeMinPrice ? [(r.minPrice ?? NO_MINIMUM_PRICE).toFixed(2)] : []),
-    ]
-      .map(csvField)
-      .join(","),
-  );
-  return [header, ...lines].join("\r\n") + "\r\n";
 }
 
 /** Over/Under goals market code for a line: 1.5 -> OVER_UNDER_15. Null for anything that isn't a clean x.5 line. */
@@ -665,7 +632,6 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
   const empty = (blockedReason: string | null): FeedResult => ({
     rows: [],
     skipped: [],
-    csv: toCsv([], Object.keys(settings.minOdds).length > 0),
     newlySent: 0,
     blockedReason,
   });
@@ -872,7 +838,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
 
   if (opts.markSent) db.markSent(toMark);
 
-  return { rows, skipped, csv: toCsv(rows, Object.keys(settings.minOdds).length > 0), newlySent: toMark.length, blockedReason: null };
+  return { rows, skipped, newlySent: toMark.length, blockedReason: null };
 }
 
 /** The match a pick is on, for the match limit and clashes. */

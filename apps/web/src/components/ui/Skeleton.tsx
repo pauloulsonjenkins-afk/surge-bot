@@ -7,20 +7,6 @@ export function Skeleton({ className = "" }: { className?: string }) {
   );
 }
 
-/** Generic "page hasn't loaded yet" skeleton: a title bar plus a handful of rows. */
-export function PageSkeleton({ rows = 4 }: { rows?: number }) {
-  return (
-    <div className="space-y-4 px-4 py-4">
-      <Skeleton className="h-5 w-32" />
-      <div className="space-y-2">
-        {Array.from({ length: rows }).map((_, i) => (
-          <Skeleton key={i} className="h-14 w-full" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** For list-style pages (trade log, schedule): a row of skeleton cards. */
 export function ListSkeleton({ items = 6 }: { items?: number }) {
   return (

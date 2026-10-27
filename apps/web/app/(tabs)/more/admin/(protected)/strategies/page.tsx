@@ -139,8 +139,7 @@ function record(hits: number, misses: number) {
 
 /** Live when its picks are bet with real money; Sim when they are only recorded. */
 function modeOf(row: AdminStrategy): "live" | "sim" {
-  // An engine that isn't updated yet doesn't send `mode`; its switch is then the best guide.
-  return row.mode ?? (row.sendingOn ? "live" : "sim");
+  return row.mode;
 }
 
 /** Priced picks a mode needs before "Own mode" shows it (below this, a strategy that just switched shows its old mode). */

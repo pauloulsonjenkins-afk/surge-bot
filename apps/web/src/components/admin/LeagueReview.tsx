@@ -55,7 +55,6 @@ const btnPrimary = "rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-ac
 
 export function LeagueReview({ rows, busy, onChange }: { rows: AdminLeagueRow[]; busy: boolean; onChange: Change }) {
   const [copied, setCopied] = useState(false);
-  if (rows.length > 0 && rows[0]!.exchange === undefined) return null; // older engine
   const review = rows.filter(needsReview).sort((a, b) => (b.exchange?.off ?? 0) - (a.exchange?.off ?? 0) || a.league.localeCompare(b.league));
   const todo = rows.filter(toSwitchOff).sort((a, b) => a.league.localeCompare(b.league));
   const stopped = rows.filter((r) => r.noSend && r.ipgDone).sort((a, b) => a.league.localeCompare(b.league));

@@ -8,7 +8,6 @@
  * - Horses: the separate racing log, one page with tabs.
  * On phones only "Every day" sits in the admin row; the rest are a tap away on More (see AdminNav).
  * Settled picks live on the Trade Log; "Fix a result" is the admin's editing view of it (raw alerts on a second tab).
- * Old addresses (reconcile, history, horse-log, horse-stats, direct, picks, telegram) redirect to their new places.
  */
 export const ADMIN_GROUPS = [
   {

@@ -281,8 +281,6 @@ function UnlinkedBets({ report }: { report: ReconcileReport }) {
   const openCount = report.unlinkedCount ?? open.length;
   const done = report.acknowledged ?? [];
   const doneCount = report.acknowledgedCount ?? done.length;
-  // An older engine doesn't know about acknowledging yet.
-  const canAck = report.acknowledged !== undefined;
   const btn = "rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50";
 
   async function acknowledgeAll() {
@@ -310,7 +308,7 @@ function UnlinkedBets({ report }: { report: ReconcileReport }) {
               : "Placed by hand, by another bot, or under a team name the alert spells differently. Once checked, acknowledge them so only new ones show here."}
           </p>
         </div>
-        {canAck && openCount > 1 && (
+        {openCount > 1 && (
           <button type="button" disabled={ack.isPending} onClick={() => void acknowledgeAll()} className={btn}>
             Acknowledge all {openCount}
           </button>
@@ -337,11 +335,9 @@ function UnlinkedBets({ report }: { report: ReconcileReport }) {
                       Add to Match names
                     </button>
                   )}
-                  {canAck && (
-                    <button type="button" disabled={ack.isPending} onClick={() => ack.mutate({ betIds: [b.betId], acknowledged: true })} className={btn}>
-                      Acknowledge
-                    </button>
-                  )}
+                  <button type="button" disabled={ack.isPending} onClick={() => ack.mutate({ betIds: [b.betId], acknowledged: true })} className={btn}>
+                    Acknowledge
+                  </button>
                 </span>
               }
             />

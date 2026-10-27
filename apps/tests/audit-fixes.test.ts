@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { saveSendingSettings, toCsv } from "../src/inplayguru/bet-feed";
+import { saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { computeHitRateContext } from "../src/server/winloss";
 
 const STRATEGY = "Blistering Momentum / Action-packed";
@@ -71,11 +71,3 @@ test("the write counter moves with every write, however it is made", () => {
   assert.equal(db.changeCount(), still, "reading doesn't move it");
 });
 
-test("a line break in a value can't split a feed row", () => {
-  const csv = toCsv([
-    { provider: "Time to fight", marketType: "OVER_UNDER_15", selectionName: "Over 1.5 Goals", eventName: "Lyon\r\nv Nantes", betType: "BACK", stake: 2, minPrice: null } as never,
-  ]);
-  const lines = csv.trimEnd().split("\r\n");
-  assert.equal(lines.length, 2, "header and one row");
-  assert.match(lines[1]!, /"Lyon v Nantes"/);
-});

@@ -436,11 +436,9 @@ export interface SendingState {
   /** The Betfair balance percentage stakes work from (null total until it has been read). */
   bank?: { total: number | null; available: number | null; exposure: number | null; at: string | null };
   strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; /** A percentage stake, if this strategy uses one. */ stakePct?: number | null; /** What that percentage comes to now in pounds. */ stakeNow?: number | null; minOdds: number | null; /** Lay strategies: the highest price to lay at. */ maxLayOdds?: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null; /** The same limits run on its simulated bets (missing on an older engine). */ simStopLoss?: StopLossStatus | null }>;
-  feedTokenConfigured: boolean;
   preview: {
     rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string; stake: number; minPrice: number | null }>;
     skipped: Array<{ pickId: number; strategy: string; match: string; reason: string }>;
-    csv: string;
     blockedReason: string | null;
   };
   /** Team names learned by themselves, newest first (missing on an older engine). */

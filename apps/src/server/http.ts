@@ -1565,10 +1565,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       send(res, 200, {
         settings,
         strategies: [...seen.values()],
-        feedTokenConfigured: Boolean(process.env.BET_FEED_TOKEN),
         // The Betfair balance percentage stakes work from (null until it has been read).
         bank: getBank(db),
-        preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), csv: preview.csv, blockedReason: preview.blockedReason },
+        preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), blockedReason: preview.blockedReason },
         // Team names learned by themselves (name-learning.ts), newest first, with Undo on Betting -> Limits -> Match names.
         learnedNames: learnedNames(db).slice(0, 20),
       });
