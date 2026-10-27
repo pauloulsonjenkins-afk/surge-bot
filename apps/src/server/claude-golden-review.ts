@@ -76,13 +76,19 @@ async function writeNote(db: EngineDb, anthropic: Anthropic, key: string, s: Sli
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 300,
+      max_tokens: 500,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: JSON.stringify(digestFor(s)) }],
     });
     const note = response.content.find((b) => b.type === "text")?.text.trim();
     if (!note) {
       log.warn(`Claude Golden review for ${key}: no text in the reply.`);
+      return;
+    }
+    // Cut off mid-sentence by hitting max_tokens (27 Oct 2026, seen on the Golden page: "...That" / "...and not"):
+    // skip saving it rather than show a sentence that just stops, same call as claude-check.ts's own verdict failures.
+    if (response.stop_reason === "max_tokens") {
+      log.warn(`Claude Golden review for ${key}: cut off by max_tokens, not saved.`);
       return;
     }
     const all = loadNotes(db);
