@@ -5,6 +5,7 @@ import { Card, PageHeader } from "@/components/ui/Card";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import { useSending } from "@/queries/use-sending";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ClampedText } from "@/components/ui/ClampedText";
 import { QueryError } from "@/components/ui/QueryError";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { GoldenBadge, sliceName } from "@/components/ui/SegmentLabel";
@@ -54,16 +55,9 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
   );
 }
 
-/** Claude's slice summary, clamped to two lines with a tap to read the rest - the note is never cut short to fit; the engine gives it plenty of room, and reading it in full is a tap away. */
+/** Claude's slice summary: two lines, and a "more" only when there's more to read. */
 function ClaudeNote({ note }: { note: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <button type="button" onClick={() => setOpen((v) => !v)} className="block w-full rounded-md bg-surface-2/60 px-2.5 py-2 text-left text-xs text-ink">
-      <span className="font-medium text-ink-muted">Claude: </span>
-      <span className={open ? "" : "line-clamp-2"}>{note}</span>
-      {!open && <span className="ml-1 whitespace-nowrap text-accent">more</span>}
-    </button>
-  );
+  return <ClampedText text={note} label="Claude:" lines={2} className="rounded-md bg-surface-2/60 px-2.5 py-2 text-xs text-ink" />;
 }
 
 function betText(s: GoldenSlice): string {

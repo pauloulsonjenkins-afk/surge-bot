@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getJson } from "@/queries/fetch-json";
+import { ClampedText } from "@/components/ui/ClampedText";
 import type { ClaudeReviews } from "@/server/engine-client";
 
 type Verdict = { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string; checkedAt: string };
@@ -82,17 +83,15 @@ export function ClaudeVerdict({ pickId, v }: { pickId: number; v: Verdict }) {
   );
 }
 
-/** One review note: four lines to start, the rest a tap away, so a long note never pushes the page down. */
+/** One review note: four lines to start, the rest a tap away (only when there is a rest), so a long note never pushes the page down. */
 function ReviewNote({ label, at, note }: { label: string; at: string; note: string }) {
-  const [open, setOpen] = useState(false);
   return (
-    <button type="button" aria-expanded={open} onClick={() => setOpen((x) => !x)} className="block w-full text-left">
-      <span className="block text-xs font-medium text-ink-muted">
+    <div>
+      <p className="text-xs font-medium text-ink-muted">
         {label} · {when.format(new Date(at))}
-      </span>
-      <span className={`mt-0.5 block whitespace-pre-line text-sm text-ink ${open ? "" : "line-clamp-4"}`}>{note}</span>
-      <span className="mt-0.5 block text-xs text-accent">{open ? "Show less" : "Read all"}</span>
-    </button>
+      </p>
+      <ClampedText text={note} lines={4} className="mt-0.5 whitespace-pre-line text-sm text-ink" />
+    </div>
   );
 }
 
