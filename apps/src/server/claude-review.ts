@@ -18,7 +18,7 @@ import type { EngineDb } from "../storage/engine-db";
 import { computeStrategyReturns } from "./winloss";
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
-import { goldenReport } from "./golden";
+import { CANDIDATE_FROM, FULL_FROM, goldenReport, TRIAL_FROM } from "./golden";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { ukWeekStart } from "../members/time";
 import { log } from "./log";
@@ -42,7 +42,12 @@ const SYSTEM_PROMPT = [
   "actually supports it, name one or two concrete things worth the owner's attention: a strategy or slice that looks",
   "ready to try Live or ready to come off it, a LAY group candidate, a losing pattern worth narrowing a strategy",
   "around. Only raise an idea the figures given actually back up — say plainly when nothing stands out rather than",
-  "inventing one. 3-7 sentences, plain and concrete, no hedging filler, no bullet points.",
+  "inventing one.",
+  "Finish with one line on what's worth watching next, from goldenSlicesCloseToNextStage (how many picks a slice is",
+  "from becoming a candidate, a Live trial or full stake) if anything is given there — e.g. 'X is 6 picks from a Live",
+  "trial'. This is never a results forecast: you cannot and must not predict tomorrow's results or say a strategy",
+  "will do well. If the list is empty, skip this line rather than inventing something to watch.",
+  "3-7 sentences, plain and concrete, no hedging filler, no bullet points.",
 ].join(" ");
 
 let client: Anthropic | null | undefined;
@@ -55,6 +60,31 @@ function getClient(): Anthropic | null {
 
 export function claudeReviewConfigured(): boolean {
   return getClient() !== null;
+}
+
+/** Within this many priced picks of its next Golden stage, a watched slice is worth flagging as close. */
+const NEAR_NEXT_STAGE = 15;
+
+/**
+ * Watched slices close to their next Golden stage (golden.ts's own thresholds), for the review's forward-looking
+ * line: not a results forecast (nothing here predicts what happens, only how close a slice is to a stage change
+ * that's already mechanical and rule-based), just what's worth watching for tomorrow.
+ */
+export function goldenCloseToNextStage(db: EngineDb, now: Date): Array<{ strategy: string; slice: string; nextStage: string; picksAway: number }> {
+  const nextStageFor: Partial<Record<string, { threshold: number; name: string }>> = {
+    quiet: { threshold: CANDIDATE_FROM, name: "a candidate" },
+    candidate: { threshold: TRIAL_FROM, name: "a Live trial" },
+    trial: { threshold: FULL_FROM, name: "full stake" },
+  };
+  const out: Array<{ strategy: string; slice: string; nextStage: string; picksAway: number }> = [];
+  for (const s of goldenReport(db, now, { skipFinder: true }).slices) {
+    if (s.quiet) continue;
+    const next = nextStageFor[s.status];
+    if (!next) continue;
+    const picksAway = next.threshold - s.slice.all.counted;
+    if (picksAway > 0 && picksAway <= NEAR_NEXT_STAGE) out.push({ strategy: s.strategy, slice: s.label, nextStage: next.name, picksAway });
+  }
+  return out;
 }
 
 /** The read-only digest handed to Claude: nothing here is a setting, only figures already shown elsewhere. */
@@ -81,7 +111,7 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
   const verdictTally = db.sqlite
     .prepare(`SELECT verdict, COUNT(*) as n FROM claude_verdicts WHERE checked_at >= ? GROUP BY verdict`)
     .all(from) as Array<{ verdict: string; n: number }>;
-  return { periodFrom: from, strategies, goldenSlices: golden, perAlertVerdictsThisPeriod: verdictTally };
+  return { periodFrom: from, strategies, goldenSlices: golden, perAlertVerdictsThisPeriod: verdictTally, goldenSlicesCloseToNextStage: goldenCloseToNextStage(db, now) };
 }
 
 async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date): Promise<void> {
