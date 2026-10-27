@@ -2043,6 +2043,8 @@ export interface ClaudeVerdictCheck {
   byVerdict: { stronger: ClaudeVerdictRow; in_line: ClaudeVerdictRow; weaker: ClaudeVerdictRow };
   summary: string;
   badgeVisible: boolean;
+  configured: boolean;
+  lastFailure: { reason: string; at: string } | null;
 }
 
 export function fetchClaudeVerdictCheck(): Promise<ClaudeVerdictCheck> {

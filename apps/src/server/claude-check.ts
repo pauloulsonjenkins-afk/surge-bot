@@ -27,9 +27,29 @@ const SYSTEM_PROMPT = [
   "You never place, skip, or recommend placing a bet. You only judge whether THIS one alert looks stronger, in",
   "line with, or weaker than its strategy's own usual pattern, using only the data given.",
   "If the data given doesn't support a confident view, answer in_line with low confidence rather than guessing.",
-  "Reply with ONLY a single JSON object, no other text, matching exactly:",
-  '{"verdict": "stronger" | "in_line" | "weaker", "confidence": "low" | "medium" | "high", "note": "<1-3 sentences, concrete, no filler>"}',
+  "Always answer by calling the give_verdict tool exactly once. Never reply in plain text.",
 ].join(" ");
+
+/**
+ * A tool, called once, instead of asking for bare JSON in prose: 27 Oct 2026, the owner reported no verdicts were
+ * landing at all even though the API key worked (the daily review, a different call, wrote its note fine that same
+ * evening) - the likely cause was Haiku adding stray words around the JSON it was asked for in plain text, which
+ * parseVerdict below couldn't recover from. Forcing a tool call makes the reply structured by the API itself, not by
+ * hoping the model follows an instruction.
+ */
+const VERDICT_TOOL = {
+  name: "give_verdict",
+  description: "Give your verdict on this one alert.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      verdict: { type: "string", enum: ["stronger", "in_line", "weaker"] },
+      confidence: { type: "string", enum: ["low", "medium", "high"] },
+      note: { type: "string", description: "1-3 sentences, concrete, no filler." },
+    },
+    required: ["verdict", "confidence", "note"],
+  },
+};
 
 let client: Anthropic | null | undefined;
 
@@ -81,16 +101,10 @@ export function buildAlertContext(db: EngineDb, pick: LivePick): Record<string, 
   };
 }
 
-function parseVerdict(text: string): { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string } | null {
-  let parsed: unknown;
-  try {
-    // Claude is told to answer with only JSON, but strip any stray code-fence wrapping defensively.
-    parsed = JSON.parse(text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim());
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object") return null;
-  const p = parsed as Record<string, unknown>;
+/** The give_verdict tool call's input, already parsed JSON from the SDK (not text to re-parse). */
+export function parseVerdict(input: unknown): { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string } | null {
+  if (!input || typeof input !== "object") return null;
+  const p = input as Record<string, unknown>;
   const verdict = p.verdict === "stronger" || p.verdict === "weaker" || p.verdict === "in_line" ? p.verdict : null;
   const confidence = p.confidence === "low" || p.confidence === "medium" || p.confidence === "high" ? p.confidence : null;
   const note = typeof p.note === "string" ? p.note.trim().slice(0, 600) : null;
@@ -98,30 +112,55 @@ function parseVerdict(text: string): { verdict: "stronger" | "in_line" | "weaker
   return { verdict, confidence, note };
 }
 
+/** The key the last failure (if any) is kept under, so the admin page can show it: see lastCheckFailure below. */
+const LAST_FAILURE_KEY = "claude_check_last_failure";
+
+/** The last reason a per-alert check failed, and when (null once one has since succeeded), for the admin page. */
+export function lastCheckFailure(db: EngineDb): { reason: string; at: string } | null {
+  try {
+    return JSON.parse(db.getSetting(LAST_FAILURE_KEY) ?? "null") as { reason: string; at: string } | null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fire-and-forget: asks Claude for a second opinion on one alert and stores the answer. Never throws; every
- * failure (no API key, network error, a bad or unparseable reply) is caught and logged, leaving the pick with
+ * failure (no API key, network error, a bad or unusable reply) is caught and logged, leaving the pick with
  * no verdict rather than a wrong one. Callers should call this with `void`, after the pick itself is saved.
+ * The reason for the latest failure is kept (lastCheckFailure) so it's visible on the admin page, not only in
+ * the engine's own logs: 27 Oct 2026, the owner found no verdicts were landing with nothing to show why.
  */
 export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = new Date()): Promise<void> {
   const anthropic = getClient();
   if (!anthropic) return;
+  const fail = (reason: string) => {
+    log.warn(`Claude check for pick ${pick.id}: ${reason}`);
+    try {
+      db.setSetting(LAST_FAILURE_KEY, JSON.stringify({ reason, at: now.toISOString() }));
+    } catch {
+      // the verdict itself matters more than remembering why one attempt failed
+    }
+  };
   try {
     const context = buildAlertContext(db, pick);
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 400,
       system: SYSTEM_PROMPT,
+      tools: [VERDICT_TOOL],
+      tool_choice: { type: "tool", name: VERDICT_TOOL.name },
       messages: [{ role: "user", content: JSON.stringify(context) }],
     });
-    const text = response.content.find((b) => b.type === "text")?.text ?? "";
-    const result = parseVerdict(text);
+    const call = response.content.find((b) => b.type === "tool_use" && b.name === VERDICT_TOOL.name);
+    const result = call && call.type === "tool_use" ? parseVerdict(call.input) : null;
     if (!result) {
-      log.warn(`Claude check for pick ${pick.id}: couldn't parse a verdict from its reply.`);
+      fail(`couldn't get a usable verdict from its reply (stop reason: ${response.stop_reason ?? "unknown"}).`);
       return;
     }
     db.saveClaudeVerdict(pick.id, { ...result, model: MODEL }, now.toISOString());
+    db.setSetting(LAST_FAILURE_KEY, "null");
   } catch (err) {
-    log.warn(`Claude check for pick ${pick.id} failed: ${err instanceof Error ? err.message : String(err)}.`);
+    fail(`${err instanceof Error ? err.message : String(err)}.`);
   }
 }

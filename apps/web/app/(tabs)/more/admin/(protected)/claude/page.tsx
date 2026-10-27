@@ -63,6 +63,18 @@ export default function ClaudeVerdictCheckPage() {
         </div>
       </details>
 
+      {data && !data.configured && (
+        <Card title="Not working" className="border-warn/60 bg-warn/5">
+          <p className="text-sm text-ink">No API key is set on the engine, so Claude is never asked anything: nothing here will move.</p>
+        </Card>
+      )}
+      {data && data.configured && data.lastFailure && (
+        <Card title="Last per-alert check failed" className="border-warn/60 bg-warn/5">
+          <p className="text-sm text-ink">{data.lastFailure.reason}</p>
+          <p className="mt-1 text-xs text-ink-muted">{new Date(data.lastFailure.at).toLocaleString("en-GB", { timeZone: "Europe/London" })}. Shown only until one since succeeds.</p>
+        </Card>
+      )}
+
       {error ? (
         <QueryError error={error} next="/more/admin/claude" />
       ) : isLoading || !data ? (

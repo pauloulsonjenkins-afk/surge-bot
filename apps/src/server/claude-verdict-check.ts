@@ -14,6 +14,7 @@
  */
 import type { EngineDb } from "../storage/engine-db";
 import { pricingInputs, ALL_TIME, type ResultRow } from "./winloss";
+import { claudeConfigured, lastCheckFailure } from "./claude-check";
 
 export const VERDICT_THRESHOLD = 100;
 const BADGE_VISIBLE_KEY = "claude_badge_visible";
@@ -37,6 +38,10 @@ export interface ClaudeVerdictCheck {
   /** Plain-language verdict on the verdicts: whether "weaker" has actually done worse than "in line". Null until ready. */
   summary: string;
   badgeVisible: boolean;
+  /** Whether the engine has an API key to call Claude with at all (added 27 Oct 2026: if not, nothing below runs). */
+  configured: boolean;
+  /** Why the last per-alert check failed, and when, if one has since another succeeded (claude-check.ts). */
+  lastFailure: { reason: string; at: string } | null;
 }
 
 function emptyRow(): { n: number; hits: number; staked: number; profit: number; counted: number } {
@@ -79,7 +84,7 @@ export function computeClaudeVerdictCheck(db: EngineDb): ClaudeVerdictCheck {
   const summary = !ready
     ? `${settledCount} of ${VERDICT_THRESHOLD} settled.`
     : verdictSummary(byVerdict);
-  return { settledCount, threshold: VERDICT_THRESHOLD, ready, byVerdict, summary, badgeVisible: claudeBadgeVisible(db) };
+  return { settledCount, threshold: VERDICT_THRESHOLD, ready, byVerdict, summary, badgeVisible: claudeBadgeVisible(db), configured: claudeConfigured(), lastFailure: lastCheckFailure(db) };
 }
 
 /** A margin worth calling real, not noise: "weaker" needs to return at least this much worse per £1 than "in line". */
