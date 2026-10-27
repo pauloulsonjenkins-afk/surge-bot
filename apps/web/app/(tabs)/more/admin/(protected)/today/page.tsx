@@ -16,6 +16,7 @@ import { getJson } from "@/queries/fetch-json";
 import type { EdgeCard } from "@/lib/members/edge";
 import { AdviceRow } from "@/components/admin/Advice";
 import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
+import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
 import { toneOf, gbp } from "@/lib/format";
 
 
@@ -253,6 +254,8 @@ function Tiles({ d }: { d: TodaySnapshot }) {
       )}
 
       <ClaudeReviewCard />
+
+      <TodayByStrategy />
 
       {d.autoStakes && d.autoStakes.length > 0 && (
         <Card title="Automatic stakes: next steps" subtitle="These happen by themselves, at most one step a week per strategy, with a notification each time. Nothing to do.">

@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { PageHeader, Segmented } from "@/components/ui/Card";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { QueryError } from "@/components/ui/QueryError";
+import Link from "next/link";
+import { Card, Segmented } from "@/components/ui/Card";
 import { useAdminStrategies, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { gbp, signedPct, toneOf } from "@/lib/format";
@@ -32,14 +30,15 @@ function verdict(r: AdminStrategy, day: StrategyReturn): { kind: "look" | "wait"
 }
 
 /**
- * Today, strategy by strategy: Live (real money) or Sim (what the picks would have made), each with its bets, wins,
- * profit and return so far today (UK day). Sim strategies having a good day that their longer record backs up are
- * marked "worth a look for Live".
+ * Today, strategy by strategy (folded in from the old /more/admin/day page, 27 Oct 2026 tidy-up): Live (real money) or
+ * Sim (what the picks would have made), each with its bets, wins, profit and return so far today (UK day). Sim
+ * strategies having a good day that their longer record backs up are marked "worth a look for Live".
  */
-export default function DayPage() {
+export function TodayByStrategy() {
   const { data, error, isLoading } = useAdminStrategies();
   const names = useStrategyNames();
   const [mode, setMode] = useState<Mode>("live");
+  const [open, setOpen] = useState(false);
 
   const rows = (data?.strategies ?? [])
     .map((r) => ({ r, day: r.today?.[mode] }))
@@ -53,21 +52,23 @@ export default function DayPage() {
   });
   const looks = mode === "sim" ? rows.filter((x) => verdict(x.r, x.day).kind === "look") : [];
 
-  return (
-    <div className="space-y-4">
-      <PageHeader
-        as="h2"
-        title="Today's strategies"
-        subtitle="Each strategy today, settled bets only. Live is real money; Sim is what it would have made."
-      />
-      <Segmented label="Show" value={mode} onChange={setMode} options={[{ value: "live", label: "Live" }, { value: "sim", label: "Sim" }]} />
+  if (error || isLoading || !data) return null;
 
-      {error ? (
-        <QueryError error={error} next="/more/admin/day" />
-      ) : isLoading || !data ? (
-        <Skeleton className="h-48 w-full" />
-      ) : (
-        <>
+  return (
+    <Card
+      title={
+        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 text-left">
+          <span>By strategy today</span>
+          <span className="text-xs font-normal text-ink-muted">
+            {total.n > 0 ? `${total.won}–${total.n - total.won} · ${gbp(total.profit)}` : "nothing settled yet"} {open ? "▲" : "▼"}
+          </span>
+        </button>
+      }
+    >
+      {open && (
+        <div className="space-y-3">
+          <Segmented label="Show" value={mode} onChange={setMode} options={[{ value: "live", label: "Live" }, { value: "sim", label: "Sim" }]} />
+
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-xl border border-line bg-surface p-3">
               <p className="text-xs text-ink-muted">{mode === "live" ? "Profit today" : "Sim today"}</p>
@@ -136,8 +137,8 @@ export default function DayPage() {
             </Link>
             . Bets still running aren&apos;t counted until they settle.
           </p>
-        </>
+        </div>
       )}
-    </div>
+    </Card>
   );
 }

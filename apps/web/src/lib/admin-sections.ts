@@ -26,7 +26,6 @@ export const ADMIN_GROUPS = [
     label: "Insights",
     daily: false,
     items: [
-      { href: "/more/admin/day", label: "Today's strategies", short: "Day", description: "Each strategy today: Live or Sim, wins, profit and return, and Sim ones worth a look for Live." },
       { href: "/more/admin/claude", label: "Claude verdict check", description: "Whether Claude's per-alert warnings actually predict a worse result, once enough have settled, and the Live tab badge's on/off switch." },
       { href: "/more/admin/notifications", label: "Notifications", short: "Alerts", description: "Every notification GoalBrew sent you in the last 60 days." },
     ],

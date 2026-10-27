@@ -702,7 +702,6 @@ function StrategyCard({
               </span>
             )}
             <LiveSimToday row={row} />
-            <SegmentLines row={row} mode={pickMode} />
             {borrowed && (
               <span className="mt-1 block text-xs text-warn">
                 Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {modeOf(row) === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} priced picks there yet.
@@ -727,10 +726,6 @@ function StrategyCard({
           </span>
         )}
       </div>
-      {bet && settings && (() => {
-        const b = betSummary(bet, settings);
-        return <p className={`-mt-1.5 px-3.5 pb-2 text-xs ${b.warn ? "text-warn" : "text-ink-muted"}`}>Bet: {b.text}</p>;
-      })()}
       {/* A suggestion for this strategy (the same as at the top of the page and on Today), with its own Apply. */}
       {advice && (
         <div className={`mx-3.5 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${good ? "border-hit/40 bg-hit/10" : "border-warn/40 bg-warn/10"}`}>
@@ -744,6 +739,11 @@ function StrategyCard({
 
       {open && (
         <div className="space-y-3 border-t border-line px-3.5 py-3">
+          {bet && settings && (() => {
+            const b = betSummary(bet, settings);
+            return <p className={`text-xs ${b.warn ? "text-warn" : "text-ink-muted"}`}>Bet: {b.text}</p>;
+          })()}
+          <SegmentLines row={row} mode={pickMode} />
           {info?.description && <p className="text-xs text-ink">{info.description}</p>}
           {/* The detail behind the headline: hit rate against break-even, and the slices being watched. */}
           <div className="space-y-1">
