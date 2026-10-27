@@ -84,3 +84,34 @@ test("a raise that loses at once is cut a step straight away, without waiting th
   assert.equal(strategyAdvice(db, now).filter((a) => a.fast).length, 0);
   assert.ok(JSON.parse(db.getSetting("stake_ladder_raises")!)[KEY].cutAt);
 });
+
+test("back to Sim: the reason also gives the whole Live record, so it doesn't contradict a later green headline", async () => {
+  const { buildFeed } = await import("../src/inplayguru/bet-feed");
+  const { parseAlert } = await import("../src/inplayguru/parse-alert");
+  const S = "Favourite pressure level";
+  const KEY = S.toLowerCase();
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 1000 });
+  const now = new Date();
+  let id = 1;
+  const alert = (n: number, result?: "hit" | "miss") =>
+    [`🔔 ${S}`, "", "🇫🇷 France Ligue 1", `Home ${n} vs Away ${n}`, "", "Timer: 60'", "Goals: 0 - 0", "Over/Under 0.50 Odds:", "2.00 1.80", ...(result ? ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", `Full-Time Score: ${result === "hit" ? "1-0" : "0-0"}`, "", result === "hit" ? "✅ Hit" : "❌ Miss"] : [])].join("\n");
+  const bet = (daysAgo: number, result: "hit" | "miss") => {
+    const n = id++;
+    const posted = new Date(now.getTime() - daysAgo * 86_400_000 - 60_000).toISOString();
+    const at = new Date(now.getTime() - daysAgo * 86_400_000);
+    db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), posted, posted);
+    buildFeed(db, { markSent: true, now: at });
+    db.upsertLivePick("chat", n, alert(n, result), parseAlert(alert(n, result)), posted);
+  };
+  // Whole record (older than 30 days): mostly wins, clearly profitable.
+  for (let i = 0; i < 40; i++) bet(40, i % 5 === 0 ? "miss" : "hit");
+  // Last 30 days: mostly losses, a bad recent spell.
+  for (let i = 0; i < 32; i++) bet(10, i % 5 === 0 ? "hit" : "miss");
+
+  const advice = strategyAdvice(db, now);
+  const a = advice.find((x) => x.key === KEY && x.kind === "back-to-sim");
+  assert.ok(a, "suggested back to Sim from the bad last 30 days");
+  assert.match(a!.reason, /Live bets \(30 days\)/);
+  assert.match(a!.reason, /whole Live record is still \+\d/, "names the whole-record figure so it isn't read as a contradiction once the headline shows it");
+});

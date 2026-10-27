@@ -171,7 +171,12 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       const l = rec.live;
       const adj = adjusted(l.roi, l.counted);
       if (l.counted >= 30 && adj !== null && adj < -0.02) {
-        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} Live bets (30 days), ${pct(adj)} adjusted for luck.` });
+        // The strategy's whole Live record since its rules last changed, for comparison: it's often still green even
+        // when the last 30 days have turned, which otherwise reads as a contradiction once the admin switches to Sim
+        // and the headline figure (a different window) looks fine. Said here so the two numbers are never seen apart.
+        const whole = sinceChange[key]?.live;
+        const wholeNote = whole && whole.counted >= 30 && whole.roi !== null ? ` Its whole Live record is still ${pct(whole.roi)} over ${whole.counted} bets — this is about its LAST 30 days only, not a change to that overall figure.` : "";
+        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} Live bets (30 days), ${pct(adj)} adjusted for luck.${wholeNote}` });
         continue;
       }
     }

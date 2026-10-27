@@ -636,6 +636,18 @@ function StrategyCard({
   // The headline is the return on each £1 staked (what decides whether a strategy is worth betting), or the £ total
   // when sorting by it.
   const adj = money ? adjustedRoi(money.roi, money.counted) : null;
+  /**
+   * The headline can show Live or Sim (Own mode) or either chosen explicitly: whichever it is, the OTHER one is a
+   * different pool of money that can easily disagree (a bad recent Live spell with a long, better Sim record, or the
+   * reverse). Shown alongside whenever it has a real sample and points the other way, so the big colour is never read
+   * as "the verdict" on its own — the fix for the "mixed messages" confusion reported 27 Oct 2026.
+   */
+  const other = pickMode === "live" ? "sim" : pickMode === "sim" ? "live" : null;
+  const otherMoney = other ? row.returns?.[other] : null;
+  const otherNote =
+    otherMoney && otherMoney.counted >= SAMPLE && otherMoney.roi !== null && money && money.roi !== null && (otherMoney.roi > 0) !== (money.roi > 0)
+      ? `${other === "live" ? "Live" : "Sim"} ${roiText(otherMoney.roi)} (${otherMoney.counted})`
+      : null;
   const headline =
     sortBy === "adjusted"
       ? {
@@ -716,6 +728,11 @@ function StrategyCard({
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
             <span className="block text-xs text-ink-muted">{headline.sub}</span>
+            {otherNote && (
+              <span className="block text-xs text-warn" title="A different pool of money, over a different time span: this isn't the same figure the big one above is.">
+                but {otherNote}
+              </span>
+            )}
             {thin && sortBy !== "adjusted" && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} priced</span>}
           </span>
           <ChevronDown size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
