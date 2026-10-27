@@ -72,7 +72,7 @@ function savePullStatus(db: EngineDb, status: SchedulePullStatus): void {
 }
 
 /** The most recent pull slot that has already arrived today (UK time), or null before the first one. */
-export function dueSlot(now: Date): string | null {
+function dueSlot(now: Date): string | null {
   const hour = Number(ukHour.format(now));
   const passed = PULL_HOURS_UK.filter((h) => hour >= h);
   const latest = passed[passed.length - 1];
@@ -80,7 +80,7 @@ export function dueSlot(now: Date): string | null {
 }
 
 /** True when a run should happen now. Exported for testing. */
-export function shouldPull(status: SchedulePullStatus, now: Date): boolean {
+function shouldPull(status: SchedulePullStatus, now: Date): boolean {
   const slot = dueSlot(now);
   if (slot === null) return false;
   // Slots sort as text (YYYY-MM-DDTHH), so a later success also covers an earlier slot.
@@ -93,7 +93,7 @@ export function shouldPull(status: SchedulePullStatus, now: Date): boolean {
   return true;
 }
 
-export async function runPull(db: EngineDb, apiKey: string, now = new Date()): Promise<void> {
+async function runPull(db: EngineDb, apiKey: string, now = new Date()): Promise<void> {
   const today = ukDateOf(now);
   const slot = dueSlot(now) ?? `${today}T00`;
   const status = readPullStatus(db);

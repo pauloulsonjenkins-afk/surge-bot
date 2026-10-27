@@ -17,7 +17,7 @@
  * order later, so anything doubtful is flagged instead.
  */
 
-export type MarketCode =
+type MarketCode =
   | "NEXT_GOAL"
   | "BOTH_TEAMS_TO_SCORE"
   | "FIRST_HALF_CORNERS"
@@ -53,7 +53,7 @@ export function isLayMarket(market: string | null | undefined): boolean {
   return market === "AWAY_WIN_LAY" || isLayGroupMarket(market);
 }
 
-export type PickResult = "hit" | "miss";
+type PickResult = "hit" | "miss";
 
 export interface ParsedAlert {
   /** Top line with emojis stripped, e.g. "Blistering Momentum / Action-packed OJ". */

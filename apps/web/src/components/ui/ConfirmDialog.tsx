@@ -91,7 +91,7 @@ const TONE_BUTTON: Record<NonNullable<ConfirmOptions["tone"]>, string> = {
 };
 
 /** The box itself. Rendered by DialogProvider; pages use useDialog() rather than this directly. */
-export function ConfirmDialog({ request, onClose }: { request: Request; onClose: (ok: boolean) => void }) {
+function ConfirmDialog({ request, onClose }: { request: Request; onClose: (ok: boolean) => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const bodyId = useId();

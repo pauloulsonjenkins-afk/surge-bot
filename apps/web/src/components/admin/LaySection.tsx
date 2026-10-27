@@ -14,7 +14,7 @@ import { BetSettings, LiveSimSwitch, type SendingStrategy } from "@/components/a
 import { gbp } from "@/lib/format";
 
 /** The markets that are LAY bets: GoalBrew's own lay groups, and InPlayGuru's Away Win Lay. */
-export const LAY_MARKETS = new Set(["NEXT_GOAL_LAY", "HOME_WIN_LAY", "AWAY_WIN_LAY"]);
+const LAY_MARKETS = new Set(["NEXT_GOAL_LAY", "HOME_WIN_LAY", "AWAY_WIN_LAY"]);
 export const isLayRow = (r: { market: string | null }) => LAY_MARKETS.has(r.market ?? "");
 
 const pct = (n: number | null | undefined) => (n == null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);

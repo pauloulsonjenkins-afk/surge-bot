@@ -21,7 +21,7 @@
  */
 import type { EngineDb, LivePick } from "../storage/engine-db";
 import { getSendingSettings, pickFacts, saveSendingSettings, segmentBetFor, strategyLabel } from "./bet-feed";
-import { leagueCountryFromText, parseAlert } from "./parse-alert";
+import { parseAlert } from "./parse-alert";
 import { clashOf, exposureOf } from "./clash";
 import { ruleLabel, ruleTest, type AlertFacts, type Feature } from "../server/segments";
 import { checkAlertWithClaude } from "../server/claude-check";

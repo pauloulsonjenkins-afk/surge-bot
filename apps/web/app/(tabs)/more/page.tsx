@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bell, Bot, CalendarDays, ChevronRight, Crown, Gauge, Lock, PencilLine, Send, Settings, TrendingUp, Trophy } from "lucide-react";
+import { Bell, Bot, ChevronRight, Crown, Gauge, Lock, PencilLine, Send, Settings, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";

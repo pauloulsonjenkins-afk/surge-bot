@@ -47,7 +47,7 @@ export function handleVerifiedPick(
 // Using webhook alerts as picks (Direct betting page: "Webhook alerts: use")
 
 /** The key webhook picks are stored under in live_picks (Telegram's use the chat id). */
-export const WEBHOOK_CHAT = "webhook";
+const WEBHOOK_CHAT = "webhook";
 
 /**
  * The alert text inside a webhook body. InPlayGuru's format isn't published, so this takes the body as plain text, or

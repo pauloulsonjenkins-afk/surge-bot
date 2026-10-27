@@ -6,8 +6,6 @@ import { useMe } from "@/queries/use-me";
 import { useUiStore } from "@/state/ui.store";
 import type { PickMode } from "@/server/engine-client";
 
-export const MODE_LABEL: Record<PickMode, string> = { all: "All", live: "Live", sim: "Sim" };
-
 /**
  * The mode the figures are shown in. For the admin it is the All / Live / Sim choice; everyone else always
  * sees every alert ("all"), because which picks were bet is private.

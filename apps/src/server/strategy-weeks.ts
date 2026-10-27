@@ -11,7 +11,7 @@ import { ukDateOf } from "./uk-time";
 import { addDaysUk, ukWeekStart } from "../members/time";
 import { segmentsOf } from "./segments";
 
-export interface WeekTally {
+interface WeekTally {
   /** Settled picks, and how many won and lost. */
   picks: number;
   won: number;
@@ -21,7 +21,7 @@ export interface WeekTally {
   staked: number;
   profit: number;
 }
-export type WeekModes = { live: WeekTally; sim: WeekTally; all: WeekTally };
+type WeekModes = { live: WeekTally; sim: WeekTally; all: WeekTally };
 
 export interface StrategyWeeks {
   /** The weeks shown, oldest first: each Monday (YYYY-MM-DD, UK). The last is the current week, so far. */

@@ -34,7 +34,7 @@ const RETRY_MS = 20 * 60_000;
 const ENTITIES: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', rsquo: "'", lsquo: "'", ndash: "-", mdash: "-", "#39": "'" };
 
 /** An HTML fragment as plain text. */
-export function htmlText(s: string): string {
+function htmlText(s: string): string {
   return s
     .replace(/<[^>]+>/g, " ")
     .replace(/&(#\d+|[a-z]+);/gi, (m, e: string) => ENTITIES[e.toLowerCase()] ?? (e.startsWith("#") ? String.fromCharCode(Number(e.slice(1))) : m))
@@ -140,7 +140,7 @@ class Session {
 }
 
 /** Signs in and reads today's tips. Throws a plain-English reason when it can't. */
-export async function fetchTips(env: NodeJS.ProcessEnv = process.env): Promise<TipLine[]> {
+async function fetchTips(env: NodeJS.ProcessEnv = process.env): Promise<TipLine[]> {
   const loginUrl = env.TIPS_LOGIN_URL?.trim();
   const pageUrl = env.TIPS_PAGE_URL?.trim();
   const email = env.TIPS_EMAIL?.trim();

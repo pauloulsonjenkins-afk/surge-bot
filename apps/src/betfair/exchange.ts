@@ -26,7 +26,7 @@ import { isLayGroupMarket, isLayMarket } from "../inplayguru/parse-alert";
 import { request as httpsRequest } from "node:https";
 import type { BetfairBet, EngineDb } from "../storage/engine-db";
 import { couldBeSameMatch, eventScore, matchBets } from "./reconcile";
-import { betableUntil, exchangeNamer, feedMarket, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
+import { betableUntil, exchangeNamer, feedMarket, getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { log } from "../server/log";
 import { notifyUnplaced, UNPLACED_AFTER_MS } from "./unplaced";
 import { runPriceChecks } from "./price-check";
@@ -888,7 +888,7 @@ export function startBetfairPoller(db: EngineDb): () => void {
 /** The same 3 minutes as the "not placed" notification (betfair/unplaced.ts). */
 const NOT_PLACED_AFTER_MS = UNPLACED_AFTER_MS;
 
-export type PlacementState = "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced" | "manual";
+type PlacementState = "checking" | "beforeKickoff" | "waiting" | "matched" | "won" | "lost" | "lapsed" | "notPlaced" | "manual";
 
 export interface Placement {
   state: PlacementState;

@@ -19,7 +19,7 @@ export const RANK_LABEL: Record<HorseBet["rank"], string> = { 1: "NAP", 2: "Next
 /** Chart colours by choice, always in this order (tokens in globals.css). */
 export const RANK_COLOUR: Record<HorseBet["rank"], string> = { 1: "var(--series-1)", 2: "var(--series-2)", 3: "var(--series-3)", 4: "var(--series-4)" };
 
-export const r2 = (n: number) => Math.round(n * 100) / 100;
+const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /** The price the place part of an each-way bet pays at. */
 export function placeOdds(odds: number, fraction: number): number {
@@ -69,7 +69,7 @@ export interface YankeeMoney extends BetMoney {
 }
 
 /** An EW Yankee on a day's four selections. Null when the day doesn't have all four (it can't be a Yankee). */
-export function yankeeMoney(day: string, unit: number, selections: HorseBet[]): YankeeMoney | null {
+function yankeeMoney(day: string, unit: number, selections: HorseBet[]): YankeeMoney | null {
   const four = [...selections].filter((b) => b.day === day).sort((a, b) => a.rank - b.rank);
   if (four.length !== 4) return null;
   const cost = r2(unit * YANKEE_BET_COUNT);
@@ -97,14 +97,14 @@ const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
 export const todayUk = (now = new Date()) => ukDay.format(now);
 
 /** "2026-10-01" moved by n days. */
-export function addDays(day: string, n: number): string {
+function addDays(day: string, n: number): string {
   const d = new Date(`${day}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
 
 /** Monday of the week a day is in (UK racing weeks run Monday to Sunday). */
-export function weekStart(day: string): string {
+function weekStart(day: string): string {
   const dow = (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7;
   return addDays(day, -dow);
 }
@@ -224,7 +224,7 @@ export function longestLosingRun(bets: HorseBet[]): { length: number; endedOn: s
 }
 
 /** Odds bands in racing terms (decimal edges 2, 4, 8, 16 are evens, 3/1, 7/1 and 15/1). */
-export const ODDS_BANDS: Array<{ label: string; max: number }> = [
+const ODDS_BANDS: Array<{ label: string; max: number }> = [
   { label: "Evens or shorter", max: 2 },
   { label: "Up to 3/1", max: 4 },
   { label: "3/1 to 7/1", max: 8 },
@@ -281,7 +281,7 @@ function bucketOf(day: string, grain: Grain): string {
   return grain === "day" ? day : grain === "week" ? weekStart(day) : `${day.slice(0, 7)}-01`;
 }
 
-export function bucketLabel(key: string, grain: Grain): string {
+function bucketLabel(key: string, grain: Grain): string {
   const d = new Date(`${key}T12:00:00Z`);
   return grain === "month" ? monthFmt.format(d) : grain === "week" ? `w/c ${dayFmt.format(d)}` : dayFmt.format(d);
 }

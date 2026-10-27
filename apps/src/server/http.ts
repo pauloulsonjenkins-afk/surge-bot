@@ -96,7 +96,7 @@ import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { telegramHealth } from "./telegram-watchdog";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { currentStake, getBank } from "../inplayguru/stake";
-import { addMatchName, betPickNow, pickSegments, buildFeed, EXCHANGE_HOLD_MS, getLastFeedFetchAt, getLastFeedFetcher, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
+import { addMatchName, betPickNow, pickSegments, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { ALL_TIME, computeHitRateContext, computePickProfits, computeSinceModeReturns, computeSparks, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
@@ -120,7 +120,6 @@ import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { notPlacedReport, todaySnapshot } from "./today";
-import { getProbe } from "../fixtures/probe";
 import { pickDetail } from "./pick-detail";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
@@ -376,7 +375,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         telegram: (({ watching, lastAlertAt, lastSyncAt, connectError, sessionDead }) => ({ connected: watching !== null, lastAlertAt, lastSyncAt, connectError, sessionDead }))(
           getListenerStatus(),
         ),
-        feedLastFetchedAt: getLastFeedFetchAt(),
       });
       return;
     }
@@ -1061,13 +1059,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
-    // The one-off API-Football plan check (fixtures/probe.ts), for the admin.
-    if (req.method === "GET" && path === "/internal/api-football-probe") {
-      if (!requireAdmin(req, res)) return;
-      send(res, 200, { probe: getProbe(db) });
-      return;
-    }
-
     // The Today page (server/today.ts), and the not-placed picks grouped by reason.
     if (req.method === "GET" && (path === "/internal/today" || path === "/internal/not-placed")) {
       if (!requireAdmin(req, res)) return;
@@ -1575,8 +1566,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         settings,
         strategies: [...seen.values()],
         feedTokenConfigured: Boolean(process.env.BET_FEED_TOKEN),
-        lastFeedFetchAt: getLastFeedFetchAt(),
-        lastFeedFetcher: getLastFeedFetcher(),
         // The Betfair balance percentage stakes work from (null until it has been read).
         bank: getBank(db),
         preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), csv: preview.csv, blockedReason: preview.blockedReason },

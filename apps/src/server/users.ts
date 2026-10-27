@@ -15,11 +15,11 @@ import type { AppUserRow, EngineDb } from "../storage/engine-db";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, keylen: number, options: { N: number; r: number; p: number; maxmem: number }) => Promise<Buffer>;
 
-export const USER_PAGES = ["dashboard", "live", "schedule"] as const;
-export type UserPage = (typeof USER_PAGES)[number];
+const USER_PAGES = ["dashboard", "live", "schedule"] as const;
+type UserPage = (typeof USER_PAGES)[number];
 
-export const MIN_PASSWORD = 10;
-export const MAX_PASSWORD = 200;
+const MIN_PASSWORD = 10;
+const MAX_PASSWORD = 200;
 
 const SIGNUPS_KEY = "user_signups";
 const N = 16384;
@@ -67,14 +67,14 @@ function getDummyHash(): Promise<string> {
   return dummyHash;
 }
 
-export function normaliseEmail(input: unknown): string | null {
+function normaliseEmail(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const email = input.trim().toLowerCase();
   if (email.length < 5 || email.length > 254) return null;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
 
-export function passwordProblem(input: unknown): string | null {
+function passwordProblem(input: unknown): string | null {
   if (typeof input !== "string" || input.length < MIN_PASSWORD) return `Use a password of at least ${MIN_PASSWORD} characters.`;
   if (input.length > MAX_PASSWORD) return `Use a password of ${MAX_PASSWORD} characters or fewer.`;
   return null;
@@ -85,16 +85,16 @@ function cleanName(input: unknown): string {
 }
 
 /** Usernames: 3 to 20 letters, digits and underscores, kept as typed (compared without regard to case). */
-export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
+const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 const RESERVED_USERNAMES = new Set(["admin", "administrator", "goalbrew", "support", "staff", "moderator", "system", "root", "official", "help"]);
 
-export function normaliseUsername(input: unknown): string | null {
+function normaliseUsername(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const u = input.trim();
   return USERNAME_RE.test(u) && !RESERVED_USERNAMES.has(u.toLowerCase()) ? u : null;
 }
 
-export function parsePages(raw: unknown): UserPage[] {
+function parsePages(raw: unknown): UserPage[] {
   let list: unknown = raw;
   if (typeof raw === "string") {
     try {
@@ -107,7 +107,7 @@ export function parsePages(raw: unknown): UserPage[] {
   return USER_PAGES.filter((p) => list.includes(p));
 }
 
-export function toPublicUser(row: AppUserRow): PublicUser {
+function toPublicUser(row: AppUserRow): PublicUser {
   return {
     id: row.id,
     email: row.email,

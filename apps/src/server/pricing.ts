@@ -184,7 +184,7 @@ export function oddsFor(
  * 13 Oct 2026: 49 of 382 next-goal picks, e.g. Over 3.5 at 1-2 shown at 4.40 when the alert said 1.62; every one of
  * those bet for real went unmatched, so a win can't be booked at the phantom price.
  */
-export const STALE_PRICE_RATIO = 1.3;
+const STALE_PRICE_RATIO = 1.3;
 
 /** True when Betfair's price is far enough above the alert's own to be a pre-goal snapshot rather than the real price. */
 export function isStaleExchangePrice(exchange: number | null | undefined, alert: number | null | undefined): boolean {

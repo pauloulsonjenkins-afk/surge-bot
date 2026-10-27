@@ -129,7 +129,7 @@ export function houseStats(db: EngineDb, commissionPct: number, now = new Date()
   return value;
 }
 
-export function computeHouseStats(db: EngineDb, commissionPct: number, now = new Date()): Map<string, HouseStrategyStats> {
+function computeHouseStats(db: EngineDb, commissionPct: number, now = new Date()): Map<string, HouseStrategyStats> {
   const commission = commissionPct / 100;
   const merges = db.getStrategyMerges();
   const today = ukDateOf(now);

@@ -29,7 +29,7 @@ export interface RecordSummary extends WinLoss {
   avgOdds: number | null;
 }
 
-export interface RecordStrategy {
+interface RecordStrategy {
   key: string;
   name: string;
   /** Since the rules last changed (or all time, when they never have). */
@@ -39,7 +39,7 @@ export interface RecordStrategy {
   firstAt: string | null;
 }
 
-export interface RecordRow {
+interface RecordRow {
   id: number;
   at: string;
   strategyKey: string;

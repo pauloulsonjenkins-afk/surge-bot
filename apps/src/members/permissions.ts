@@ -79,7 +79,7 @@ const all = (on: boolean): Record<Capability, boolean> => Object.fromEntries(CAP
  * live betting); PAID gets everything; ADMIN everything; SUSPENDED nothing. EXPIRED (a trial or subscription that ran
  * out) is FREE again: nothing is deleted, the premium parts lock.
  */
-export const DEFAULT_TIER_RULES: Record<Tier, TierRules> = {
+const DEFAULT_TIER_RULES: Record<Tier, TierRules> = {
   free: {
     caps: { ...all(false), viewStrategyNames: true, viewResults: true, useSimulation: true, simAutomation: true, viewCommunity: true },
     strategyScope: "none",

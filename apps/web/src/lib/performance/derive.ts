@@ -45,7 +45,7 @@ export function matchesLeague(a: ResolvedCell, f: LeagueFilter): boolean {
   }
 }
 
-export interface LeagueRow {
+interface LeagueRow {
   leagueId: string;
   name: string;
   country: string;

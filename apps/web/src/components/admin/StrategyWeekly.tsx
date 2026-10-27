@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { StrategyName } from "@/components/ui/StrategyName";
 import { SegmentLabel, sliceName } from "@/components/ui/SegmentLabel";

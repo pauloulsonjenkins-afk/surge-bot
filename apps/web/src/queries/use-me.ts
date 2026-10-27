@@ -14,7 +14,7 @@ export interface Me {
   pages: UserPage[];
 }
 
-export const ME_KEY = ["me"];
+const ME_KEY = ["me"];
 
 const noSubscribe = () => () => {};
 

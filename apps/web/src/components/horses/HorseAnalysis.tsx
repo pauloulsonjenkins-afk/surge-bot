@@ -20,7 +20,6 @@ import {
   series,
   summarise,
   todayUk,
-  yankees,
   type YankeeMoney,
   type Grain,
   type Preset,

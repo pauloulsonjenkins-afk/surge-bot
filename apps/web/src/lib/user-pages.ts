@@ -6,12 +6,6 @@
 export const USER_PAGES = ["dashboard", "live", "schedule"] as const;
 export type UserPage = (typeof USER_PAGES)[number];
 
-export const USER_PAGE_LABEL: Record<UserPage, { title: string; detail: string }> = {
-  dashboard: { title: "Dashboard", detail: "Dashboard (hit rates by strategy, league and minute)" },
-  live: { title: "Live", detail: "Live and Trade Log (the alerts)" },
-  schedule: { title: "Schedule", detail: "Today's and tomorrow's fixtures" },
-};
-
 /** Which permission each bottom-bar tab needs. More has none: it is always open. */
 export const TAB_PAGE: Record<string, UserPage | null> = {
   "/dashboard": "dashboard",

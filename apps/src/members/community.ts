@@ -23,7 +23,7 @@ import { listCatalogue, memberStrategyKey } from "./catalogue";
 import { HOUSE_UNIT_STAKE, MoneyTally, hitRate, type MoneyFigures } from "./house";
 import { membersStore, type CommunityStrategy, type StrategyVersion } from "./store";
 
-export interface StrategyRules {
+interface StrategyRules {
   /** House strategy keys it starts from (at least one). */
   base: string[];
   minuteMin: number | null;
@@ -58,7 +58,7 @@ function words(v: unknown): string[] {
   return [...new Set(v.filter((x): x is string => typeof x === "string").map((x) => x.trim().slice(0, 60)).filter(Boolean))].slice(0, 30);
 }
 
-export function cleanRules(db: EngineDb, ctx: MemberContext, raw: unknown): StrategyRules {
+function cleanRules(db: EngineDb, ctx: MemberContext, raw: unknown): StrategyRules {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const offered = new Set(listCatalogue(db, ctx.config).map((c) => c.key));
   const base = words(r.base).map((s) => s.toLowerCase()).filter((s) => offered.has(s));
@@ -120,7 +120,7 @@ function tally(list: Array<{ won: boolean; odds: number | null }>, commissionPct
  * Tracked: each alert judged by the version in force when it arrived (from the strategy's creation on).
  * Backtest: the current rules over every past alert (hypothetical, never ranked).
  */
-export function strategyRecord(db: EngineDb, s: CommunityStrategy, versions: StrategyVersion[], commissionPct: number): { tracked: Record_; backtest: Record_ } {
+function strategyRecord(db: EngineDb, s: CommunityStrategy, versions: StrategyVersion[], commissionPct: number): { tracked: Record_; backtest: Record_ } {
   const alerts = settledAlerts(db);
   const sorted = [...versions].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const current = sorted[sorted.length - 1]?.rules as StrategyRules | undefined;

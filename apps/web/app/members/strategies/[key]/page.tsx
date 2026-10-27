@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { gbp } from "@/lib/format";
 import { useMembersMe, useMembersStrategy } from "@/queries/use-members";
 import FollowControl from "@/components/members/FollowControl";
-import { LockedFeature, odds, pct, Tile, when, WinLossText } from "@/components/members/ui";
+import { LockedFeature, odds, pct, Tile, when } from "@/components/members/ui";
 
 export default function StrategyPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params);

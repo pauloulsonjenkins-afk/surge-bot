@@ -21,7 +21,7 @@ import { displayName } from "../inplayguru/strategy-names";
 import { sendPush } from "./push";
 import { log } from "./log";
 import { saveLeagueBlock } from "../inplayguru/league-blocks";
-export { getLeagueBlocks, isLeagueBlocked, type LeagueBlocks } from "../inplayguru/league-blocks";
+export { getLeagueBlocks, isLeagueBlocked,  } from "../inplayguru/league-blocks";
 
 export const MILESTONES = [50, 100, 250, 500];
 /** Priced picks before a strategy-in-a-league can be suggested for stopping. */
@@ -114,7 +114,7 @@ function verdictWords(v: Verdict): string {
 }
 
 /** One line for a group reaching a milestone: its return, range and verdict. */
-export function milestoneLine(name: string, n: number, t: Tally): string {
+function milestoneLine(name: string, n: number, t: Tally): string {
   const j = judge(t);
   const range = j.low !== null && j.high !== null ? ` (likely ${pct(j.low)} to ${pct(j.high)})` : "";
   return `${name} reached ${n} picks: ${j.roi === null ? "no price yet" : `${pct(j.roi)} per £1`}${range}, ${verdictWords(j.verdict)}.`;

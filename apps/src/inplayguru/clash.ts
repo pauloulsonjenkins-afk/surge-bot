@@ -18,7 +18,7 @@
  *   unrelated  different things (goals against the result), or nothing to compare.
  */
 
-export type Outcome = "H" | "D" | "A";
+type Outcome = "H" | "D" | "A";
 export type Exposure = { kind: "goals"; line: number; over: boolean } | { kind: "result"; wins: Outcome[] } | null;
 export type ClashKind = "cancels" | "offsets" | "doubles" | "unrelated";
 
@@ -73,9 +73,4 @@ export function clashOf(a: Exposure, b: Exposure): ClashKind {
     return "offsets";
   }
   return "unrelated";
-}
-
-/** In a sentence, for a reason line: "back Over 1.5 against LAY Over 1.5". */
-export function clashWord(kind: ClashKind): string {
-  return { cancels: "would cancel it out", offsets: "partly offsets it", doubles: "doubles up on it", unrelated: "is unrelated" }[kind];
 }

@@ -28,12 +28,12 @@ export const TRIAL_FROM = 300;
 export const FULL_FROM = 500;
 /** Keeping a stage: the last `recent` priced picks may not lose more than `worstRoi`; once lost, `regainFrom` picks
  * after the loss back above `regainRoi` win it back. */
-export const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0 };
+const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0 };
 const BADGES_KEY = "lay_badges";
 const STAGE_RANK = { candidate: 1, trial: 2, full: 3 } as const;
 type ToldStage = keyof typeof STAGE_RANK;
 
-export type LayBadgeStatus = "quiet" | "candidate" | "trial" | "full" | "not holding up";
+type LayBadgeStatus = "quiet" | "candidate" | "trial" | "full" | "not holding up";
 
 interface Row {
   at: string;

@@ -50,7 +50,7 @@ const GIVE_UP_MS = 4 * 24 * 3_600_000;
 const SETTLE_EVERY_MS = 30 * 60_000;
 
 /** What an Edge pick keeps beside the usual pick fields, for settling and for showing why it was picked. */
-export interface EdgePickInfo {
+interface EdgePickInfo {
   bet: EdgeBet;
   trend: string;
   kickoff: string;
@@ -65,7 +65,7 @@ export interface EdgePickInfo {
 }
 
 /** A stable message id for one fixture and bet, so the same pick is never added twice. */
-export function pickId(card: EdgeCard, bet: EdgeBet): number {
+function pickId(card: EdgeCard, bet: EdgeBet): number {
   const s = `${KEY(card.fixture)}|${bet.market}|${bet.pick}`;
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);

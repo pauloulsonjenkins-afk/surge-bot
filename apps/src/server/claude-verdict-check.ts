@@ -16,12 +16,12 @@ import type { EngineDb } from "../storage/engine-db";
 import { pricingInputs, ALL_TIME, type ResultRow } from "./winloss";
 import { claudeConfigured, lastCheckFailure } from "./claude-check";
 
-export const VERDICT_THRESHOLD = 100;
+const VERDICT_THRESHOLD = 100;
 const BADGE_VISIBLE_KEY = "claude_badge_visible";
 
 type Verdict = "stronger" | "in_line" | "weaker";
 
-export interface VerdictRow {
+interface VerdictRow {
   n: number;
   hits: number;
   hitRate: number | null;

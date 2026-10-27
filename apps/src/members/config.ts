@@ -35,7 +35,7 @@ export interface MembersConfig {
   paidPriceLabel: string;
 }
 
-export const DEFAULT_MEMBERS_CONFIG: MembersConfig = {
+const DEFAULT_MEMBERS_CONFIG: MembersConfig = {
   flags: DEFAULT_FLAGS,
   tierOverrides: {},
   trialDays: 7,

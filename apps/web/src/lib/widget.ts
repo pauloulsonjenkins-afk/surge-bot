@@ -5,10 +5,10 @@ import { gbp } from "@/lib/format";
  * The phone widget's summary of the Today page (served by /api/widget): every value ready to show as it is, text and
  * colours (the dark theme's), flat so a widget app can pick one with ".name". See apps/web/WIDGET.md.
  */
-export const GREEN = "#5CC48F";
-export const RED = "#E86B55";
+const GREEN = "#5CC48F";
+const RED = "#E86B55";
 export const AMBER = "#E6CF4F";
-export const CREAM = "#F1E9DF";
+const CREAM = "#F1E9DF";
 
 const colour = (n: number) => (n > 0 ? GREEN : n < 0 ? RED : CREAM);
 

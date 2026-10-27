@@ -208,7 +208,7 @@ export function parseCsv(text: string, div: Division, minSeason: number): Histor
 // --------------------------------------------------------------------------- downloading
 
 /** The season starting this year, or last year before July. */
-export function currentSeason(now = new Date()): number {
+function currentSeason(now = new Date()): number {
   return now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
 }
 
@@ -454,9 +454,9 @@ export interface LayTestOptions {
   divisions: string[];
 }
 
-export const DEFAULT_LAY_TEST: LayTestOptions = { minOdds: 2.5, maxOdds: 6, commission: 0.02, spread: 0.02, seasons: SEASONS, divisions: [] };
+const DEFAULT_LAY_TEST: LayTestOptions = { minOdds: 2.5, maxOdds: 6, commission: 0.02, spread: 0.02, seasons: SEASONS, divisions: [] };
 
-export interface LayTestRow {
+interface LayTestRow {
   bets: number;
   /** Bets won: the away side didn't win. */
   won: number;

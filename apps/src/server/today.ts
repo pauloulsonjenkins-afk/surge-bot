@@ -141,7 +141,7 @@ function median(xs: number[]): number | null {
   return Math.round((s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2) * 10) / 10;
 }
 
-export function speedReport(db: EngineDb, sinceIso: string): SpeedReport {
+function speedReport(db: EngineDb, sinceIso: string): SpeedReport {
   const rows = db.listBetTimings(sinceIso);
   const secs = (a: string | null, b: string | null) => {
     if (!a || !b) return null;

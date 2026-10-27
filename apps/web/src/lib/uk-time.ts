@@ -3,7 +3,7 @@
 const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
 
 /** The UK calendar day `now` falls in, as YYYY-MM-DD. */
-export function ukDateOf(now: Date = new Date()): string {
+function ukDateOf(now: Date = new Date()): string {
   return ukDay.format(now);
 }
 

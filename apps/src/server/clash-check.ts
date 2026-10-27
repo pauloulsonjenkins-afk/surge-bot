@@ -8,7 +8,7 @@ import { getSendingSettings, segmentBetFor, strategyLabel } from "../inplayguru/
 import { clashOf, exposureOf, type ClashKind } from "../inplayguru/clash";
 import { displayName } from "../inplayguru/strategy-names";
 
-export interface ClashRow {
+interface ClashRow {
   key: string;
   name: string;
   cancels: number;

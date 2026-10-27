@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getJson } from "@/queries/fetch-json";
 import type { ClashCheck } from "@/server/engine-client";
 
-export function useClashCheck(strategyKey: string, enabled = true) {
+function useClashCheck(strategyKey: string, enabled = true) {
   return useQuery({
     queryKey: ["clash-check", strategyKey.toLowerCase()],
     queryFn: ({ signal }) => getJson<ClashCheck>(`/api/admin/clash-check?strategy=${encodeURIComponent(strategyKey.toLowerCase())}`, "the clash check", signal),

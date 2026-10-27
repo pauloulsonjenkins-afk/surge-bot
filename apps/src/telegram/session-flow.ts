@@ -8,7 +8,7 @@
  * instead of reading from a terminal — there isn't one.
  */
 
-export type LoginStatus =
+type LoginStatus =
   | "idle"
   | "connecting"
   | "awaiting_code"

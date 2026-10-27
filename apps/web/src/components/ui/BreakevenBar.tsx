@@ -4,7 +4,7 @@
  * there are too few picks to call it. Built from spans so it can sit inside a button.
  */
 /** Fewer settled picks than this and a hit rate says nothing about break-even yet. */
-export const JUDGE_FROM = 20;
+const JUDGE_FROM = 20;
 
 export function BreakevenBar({
   hitRate,

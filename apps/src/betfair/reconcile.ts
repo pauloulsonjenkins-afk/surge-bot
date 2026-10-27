@@ -100,7 +100,7 @@ const COLUMNS: Record<Field, string[]> = {
 
 const key = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-export function mapColumns(header: string[]): { cols: Partial<Record<Field, number>>; unused: string[] } {
+function mapColumns(header: string[]): { cols: Partial<Record<Field, number>>; unused: string[] } {
   const keys = header.map(key);
   const cols: Partial<Record<Field, number>> = {};
   const taken = new Set<number>();
@@ -586,7 +586,7 @@ export function importBetHistory(db: EngineDb, csv: string, source: string, now 
   return summary;
 }
 
-export function lastImport(db: EngineDb): ImportSummary | null {
+function lastImport(db: EngineDb): ImportSummary | null {
   try {
     const raw = db.getSetting(LAST_IMPORT_KEY);
     return raw ? (JSON.parse(raw) as ImportSummary) : null;
@@ -598,7 +598,7 @@ export function lastImport(db: EngineDb): ImportSummary | null {
 // ---------------------------------------------------------------------------
 // The report
 
-export interface ReconcileStrategy {
+interface ReconcileStrategy {
   label: string;
   /** Picks sent to the feed inside the period the imported history covers. */
   sent: number;
@@ -617,7 +617,7 @@ export interface ReconcileStrategy {
   resultMismatches: number;
 }
 
-export type UnlinkedBet = Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit"> & {
+type UnlinkedBet = Pick<BetfairBet, "betId" | "placedAt" | "event" | "selection" | "status" | "profit"> & {
   reason: string;
   /** A Match names line that would link it, when one team is spelled differently. */
   suggestion?: NameSuggestion | null;

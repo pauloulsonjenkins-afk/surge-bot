@@ -15,7 +15,7 @@ import { listStrategyNames } from "../inplayguru/strategy-names";
 import type { MembersConfig } from "./config";
 import { whyFired } from "./why";
 
-export const MARKET_LABEL: Record<string, string> = {
+const MARKET_LABEL: Record<string, string> = {
   NEXT_GOAL: "Next goal",
   BOTH_TEAMS_TO_SCORE: "Both teams to score",
   FIRST_HALF_CORNERS: "1st half corners",

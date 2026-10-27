@@ -22,13 +22,13 @@ import type { EngineDb } from "../storage/engine-db";
 import type { SendingSettings } from "./bet-feed";
 
 const BANK_KEY = "betfair_bank";
-export const BANK_FRESH_MS = 30 * 60_000;
+const BANK_FRESH_MS = 30 * 60_000;
 /** Betfair's smallest bet. */
-export const MIN_BET = 1;
+const MIN_BET = 1;
 /** The smallest percentage stake that is rounded up to MIN_BET (see the rules above). */
-export const ROUND_UP_FROM = MIN_BET / 2;
-export const MIN_PCT = 0.1;
-export const MAX_PCT = 25;
+const ROUND_UP_FROM = MIN_BET / 2;
+const MIN_PCT = 0.1;
+const MAX_PCT = 25;
 
 export interface Bank {
   /** Available to bet + tied up in open bets. */

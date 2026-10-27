@@ -19,8 +19,8 @@ import type { GoalEvent } from "./goal-times";
 import { log } from "../server/log";
 
 /** How long after kick-off InPlayGuru's own full-time edit is waited for. */
-export const WAIT_AFTER_KICKOFF_MS = 4 * 3_600_000;
-export const SOURCE = "api-football";
+const WAIT_AFTER_KICKOFF_MS = 4 * 3_600_000;
+const SOURCE = "api-football";
 
 /** The half-time score from the goal minutes, or null when they don't add up to the final score. */
 export function halfTimeFrom(goals: GoalEvent[], ft: [number, number]): string | null {

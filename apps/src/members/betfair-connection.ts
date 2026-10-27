@@ -28,7 +28,7 @@ export interface ConnectionView {
   account: { available: number | null; delayedKey: boolean | null } | null;
 }
 
-export const VENDOR_REASON =
+const VENDOR_REASON =
   "Connecting your own Betfair account needs Betfair to approve GoalBrew as a Software Vendor. Until then, use simulation: it follows exactly the same alerts and rules.";
 
 let lastAccount: { userId: number; available: number | null; delayedKey: boolean | null } | null = null;

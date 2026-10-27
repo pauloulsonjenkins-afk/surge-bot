@@ -8,7 +8,7 @@ import { isValidMoreRoute } from "@/lib/routes";
 import { TAB_PAGE } from "@/lib/user-pages";
 import { useMe } from "@/queries/use-me";
 
-export const TABS = [
+const TABS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, isMore: false },
   { href: "/live", label: "Live", icon: Radio, isMore: false },
   { href: "/trade-log", label: "Trade Log", icon: ListChecks, isMore: false },

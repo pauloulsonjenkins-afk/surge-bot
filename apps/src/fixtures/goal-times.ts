@@ -70,7 +70,7 @@ export interface GoalEvent {
 // ---------------------------------------------------------------------------------------------------- linking
 
 /** When the alert's match kicked off, as far as the alert tells: pre-match picks say; in-play ones count back. */
-export function estimatedKickoff(p: LivePick): number {
+function estimatedKickoff(p: LivePick): number {
   const pre = kickoffAt(p);
   if (pre !== null) return pre;
   const at = Date.parse(p.messageAt ?? p.firstSeenAt);

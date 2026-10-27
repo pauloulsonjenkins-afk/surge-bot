@@ -252,7 +252,7 @@ export function edgeCard(f: UpcomingFixture, history: HistoricMatch[], now = new
 export const KEY = (f: UpcomingFixture) => `${f.div}|${f.kickoff.slice(0, 10)}|${f.home}|${f.away}`;
 
 /** Fetches the fixtures, works out every card in the next 48 hours and stores them. Returns how many were stored. */
-export async function runEdge(db: EngineDb, now = new Date()): Promise<number> {
+async function runEdge(db: EngineDb, now = new Date()): Promise<number> {
   if (historyStatus().state !== "ready") return 0;
   const [main, extra] = await Promise.all([download(`${BASE}/fixtures.csv`), download(`${BASE}/new_league_fixtures.csv`)]);
   const soon = parseFixtures(main, extra).filter((f) => {

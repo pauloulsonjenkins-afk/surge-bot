@@ -4,7 +4,7 @@
  */
 
 export type Tier = "free" | "trial" | "paid" | "expired" | "suspended" | "admin";
-export type BetMode = "sim" | "live";
+type BetMode = "sim" | "live";
 export type BetStatus = "pending" | "placing" | "matched" | "partially_matched" | "rejected" | "failed" | "cancelled" | "won" | "lost" | "void";
 
 export interface WinLoss {
@@ -13,7 +13,7 @@ export interface WinLoss {
   hitRate: number | null;
 }
 
-export interface Money {
+interface Money {
   priced: number;
   staked: number;
   returns: number;
@@ -24,7 +24,7 @@ export interface Money {
   longestLosingRun: number;
 }
 
-export interface TrialStatus {
+interface TrialStatus {
   state: "available" | "active" | "used" | "unavailable";
   reason: string | null;
   startedAt: string | null;
@@ -109,7 +109,7 @@ export interface BetView {
   pick: { home: string | null; away: string | null; competition: string | null; minute: number | null; score: string | null; market: string | null; selection: string | null; ftScore: string | null } | null;
 }
 
-export interface PerformanceSummary {
+interface PerformanceSummary {
   bets: number;
   settled: number;
   wins: number;
@@ -225,7 +225,7 @@ export interface CommunityRecord extends Money {
   hitRate: number | null;
 }
 
-export interface CommunityStrategy {
+interface CommunityStrategy {
   id: number;
   name: string;
   description: string;

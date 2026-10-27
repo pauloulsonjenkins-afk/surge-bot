@@ -44,7 +44,7 @@ export interface CoverageResult {
 const OVERRIDES_KEY = "betfair_league_overrides";
 
 /** League name (as checked) -> the Betfair competition it is, or "none" when it isn't on Betfair. Set on the Leagues page. */
-export function getLeagueOverrides(db: EngineDb): Record<string, string> {
+function getLeagueOverrides(db: EngineDb): Record<string, string> {
   try {
     const raw = db.getSetting(OVERRIDES_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};

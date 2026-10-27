@@ -2,16 +2,15 @@
 
 /**
  * Direct betting: GoalBrew places the bets on Betfair itself. These sections sit on the Sending page (mode, readiness,
- * limits, recent bets) and the Settings page (webhook alerts).
+ * limits, recent bets).
  */
 
 import { useState } from "react";
-import { useHydrated } from "@/queries/use-me";
 import { Check, Download, Minus, X } from "lucide-react";
 import { Card, Segmented } from "@/components/ui/Card";
 import { Chip, type ChipTone } from "@/components/ui/Chip";
 import { useDialog } from "@/components/ui/ConfirmDialog";
-import { useDirect, useSaveDirect } from "@/queries/use-direct";
+import { useSaveDirect } from "@/queries/use-direct";
 import type { DirectBetRow, DirectMode, DirectSettings, DirectStatus } from "@/server/engine-client";
 import { gbp } from "@/lib/format";
 
@@ -327,73 +326,6 @@ export function Limits({ data }: { data: DirectStatus }) {
         )}
         {save.error && <p className="text-xs text-destructive">{save.error.message}</p>}
       </div>
-    </Card>
-  );
-}
-
-export function Webhooks({ data }: { data: DirectStatus }) {
-  const save = useSaveDirect();
-  const dialog = useDialog();
-  const use = data.settings.webhook === "use";
-  // This site's own address, read after load so the server and browser render the same thing first.
-  const origin = useHydrated() ? window.location.origin : "https://YOUR-SITE";
-
-  async function toggle(next: "record" | "use") {
-    if (next === data.settings.webhook) return;
-    if (next === "use") {
-      const ok = await dialog.confirm({
-        title: "Use webhook alerts as picks?",
-        confirmLabel: "Use them",
-        body: (
-          <>
-            <p>Alerts arriving by InPlayGuru&apos;s webhook become picks like Telegram&apos;s, so whichever arrives first is used. The same alert coming both ways is kept once.</p>
-            <p>Telegram keeps running alongside for results.</p>
-          </>
-        ),
-      });
-      if (!ok) return;
-    }
-    save.mutate({ webhook: next });
-  }
-
-  return (
-    <Card
-      title="Webhook alerts"
-      subtitle="InPlayGuru can send each alert straight to GoalBrew, as well as to Telegram. Give InPlayGuru this address, with your INPLAYGURU_WEBHOOK_PATH_TOKEN from the engine's settings in place of TOKEN:"
-    >
-      <code className="block break-all rounded-md bg-surface-2 px-2 py-1.5 text-xs text-ink">{origin}/engine/webhooks/inplayguru/TOKEN</code>
-      <div className="mt-3">
-        <Segmented
-          label="Webhook alerts"
-          options={[
-            { value: "record", label: "Record only" },
-            { value: "use", label: "Use as picks" },
-          ]}
-          value={use ? "use" : "record"}
-          onChange={(v) => void toggle(v)}
-        />
-        {save.error && <p className="mt-2 text-xs text-destructive">{save.error.message}</p>}
-      </div>
-      {data.webhooks.length === 0 ? (
-        <p className="mt-3 text-xs text-ink-muted">No webhooks from InPlayGuru yet.</p>
-      ) : (
-        <ul className="mt-3 divide-y divide-line">
-          {data.webhooks.map((w) => (
-            <li key={w.receivedAt + w.sample.length} className="py-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs tabular-nums text-ink-muted">{timeFmt.format(new Date(w.receivedAt))}</span>
-                {w.understood ? <Chip tone="neutral">Reads as an alert</Chip> : <Chip tone="warn">Not understood</Chip>}
-                {w.signatureVerified && <Chip tone="muted">Signed</Chip>}
-              </div>
-              {w.summary && <p className="mt-1 text-sm text-ink">{w.summary}</p>}
-              <details className="mt-1">
-                <summary className="cursor-pointer text-xs text-ink-muted">What arrived</summary>
-                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md bg-surface-2 p-2 text-xs text-ink">{w.sample}</pre>
-              </details>
-            </li>
-          ))}
-        </ul>
-      )}
     </Card>
   );
 }

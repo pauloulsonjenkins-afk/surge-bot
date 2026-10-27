@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LayReport } from "@/server/engine-client";
 import { getJson } from "./fetch-json";
 
-export type { LayGroupInfo, LayIdea, LayReport } from "@/server/engine-client";
+export type {  LayIdea, LayReport } from "@/server/engine-client";
 
 /** The LAY section: each LAY group and the lay ideas. */
 export function useLayGroups(enabled = true) {

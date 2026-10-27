@@ -47,10 +47,6 @@ const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", d
 const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 
 type FormKind = "recent" | "week";
-const FORM_OPTIONS: Array<{ value: FormKind; label: string }> = [
-  { value: "recent", label: "Last 20 picks" },
-  { value: "week", label: "Last 7 days" },
-];
 
 const pctOf = (hits: number, n: number) => Math.round((100 * hits) / n);
 const money = (r: StrategyReturn) => `${gbp(r.profit)}${r.roi !== null ? ` (${signedPct(r.roi)})` : ""}`;
@@ -567,7 +563,6 @@ function StrategyCard({
   prev28,
   all,
   sortBy,
-  formKind,
   includes,
   busy,
   selecting,
@@ -602,8 +597,6 @@ function StrategyCard({
   prev28?: WeekTally;
   all: AdminStrategy[];
   sortBy: SortBy;
-  /** Which form paragraph to show: the last 20 picks or the last 7 days (the page's Form switch). */
-  formKind: FormKind;
   /** Strategies that are reported under this one. */
   includes: string[];
   busy: boolean;
@@ -992,7 +985,6 @@ export default function StrategiesPage() {
   const dialog = useDialog();
   const { data: freshAt } = useFreshStart();
   const [selecting, setSelecting] = useState(false);
-  const [formKind, setFormKind] = useState<FormKind>("recent");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("adjusted");
@@ -1300,7 +1292,6 @@ export default function StrategiesPage() {
                 borrowed={view === "own" && ownMode(r).borrowed}
                 all={strategies}
                 sortBy={sortBy}
-                formKind={formKind}
                 includes={includesOf.get(r.label.toLowerCase()) ?? []}
                 busy={busy}
                 selecting={selecting}

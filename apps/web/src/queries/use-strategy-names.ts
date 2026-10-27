@@ -6,7 +6,7 @@ import type { StrategyNameInfo } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 import { useHydrated, useMe } from "./use-me";
 
-export type { StrategyNameInfo };
+;
 
 const KEY = ["strategy-names"];
 // The last names seen, kept in the browser so a page shows "Wake-up Call" straight away instead of
@@ -16,7 +16,7 @@ const STORE = "goalbrew-strategy-names";
 type Names = Record<string, Partial<StrategyNameInfo> & { name: string }>;
 
 /** InPlayGuru's name without its bracketed note: what the app shows when a strategy has no name of its own. */
-export function strategyLabel(raw: string): string {
+function strategyLabel(raw: string): string {
   return raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || raw;
 }
 

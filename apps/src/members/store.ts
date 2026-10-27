@@ -28,8 +28,6 @@ import type { MemberState } from "./permissions";
 export type BetMode = "sim" | "live";
 export type Execution = "auto" | "manual";
 export type BetStatus = "pending" | "placing" | "matched" | "partially_matched" | "rejected" | "failed" | "cancelled" | "won" | "lost" | "void";
-/** Statuses with stake still at risk (not settled, not refused). */
-export const OPEN_STATUSES: BetStatus[] = ["pending", "placing", "matched", "partially_matched"];
 export type StakingMethod = "flat" | "percent_bank" | "fixed_percent" | "custom" | "strategy";
 
 export interface MemberRow extends MemberState {

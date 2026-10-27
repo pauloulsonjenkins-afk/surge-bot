@@ -48,11 +48,11 @@ export function simBank(db: EngineDb, userId: number, s: MemberSettings): number
 }
 
 /** Simulated profit of a settled bet: stake x (price - 1) less commission when won, minus the stake when lost. */
-export function simProfit(stake: number, price: number, won: boolean, commissionPct: number): number {
+function simProfit(stake: number, price: number, won: boolean, commissionPct: number): number {
   return r2(won ? stake * (price - 1) * (1 - commissionPct / 100) : -stake);
 }
 
-export function simulatedPrice(price: number, slippagePct: number): number {
+function simulatedPrice(price: number, slippagePct: number): number {
   return Math.max(1.01, r2(price * (1 - slippagePct / 100)));
 }
 
@@ -70,7 +70,7 @@ function ctxOf(db: EngineDb, cache: PassCache, userId: number, now: Date): Membe
  * Places one simulated bet for a member on an alert, after the checks. Returns the bet recorded (matched or rejected),
  * or null when nothing was recorded (already bet, or the price isn't known yet and it's worth waiting).
  */
-export function placeSimBet(db: EngineDb, ctx: MemberContext, p: LivePick, strategyKey: string, execution: "auto" | "manual", now: Date): MemberBet | null {
+function placeSimBet(db: EngineDb, ctx: MemberContext, p: LivePick, strategyKey: string, execution: "auto" | "manual", now: Date): MemberBet | null {
   const store = membersStore(db);
   const at = now.toISOString();
   if (store.hasBet(ctx.user.id, p.id, "sim")) return null;

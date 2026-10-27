@@ -11,10 +11,6 @@ function key(env = process.env): Buffer | null {
   return createHash("sha256").update(`goalbrew-members:${raw}`).digest();
 }
 
-export function secretsAvailable(env = process.env): boolean {
-  return key(env) !== null;
-}
-
 /** "v1.<iv>.<tag>.<data>" in base64url. Throws when MEMBERS_SECRET_KEY isn't set. */
 export function encryptSecret(plain: string, env = process.env): string {
   const k = key(env);

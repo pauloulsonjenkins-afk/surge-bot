@@ -58,7 +58,7 @@ export async function fetchRecentPicks(limit = 50): Promise<EnginePick[]> {
 
 /** One Telegram alert, parsed. Mirrors LivePick in the engine's engine-db.ts. */
 /** How a settled pick was bet: matched on Betfair, placed by hand, sent before Betfair was checked, sent but never placed, or Sim. */
-export type PickPlacement = "betfair" | "manual" | "legacy" | "notPlaced" | "sim";
+type PickPlacement = "betfair" | "manual" | "legacy" | "notPlaced" | "sim";
 
 export interface LivePick {
   id: number;
@@ -275,7 +275,7 @@ export interface HitRateRow {
   misses: number;
   hitRate: number | null;
 }
-export interface StrategyStats extends HitRateRow {
+interface StrategyStats extends HitRateRow {
   market: string | null;
   lastAlertAt: string;
 }
@@ -304,7 +304,7 @@ export interface OddsBand {
 }
 
 /** Mirrors HitRateContext in the engine's winloss.ts. */
-export interface HitRateContext {
+interface HitRateContext {
   settled: number;
   hits: number;
   /** 95% range of the true hit rate, percents. */
@@ -437,9 +437,6 @@ export interface SendingState {
   bank?: { total: number | null; available: number | null; exposure: number | null; at: string | null };
   strategies: Array<{ label: string; market: string | null; enabled: boolean; stake: number | null; /** A percentage stake, if this strategy uses one. */ stakePct?: number | null; /** What that percentage comes to now in pounds. */ stakeNow?: number | null; minOdds: number | null; /** Lay strategies: the highest price to lay at. */ maxLayOdds?: number | null; alerts?: number; sent?: number; stopLoss: StopLossStatus | null; /** The same limits run on its simulated bets (missing on an older engine). */ simStopLoss?: StopLossStatus | null }>;
   feedTokenConfigured: boolean;
-  lastFeedFetchAt: string | null;
-  /** The User-Agent of the last feed fetch, to spot fetchers that aren't the betting software. */
-  lastFeedFetcher?: string | null;
   preview: {
     rows: Array<{ pickId: number; provider: string; marketType: string; selectionName: string; eventName: string; stake: number; minPrice: number | null }>;
     skipped: Array<{ pickId: number; strategy: string; match: string; reason: string }>;
@@ -622,25 +619,25 @@ export const fetchSending = () => sendingRequest("GET");
 export const saveSending = (patch: SendingPatch) => sendingRequest("PUT", patch);
 
 /** Mirrors the engine's Win/Loss reply (winloss.ts). */
-export interface WinLossSettings {
+interface WinLossSettings {
   commission: number;
   assumedOdds: Record<string, number | null>;
   expenditure: { enabled: boolean; monthly: number; startMonth: string | null };
 }
-export interface WinLossPoint {
+interface WinLossPoint {
   label: string;
   total: number;
   totalAfter: number;
   s: Record<string, number>;
 }
-export interface WinLossPeriod {
+interface WinLossPeriod {
   strategies: Record<string, number>;
   total: number;
   expenditure: number;
   totalAfter: number;
   picks: number;
 }
-export interface WinLossStrategy {
+interface WinLossStrategy {
   label: string;
   key: string;
   market: string | null;
@@ -655,7 +652,7 @@ export interface WinLossStrategy {
   notPlaced?: number;
 }
 /** One line on the Profit and loss table and the strategy graph (strategies merged on the Strategies page appear once). */
-export interface WinLossReported {
+interface WinLossReported {
   key: string;
   label: string;
   members: string[];
@@ -929,7 +926,7 @@ export interface AdminStrategy {
 }
 
 /** One window of a strategy's form, with the window before it for comparison. */
-export interface FormWindow {
+interface FormWindow {
   all: StrategyReturn;
   live: StrategyReturn;
   sim: StrategyReturn;
@@ -968,7 +965,7 @@ export interface StrategyReturn {
 }
 
 /** One pick on a strategy's equity curve. Mirrors EquityPoint in the engine's winloss.ts. */
-export interface EquityPoint {
+interface EquityPoint {
   at: string;
   result: "hit" | "miss";
   profit: number;
@@ -1170,7 +1167,7 @@ export interface BetImportSummary {
   unused: string[];
 }
 
-export interface ReconcileStrategy {
+interface ReconcileStrategy {
   label: string;
   sent: number;
   matched: number;
@@ -1230,7 +1227,7 @@ export function fetchPlacements(): Promise<{ link: BetfairLinkStatus; picks: Rec
   return engineCall("/internal/betfair/placements", "bet placements");
 }
 
-export interface UnlinkedBet {
+interface UnlinkedBet {
   /** A Match names line that would link it ("alert name = Betfair name"), when one team is spelled differently. */
   suggestion?: { from: string; to: string } | null;
   betId: string;
@@ -1438,7 +1435,7 @@ export function reviewResult(id: number, ok: boolean): Promise<{ ok: true }> {
 }
 
 /** A sent pick with no bet on Betfair 3 minutes after it was sent. Mirrors UnplacedPick in the engine's betfair/unplaced.ts. */
-export interface UnplacedPick {
+interface UnplacedPick {
   id: number;
   strategy: string;
   match: string;
@@ -1643,7 +1640,7 @@ export interface LeagueProfile {
   avgCorners: number | null;
 }
 
-export interface LayTestRow {
+interface LayTestRow {
   bets: number;
   won: number;
   profit: number;
@@ -1743,11 +1740,6 @@ export function fetchToday(): Promise<TodaySnapshot> {
 
 export function fetchNotPlaced(days: number): Promise<NotPlacedReport> {
   return engineCall(`/internal/not-placed?days=${days}`, "the not-placed report", { timeoutMs: 15_000 });
-}
-
-/** The one-off API-Football plan check (fixtures/probe.ts in the engine); null until it has run. */
-export function fetchApiFootballProbe(): Promise<{ probe: unknown }> {
-  return engineCall("/internal/api-football-probe", "the API-Football check");
 }
 
 /** One pick in detail for the Trade Log (server/pick-detail.ts in the engine). Admin only. */
@@ -1948,7 +1940,7 @@ export interface WeekTally {
   staked: number;
   profit: number;
 }
-export type WeekModes = { live: WeekTally; sim: WeekTally; all: WeekTally };
+type WeekModes = { live: WeekTally; sim: WeekTally; all: WeekTally };
 export interface StrategyWeeksReport {
   /** Mondays (YYYY-MM-DD, UK), oldest first; the last is the current week so far. */
   weeks: string[];
@@ -2037,7 +2029,7 @@ export function goldenAction(body: GoldenActionBody): Promise<GoldenReport> {
  * have settled (server/claude-verdict-check.ts). Advisory only: the badge switch below only shows/hides a Live
  * tab badge, it never touches a bet.
  */
-export interface ClaudeVerdictRow {
+interface ClaudeVerdictRow {
   n: number;
   hits: number;
   hitRate: number | null;
@@ -2064,7 +2056,7 @@ export function setClaudeBadgeVisible(badgeVisible: boolean): Promise<ClaudeVerd
 }
 
 /** Claude's latest daily and weekly written notes (engine claude-review.ts). Advice to read, never a setting. */
-export interface ClaudeReviewNote {
+interface ClaudeReviewNote {
   kind: "daily" | "weekly";
   note: string;
   generatedAt: string;

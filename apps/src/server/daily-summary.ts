@@ -12,7 +12,7 @@ import { requestGoldenReviews } from "./claude-golden-review";
 import { log } from "./log";
 
 /** When the summary goes out, UK time (HH:MM). */
-export const SUMMARY_TIMES = ["06:50", "14:00", "17:00", "21:30"];
+const SUMMARY_TIMES = ["06:50", "14:00", "17:00", "21:30"];
 /** A time is still sent this long after it passes, so a restart just before it doesn't skip it. */
 const LATE_MS = 10 * 60 * 1000;
 /** The last summary sent, as "YYYY-MM-DD HH:MM", so each goes out once. */

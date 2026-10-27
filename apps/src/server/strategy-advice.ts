@@ -49,11 +49,11 @@ export const AUTO_GAP_MS = 7 * 86_400_000;
 /** Each strategy's last raise on the ladder, and when it was cut again because the bets since went badly. */
 const RAISES_KEY = "stake_ladder_raises";
 /** A raise is undone at once when its Live bets since lose this much per £1... */
-export const FAST_CUT_ROI = -0.15;
+const FAST_CUT_ROI = -0.15;
 /** ...over at least this many. */
-export const FAST_CUT_BETS = 15;
+const FAST_CUT_BETS = 15;
 /** After such a cut, no raise for this long. */
-export const NO_RAISE_AFTER_CUT_MS = 14 * 86_400_000;
+const NO_RAISE_AFTER_CUT_MS = 14 * 86_400_000;
 
 function raises(db: EngineDb): Record<string, { at: string; cutAt?: string }> {
   try {
@@ -70,8 +70,8 @@ function lastSteps(db: EngineDb): Record<string, string> {
     return {};
   }
 }
-export const PCT_STEPS = [1, 1.5, 2, 3, 4, 5];
-export const FLAT_STEPS = [1, 2, 3, 5];
+const PCT_STEPS = [1, 1.5, 2, 3, 4, 5];
+const FLAT_STEPS = [1, 2, 3, 5];
 
 export type AdviceKind = "try-live" | "back-to-sim" | "stake-up" | "stake-down" | "league-block";
 
@@ -90,7 +90,7 @@ export interface Advice {
 }
 
 /** One suggestion's identity: a strategy can have one per kind, and one league-block per league. */
-export const adviceId = (a: Pick<Advice, "key" | "kind" | "league">) => (a.league ? `${a.key}@${a.league.key}` : a.key);
+const adviceId = (a: Pick<Advice, "key" | "kind" | "league">) => (a.league ? `${a.key}@${a.league.key}` : a.key);
 
 const adjusted = (roi: number | null, counted: number) => (roi === null ? null : (roi * counted) / (counted + SAMPLE));
 const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;

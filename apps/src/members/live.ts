@@ -49,7 +49,7 @@ const BALANCE_MAX_AGE_MS = 60_000;
 let balance: { available: number | null; at: number } | null = null;
 
 /** The Betfair balance last read (for stakes and risk checks), refreshed at most once a minute. */
-export async function refreshBalance(deps: LiveDeps, now = Date.now()): Promise<number | null> {
+async function refreshBalance(deps: LiveDeps, now = Date.now()): Promise<number | null> {
   if (balance && now - balance.at < BALANCE_MAX_AGE_MS) return balance.available;
   try {
     const a = await deps.account();
@@ -66,7 +66,7 @@ export function setBalanceForTest(v: number | null): void {
   balance = v === null ? null : { available: v, at: Date.now() };
 }
 
-export function orderRefFor(betId: number): string {
+function orderRefFor(betId: number): string {
   return `GM${betId}`;
 }
 

@@ -31,7 +31,6 @@ import { notifyLeagueMilestones } from "./league-returns";
 import { startEdge } from "../edge/edge";
 import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startValueSettling } from "../edge/value-strategy";
-import { startProbeOnce } from "../fixtures/probe";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { logHorseResults } from "./horse-results";
 import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
@@ -241,8 +240,6 @@ async function main(): Promise<void> {
   const apiFootballKey = process.env.API_FOOTBALL_KEY?.trim();
   if (apiFootballKey) {
     startDailyFixturePull(db, apiFootballKey);
-    // One-off check of what the plan allows, for Edge Phase 2 (fixtures/probe.ts). Runs once ever, 3 calls.
-    startProbeOnce(db, apiFootballKey);
     // Goal times for the admin's Trade Log: at most 30 API-Football calls a day (fixtures/goal-times.ts).
     startGoalTimes(db, apiFootballKey);
   } else {

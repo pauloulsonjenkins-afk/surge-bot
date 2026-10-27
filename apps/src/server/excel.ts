@@ -25,7 +25,7 @@ export function ukParts(iso: string): { date: string; time: string; weekday: str
 }
 
 /** One CSV cell. Text that Excel would run as a formula (starting =, +, -, @) is quoted so it stays text. */
-export function cell(v: string | number | boolean | null | undefined): string {
+function cell(v: string | number | boolean | null | undefined): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "boolean") return v ? "yes" : "no";
   if (typeof v === "number") return Number.isFinite(v) ? String(Math.round(v * 10000) / 10000) : "";

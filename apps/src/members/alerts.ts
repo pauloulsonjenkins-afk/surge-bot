@@ -19,14 +19,14 @@ import { can, strategyAllowed } from "./permissions";
 import { memberContext, type MemberContext } from "./service";
 import { membersStore } from "./store";
 
-export const MAX_ALERT_STRATEGIES = 2;
+const MAX_ALERT_STRATEGIES = 2;
 /** How long an alert with no price yet waits for Betfair's before it is sent without one. */
 const PRICE_WAIT_MS = 90_000;
 /** Older alerts are never pushed (a phone that was off, or a pass that didn't run). */
 const FRESH_MS = 10 * 60_000;
 
 /** Why this member can't use app alerts, or null when they can. */
-export function alertsBlock(ctx: MemberContext): string | null {
+function alertsBlock(ctx: MemberContext): string | null {
   return can(ctx.access, "alertNotifications") ? null : "App alerts are part of the paid membership and the free trial.";
 }
 

@@ -12,10 +12,10 @@
  */
 import type { EngineDb } from "../storage/engine-db";
 
-export const HORSE_RANKS = [1, 2, 3, 4] as const;
-export type HorseRank = (typeof HORSE_RANKS)[number];
-export type HorseResult = "pending" | "won" | "placed" | "lost" | "void";
-export type HorseBetType = "win" | "ew";
+const HORSE_RANKS = [1, 2, 3, 4] as const;
+type HorseRank = (typeof HORSE_RANKS)[number];
+type HorseResult = "pending" | "won" | "placed" | "lost" | "void";
+type HorseBetType = "win" | "ew";
 
 export interface HorseBet {
   id: number;
@@ -47,7 +47,7 @@ export interface HorseDay {
   yankeeStake: number | null;
 }
 
-export interface HorseEntry {
+interface HorseEntry {
   rank: HorseRank;
   horse?: string | null;
   course?: string | null;

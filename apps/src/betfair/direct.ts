@@ -45,9 +45,9 @@ import { breakerReason, guardTick, recordPass } from "./guard";
 
 export type DirectMode = "off" | "shadow" | "live";
 /** What happens to alerts that arrive by InPlayGuru's webhook: kept only (as now), or used as picks like Telegram's. */
-export type WebhookUse = "record" | "use";
+type WebhookUse = "record" | "use";
 
-export interface StrategyLimits {
+interface StrategyLimits {
   /** Largest gap allowed between the best lay and best back price, as a percentage of the back price. */
   maxSpreadPct?: number;
   /** Highest overround allowed (percent). */
@@ -85,7 +85,7 @@ export interface DirectSettings {
 
 const SETTINGS_KEY = "direct_betting";
 
-export const DEFAULT_DIRECT: DirectSettings = {
+const DEFAULT_DIRECT: DirectSettings = {
   mode: "off",
   since: new Date(0).toISOString(),
   // The same as BF Bot Manager's settings on 3 Oct 2026: back/lay within 15%, overround 95% to 130%.
@@ -367,7 +367,7 @@ export class BetfairTrader implements Trading {
  * The reference every order for a pick carries. Betfair allows letters, digits and a few symbols, 32 at most. A retry by
  * hand gets its own ("GB123R1"), so the earlier cancelled or refused order isn't mistaken for the new one.
  */
-export function orderRef(pickId: number, retries = 0): string {
+function orderRef(pickId: number, retries = 0): string {
   return retries > 0 ? `GB${pickId}R${retries}` : `GB${pickId}`;
 }
 
@@ -440,7 +440,7 @@ export function layStake(liability: number, price: number): number {
 }
 
 /** Gap between best lay and best back, as a percentage of the back price. */
-export function spreadPct(back: number, lay: number | null): number | null {
+function spreadPct(back: number, lay: number | null): number | null {
   return lay === null ? null : Math.round(((lay - back) / back) * 1000) / 10;
 }
 
@@ -462,7 +462,7 @@ export const FRIENDLY: Record<string, string> = {
  * suspended for a moment): tried once more on the next pass, a few seconds later, through every check again (still
  * fresh, price at or above the minimum, limits). A second refusal is final.
  */
-export const RETRY_ONCE = new Set(["ERROR_IN_ORDER"]);
+const RETRY_ONCE = new Set(["ERROR_IN_ORDER"]);
 
 /** What to do with a refusal: try again (on the next pass, every check repeated) or give up, with the words shown. */
 function refusal(result: { code: string; detail?: string }, attempt: number, what: "bet" | "lay"): { retry: boolean; reason: string } {

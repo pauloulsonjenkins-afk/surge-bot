@@ -129,7 +129,7 @@ export interface SegmentBet {
   liveSince: string | null;
 }
 
-export const DEFAULT_SENDING: SendingSettings = {
+const DEFAULT_SENDING: SendingSettings = {
   enabled: false,
   strategies: {},
   modeSince: {},
@@ -176,7 +176,7 @@ function cleanStake(v: unknown): number | null {
 }
 
 /** Lowest price Betfair allows; sent as MinPrice when a strategy has no minimum, which means "no limit". */
-export const NO_MINIMUM_PRICE = 1.01;
+const NO_MINIMUM_PRICE = 1.01;
 
 function cleanMinOdds(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(v);
@@ -329,7 +329,7 @@ export function segmentBetFor(settings: SendingSettings, p: LivePick): { key: st
 }
 
 /** Settings with a slice's own stake in place of its strategy's, for resolveStake. */
-export function withSegmentStake(settings: SendingSettings, key: string, cfg: SegmentBet): SendingSettings {
+function withSegmentStake(settings: SendingSettings, key: string, cfg: SegmentBet): SendingSettings {
   if (cfg.stakePct !== null) {
     const stakes = { ...settings.stakes };
     delete stakes[key];
@@ -478,7 +478,7 @@ export interface FeedRow {
   byHand?: boolean;
 }
 
-export interface FeedSkip {
+interface FeedSkip {
   pickId: number;
   strategy: string;
   match: string;
@@ -581,7 +581,7 @@ export function toCsv(rows: FeedRow[], includeMinPrice = false): string {
 }
 
 /** Over/Under goals market code for a line: 1.5 -> OVER_UNDER_15. Null for anything that isn't a clean x.5 line. */
-export function overUnderMarket(line: number | null | undefined): { marketType: string; selectionName: string } | null {
+function overUnderMarket(line: number | null | undefined): { marketType: string; selectionName: string } | null {
   if (line === null || line === undefined || !Number.isFinite(line)) return null;
   if (line < 0.5 || line > 9.5 || Math.round(line * 2) !== line * 2 || line % 1 !== 0.5) return null;
   return { marketType: `OVER_UNDER_${String(Math.round(line * 10)).padStart(2, "0")}`, selectionName: `Over ${line} Goals` };
@@ -886,14 +886,14 @@ function addLiveBet(m: LiveBets, p: LivePick): void {
 }
 
 /** The Live bets (handed over, not removed) on each match among the latest picks. */
-export function liveBetsByMatch(db: EngineDb): LiveBets {
+function liveBetsByMatch(db: EngineDb): LiveBets {
   const m: LiveBets = new Map();
   for (const p of db.listLivePicks(300)) if (p.sentAt !== null && !p.excluded) addLiveBet(m, p);
   return m;
 }
 
 /** The Live bet on this pick's match that it would cancel out, if any (clash.ts). */
-export function cancelling(m: LiveBets, p: LivePick): { id: number; label: string } | null {
+function cancelling(m: LiveBets, p: LivePick): { id: number; label: string } | null {
   const mine = exposureOf(p);
   return (m.get(matchKeyOf(p)) ?? []).find((b) => b.id !== p.id && clashOf(mine, b.exposure) === "cancels") ?? null;
 }
@@ -1129,18 +1129,3 @@ function skip(p: LivePick, reason: string): FeedSkip {
   return { pickId: p.id, strategy: strategyLabel(p.strategy), match: `${p.home ?? "?"} v ${p.away ?? "?"}`, reason };
 }
 
-// The last time the feed was fetched, and by what (its User-Agent). Kept in memory only.
-// Every fetch counts picks as handed over, so a fetcher you don't recognise here (a browser,
-// a chat app previewing the link) is worth knowing about.
-let lastFeedFetchAt: string | null = null;
-let lastFeedFetcher: string | null = null;
-export function noteFeedFetched(userAgent?: string | null): void {
-  lastFeedFetchAt = new Date().toISOString();
-  lastFeedFetcher = userAgent ? userAgent.slice(0, 120) : null;
-}
-export function getLastFeedFetchAt(): string | null {
-  return lastFeedFetchAt;
-}
-export function getLastFeedFetcher(): string | null {
-  return lastFeedFetcher;
-}

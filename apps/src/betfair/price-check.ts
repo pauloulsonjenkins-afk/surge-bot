@@ -72,7 +72,7 @@ export async function runPriceChecks(db: EngineDb, reader: Pick<BetfairReader, "
   return calls;
 }
 
-export interface PriceCheckRow {
+interface PriceCheckRow {
   strategy: string;
   kind: CheckKind;
   picks: number;

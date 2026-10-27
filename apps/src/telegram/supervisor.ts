@@ -11,7 +11,7 @@ import { log } from "../server/log";
 
 export const RETRY_STEPS_MS = [30_000, 60_000, 120_000, 300_000];
 export const DEAD_SESSION_RETRY_MS = 15 * 60_000;
-export const CONNECT_TIMEOUT_MS = 60_000;
+const CONNECT_TIMEOUT_MS = 60_000;
 
 /** Telegram's answers that mean the saved session no longer works: a new login is needed. */
 export function isDeadSession(message: string): boolean {

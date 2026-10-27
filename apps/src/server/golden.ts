@@ -42,7 +42,7 @@ export const TRIAL_FROM = 150;
 export const FULL_FROM = 300;
 /** Keeping a stage: the last `recent` priced picks may not lose more than `worstRoi`; once lost, `regainFrom` picks
  * after the loss back above `regainRoi` win it back. */
-export const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0 };
+const KEEP = { recent: 30, worstRoi: -0.05, regainFrom: 30, regainRoi: 0 };
 const BADGES_KEY = "golden_badges";
 const STAGE_RANK = { candidate: 1, trial: 2, full: 3 } as const;
 type ToldStage = keyof typeof STAGE_RANK;
@@ -203,7 +203,7 @@ export function findGolden(db: EngineDb): GoldenSuggestion[] {
 }
 
 /** The finder's suggestions, worked out again when 6+ hours old. */
-export function goldenSuggestions(db: EngineDb, now = new Date(), force = false): { at: string; list: GoldenSuggestion[] } {
+function goldenSuggestions(db: EngineDb, now = new Date(), force = false): { at: string; list: GoldenSuggestion[] } {
   try {
     const saved = JSON.parse(db.getSetting(FOUND_KEY) ?? "null") as { at: string; list: GoldenSuggestion[] } | null;
     if (!force && saved && now.getTime() - Date.parse(saved.at) < SIX_HOURS) {
@@ -381,7 +381,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
 }
 
 /** The Golden safety check: a slice bet Live on its own is switched back to Sim when it stops earning its place. */
-export const SAFETY = { minBets: 30, worstRoi: -0.05 };
+const SAFETY = { minBets: 30, worstRoi: -0.05 };
 
 /** A slice's own Live bets since it was switched Live (its strategy's Live bets in that slice). */
 export function liveSinceRecord(db: EngineDb, strategyKey: string, segmentId: string, since: string): { n: number; won: number; staked: number; profit: number; roi: number | null } {
@@ -448,7 +448,7 @@ const STAGE_MESSAGE: Record<ToldStage, (name: string) => { title: string; body: 
  * ever; losing the current stage on a bad last 30 is told once too, until it's won back. The first run only records
  * where things stand, so nothing is announced for slices already past a stage.
  */
-export async function updateBadges(db: EngineDb, slices: Array<{ strategyKey: string; id: string; label: string; status: GoldenStatus; why: string | null }>, now = new Date()): Promise<void> {
+async function updateBadges(db: EngineDb, slices: Array<{ strategyKey: string; id: string; label: string; status: GoldenStatus; why: string | null }>, now = new Date()): Promise<void> {
   const first = db.getSetting(BADGES_KEY) === null;
   const held = badges(db);
   const tell: Array<{ title: string; body: string; tag: string }> = [];

@@ -51,7 +51,7 @@ export function ModeBanner({ mode }: { mode: "sim" | "live" }) {
   );
 }
 
-export const TIER_LABEL: Record<Tier, string> = { free: "Free", trial: "Premium Trial", paid: "Member", expired: "Free", suspended: "Suspended", admin: "Admin" };
+const TIER_LABEL: Record<Tier, string> = { free: "Free", trial: "Premium Trial", paid: "Member", expired: "Free", suspended: "Suspended", admin: "Admin" };
 
 /** While memberships aren't on sale, no package names: a trial is just a trial, and paid is "Full access". */
 const QUIET_LABEL: Record<Tier, string> = { ...TIER_LABEL, trial: "Trial", paid: "Full access" };
@@ -156,7 +156,7 @@ export function WinLossText({ wl }: { wl: WinLoss }) {
   );
 }
 
-export const STATUS_LABEL: Record<BetStatus, string> = {
+const STATUS_LABEL: Record<BetStatus, string> = {
   pending: "Waiting",
   placing: "Placing",
   matched: "Matched",

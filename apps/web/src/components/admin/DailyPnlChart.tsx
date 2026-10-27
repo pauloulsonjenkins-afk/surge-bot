@@ -23,7 +23,7 @@ function label(date: string, fmt: Intl.DateTimeFormat): string {
 }
 
 /** Everything the chart's caption needs, kept as a plain function so it can be checked on its own. */
-export function summariseDays(days: DailyBar[]): { green: number; red: number; best: DailyBar | null; worst: DailyBar | null; total: number } {
+function summariseDays(days: DailyBar[]): { green: number; red: number; best: DailyBar | null; worst: DailyBar | null; total: number } {
   let green = 0;
   let red = 0;
   let best: DailyBar | null = null;

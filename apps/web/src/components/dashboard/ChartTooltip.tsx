@@ -1,4 +1,4 @@
-export interface TooltipSeriesMeta {
+interface TooltipSeriesMeta {
   label: string;
   color: string;
   format: (v: number) => string;

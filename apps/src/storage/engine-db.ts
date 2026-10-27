@@ -137,7 +137,7 @@ function toDirectBet(r: DirectBetRow): DirectBet {
 }
 
 /** Hit-rate figures for the Dashboard and Strategies pages. Results come from the alert's own Hit/Miss marker. */
-export interface HitRateRow {
+interface HitRateRow {
   label: string;
   alerts: number;
   hits: number;
@@ -146,12 +146,12 @@ export interface HitRateRow {
   hitRate: number | null;
 }
 
-export interface StrategyStats extends HitRateRow {
+interface StrategyStats extends HitRateRow {
   market: string | null;
   lastAlertAt: string;
 }
 
-export interface DailyStats {
+interface DailyStats {
   /** YYYY-MM-DD, UK date. */
   date: string;
   hits: number;
@@ -243,7 +243,7 @@ const MINUTE_BUCKETS: Array<{ label: string; max: number }> = [
  * settings table. Nothing here deletes a pick: hiding and resetting only change what the
  * Dashboard counts.
  */
-export interface LeaguePref {
+interface LeaguePref {
   /** Left out of the Dashboard (its list and its headline figures). */
   hidden?: boolean;
   /** ISO time of the last reset: only alerts that arrived at or after it are counted. */
@@ -396,7 +396,7 @@ function parseCandidates(raw: unknown): Array<{ name: string; id: string }> | nu
   }
 }
 
-export function parseManualBet(raw: unknown): ManualBet | null {
+function parseManualBet(raw: unknown): ManualBet | null {
   if (typeof raw !== "string" || !raw) return null;
   try {
     const m = JSON.parse(raw) as Partial<ManualBet>;

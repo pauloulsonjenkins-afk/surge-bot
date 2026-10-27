@@ -31,7 +31,7 @@ const layLosesOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "anot
 const layWinsOn = (s: SendingStrategy) => (s.market === "NEXT_GOAL_LAY" ? "no more goals come" : s.market === "HOME_WIN_LAY" ? "a draw or an away win" : "a home win or draw");
 
 /** Whether this strategy's market can be bet (some need a Betfair market code set under Sending > Bet wording first). */
-export function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
+function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
   if (s.market === null) return false;
   if (!NEEDS_CONFIG.has(s.market)) return true;
   if (s.market === "FIRST_HALF_CORNERS") return !!settings.firstHalfCornersMarketType;
@@ -40,7 +40,7 @@ export function canBet(s: SendingStrategy, settings: SendingSettings): boolean {
 }
 
 /** "£2.00", or "2% of balance (£5.00 now)" for a percentage stake. */
-export function stakeText(s: SendingStrategy): string | null {
+function stakeText(s: SendingStrategy): string | null {
   if (s.stakePct != null) return s.stakeNow != null ? `${s.stakePct}% of balance (£${s.stakeNow.toFixed(2)} now)` : `${s.stakePct}% of balance`;
   return s.stake !== null ? `£${s.stake.toFixed(2)}` : null;
 }

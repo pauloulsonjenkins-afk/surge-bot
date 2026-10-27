@@ -14,7 +14,7 @@ import type { AdminLeagueRow, LeaguePatch } from "@/queries/use-leagues";
  */
 
 /** Alerts not on Betfair before a league is flagged for review. */
-export const REVIEW_AFTER = 10;
+const REVIEW_AFTER = 10;
 
 const whenFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -23,8 +23,8 @@ type Change = (key: string, patch: LeaguePatch) => void;
 /** The league as InPlayGuru writes it: country first ("France Ligue 1"). */
 const fullName = (r: AdminLeagueRow) => (r.country && !r.league.toLowerCase().startsWith(r.country.toLowerCase()) ? `${r.country} ${r.league}` : r.league);
 
-export const needsReview = (r: AdminLeagueRow) => (r.exchange?.off ?? 0) >= REVIEW_AFTER && !r.noSend && !r.keep;
-export const toSwitchOff = (r: AdminLeagueRow) => r.noSend && !r.ipgDone;
+const needsReview = (r: AdminLeagueRow) => (r.exchange?.off ?? 0) >= REVIEW_AFTER && !r.noSend && !r.keep;
+const toSwitchOff = (r: AdminLeagueRow) => r.noSend && !r.ipgDone;
 
 const STOP: LeaguePatch = { noSend: true, hidden: true };
 const RESTART: LeaguePatch = { noSend: false, hidden: false, ipgDone: false, keep: true };

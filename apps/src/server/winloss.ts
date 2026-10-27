@@ -48,7 +48,7 @@ export interface WinLossSettings {
   };
 }
 
-export const DEFAULT_WINLOSS: WinLossSettings = {
+const DEFAULT_WINLOSS: WinLossSettings = {
   commission: 0,
   assumedOdds: {},
   expenditure: { enabled: false, monthly: 90, startMonth: null },
@@ -132,7 +132,7 @@ export function saveWinLossSettings(db: EngineDb, patch: Record<string, unknown>
 
 // ---------------------------------------------------------------------------
 
-export interface WinLossPoint {
+interface WinLossPoint {
   /** Date (YYYY-MM-DD) or, for the one-day view, a time of day. */
   label: string;
   /** Cumulative profit, before expenditure. */
@@ -143,7 +143,7 @@ export interface WinLossPoint {
   s: Record<string, number>;
 }
 
-export interface WinLossPeriod {
+interface WinLossPeriod {
   strategies: Record<string, number>;
   total: number;
   expenditure: number;
@@ -151,7 +151,7 @@ export interface WinLossPeriod {
   picks: number;
 }
 
-export interface WinLossStrategy {
+interface WinLossStrategy {
   label: string;
   key: string;
   market: string | null;
@@ -168,7 +168,7 @@ export interface WinLossStrategy {
 }
 
 /** One line on the Profit and loss table and the strategy graph: a strategy, or several merged into one. */
-export interface WinLossReported {
+interface WinLossReported {
   /** Lower-case name; the key used in `periods[..].strategies` and `series[..].s`. */
   key: string;
   label: string;
@@ -602,7 +602,7 @@ export interface SegmentReturns {
 
 /** Best Value Cuppa's bet types, for splitting its record (Unders are being watched as a strategy of their own). */
 export type EdgeBetKind = "unders" | "overs" | "btts" | "result";
-export function edgeBetKind(bet: { market: string; pick: string }): EdgeBetKind {
+function edgeBetKind(bet: { market: string; pick: string }): EdgeBetKind {
   if (bet.market === "MO" || bet.market === "DC") return "result";
   if (bet.market === "BTTS") return "btts";
   return bet.pick === "under" || bet.pick === "no" ? "unders" : "overs";
@@ -761,7 +761,7 @@ export interface HitRateContext {
 }
 
 /** Price ranges for the Dashboard's odds table. `to` is exclusive. */
-export const ODDS_BANDS: Array<{ label: string; from: number; to: number }> = [
+const ODDS_BANDS: Array<{ label: string; from: number; to: number }> = [
   { label: "Under 1.50", from: 0, to: 1.5 },
   { label: "1.50 – 1.79", from: 1.5, to: 1.8 },
   { label: "1.80 – 2.19", from: 1.8, to: 2.2 },
@@ -769,7 +769,7 @@ export const ODDS_BANDS: Array<{ label: string; from: number; to: number }> = [
 ];
 
 /** One price range: how often it won, what it needs, and (admin only on the site) what it made. */
-export interface OddsBand {
+interface OddsBand {
   label: string;
   /** Settled picks in this range whose price is known. */
   settled: number;
@@ -862,7 +862,7 @@ export interface PickProfit {
 }
 
 /** One window of a strategy's form: its figures overall and split into Live (real money) and Sim. */
-export interface FormWindow {
+interface FormWindow {
   all: StrategyReturn;
   live: StrategyReturn;
   sim: StrategyReturn;
@@ -884,7 +884,7 @@ export interface StrategyForm {
   change?: { at: string; before: FormWindow; after: FormWindow };
 }
 
-export const RECENT_PICKS = 20;
+const RECENT_PICKS = 20;
 
 /**
  * Recent form for every strategy (keyed by lower-case name): its last 20 settled picks, and its last 7 days, each with
