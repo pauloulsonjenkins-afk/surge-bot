@@ -18,6 +18,7 @@ import { layGroups } from "../inplayguru/lay-groups";
 import { computeStrategyForm } from "./winloss";
 import { historyMatches, leagueProfiles, tablePositions } from "../history/football-data";
 import { edgeCard } from "../edge/edge";
+import { describeTrackRecord, trackRecord } from "./claude-track-record";
 import { log } from "./log";
 
 /** Cheap by design (see docs/claude-in-goalbrew.md § 3): a bounded classification call, not a chat. */
@@ -37,6 +38,11 @@ const SYSTEM_PROMPT = [
   "the same way or the opposite way to the alert (e.g. a team near the bottom pressing hard is weaker evidence than",
   "the same pressure from a team near the top). Both are null for most leagues (data only covers the main European",
   "leagues) - when null, judge from the in-play stats alone and don't speculate about either team's history.",
+  "yourPastVerdictsOnSettledAlerts, when given, is how your own earlier verdicts actually turned out once those picks",
+  "settled. Use it to calibrate. If it says the verdicts aren't telling winners from losers (or have pointed the wrong",
+  "way), your usual reasoning isn't predicting results yet: answer in_line unless this alert's evidence is clear, and",
+  "do not lean on the same signals you have been leaning on. If it says the verdicts are helping, you can trust your",
+  "usual reasoning more. Mention it in the note in a few words only when it changed your answer.",
   "If the data given doesn't support a confident view, answer in_line with low confidence rather than guessing.",
   "Always answer by calling the give_verdict tool exactly once. Never reply in plain text.",
 ].join(" ");
@@ -137,6 +143,8 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
     recentFormAndHeadToHead: headToHeadFor(pick, now),
     // Current league position for each side, computed from results already on file. Same coverage gap as above.
     leagueTablePosition: tablePositionsFor(pick, now),
+    // How its own earlier verdicts turned out once settled (null until a verdict has enough settled picks behind it).
+    yourPastVerdictsOnSettledAlerts: describeTrackRecord(trackRecord(db, now), strategyKey),
   };
 }
 

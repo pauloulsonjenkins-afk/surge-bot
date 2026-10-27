@@ -13,22 +13,11 @@
  * shown that "weaker" verdicts actually predict worse results than "in line" ones.
  */
 import type { EngineDb } from "../storage/engine-db";
-import { pricingInputs, ALL_TIME, type ResultRow } from "./winloss";
 import { claudeConfigured, lastCheckFailure } from "./claude-check";
+import { computeVerdictTrackRecord, type Verdict, type VerdictRow } from "./claude-track-record";
 
 const VERDICT_THRESHOLD = 100;
 const BADGE_VISIBLE_KEY = "claude_badge_visible";
-
-type Verdict = "stronger" | "in_line" | "weaker";
-
-interface VerdictRow {
-  n: number;
-  hits: number;
-  hitRate: number | null;
-  /** Of `n`, how many could be priced (stake and odds known) — only these count toward `roi`. */
-  counted: number;
-  roi: number | null;
-}
 
 export interface ClaudeVerdictCheck {
   settledCount: number;
@@ -44,46 +33,11 @@ export interface ClaudeVerdictCheck {
   lastFailure: { reason: string; at: string } | null;
 }
 
-function emptyRow(): { n: number; hits: number; staked: number; profit: number; counted: number } {
-  return { n: 0, hits: 0, staked: 0, profit: 0, counted: 0 };
-}
-
 export function computeClaudeVerdictCheck(db: EngineDb): ClaudeVerdictCheck {
-  const { price } = pricingInputs(db);
-  const rows: ResultRow[] = db.listResultsForWinLoss(ALL_TIME);
-  const ids = rows.map((r) => r.id);
-  const verdicts = db.getClaudeVerdicts(ids);
-  const tally: Record<Verdict, ReturnType<typeof emptyRow>> = { stronger: emptyRow(), in_line: emptyRow(), weaker: emptyRow() };
-  let settledCount = 0;
-  for (const r of rows) {
-    const v = verdicts.get(r.id);
-    if (!v) continue;
-    settledCount++;
-    const t = tally[v.verdict];
-    t.n++;
-    if (r.result === "hit") t.hits++;
-    const { priced } = price(r);
-    if (priced.kind === "priced") {
-      t.counted++;
-      t.staked += priced.stake;
-      t.profit += priced.profit;
-    }
-  }
-  const byVerdict: Record<Verdict, VerdictRow> = {} as Record<Verdict, VerdictRow>;
-  for (const key of ["stronger", "in_line", "weaker"] as const) {
-    const t = tally[key];
-    byVerdict[key] = {
-      n: t.n,
-      hits: t.hits,
-      hitRate: t.n > 0 ? Math.round((t.hits / t.n) * 1000) / 10 : null,
-      counted: t.counted,
-      roi: t.staked > 0 ? Math.round((t.profit / t.staked) * 1000) / 1000 : null,
-    };
-  }
+  // The figures themselves live in claude-track-record.ts: the same ones are handed back to Claude as its own record.
+  const { overall: byVerdict, settledCount } = computeVerdictTrackRecord(db);
   const ready = settledCount >= VERDICT_THRESHOLD;
-  const summary = !ready
-    ? `${settledCount} of ${VERDICT_THRESHOLD} settled.`
-    : verdictSummary(byVerdict);
+  const summary = !ready ? `${settledCount} of ${VERDICT_THRESHOLD} settled.` : verdictSummary(byVerdict);
   return { settledCount, threshold: VERDICT_THRESHOLD, ready, byVerdict, summary, badgeVisible: claudeBadgeVisible(db), configured: claudeConfigured(), lastFailure: lastCheckFailure(db) };
 }
 

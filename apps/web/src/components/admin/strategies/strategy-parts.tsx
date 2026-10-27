@@ -21,12 +21,12 @@ export const EquityCurve = dynamic(() => import("@/components/admin/EquityCurve"
 export const INACTIVE_DAYS = 14;
 
 export const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-export const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
+const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 
 export type FormKind = "recent" | "week";
 
-export const pctOf = (hits: number, n: number) => Math.round((100 * hits) / n);
-export const money = (r: StrategyReturn) => `${gbp(r.profit)}${r.roi !== null ? ` (${signedPct(r.roi)})` : ""}`;
+const pctOf = (hits: number, n: number) => Math.round((100 * hits) / n);
+const money = (r: StrategyReturn) => `${gbp(r.profit)}${r.roi !== null ? ` (${signedPct(r.roi)})` : ""}`;
 
 /** Before and after a rule change: the 7 days before it against everything since, side by side. */
 export function ChangeCompare({ c }: { c: NonNullable<NonNullable<AdminStrategy["form"]>["change"]> }) {
@@ -205,7 +205,7 @@ export function judged(m: StrategyReturn | null, hitRate: number | null, settled
 }
 
 /** Checks before a price-check figure is coloured as a verdict (it settles much sooner than a hit rate). */
-export const CHECKS_TO_JUDGE = 20;
+const CHECKS_TO_JUDGE = 20;
 
 /**
  * Did the alert's price beat Betfair's price a few minutes later (against the typical drift), or at kick-off? The
@@ -223,7 +223,7 @@ export function PriceCheckLine({ check }: { check: CheckResult }) {
   );
 }
 
-export const BET_KINDS = [
+const BET_KINDS = [
   { key: "unders", label: "Unders" },
   { key: "overs", label: "Overs" },
   { key: "btts", label: "Both teams to score" },

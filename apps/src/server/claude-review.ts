@@ -22,6 +22,7 @@ import { CANDIDATE_FROM, FULL_FROM, goldenReport, TRIAL_FROM } from "./golden";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { ukWeekStart } from "../members/time";
 import { truncateNote } from "./claude-check";
+import { describeTrackRecord, trackRecord } from "./claude-track-record";
 import { log } from "./log";
 
 const MODEL = "claude-sonnet-5-5";
@@ -44,6 +45,8 @@ const SYSTEM_PROMPT = [
   "ready to try Live or ready to come off it, a LAY group candidate, a losing pattern worth narrowing a strategy",
   "around. Only raise an idea the figures given actually back up — say plainly when nothing stands out rather than",
   "inventing one.",
+  "perAlertVerdictsTrackRecord, when given, is how your own per-alert verdicts have turned out once settled: say in a",
+  "sentence whether they are telling winners from losers yet, since that decides whether they deserve trust.",
   "Finish with one line on what's worth watching next, from goldenSlicesCloseToNextStage (how many picks a slice is",
   "from becoming a candidate, a Live trial or full stake) if anything is given there — e.g. 'X is 6 picks from a Live",
   "trial'. This is never a results forecast: you cannot and must not predict tomorrow's results or say a strategy",
@@ -112,7 +115,15 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
   const verdictTally = db.sqlite
     .prepare(`SELECT verdict, COUNT(*) as n FROM claude_verdicts WHERE checked_at >= ? GROUP BY verdict`)
     .all(from) as Array<{ verdict: string; n: number }>;
-  return { periodFrom: from, strategies, goldenSlices: golden, perAlertVerdictsThisPeriod: verdictTally, goldenSlicesCloseToNextStage: goldenCloseToNextStage(db, now) };
+  return {
+    periodFrom: from,
+    strategies,
+    goldenSlices: golden,
+    perAlertVerdictsThisPeriod: verdictTally,
+    // How those verdicts have turned out over their whole life, so the review can say whether Claude's own checks are earning their place.
+    perAlertVerdictsTrackRecord: describeTrackRecord(trackRecord(db, now), null),
+    goldenSlicesCloseToNextStage: goldenCloseToNextStage(db, now),
+  };
 }
 
 async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date): Promise<void> {
