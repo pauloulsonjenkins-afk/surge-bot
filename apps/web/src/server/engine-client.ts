@@ -1937,6 +1937,8 @@ export interface WeekTally {
   counted: number;
   staked: number;
   profit: number;
+  /** Profit at a flat 1-unit stake per priced pick. Missing from an engine older than 28 Oct 2026. */
+  units?: number;
 }
 type WeekModes = { live: WeekTally; sim: WeekTally; all: WeekTally };
 export interface StrategyWeeksReport {

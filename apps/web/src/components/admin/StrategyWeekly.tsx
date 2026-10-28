@@ -12,6 +12,14 @@ type Mode = "live" | "sim" | "all";
 const dayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const money = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(2)}`;
 const pct = (t: WeekTally) => (t.staked > 0 ? `${t.profit >= 0 ? "+" : "−"}${Math.abs(Math.round((t.profit / t.staked) * 1000) / 10)}%` : "–");
+/** Profit at a flat 1-unit stake (an older engine without it falls back to the % per £1). */
+const unitsOf = (t: WeekTally) => t.units ?? (t.staked > 0 ? (t.profit / t.staked) * t.counted : 0);
+const units = (t: WeekTally) => {
+  const u = unitsOf(t);
+  return `${u > 0 ? "+" : u < 0 ? "−" : ""}${Math.abs(u).toFixed(1)}u`;
+};
+const tone = (t: WeekTally) => (t.counted === 0 || unitsOf(t) === 0 ? "bg-surface-2 text-ink" : unitsOf(t) > 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss");
+const detail = (t: WeekTally) => `${t.won}–${t.lost}, ${t.counted} priced · ${pct(t)} per £1 · ${money(t.profit)} in £`;
 
 /** Short names for watched slices' rows. */
 const SLICE_NAMES: Record<string, string> = { golden: "Golden", "two-apart": "2+ goals apart", "home-one-down": "Home team 1 down" };
@@ -31,8 +39,8 @@ const TREND_FROM = 5;
 /** The trend label: the last 7 days against the 4 weeks before. */
 export function trendOf(last7: WeekTally, prev28: WeekTally): { label: string; cls: string } {
   if (last7.counted < TREND_FROM) return { label: "Too few bets", cls: "bg-surface-2 text-ink-muted" };
-  const now = last7.profit;
-  const before = prev28.counted > 0 ? prev28.profit : 0;
+  const now = unitsOf(last7);
+  const before = prev28.counted > 0 ? unitsOf(prev28) : 0;
   if (now > 0 && before < 0) return { label: "Turning up", cls: "bg-accent/15 text-accent" };
   if (now < 0 && before > 0) return { label: "Slipping", cls: "bg-warn/20 text-warn" };
   if (now > 0) return { label: "Steady +", cls: "bg-hit/15 text-hit" };
@@ -41,34 +49,36 @@ export function trendOf(last7: WeekTally, prev28: WeekTally): { label: string; c
 }
 
 /**
- * The return per £1, not the £ total: a strategy's stake can change over time (reported 28 Oct 2026, a strategy
- * showing a big £ loss here that was really just a bigger stake), so £ figures aren't comparable week to week or
- * strategy to strategy. The £ total is still shown, smaller, underneath; the full breakdown stays on Profit.
+ * Units (profit at a flat 1-unit stake per bet), with the bet count: £ and % per £1 were both misleading here
+ * (28 Oct 2026). £ grows with a bigger stake, and % per £1 is weighted towards the bigger-stake bets and swings
+ * wildly on a handful of them (one loss is −100%). Units count every bet the same, and a few bets can only make a
+ * small number. The £ and % are in the tooltip; the full £ breakdown stays on Profit.
  */
 function Cell({ t }: { t: WeekTally }) {
   if (t.picks === 0) return <span className="block rounded-md bg-surface-2 py-1.5 text-center text-xs text-ink-muted">–</span>;
-  const cls = t.counted === 0 || t.profit === 0 ? "bg-surface-2 text-ink" : t.profit > 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss";
   return (
-    <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${cls}`} title={`${t.won}–${t.lost}, ${t.counted} priced, ${money(t.profit)}`}>
-      {t.counted > 0 ? pct(t) : `${t.won}–${t.lost}`}
-      {t.counted > 0 && <span className="block text-ink-muted">{money(t.profit)}</span>}
+    <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${tone(t)}`} title={detail(t)}>
+      {t.counted > 0 ? units(t) : `${t.won}–${t.lost}`}
+      <span className="block text-ink-muted">
+        {t.picks} bet{t.picks === 1 ? "" : "s"}
+      </span>
     </span>
   );
 }
 
-/** One strategy's weeks as bars: £ per week, with the return per £1 under each. */
+/** One strategy's weeks as bars: units per week, with the bet count under each. */
 function WeekBars({ weeks, labels }: { weeks: WeekTally[]; labels: string[] }) {
-  const max = Math.max(0.01, ...weeks.map((w) => Math.abs(w.profit)));
+  const max = Math.max(0.01, ...weeks.map((w) => Math.abs(unitsOf(w))));
   return (
     <div className="rounded-lg bg-surface-2 p-3">
-      <p className="mb-2 text-xs font-medium text-ink-muted">£ per week (Monday to Sunday), with the return per £1</p>
+      <p className="mb-2 text-xs font-medium text-ink-muted">Units per week (Monday to Sunday): profit as if every bet were the same 1-unit stake</p>
       <div className="grid items-end gap-2" style={{ height: 90, gridTemplateColumns: `repeat(${weeks.length},minmax(0,1fr))` }}>
         {weeks.map((w, i) => (
           <div key={labels[i]} className="flex h-full flex-col justify-end">
             <div
-              className={`rounded-sm ${w.profit >= 0 ? "bg-hit/60" : "bg-loss/60"}`}
-              style={{ height: `${w.counted > 0 ? Math.max(4, (Math.abs(w.profit) / max) * 100) : 0}%` }}
-              title={`${money(w.profit)} · ${w.won}–${w.lost}`}
+              className={`rounded-sm ${unitsOf(w) >= 0 ? "bg-hit/60" : "bg-loss/60"}`}
+              style={{ height: `${w.counted > 0 ? Math.max(4, (Math.abs(unitsOf(w)) / max) * 100) : 0}%` }}
+              title={detail(w)}
             />
           </div>
         ))}
@@ -77,7 +87,7 @@ function WeekBars({ weeks, labels }: { weeks: WeekTally[]; labels: string[] }) {
         {weeks.map((w, i) => (
           <span key={labels[i]}>
             {dayMonth.format(new Date(`${labels[i]}T12:00:00Z`))}
-            <span className="block tabular-nums">{w.counted > 0 ? pct(w) : "–"}</span>
+            <span className="block tabular-nums">{w.counted > 0 ? `${units(w)} · ${w.picks}` : "–"}</span>
           </span>
         ))}
       </div>
@@ -86,7 +96,7 @@ function WeekBars({ weeks, labels }: { weeks: WeekTally[]; labels: string[] }) {
 }
 
 /**
- * Strategies → Weekly: one row per strategy, its £ for each of the last 6 weeks (Monday to Sunday, UK), the last 7
+ * Strategies → Weekly: one row per strategy, its units for each of the last 6 weeks (Monday to Sunday, UK), the last 7
  * days, and a trend label. Tap a row for its weekly bars and its full card.
  */
 export function StrategyWeekly({
@@ -136,10 +146,10 @@ export function StrategyWeekly({
             {!total && !slice && <ChevronDown size={13} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />}
           </span>
           <span
-            className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${last7.counted === 0 ? "bg-surface-2 text-ink-muted" : last7.profit >= 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss"}`}
-            title={last7.counted > 0 ? money(last7.profit) : undefined}
+            className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${last7.counted === 0 ? "bg-surface-2 text-ink-muted" : tone(last7)}`}
+            title={last7.counted > 0 ? detail(last7) : undefined}
           >
-            {last7.counted > 0 ? pct(last7) : "–"}
+            {last7.counted > 0 ? units(last7) : "–"}
             <span className="block text-xs text-ink-muted">{last7.picks} bet{last7.picks === 1 ? "" : "s"}</span>
           </span>
           <span className={`rounded-md px-1.5 py-0.5 text-center text-xs font-medium leading-tight ${trend.cls}`}>{trend.label}</span>

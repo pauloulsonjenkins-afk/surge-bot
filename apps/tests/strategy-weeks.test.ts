@@ -39,3 +39,19 @@ test("each bet lands in its week, the last 7 days or the 28 before, per strategy
   assert.equal(later.strategies["blistering momentum"]!.prev28.live.picks, 2);
   assert.equal(later.strategies["blistering momentum"]!.last7.live.picks, 0);
 });
+
+test("units count every bet the same, whatever its stake: a stake raise can't make one loss look like ten", () => {
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "blistering momentum": 1 }, strategies: { "blistering momentum": true }, dailyCap: 100 });
+  // Each pick priced at the stake it was sent with, as for real.
+  const bet = (n: number, r: "hit" | "miss", stake: number) => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    db.upsertLivePick("chat", n, alert(n, r), parseAlert(alert(n, r)), at);
+    db.markSent([{ id: db.getLivePickByMessage("chat", n)!.id, rowJson: JSON.stringify({ stake }) }]);
+  };
+  bet(1, "hit", 1);
+  bet(2, "miss", 10);
+  const s = computeStrategyWeeks(db, 6, new Date(Date.now() + 86_400_000)).strategies["blistering momentum"]!;
+  assert.ok(s.last7.live.profit < -8, "in £ the £10 loss swamps the £1 win");
+  assert.ok(Math.abs(s.last7.live.units) < 0.05, "in units: +1 at evens, −1: level");
+});

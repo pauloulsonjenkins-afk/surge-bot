@@ -20,6 +20,8 @@ interface WeekTally {
   counted: number;
   staked: number;
   profit: number;
+  /** Profit as if every priced pick had been a flat 1-unit stake: a stake change can't skew it (reported 28 Oct 2026). */
+  units: number;
 }
 type WeekModes = { live: WeekTally; sim: WeekTally; all: WeekTally };
 
@@ -30,7 +32,7 @@ export interface StrategyWeeks {
   strategies: Record<string, { weeks: WeekModes[]; last7: WeekModes; prev28: WeekModes }>;
 }
 
-const empty = (): WeekTally => ({ picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
+const empty = (): WeekTally => ({ picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0, units: 0 });
 const modes = (): WeekModes => ({ live: empty(), sim: empty(), all: empty() });
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -42,6 +44,7 @@ function add(t: WeekTally, hit: boolean, priced: { stake: number; profit: number
     t.counted++;
     t.staked = r2(t.staked + priced.stake);
     t.profit = r2(t.profit + priced.profit);
+    t.units = r2(t.units + priced.profit / priced.stake);
   }
 }
 
