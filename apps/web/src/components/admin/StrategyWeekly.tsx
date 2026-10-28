@@ -19,7 +19,12 @@ const units = (t: WeekTally) => {
   return `${u > 0 ? "+" : u < 0 ? "−" : ""}${Math.abs(u).toFixed(1)}u`;
 };
 const tone = (t: WeekTally) => (t.counted === 0 || unitsOf(t) === 0 ? "bg-surface-2 text-ink" : unitsOf(t) > 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss");
-const detail = (t: WeekTally) => `${t.won}–${t.lost}, ${t.counted} priced · ${pct(t)} per £1 · ${money(t.profit)} in £`;
+/** The bets the figure is made from: the priced ones once there are any, else every settled alert. */
+const betCount = (t: WeekTally) => {
+  const n = t.counted > 0 ? t.counted : t.picks;
+  return `${n} bet${n === 1 ? "" : "s"}`;
+};
+const detail = (t: WeekTally) => `${t.won}–${t.lost} from ${t.picks} settled alerts, ${t.counted} priced · ${pct(t)} per £1 · ${money(t.profit)} in £`;
 
 /** Short names for watched slices' rows. */
 const SLICE_NAMES: Record<string, string> = { golden: "Golden", "two-apart": "2+ goals apart", "home-one-down": "Home team 1 down" };
@@ -59,9 +64,9 @@ function Cell({ t }: { t: WeekTally }) {
   return (
     <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${tone(t)}`} title={detail(t)}>
       {t.counted > 0 ? units(t) : `${t.won}–${t.lost}`}
-      <span className="block text-ink-muted">
-        {t.picks} bet{t.picks === 1 ? "" : "s"}
-      </span>
+      {/* The bets the units come from (priced ones), not every settled alert: a Sim row once read "216 bets" for units
+          made from 62 (28 Oct 2026), the other 154 being alerts the feed's rules wouldn't have bet. */}
+      <span className="block text-ink-muted">{betCount(t)}</span>
     </span>
   );
 }
@@ -87,7 +92,7 @@ function WeekBars({ weeks, labels }: { weeks: WeekTally[]; labels: string[] }) {
         {weeks.map((w, i) => (
           <span key={labels[i]}>
             {dayMonth.format(new Date(`${labels[i]}T12:00:00Z`))}
-            <span className="block tabular-nums">{w.counted > 0 ? `${units(w)} · ${w.picks}` : "–"}</span>
+            <span className="block tabular-nums">{w.counted > 0 ? `${units(w)} · ${w.counted}` : "–"}</span>
           </span>
         ))}
       </div>
@@ -150,7 +155,7 @@ export function StrategyWeekly({
             title={last7.counted > 0 ? detail(last7) : undefined}
           >
             {last7.counted > 0 ? units(last7) : "–"}
-            <span className="block text-xs text-ink-muted">{last7.picks} bet{last7.picks === 1 ? "" : "s"}</span>
+            <span className="block text-xs text-ink-muted">{betCount(last7)}</span>
           </span>
           <span className={`rounded-md px-1.5 py-0.5 text-center text-xs font-medium leading-tight ${trend.cls}`}>{trend.label}</span>
           {weeks.map((w, i) => (
