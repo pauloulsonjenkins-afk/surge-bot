@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { StrategyName } from "@/components/ui/StrategyName";
 import { SegmentLabel, sliceName } from "@/components/ui/SegmentLabel";
 import { useSliceStatus } from "@/queries/use-golden";
+import { useUiStore } from "@/state/ui.store";
 import type { StrategyWeeksReport, WeekTally } from "@/server/engine-client";
 
 type Mode = "live" | "sim" | "all";
@@ -40,6 +41,21 @@ export function sliceRowName(key: string, sliceLabels?: Record<string, string>):
 
 /** Under this many bets in the last 7 days there's no trend label. */
 const TREND_FROM = 5;
+
+/** A slice making at least this many units per priced bet over the last 7 days is "doing very well" (10p per £1). */
+const VERY_WELL_PER_BET = 0.1;
+
+/**
+ * How a Golden slice is doing over the last 7 days, for the tint on its folded line: "good" once it has TREND_FROM
+ * priced bets making VERY_WELL_PER_BET units a bet or more, "bad" once it has as many and is down. Fewer bets: no
+ * judgement either way.
+ */
+export function sliceHealth(last7: WeekTally): "good" | "bad" | null {
+  if (last7.counted < TREND_FROM) return null;
+  const u = unitsOf(last7);
+  if (u < 0) return "bad";
+  return u / last7.counted >= VERY_WELL_PER_BET ? "good" : null;
+}
 
 /** The trend label: the last 7 days against the 4 weeks before. */
 export function trendOf(last7: WeekTally, prev28: WeekTally): { label: string; cls: string } {
@@ -124,7 +140,11 @@ export function StrategyWeekly({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const sliceStatus = useSliceStatus();
+  const openSlices = useUiStore((s) => s.openSlices);
+  const setSlicesOpen = useUiStore((s) => s.setSlicesOpen);
   if (!data) return <p className="text-xs text-ink-muted">Loading the weeks…</p>;
+  const withSlices = rows.map((r) => r.label.toLowerCase()).filter((k) => Object.keys(data.strategies).some((x) => x.startsWith(`${k}#`)));
+  const allOpen = withSlices.length > 0 && withSlices.every((k) => openSlices.includes(k));
   // Columns start from the first week anything in this section has picks (no empty weeks before the data begins).
   const keys = rows.flatMap((r) => [r.label.toLowerCase(), ...Object.keys(data.strategies).filter((k) => k.startsWith(`${r.label.toLowerCase()}#`))]);
   const firstWeek = data.weeks.findIndex((_, i) => keys.some((k) => (data.strategies[k]?.weeks[i]?.[modeOf(k.split("#")[0]!)]?.picks ?? 0) > 0));
@@ -171,8 +191,43 @@ export function StrategyWeekly({
       </li>
     );
   };
+  /**
+   * One line standing in for a strategy's Golden slice rows while they're folded (or heading them when open): how many,
+   * tinted green when one is doing very well and red when one is losing (red wins: a problem shouldn't hide). Tap to
+   * show or hide them. Sticky, like the names, so it stays put while the weeks scroll sideways.
+   */
+  const sliceToggle = (key: string, subs: string[], mode: Mode, shown: boolean) => {
+    const health = subs.map((k) => sliceHealth(data.strategies[k]?.last7[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 }));
+    const good = health.filter((h) => h === "good").length;
+    const bad = health.filter((h) => h === "bad").length;
+    const cls = bad > 0 ? "bg-loss/15 text-loss" : good > 0 ? "bg-hit/15 text-hit" : "bg-surface-2 text-ink-muted";
+    const words = [good > 0 && `${good} doing very well`, bad > 0 && `${bad} losing`].filter(Boolean).join(", ");
+    return (
+      <li key={`${key}#toggle`}>
+        <button
+          type="button"
+          aria-expanded={shown}
+          onClick={() => setSlicesOpen([key], !shown)}
+          className={`sticky left-0 z-10 ml-3 flex max-w-[calc(100vw-3rem)] items-center gap-1 rounded-md px-2 py-1 text-left text-xs font-medium ${cls}`}
+        >
+          <ChevronDown size={12} aria-hidden className={`shrink-0 transition-transform ${shown ? "rotate-180" : ""}`} />
+          <span className="truncate">
+            {shown ? "Hide" : "↳"} {subs.length} Golden slice{subs.length === 1 ? "" : "s"}
+            {words && ` · ${words}`}
+          </span>
+        </button>
+      </li>
+    );
+  };
   return (
     <div className="overflow-x-auto">
+      {withSlices.length > 0 && (
+        <div className="sticky left-0 mb-1 flex justify-end">
+          <button type="button" onClick={() => setSlicesOpen(withSlices, !allOpen)} className="text-xs text-ink-muted underline">
+            {allOpen ? "Fold all slices" : "Show all slices"}
+          </button>
+        </div>
+      )}
       <div className="min-w-[640px]">
         <div className={`${grid} pb-1 text-xs text-ink-muted`} style={cols}>
           <span className={`${sticky} self-stretch`}>Strategy</span>
@@ -191,11 +246,26 @@ export function StrategyWeekly({
             // label starts "Golden: ", so the row is named by the slice itself (only Second Pour's own is simply "Golden"), and
             // the word is in gold only once the slice is confirmed.
             const subs = Object.keys(data.strategies).filter((k) => k.startsWith(`${key}#`));
+            const shown = openSlices.includes(key);
+            const mode = modeOf(r.label);
             return [
-              line(key, <StrategyName label={r.label} />, modeOf(r.label)),
-              ...subs.map((k) =>
-                line(k, <span className="pl-3 text-xs text-ink-muted">↳ of which <SegmentLabel label={sliceRowName(k, sliceLabels)} status={sliceStatus(key, k.split("#")[1]!)} /></span>, modeOf(r.label), false, true),
-              ),
+              line(key, <StrategyName label={r.label} />, mode),
+              ...(subs.length > 0 ? [sliceToggle(key, subs, mode, shown)] : []),
+              ...(shown
+                ? subs.map((k) => {
+                    const h = sliceHealth(data.strategies[k]?.last7[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
+                    return line(
+                      k,
+                      <span className="pl-3 text-xs text-ink-muted">
+                        {h && <span aria-label={h === "good" ? "doing very well" : "losing"} className={`mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle ${h === "good" ? "bg-hit" : "bg-loss"}`} />}
+                        ↳ of which <SegmentLabel label={sliceRowName(k, sliceLabels)} status={sliceStatus(key, k.split("#")[1]!)} />
+                      </span>,
+                      mode,
+                      false,
+                      true,
+                    );
+                  })
+                : []),
             ];
           })}
           {showTotal && line("__all__", "All strategies", modeOf("__all__"), true)}

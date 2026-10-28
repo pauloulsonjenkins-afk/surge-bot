@@ -18,6 +18,10 @@ interface UiState {
   profitUnit: "gbp" | "units";
   setProfitUnit: (unit: "gbp" | "units") => void;
 
+  /** Strategies (lower-case) whose Golden slice rows are shown on Strategies → Weekly; the rest are folded to one line. */
+  openSlices: string[];
+  setSlicesOpen: (keys: string[], open: boolean) => void;
+
   /** Betfair market codes cleared from the Reconcile page's market cards; a market not cleared yet still shows. */
   clearedMarkets: string[];
   clearMarkets: (codes: string[]) => void;
@@ -39,12 +43,16 @@ export const useUiStore = create<UiState>()(
       profitUnit: "gbp",
       setProfitUnit: (profitUnit) => set({ profitUnit }),
 
+      openSlices: [],
+      setSlicesOpen: (keys, open) =>
+        set((s) => ({ openSlices: open ? [...new Set([...s.openSlices, ...keys])] : s.openSlices.filter((k) => !keys.includes(k)) })),
+
       clearedMarkets: [],
       clearMarkets: (codes) => set((s) => ({ clearedMarkets: [...new Set([...s.clearedMarkets, ...codes])] })),
     }),
     {
       name: "surge-ui", // localStorage key
-      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode, profitUnit: s.profitUnit, clearedMarkets: s.clearedMarkets }),
+      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode, profitUnit: s.profitUnit, openSlices: s.openSlices, clearedMarkets: s.clearedMarkets }),
       // Version 1 made Live the default: a choice saved before then (usually the old default, All) starts on Live once.
       version: 1,
       migrate: (persisted, version) => {

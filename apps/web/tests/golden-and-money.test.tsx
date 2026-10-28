@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { gbp, signedPct, toneOf } from "@/lib/format";
 import { bestStatus, GoldenBadge, SegmentLabel, sliceName } from "@/components/ui/SegmentLabel";
-import { sliceRowName, trendOf } from "@/components/admin/StrategyWeekly";
+import { sliceHealth, sliceRowName, trendOf } from "@/components/admin/StrategyWeekly";
 import { parseStake } from "@/components/admin/SegmentBetting";
 
 test("money: a true minus sign, a plus only when asked, never £-2.00", () => {
@@ -76,6 +76,14 @@ test("weekly trend: too few bets says so; turning up, slipping and steady by the
   assert.equal(trendOf(t(10, 5), t(20, -4)).label, "Turning up");
   assert.equal(trendOf(t(10, -5), t(20, 4)).label, "Slipping");
   assert.equal(trendOf(t(10, 5), t(20, 4)).label, "Steady +");
+});
+
+test("folded slices: green once a slice makes 0.1u a bet over 5+ bets, red once it's down; too few bets says nothing", () => {
+  const t = (counted: number, units: number) => ({ picks: counted, won: 0, lost: 0, counted, staked: counted * 10, profit: units * 10, units });
+  assert.equal(sliceHealth(t(4, 3)), null, "too few bets");
+  assert.equal(sliceHealth(t(10, 1)), "good", "+1u over 10 bets is 0.1 a bet");
+  assert.equal(sliceHealth(t(10, 0.5)), null, "up, but not by much");
+  assert.equal(sliceHealth(t(10, -0.2)), "bad");
 });
 
 test("slice stake box: empty is the strategy's stake; 0.1-10% accepted; anything else refused", () => {
