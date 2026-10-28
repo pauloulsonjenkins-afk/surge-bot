@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { gbp } from "@/lib/format";
+import { gbp, units } from "@/lib/format";
 
 export interface LineSeries {
   key: string;
@@ -18,11 +18,13 @@ function LinesTooltip({
   label,
   payload,
   series,
+  inUnits,
 }: {
   active?: boolean;
   label?: string | number;
   payload?: ReadonlyArray<{ dataKey?: unknown; value?: unknown }>;
   series: LineSeries[];
+  inUnits: boolean;
 }) {
   if (!active || !payload?.length) return null;
   return (
@@ -37,7 +39,7 @@ function LinesTooltip({
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
                 <span className="truncate">{s.name}</span>
               </span>
-              <span className="tabular-nums text-ink">{typeof v === "number" ? gbp(v) : "\u2013"}</span>
+              <span className="tabular-nums text-ink">{typeof v === "number" ? (inUnits ? units(v) : gbp(v)) : "\u2013"}</span>
             </li>
           );
         })}
@@ -56,7 +58,16 @@ const DOWN = "var(--loss)";
  * up to £0, while in loss, so a spell below zero shows even in a period that finished up. Several lines keep their own
  * colours and no fade (they would smear over each other).
  */
-export function WinLossLines({ data, series }: { data: Array<Record<string, number | string>>; series: LineSeries[] }) {
+export function WinLossLines({
+  data,
+  series,
+  inUnits = false,
+}: {
+  data: Array<Record<string, number | string>>;
+  series: LineSeries[];
+  /** Values are units (flat 1-unit stake per bet), not £: the axis and tooltip say so. */
+  inUnits?: boolean;
+}) {
   const id = useId().replace(/:/g, "");
   const filled = series.length === 1;
   const values = filled ? data.map((d) => d[series[0]!.key]).filter((v): v is number => typeof v === "number") : [];
@@ -107,11 +118,11 @@ export function WinLossLines({ data, series }: { data: Array<Record<string, numb
               tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
               tickLine={false}
               axisLine={false}
-              tickFormatter={(v: number) => `${v < 0 ? "\u2212" : ""}\u00a3${Math.abs(v)}`}
+              tickFormatter={(v: number) => (inUnits ? `${v < 0 ? "\u2212" : ""}${Math.abs(v)}u` : `${v < 0 ? "\u2212" : ""}\u00a3${Math.abs(v)}`)}
               width={52}
             />
             <ReferenceLine y={0} stroke="var(--ink-muted)" strokeOpacity={0.5} />
-            <Tooltip cursor={{ stroke: "var(--line)" }} content={(p) => <LinesTooltip active={p.active} label={p.label} payload={p.payload} series={series} />} />
+            <Tooltip cursor={{ stroke: "var(--line)" }} content={(p) => <LinesTooltip active={p.active} label={p.label} payload={p.payload} series={series} inUnits={inUnits} />} />
             {filled && (
               <Area type="linear" dataKey={series[0]!.key} baseValue={0} stroke="none" fill={`url(#${id}-fade)`} isAnimationActive={false} activeDot={false} legendType="none" tooltipType="none" />
             )}

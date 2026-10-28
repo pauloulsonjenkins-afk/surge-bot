@@ -24,6 +24,12 @@ export function gbp(n: number, signed = true): string {
   return `${sign}£${Math.abs(n).toFixed(2)}`;
 }
 
+/** Units (profit at a flat 1-unit stake per bet) as the app shows them: "+3.4u", "−1.0u", "0.0u". */
+export function units(n: number): string {
+  const r = Math.round(n * 10) / 10;
+  return `${r < 0 ? "−" : r > 0 ? "+" : ""}${Math.abs(r).toFixed(1)}u`;
+}
+
 /**
  * A return per £1 (0.032 = 3.2%) as the app shows it: "+3.2%", "−1.5%" (a true minus sign), "0%", or "–" when there
  * isn't one. The sign is taken after rounding, so a tiny loss reads "0%", never "−0%".

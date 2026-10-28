@@ -5,7 +5,8 @@ import type { HitRateStats } from "@/queries/use-stats";
 import { moneyTone } from "@/components/ui/Card";
 import { formatNumber } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { gbp } from "@/lib/format";
+import { gbp, units as formatUnits } from "@/lib/format";
+import { useProfitUnit } from "@/components/ui/ModeToggle";
 import type { Timeframe } from "./TimeframeToggle";
 import type { PickMode } from "@/server/engine-client";
 import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
@@ -42,6 +43,7 @@ export function HeroRow({
   mode: PickMode;
 }) {
   const admin = useMe().data?.admin === true;
+  const unit = useProfitUnit();
 
   if (isLoading || !stats) return <HeroSkeleton />;
 
@@ -78,7 +80,24 @@ export function HeroRow({
     <section aria-label="Summary" className="space-y-4">
       {admin && <StatusStrip pending={totals.pending} />}
 
-      {money ? (
+      {money && unit === "units" && typeof c?.units === "number" ? (
+        // Units: every bet counted as the same 1-unit stake, so a stake change can't skew the figure.
+        <Hero
+          label={`${mode === "sim" ? "Sim units" : mode === "live" ? "Live units" : "Units"} · ${WINDOW[timeframe]}`}
+          value={formatUnits(c.units)}
+          tone={moneyTone(c.units)}
+          sub={
+            <>
+              <span className="tabular-nums">
+                {formatNumber(c.counted)} priced bet{c.counted === 1 ? "" : "s"} · {money.profit === 0 ? "£0.00" : gbp(money.profit)} ·{" "}
+              </span>
+              <Link href="/more/admin/winloss" className="underline hover:text-ink">
+                Profit
+              </Link>
+            </>
+          }
+        />
+      ) : money ? (
         <Hero
           label={`${mode === "sim" ? "Sim profit" : mode === "live" ? "Live profit" : "Profit"} · ${WINDOW[timeframe]}`}
           value={money.profit === 0 ? "£0.00" : gbp(money.profit)}

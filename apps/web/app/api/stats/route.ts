@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     if (admin || !stats.context) return NextResponse.json(stats);
     // The odds table's hit rates are for everyone; what each price range made is not.
     const bands = stats.context.bands?.map((b) => ({ ...b, roi: null, profit: null, staked: null }));
-    return NextResponse.json({ ...stats, context: { ...stats.context, roi: null, profit: null, staked: null, ...(bands ? { bands } : {}) } });
+    return NextResponse.json({ ...stats, context: { ...stats.context, roi: null, profit: null, staked: null, units: null, ...(bands ? { bands } : {}) } });
   } catch (err) {
     return engineUnavailable("api/stats", err);
   }

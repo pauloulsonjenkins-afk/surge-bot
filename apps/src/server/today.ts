@@ -253,7 +253,7 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
       dailyCap: sending.dailyCap,
       maxStake: sending.maxStake,
     },
-    today: { liveNet: live.net, liveSettled: live.settled, simNet: sim.net, simSettled: sim.settled },
+    today: { liveNet: live.net, liveUnits: live.units, liveSettled: live.settled, simNet: sim.net, simUnits: sim.units, simSettled: sim.settled },
     exposure: { openStake: Math.round(openStake * 100) / 100, biggestMatch: biggest ? { match: biggest.match, stake: Math.round(biggest.stake * 100) / 100 } : null },
     alerts: { lastHour, volume, telegram: telegramHealth(db, now) },
     queue: { waiting: open.filter((d) => d.state === "waiting").length, placing: open.filter((d) => d.state === "placing").length, notPlacedToday: notPlacedToday.notPlaced, sentToday: notPlacedToday.sent },

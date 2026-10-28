@@ -37,6 +37,33 @@ export function ModeToggle({ className = "" }: { className?: string }) {
   );
 }
 
+/** The Dashboard's profit unit: the admin's choice of £ or units; "gbp" for everyone else (they see no money figures). */
+export function useProfitUnit(): "gbp" | "units" {
+  const { data: me } = useMe();
+  const unit = useUiStore((s) => s.profitUnit);
+  return me?.admin ? unit : "gbp";
+}
+
+/** £ / Units. Admin only: units count every bet as the same 1-unit stake, so a stake change can't skew the figure. */
+export function UnitToggle({ className = "" }: { className?: string }) {
+  const { data: me } = useMe();
+  const unit = useUiStore((s) => s.profitUnit);
+  const setUnit = useUiStore((s) => s.setProfitUnit);
+  if (!me?.admin) return null;
+  return (
+    <Segmented
+      label="Profit in pounds or units"
+      value={unit}
+      onChange={setUnit}
+      className={className}
+      options={[
+        { value: "gbp", label: "£" },
+        { value: "units", label: "Units" },
+      ]}
+    />
+  );
+}
+
 /**
  * A small label for a pick or strategy: Live (money was staked), Sim (recorded only), or Not placed (sent, never bet).
  * Live is a mode, not a result, so it isn't green (green and red are kept for money and results): it gets the brand dot.

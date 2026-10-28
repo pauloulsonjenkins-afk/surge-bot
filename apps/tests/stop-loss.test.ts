@@ -8,6 +8,7 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { accountToday, computeStopLoss, saveStopLossRule, getStopLossRules } from "../src/inplayguru/stop-loss";
+import { computeHitRateContext, computeWinLoss } from "../src/server/winloss";
 
 const S = "Blistering Momentum";
 const KEY = S.toLowerCase();
@@ -199,5 +200,21 @@ test("a pick sent but never placed on Betfair lost nothing: not in today's Live 
   sentAndSettled("miss");
   sentAndSettled("miss");
   assert.equal(computeStopLoss(db, NOW).get(KEY)?.stopped, false);
-  assert.deepEqual(accountToday(db, NOW), { net: 0, settled: 0 });
+  assert.deepEqual(accountToday(db, NOW), { net: 0, units: 0, settled: 0 });
+});
+
+test("today's units: every bet as one unit, so at a flat £2 stake they're the £ figure halved - in Today, the Dashboard graph and its headline", () => {
+  const { db, sentAndSettled } = setup(NOW);
+  sentAndSettled("hit");
+  sentAndSettled("miss");
+  sentAndSettled("miss");
+  const today = accountToday(db, NOW);
+  assert.equal(today.settled, 3);
+  assert.ok(Math.abs(today.units - today.net / 2) < 0.02, `units ${today.units} vs £${today.net} at £2 a bet`);
+  const wl = computeWinLoss(db, NOW, "live");
+  const last = wl.series.d1.at(-1)!;
+  assert.ok(Math.abs(last.u - last.total / 2) < 0.02, "graph's units line");
+  assert.ok(Math.abs(last.su[KEY]! - last.u) < 0.001, "one strategy: its own line is the total");
+  const ctx = computeHitRateContext(db, new Set(db.listResultsForWinLoss("1970-01-01T00:00:00.000Z").map((r) => r.id)), null);
+  assert.ok(Math.abs(ctx.units - ctx.profit / 2) < 0.02, "Dashboard headline units");
 });

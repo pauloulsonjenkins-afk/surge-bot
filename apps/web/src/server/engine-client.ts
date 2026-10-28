@@ -323,6 +323,8 @@ interface HitRateContext {
   /** Profit and stakes in £ over the priced picks; null for anyone but the admin (missing on an older engine). */
   profit?: number | null;
   staked?: number | null;
+  /** Profit at a flat 1-unit stake per priced pick; null for anyone but the admin (missing on an older engine). */
+  units?: number | null;
   /** Of the priced picks, how many were priced at an assumed price (missing on an older engine). */
   assumed?: number;
 }
@@ -627,6 +629,9 @@ interface WinLossPoint {
   total: number;
   totalAfter: number;
   s: Record<string, number>;
+  /** The same in units (flat 1-unit stake per pick), total and per strategy (missing on an older engine). */
+  u?: number;
+  su?: Record<string, number>;
 }
 interface WinLossPeriod {
   strategies: Record<string, number>;
@@ -1711,7 +1716,8 @@ export interface TodaySnapshot {
   };
   bank: { total: number | null; available: number | null; exposure: number | null; at: string | null };
   limits: { dailyLossLimit: number; lossStop: string | null; matchCap: number; dailyCap: number; maxStake: number };
-  today: { liveNet: number; liveSettled: number; simNet: number; simSettled: number };
+  /** liveUnits / simUnits: today at a flat 1-unit stake per bet (missing on an older engine). */
+  today: { liveNet: number; liveUnits?: number; liveSettled: number; simNet: number; simUnits?: number; simSettled: number };
   exposure: { openStake: number; biggestMatch: { match: string; stake: number } | null };
   alerts: { lastHour: number; volume: { lastHour: number; typical: number; low: boolean } | null; telegram: { ok: boolean; problems: string[]; lastAlertAt: string | null } };
   queue: { waiting: number; placing: number; notPlacedToday: number; sentToday: number };

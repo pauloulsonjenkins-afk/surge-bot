@@ -15,7 +15,7 @@ import { getJson } from "@/queries/fetch-json";
 import { AdviceRow } from "@/components/admin/Advice";
 import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
-import { toneOf, gbp } from "@/lib/format";
+import { toneOf, gbp, units } from "@/lib/format";
 
 
 function ago(iso: string | null): string {
@@ -211,7 +211,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+      <div className={`grid grid-cols-2 gap-2 ${d.today.liveUnits !== undefined ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
         <Tile
           label="Betting"
           value={d.betting.on ? (d.betting.breaker.open ? "Paused" : "On") : "Off"}
@@ -219,6 +219,14 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           warn={d.betting.on && d.betting.breaker.open}
         />
         <Tile label="Live today" value={<span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
+        {/* The same day as if every bet were the same 1-unit stake, so a stake change can't make it look better or worse. */}
+        {d.today.liveUnits !== undefined && (
+          <Tile
+            label="Units today"
+            value={<span className={toneOf(d.today.liveUnits)}>{units(d.today.liveUnits)}</span>}
+            sub={`Live, ${d.today.liveSettled} settled · Sim ${units(d.today.simUnits ?? 0)} (${d.today.simSettled})`}
+          />
+        )}
         <Tile
           label="Daily loss stop"
           value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}

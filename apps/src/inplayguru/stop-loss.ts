@@ -160,25 +160,30 @@ function countedStake(r: WinLossRow, mode: "live" | "sim"): number | null {
  * bets really placed (a Betfair bet at its real result), Sim the simulated ones. Used by the whole-account daily loss
  * stop (Sending: "Stop all betting when down £X today").
  */
-export function accountToday(db: EngineDb, now = new Date(), mode: "live" | "sim" = "live"): { net: number; settled: number } {
+export function accountToday(db: EngineDb, now = new Date(), mode: "live" | "sim" = "live"): { net: number; units: number; settled: number } {
   const today = ukDay.format(now);
   const { commission, assumedOdds } = winLossInputs(db);
   const since = new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString();
   let net = 0;
+  // The same at a flat 1-unit stake per bet (Today's "Units today"), so a bigger stake can't make the day look worse.
+  let units = 0;
   let settled = 0;
   for (const r of db.listResultsForWinLoss(since)) {
     if (ukDay.format(new Date(r.firstSeenAt)) !== today) continue;
     const stake = countedStake(r, mode);
     if (stake === null) continue;
     const key = labelOf(r.strategy).toLowerCase();
-    if (mode === "live" && r.placement === "betfair" && r.betProfit !== null) net += r.betProfit > 0 ? r.betProfit * (1 - commission) : r.betProfit;
+    let p: number;
+    if (mode === "live" && r.placement === "betfair" && r.betProfit !== null) p = r.betProfit > 0 ? r.betProfit * (1 - commission) : r.betProfit;
     else if (r.result === "hit") {
       const odds = (mode === "live" ? (r.placement === "betfair" ? r.betOdds : r.takenOdds) : null) ?? alertOddsOf(r) ?? assumedOdds[key] ?? null;
-      net += odds === null ? 0 : stake * (odds - 1) * (1 - commission);
-    } else net -= stake;
+      p = odds === null ? 0 : stake * (odds - 1) * (1 - commission);
+    } else p = -stake;
+    net += p;
+    if (stake > 0) units += p / stake;
     settled++;
   }
-  return { net: r2(net), settled };
+  return { net: r2(net), units: r2(units), settled };
 }
 
 /**

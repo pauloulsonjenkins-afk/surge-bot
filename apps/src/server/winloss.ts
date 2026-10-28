@@ -141,6 +141,9 @@ interface WinLossPoint {
   totalAfter: number;
   /** Cumulative profit per strategy (keyed by lower-case strategy name). */
   s: Record<string, number>;
+  /** The same in units (profit at a flat 1-unit stake per pick): a stake change can't skew it. */
+  u: number;
+  su: Record<string, number>;
 }
 
 interface WinLossPeriod {
@@ -232,7 +235,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
 
   // gkey = the reported line; key = the original strategy, which still decides the stake and odds. time: the UK time of
   // day, for the one-day graph, so only today's picks need it.
-  interface Priced { day: string; time: string; key: string; gkey: string; profit: number }
+  interface Priced { day: string; time: string; key: string; gkey: string; profit: number; units: number }
   const timeOf = (day: string, at: string) => (day === today ? ukTime.format(new Date(at)) : "");
   const priced: Priced[] = [];
   const tally = new Map<string, WinLossStrategy>();
@@ -249,7 +252,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
       if (!inPickMode(r.placement, mode)) continue;
       const k = strategyLabel(r.strategy).toLowerCase();
       const out = priceResult(r, { strategyStake: stakeOf(k), assumedOdds: settings.assumedOdds[k] ?? null, commission: settings.commission / 100 });
-      if (out.kind === "priced") priced.push({ day, time: timeOf(day, r.firstSeenAt), key: k, gkey: reportedAs(k, strategyLabel(r.strategy)).toLowerCase(), profit: out.profit });
+      if (out.kind === "priced") priced.push({ day, time: timeOf(day, r.firstSeenAt), key: k, gkey: reportedAs(k, strategyLabel(r.strategy)).toLowerCase(), profit: out.profit, units: out.profit / out.stake });
       continue;
     }
 
@@ -291,7 +294,7 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     }
     t.counted++;
     if (out.usedAlertOdds) t.usedAlertOdds++;
-    priced.push({ day, time: timeOf(day, r.firstSeenAt), key, gkey: reportedAs(key, label).toLowerCase(), profit: out.profit });
+    priced.push({ day, time: timeOf(day, r.firstSeenAt), key, gkey: reportedAs(key, label).toLowerCase(), profit: out.profit, units: out.profit / out.stake });
   }
 
   // ---- expenditure: months charged in a period ----
@@ -342,21 +345,28 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
   };
 
   // ---- line graph data ----
+  const zeros = () => Object.fromEntries(keys.map((k) => [k, 0]));
+  const rounded = (cum: Record<string, number>) => Object.fromEntries(keys.map((k) => [k, r2(cum[k] ?? 0)]));
+  const sum = (cum: Record<string, number>) => Object.values(cum).reduce((a, b) => a + b, 0);
   const dailySeries = (p: "d7" | "d30" | "mtd" | "ytd"): WinLossPoint[] => {
     const byDay = new Map<string, Priced[]>();
     for (const x of priced) if (x.day >= start[p]) (byDay.get(x.day) ?? byDay.set(x.day, []).get(x.day)!).push(x);
     const cum: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
+    const cumU: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
     let spent = 0;
     // Starts from £0 the day before, so the first day of a period (the 1st of the month) still draws a line.
-    const out: WinLossPoint[] = [{ label: addDays(start[p], -1), total: 0, totalAfter: 0, s: Object.fromEntries(keys.map((k) => [k, 0])) }];
+    const out: WinLossPoint[] = [{ label: addDays(start[p], -1), total: 0, totalAfter: 0, s: zeros(), u: 0, su: zeros() }];
     for (let d = start[p]; d <= today; d = addDays(d, 1)) {
-      for (const x of byDay.get(d) ?? []) cum[x.gkey] = (cum[x.gkey] ?? 0) + x.profit;
+      for (const x of byDay.get(d) ?? []) {
+        cum[x.gkey] = (cum[x.gkey] ?? 0) + x.profit;
+        cumU[x.gkey] = (cumU[x.gkey] ?? 0) + x.units;
+      }
       // The monthly cost is charged on the 1st, for month and year views only.
       if ((p === "mtd" || p === "ytd") && ex.enabled && ex.startMonth !== null && d.endsWith("-01") && d.slice(0, 7) >= ex.startMonth) {
         spent += ex.monthly;
       }
-      const total = Object.values(cum).reduce((a, b) => a + b, 0);
-      out.push({ label: d, total: r2(total), totalAfter: r2(total - spent), s: Object.fromEntries(keys.map((k) => [k, r2(cum[k] ?? 0)])) });
+      const total = sum(cum);
+      out.push({ label: d, total: r2(total), totalAfter: r2(total - spent), s: rounded(cum), u: r2(sum(cumU)), su: rounded(cumU) });
     }
     return out;
   };
@@ -365,11 +375,13 @@ export function computeWinLoss(db: EngineDb, now = new Date(), mode: PickMode = 
     const todays = priced.filter((x) => x.day === today);
     if (todays.length === 0) return [];
     const cum: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
-    const out: WinLossPoint[] = [{ label: "Start", total: 0, totalAfter: 0, s: Object.fromEntries(keys.map((k) => [k, 0])) }];
+    const cumU: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
+    const out: WinLossPoint[] = [{ label: "Start", total: 0, totalAfter: 0, s: zeros(), u: 0, su: zeros() }];
     for (const x of todays) {
       cum[x.gkey] = (cum[x.gkey] ?? 0) + x.profit;
-      const total = Object.values(cum).reduce((a, b) => a + b, 0);
-      out.push({ label: x.time, total: r2(total), totalAfter: r2(total), s: Object.fromEntries(keys.map((k) => [k, r2(cum[k] ?? 0)])) });
+      cumU[x.gkey] = (cumU[x.gkey] ?? 0) + x.units;
+      const total = sum(cum);
+      out.push({ label: x.time, total: r2(total), totalAfter: r2(total), s: rounded(cum), u: r2(sum(cumU)), su: rounded(cumU) });
     }
     return out;
   };
@@ -410,6 +422,8 @@ export interface StrategyReturn {
   pricedRange: { low: number; high: number } | null;
   staked: number;
   profit: number;
+  /** Profit at a flat 1-unit stake per priced pick: a stake change can't skew it. */
+  units: number;
   /** Profit per pound staked (0.12 = 12p back for every £1), or null when nothing was staked. */
   roi: number | null;
   /** Mean odds of the settled picks whose price is known (alert price, else the strategy's assumed odds). */
@@ -477,6 +491,7 @@ class ReturnTally {
   private assumed = 0;
   private staked = 0;
   private profit = 0;
+  private units = 0;
   private winSum = 0;
   private winN = 0;
   private lossSum = 0;
@@ -524,6 +539,7 @@ class ReturnTally {
     if (priced.oddsSource === "assumed") this.assumed++;
     this.staked += priced.stake;
     this.profit += priced.profit;
+    if (priced.stake > 0) this.units += priced.profit / priced.stake;
     if (r.result === "hit") {
       this.winSum += priced.profit;
       this.winN++;
@@ -551,6 +567,7 @@ class ReturnTally {
       pricedRange: hitRateRange(this.winN, this.counted),
       staked,
       profit,
+      units: r2(this.units),
       roi: staked > 0 ? Math.round((profit / staked) * 1000) / 1000 : null,
       avgOdds,
       breakeven: breakevenHitRate(avgOdds, this.commission),
@@ -756,6 +773,8 @@ export interface HitRateContext {
   /** Profit and stakes in £ over those priced picks (admin only, like roi). */
   profit: number;
   staked: number;
+  /** Profit at a flat 1-unit stake per priced pick (admin only, like profit). */
+  units: number;
   /** Of the priced picks, how many were priced at an assumed price (a guess). */
   assumed: number;
 }
@@ -825,6 +844,7 @@ export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: 
     roi: s.roi,
     profit: s.profit,
     staked: s.staked,
+    units: s.units,
     assumed: s.assumed,
   };
 }

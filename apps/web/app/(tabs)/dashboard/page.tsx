@@ -20,7 +20,7 @@ import { RateBarChart } from "@/components/dashboard/RateBarChart";
 import { PerformanceSection } from "@/components/dashboard/PerformanceSection";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
-import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
+import { ModeToggle, UnitToggle, usePickMode } from "@/components/ui/ModeToggle";
 import { useMe } from "@/queries/use-me";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 
@@ -122,6 +122,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <TimeframeToggle value={timeframe} onChange={setTimeframe} />
           <ModeToggle />
+          <UnitToggle />
           <UpdatedAgo at={dataUpdatedAt || null} />
           {strategy && (
             <span className="flex flex-wrap items-center gap-1.5 text-xs">

@@ -14,6 +14,10 @@ interface UiState {
   pickMode: PickMode;
   setPickMode: (mode: PickMode) => void;
 
+  /** Admin only: the Dashboard's profit in £, or in units (a flat 1-unit stake per bet, so a stake change can't skew it). */
+  profitUnit: "gbp" | "units";
+  setProfitUnit: (unit: "gbp" | "units") => void;
+
   /** Betfair market codes cleared from the Reconcile page's market cards; a market not cleared yet still shows. */
   clearedMarkets: string[];
   clearMarkets: (codes: string[]) => void;
@@ -32,12 +36,15 @@ export const useUiStore = create<UiState>()(
       pickMode: "live",
       setPickMode: (pickMode) => set({ pickMode }),
 
+      profitUnit: "gbp",
+      setProfitUnit: (profitUnit) => set({ profitUnit }),
+
       clearedMarkets: [],
       clearMarkets: (codes) => set((s) => ({ clearedMarkets: [...new Set([...s.clearedMarkets, ...codes])] })),
     }),
     {
       name: "surge-ui", // localStorage key
-      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode, clearedMarkets: s.clearedMarkets }),
+      partialize: (s) => ({ theme: s.theme, lastMoreRoute: s.lastMoreRoute, pickMode: s.pickMode, profitUnit: s.profitUnit, clearedMarkets: s.clearedMarkets }),
       // Version 1 made Live the default: a choice saved before then (usually the old default, All) starts on Live once.
       version: 1,
       migrate: (persisted, version) => {
