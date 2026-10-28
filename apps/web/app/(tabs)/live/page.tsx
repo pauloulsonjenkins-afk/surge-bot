@@ -96,7 +96,6 @@ function matchClock(pick: LivePick, now: number): string | null {
   return `~${Math.min(90, Math.floor(m))}'`;
 }
 
-
 /** The admin's view of a sent pick: what Betfair says happened to it (see pickPlacements in the engine). */
 function placementChip(p: Placement): { label: string; tone: ChipTone; title: string } {
   switch (p.state) {
@@ -224,10 +223,6 @@ function statusChipWarns(pick: LivePick, admin: boolean, placement?: Placement):
 }
 
 /**
- * One alert as a compact row under its match: the minute, the strategy and its status on the first line, the bet
- * and the time it arrived on the second. Tapping it opens the match stats underneath.
- */
-/**
  * For the admin, under an alert that didn't get a bet (not placed, not matched, or never sent): log that you placed it
  * yourself, with the stake and price, so it counts as a live bet and its result isn't missed. Once logged, undo it here.
  */
@@ -278,6 +273,10 @@ function ManualBet({ pick, placement }: { pick: LivePick; placement?: Placement 
   );
 }
 
+/**
+ * One alert as a compact row under its match: the minute, the strategy and its status on the first line, the bet
+ * and the time it arrived on the second. Tapping it opens the match stats underneath.
+ */
 function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; admin: boolean; placement?: Placement; waiting?: boolean }) {
   const [open, setOpen] = useState(false);
   const strategyNames = useStrategyNames();
@@ -654,10 +653,6 @@ export default function LivePage() {
 }
 
 /**
- * Retry a bet that wasn't placed (refused, or cancelled unmatched): GoalBrew's direct betting tries it again straight
- * away, with every usual check, while the alert is still fresh enough to bet. The engine says why when it can't.
- */
-/**
  * Under a Sim pick that's still fresh enough to bet (admin): hands it to GoalBrew's direct betting now, at its
  * strategy's stake, with the usual safety checks (Betfair, latest minute, loss stop, highest stake, match limit).
  */
@@ -742,6 +737,10 @@ function BetForReal({ pick }: { pick: LivePick }) {
   );
 }
 
+/**
+ * Retry a bet that wasn't placed (refused, or cancelled unmatched): GoalBrew's direct betting tries it again straight
+ * away, with every usual check, while the alert is still fresh enough to bet. The engine says why when it can't.
+ */
 function RetryBet({ pickId }: { pickId: number }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
