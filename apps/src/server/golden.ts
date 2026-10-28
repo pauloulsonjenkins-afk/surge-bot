@@ -219,10 +219,45 @@ function goldenSuggestions(db: EngineDb, now = new Date(), force = false): { at:
 }
 
 /**
- * Hourly: the finder's new ideas are watched at once, quietly (no notification) and counted from today. Each is kept
- * on `TOLD_KEY` once handled, so stopping one by hand (Golden page) doesn't bring it straight back next run.
+ * Limits on what the finder watches by itself (29 Oct 2026: it had 30 quiet slices on top of 32 chosen ones, with nothing
+ * ever retired). Testing that many slices makes some look good by luck alone, and they buried the page.
+ */
+export const QUIET_LIMITS = { perStrategy: 2, total: 12, retireAfterDays: 14, fewPicks: 10, losingFrom: 30 };
+
+/**
+ * Retires the finder's own slices (auto, never one the admin chose or bets on its own) that aren't going anywhere: after
+ * QUIET_LIMITS.retireAfterDays, fewer than `fewPicks` priced picks, or `losingFrom`+ and losing. Their place in
+ * `TOLD_KEY` stays, so the finder doesn't add them straight back. Returns what was retired.
+ */
+export function retireQuietSlices(db: EngineDb, now = new Date()): CustomSegment[] {
+  const bets = getSendingSettings(db).segmentBets;
+  const auto = loadCustomSegments(db).filter((c) => c.auto && !bets[`${c.strategyKey}#${c.id}`]);
+  if (auto.length === 0) return [];
+  const returns = computeStrategyReturns(db, null);
+  const retired: CustomSegment[] = [];
+  for (const c of auto) {
+    if (now.getTime() - Date.parse(c.since) < QUIET_LIMITS.retireAfterDays * 86_400_000) continue;
+    const inn = returns[c.strategyKey]?.segments?.find((s) => s.id === c.id)?.in.all;
+    const n = inn?.counted ?? 0;
+    const losing = n >= QUIET_LIMITS.losingFrom && (inn?.roi ?? 0) < 0;
+    if (n >= QUIET_LIMITS.fewPicks && !losing) continue;
+    retired.push(c);
+  }
+  if (retired.length > 0) {
+    const gone = new Set(retired.map((c) => `${c.strategyKey}#${c.id}`));
+    saveCustom(db, loadCustomSegments(db).filter((c) => !gone.has(`${c.strategyKey}#${c.id}`)));
+    log.info(`Golden finder: retired ${retired.length} quiet slice(s) going nowhere: ${retired.map((c) => `${displayName(db, c.strategyKey)} ${ruleLabel(c.rule)}`).join("; ")}.`);
+  }
+  return retired;
+}
+
+/**
+ * Hourly: the finder's new ideas are watched at once, quietly (no notification) and counted from today, within
+ * QUIET_LIMITS (the rest stay as suggestions on the Golden page, to watch by hand). Each is kept on `TOLD_KEY` once
+ * handled, so stopping one by hand (Golden page) doesn't bring it straight back next run.
  */
 export function autoWatchGoldenFinds(db: EngineDb, now = new Date()): CustomSegment[] {
+  retireQuietSlices(db, now);
   const { list } = goldenSuggestions(db, now);
   let told: string[] = [];
   try {
@@ -231,7 +266,19 @@ export function autoWatchGoldenFinds(db: EngineDb, now = new Date()): CustomSegm
     told = [];
   }
   const id = (g: GoldenSuggestion) => `${g.strategyKey}#${ruleId(g.rule)}`;
-  const fresh = list.filter((g) => !told.includes(id(g)));
+  // Within the limits: count what the finder already watches, overall and per strategy, and take the best that fit.
+  const quiet = loadCustomSegments(db).filter((c) => c.auto);
+  const per = new Map<string, number>();
+  for (const c of quiet) per.set(c.strategyKey, (per.get(c.strategyKey) ?? 0) + 1);
+  let room = QUIET_LIMITS.total - quiet.length;
+  const fresh: GoldenSuggestion[] = [];
+  for (const g of list) {
+    if (room <= 0) break;
+    if (told.includes(id(g)) || (per.get(g.strategyKey) ?? 0) >= QUIET_LIMITS.perStrategy) continue;
+    fresh.push(g);
+    per.set(g.strategyKey, (per.get(g.strategyKey) ?? 0) + 1);
+    room--;
+  }
   if (fresh.length === 0) return [];
   db.setSetting(TOLD_KEY, JSON.stringify([...told, ...fresh.map(id)].slice(-200)));
   const added: CustomSegment[] = [];
