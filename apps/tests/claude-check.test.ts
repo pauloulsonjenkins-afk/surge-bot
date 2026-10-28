@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
-import { buildAlertContext, claudeConfigured, lastCheckFailure, parseVerdict, truncateNote } from "../src/server/claude-check";
+import { buildAlertContext, claudeConfigured, isAmbiguous, lastCheckFailure, parseVerdict, truncateNote } from "../src/server/claude-check";
 import { watchSegment } from "../src/server/golden";
 import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
 
@@ -162,6 +162,46 @@ test("buildAlertContext carries InPlayGuru's own strike rate, overall and in thi
   assert.equal(context.alertStrikeRatePicks, 1204);
   assert.equal(context.alertStrikeRateInThisLeague, 71);
   assert.equal(context.alertStrikeRateInThisLeaguePicks, 96);
+});
+
+test("buildAlertContext carries Edge's own pre-match value picks for this match, when there's a positive-edge trend", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const text = ["🔔 Blistering Momentum", "", "🇫🇷 France Ligue 1", "Home vs Away", "", "Timer: 60'", "Goals: 1 - 0", "Over/Under 1.50 Odds:", "1.80 2.00"].join("\n");
+  db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
+  const pick = db.getLivePickByMessage("chat", 1)!;
+  const card = {
+    fixture: { div: "F1", league: "Ligue 1", country: "France", kickoff: new Date().toISOString(), home: pick.home, away: pick.away },
+    headline: null,
+    trends: [
+      { kind: "goals", text: "Home have scored over 1.5 in 8 of their last 10", hits: 8, sample: 10, rate: 0.8, strength: 0.6, betfair: { price: 1.5, needed: 67, edge: 5, at: new Date().toISOString() } },
+      { kind: "form", text: "Away have won 1 of their last 10", hits: 1, sample: 10, rate: 0.1, strength: 0.05, betfair: { price: 2.0, needed: 50, edge: -10, at: new Date().toISOString() } },
+    ],
+    homeGames: 10,
+    awayGames: 10,
+    computedAt: new Date().toISOString(),
+  };
+  db.replaceEdgeCards([{ key: "f1-home-away", kickoff: card.fixture.kickoff, json: JSON.stringify(card) }], new Date(0).toISOString());
+  const context = buildAlertContext(db, pick, new Date());
+  assert.deepEqual(context.preMatchEdgeValue, ["Home have scored over 1.5 in 8 of their last 10 - priced at 1.5, needs 67% to break even, this trend's own rate is higher (edge +5pts)"]);
+});
+
+test("buildAlertContext's preMatchEdgeValue is null with no stored card, or no positive-edge trend, for this match", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const text = ["🔔 Blistering Momentum", "", "🇫🇷 France Ligue 1", "Home vs Away", "", "Timer: 60'", "Goals: 1 - 0", "Over/Under 1.50 Odds:", "1.80 2.00"].join("\n");
+  db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
+  const pick = db.getLivePickByMessage("chat", 1)!;
+  assert.equal(buildAlertContext(db, pick, new Date()).preMatchEdgeValue, null, "no stored card at all");
+});
+
+test("isAmbiguous: a contradicting alert, or the price drifting against the alert, is ambiguous - nothing else is", () => {
+  const base = { contradictingAlertsOnThisMatch: null, marketPriceMovementSinceAlert: null };
+  assert.equal(isAmbiguous(base), false, "nothing unusual");
+  assert.equal(isAmbiguous({ ...base, contradictingAlertsOnThisMatch: ["Time to fight's alert 5 min ago pointed the opposite way."] }), true);
+  assert.equal(isAmbiguous({ ...base, marketPriceMovementSinceAlert: "Betfair's price has drifted from 1.80 to 2.20 (+22.2%) since the alert: the market favours this less than the alert's own price did." }), true);
+  // Shortening (the market agrees more), agreeing, or a flagged-stale reading are all NOT ambiguous.
+  assert.equal(isAmbiguous({ ...base, marketPriceMovementSinceAlert: "Betfair's price has shortened from 1.80 to 1.40 (-22.2%) since the alert: the market now favours this more than the alert's own price did." }), false);
+  assert.equal(isAmbiguous({ ...base, marketPriceMovementSinceAlert: "Betfair's price (1.80) is about the same as the alert's own quote (1.80): the market broadly agrees with the alert." }), false);
+  assert.equal(isAmbiguous({ ...base, marketPriceMovementSinceAlert: "Betfair's price looks like a stale pre-goal snapshot (a delayed price reading), not a real current price: not usable as a market-movement signal here." }), false);
 });
 
 test("the last per-alert check failure is remembered for the admin page, and cleared once one succeeds", () => {

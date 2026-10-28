@@ -20,7 +20,7 @@ import { clashOf, exposureOf } from "../inplayguru/clash";
 import { computeStrategyForm } from "./winloss";
 import { historyMatches, leagueProfiles, tablePositions } from "../history/football-data";
 import { isStaleExchangePrice } from "./pricing";
-import { edgeCard } from "../edge/edge";
+import { edgeCard, edgeCards } from "../edge/edge";
 import { describeTrackRecord, trackRecord } from "./claude-track-record";
 import { goldenReport } from "./golden";
 import { cachedReport } from "./report-cache";
@@ -28,6 +28,20 @@ import { log } from "./log";
 
 /** Cheap by design (see docs/claude-in-goalbrew.md § 3): a bounded classification call, not a chat. */
 const MODEL = "claude-haiku-5-5";
+/**
+ * Used instead of MODEL only for the genuinely ambiguous alerts: a recent alert on the same match that pointed the
+ * opposite way, or the market having moved against the alert since it fired (isAmbiguous below). These are exactly
+ * the cases where Haiku's weaker reasoning is riskiest (27 Oct 2026's LAY-direction mistake was one), and they're
+ * rare, so this costs a small fraction of running Sonnet on every alert - the owner declined that on cost alone.
+ */
+const AMBIGUOUS_MODEL = "claude-sonnet-5-5";
+
+/** Whether this alert's context has one of the two signals worth a sharper model: see AMBIGUOUS_MODEL above. */
+export function isAmbiguous(context: Record<string, unknown>): boolean {
+  if (context.contradictingAlertsOnThisMatch !== null) return true;
+  const movement = context.marketPriceMovementSinceAlert;
+  return typeof movement === "string" && movement.includes("drifted");
+}
 
 const SYSTEM_PROMPT = [
   "You are a second opinion on in-play football betting alerts for GoalBrew, a betting assistant.",
@@ -57,6 +71,10 @@ const SYSTEM_PROMPT = [
   "and in this league) - a second, independent figure from thisStrategyInThisLeague, since it comes from InPlayGuru's",
   "whole user base rather than just this account's settled bets. The two agreeing is stronger evidence than either",
   "alone; the two disagreeing is worth a cautious note. Ignore a figure with too small a sample to mean much.",
+  "preMatchEdgeValue, when given, is Edge's own pre-match analysis (edge.ts) for this exact match, already judged",
+  "against an actual Betfair price before kick-off - real priced value, not just a stat. It agreeing with the alert",
+  "is stronger evidence; it disagreeing (or pointing to a different selection) is worth a cautious note. Null for",
+  "most matches (Edge only covers the main leagues it has pre-match data for) - say nothing about it then.",
   "goldenSlicesThisAlertIsIn, when given, is this alert's Golden slices (golden.ts) with their actual status and",
   "record - a slice already proved at full stake over hundreds of picks is real evidence; an unproven 'candidate' or",
   "'quiet' one with a handful of picks is not, whatever its name suggests. Weigh them accordingly, not just by name.",
@@ -122,6 +140,22 @@ function headToHeadFor(pick: LivePick, now: Date): string[] | null {
   if (!pick.home || !pick.away) return null;
   const card = edgeCard({ div: "", league: "", country: "", kickoff: now.toISOString(), home: pick.home, away: pick.away }, historyMatches(), now);
   return card.trends.length > 0 ? card.trends.map((t) => t.text) : null;
+}
+
+/**
+ * Edge's own pre-match value picks for this exact match (edge/edge.ts, stored ahead of kick-off for members'
+ * Fixtures page): where it already found a trend priced better than Betfair's own line, before the match even
+ * started. A different thing from recentFormAndHeadToHead above (the same trends, but unpriced) - this is only the
+ * ones Edge judged as real mispriced value against an actual Betfair price, read in the 24 hours before kick-off.
+ * Null when this match has no stored card (most lower leagues) or nothing in it priced as value.
+ */
+function preMatchEdgeValueFor(db: EngineDb, pick: LivePick, now: Date): string[] | null {
+  if (!pick.home || !pick.away) return null;
+  const card = edgeCards(db, now).find((c) => c.fixture.home === pick.home && c.fixture.away === pick.away);
+  if (!card) return null;
+  const value = card.trends.filter((t) => t.betfair && t.betfair.edge !== null && t.betfair.edge > 0);
+  if (value.length === 0) return null;
+  return value.map((t) => `${t.text} - priced at ${t.betfair!.price}, needs ${t.betfair!.needed}% to break even, this trend's own rate is higher (edge +${Math.round(t.betfair!.edge! * 10) / 10}pts)`);
 }
 
 /** Each side's league position right now, computed from results already on file - free, no new data source. */
@@ -250,6 +284,7 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
     // Recent form and head-to-head for the two teams (null for a league with no football-data.co.uk file on it -
     // most of what InPlayGuru sends - which is expected, not missing data to guess around).
     recentFormAndHeadToHead: headToHeadFor(pick, now),
+    preMatchEdgeValue: preMatchEdgeValueFor(db, pick, now),
     // Current league position for each side, computed from results already on file. Same coverage gap as above.
     leagueTablePosition: tablePositionsFor(pick, now),
     // How its own earlier verdicts turned out once settled (null until a verdict has enough settled picks behind it).
@@ -320,8 +355,9 @@ export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = n
   };
   try {
     const context = buildAlertContext(db, pick, now);
+    const model = isAmbiguous(context) ? AMBIGUOUS_MODEL : MODEL;
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 2000,
       system: SYSTEM_PROMPT,
       tools: [VERDICT_TOOL],
@@ -334,7 +370,7 @@ export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = n
       fail(`couldn't get a usable verdict from its reply (stop reason: ${response.stop_reason ?? "unknown"}).`);
       return;
     }
-    db.saveClaudeVerdict(pick.id, { ...result, model: MODEL }, now.toISOString());
+    db.saveClaudeVerdict(pick.id, { ...result, model }, now.toISOString());
     db.setSetting(LAST_FAILURE_KEY, "null");
   } catch (err) {
     fail(`${err instanceof Error ? err.message : String(err)}.`);
