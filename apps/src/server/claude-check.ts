@@ -18,6 +18,7 @@ import { layGroups } from "../inplayguru/lay-groups";
 import { clashOf, exposureOf } from "../inplayguru/clash";
 import { computeStrategyForm } from "./winloss";
 import { historyMatches, leagueProfiles, tablePositions } from "../history/football-data";
+import { isStaleExchangePrice } from "./pricing";
 import { edgeCard } from "../edge/edge";
 import { describeTrackRecord, trackRecord } from "./claude-track-record";
 import { goldenReport } from "./golden";
@@ -43,7 +44,9 @@ const SYSTEM_PROMPT = [
   "leagues) - when null, judge from the in-play stats alone and don't speculate about either team's history.",
   "marketPriceMovementSinceAlert, when given, says whether Betfair's price has shortened or drifted since the alert's",
   "own quote - an independent read, since the market reacts to things a stats line can't carry. Weigh it alongside",
-  "the stats; a big drift against the alert is worth noting even if the in-play numbers look fine.",
+  "the stats; a big drift against the alert is worth noting even if the in-play numbers look fine. It may instead say",
+  "the price looks like a stale pre-goal reading (a delayed price) - then it isn't a real signal, so judge from the",
+  "stats alone and don't mention the price.",
   "contradictingAlertsOnThisMatch, when given, lists other alerts on the SAME match in the last 30 minutes whose bet",
   "points the opposite way or partly disagrees. A recent contradiction is a real reason for caution, not noise.",
   "goldenSlicesThisAlertIsIn, when given, is this alert's Golden slices (golden.ts) with their actual status and",
@@ -133,6 +136,9 @@ function priceMovementFor(pick: LivePick): string | null {
   const alertOdds = alertOddsOfPick(pick);
   const nowOdds = pick.exchangeOdds;
   if (alertOdds === null || nowOdds === null || alertOdds <= 1) return null;
+  // A delayed app key can show a price read before the goal the alert already counts (pricing.ts's own guard,
+  // direct.ts uses the same check before betting): that isn't real market movement, so don't present it as one.
+  if (isStaleExchangePrice(nowOdds, alertOdds)) return "Betfair's price looks like a stale pre-goal snapshot (a delayed price reading), not a real current price: not usable as a market-movement signal here.";
   const pctChange = Math.round(((nowOdds - alertOdds) / alertOdds) * 1000) / 10;
   if (Math.abs(pctChange) < 1) return `Betfair's price (${nowOdds.toFixed(2)}) is about the same as the alert's own quote (${alertOdds.toFixed(2)}): the market broadly agrees with the alert.`;
   return pctChange < 0

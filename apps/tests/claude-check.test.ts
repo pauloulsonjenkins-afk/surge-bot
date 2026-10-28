@@ -80,6 +80,15 @@ test("buildAlertContext reports how Betfair's price has moved since the alert's 
   assert.match(same.marketPriceMovementSinceAlert as string, /broadly agrees/);
 });
 
+test("a stale, pre-goal (delayed key) Betfair price is flagged rather than read as real market movement", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const text = ["🔔 Blistering Momentum", "", "🇫🇷 France Ligue 1", "Home vs Away", "", "Timer: 60'", "Goals: 1 - 0", "Over/Under 1.50 Odds:", "1.80 2.00"].join("\n");
+  db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
+  db.setPickExchange(1, "on", "Home v Away", 4.4); // far above the alert's 1.80: pricing.ts's own stale-price ratio
+  const context = buildAlertContext(db, db.getLivePickByMessage("chat", 1)!, new Date());
+  assert.match(context.marketPriceMovementSinceAlert as string, /stale pre-goal snapshot/);
+});
+
 test("buildAlertContext flags a recent alert on the same match whose bet cancels this one out", () => {
   const db = new EngineDb(":memory:", () => {});
   const now = new Date();
