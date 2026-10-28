@@ -18,7 +18,7 @@ import type { EngineDb } from "../storage/engine-db";
 import { computeStrategyReturns } from "./winloss";
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
-import { CANDIDATE_FROM, FULL_FROM, goldenReport, TRIAL_FROM } from "./golden";
+import { goldenReport } from "./golden";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { ukWeekStart } from "../members/time";
 import { truncateNote } from "./claude-check";
@@ -75,18 +75,10 @@ const NEAR_NEXT_STAGE = 15;
  * that's already mechanical and rule-based), just what's worth watching for tomorrow.
  */
 export function goldenCloseToNextStage(db: EngineDb, now: Date): Array<{ strategy: string; slice: string; nextStage: string; picksAway: number }> {
-  const nextStageFor: Partial<Record<string, { threshold: number; name: string }>> = {
-    quiet: { threshold: CANDIDATE_FROM, name: "a candidate" },
-    candidate: { threshold: TRIAL_FROM, name: "a Live trial" },
-    trial: { threshold: FULL_FROM, name: "full stake" },
-  };
   const out: Array<{ strategy: string; slice: string; nextStage: string; picksAway: number }> = [];
   for (const s of goldenReport(db, now, { skipFinder: true }).slices) {
-    if (s.quiet) continue;
-    const next = nextStageFor[s.status];
-    if (!next) continue;
-    const picksAway = next.threshold - s.slice.all.counted;
-    if (picksAway > 0 && picksAway <= NEAR_NEXT_STAGE) out.push({ strategy: s.strategy, slice: s.label, nextStage: next.name, picksAway });
+    if (s.quiet || !s.nextStage || s.nextStage.picksAway > NEAR_NEXT_STAGE) continue;
+    out.push({ strategy: s.strategy, slice: s.label, nextStage: s.nextStage.name, picksAway: s.nextStage.picksAway });
   }
   return out;
 }

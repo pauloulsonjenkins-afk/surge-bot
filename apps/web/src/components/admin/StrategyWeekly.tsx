@@ -40,12 +40,18 @@ export function trendOf(last7: WeekTally, prev28: WeekTally): { label: string; c
   return { label: "Level", cls: "bg-surface-2 text-ink-muted" };
 }
 
+/**
+ * The return per £1, not the £ total: a strategy's stake can change over time (reported 28 Oct 2026, a strategy
+ * showing a big £ loss here that was really just a bigger stake), so £ figures aren't comparable week to week or
+ * strategy to strategy. The £ total is still shown, smaller, underneath; the full breakdown stays on Profit.
+ */
 function Cell({ t }: { t: WeekTally }) {
   if (t.picks === 0) return <span className="block rounded-md bg-surface-2 py-1.5 text-center text-xs text-ink-muted">–</span>;
   const cls = t.counted === 0 || t.profit === 0 ? "bg-surface-2 text-ink" : t.profit > 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss";
   return (
-    <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${cls}`} title={`${t.won}–${t.lost}, ${t.counted} priced, ${pct(t)} per £1`}>
-      {t.counted > 0 ? money(t.profit) : `${t.won}–${t.lost}`}
+    <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${cls}`} title={`${t.won}–${t.lost}, ${t.counted} priced, ${money(t.profit)}`}>
+      {t.counted > 0 ? pct(t) : `${t.won}–${t.lost}`}
+      {t.counted > 0 && <span className="block text-ink-muted">{money(t.profit)}</span>}
     </span>
   );
 }
@@ -129,8 +135,11 @@ export function StrategyWeekly({
             <span className="truncate">{name}</span>
             {!total && !slice && <ChevronDown size={13} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />}
           </span>
-          <span className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${last7.counted === 0 ? "bg-surface-2 text-ink-muted" : last7.profit >= 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss"}`}>
-            {last7.counted > 0 ? money(last7.profit) : "–"}
+          <span
+            className={`block rounded-md py-1.5 text-center text-xs tabular-nums ${last7.counted === 0 ? "bg-surface-2 text-ink-muted" : last7.profit >= 0 ? "bg-hit/15 text-hit" : "bg-loss/15 text-loss"}`}
+            title={last7.counted > 0 ? money(last7.profit) : undefined}
+          >
+            {last7.counted > 0 ? pct(last7) : "–"}
             <span className="block text-xs text-ink-muted">{last7.picks} bet{last7.picks === 1 ? "" : "s"}</span>
           </span>
           <span className={`rounded-md px-1.5 py-0.5 text-center text-xs font-medium leading-tight ${trend.cls}`}>{trend.label}</span>

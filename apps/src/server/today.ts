@@ -163,6 +163,39 @@ function speedReport(db: EngineDb, sinceIso: string): SpeedReport {
   };
 }
 
+// --------------------------------------------------------------------------- alert volume
+
+export interface AlertVolume {
+  /** Alerts in the last hour, same as `alerts.lastHour` alongside this. */
+  lastHour: number;
+  /** The usual count for this same hour of day, from the last 7 days (the middle of those 7, so one odd day can't skew it). */
+  typical: number;
+  /** True when `typical` is itself busy enough to judge by, and `lastHour` is a lot below it - InPlayGuru or Telegram
+   * may have gone quiet without Telegram's own connection check (telegramHealth) noticing, since that only checks
+   * the connection is open, not that alerts are actually arriving at a normal rate (reported 28 Oct 2026: "0 alerts
+   * in the last hour" showed on Today with nothing flagging it). */
+  low: boolean;
+}
+
+/** Below this many typical alerts/hour, a quiet hour is unremarkable (the early hours UK, or just few matches on):
+ * not worth judging "lastHour" against. */
+const QUIET_HOUR_FLOOR = 5;
+/** `lastHour` under this fraction of `typical` counts as low. */
+const LOW_RATIO = 0.3;
+
+export function alertVolumeAnomaly(db: EngineDb, now: Date, lastHour: number): AlertVolume | null {
+  const hourMs = 3_600_000;
+  const counts: number[] = [];
+  for (let d = 1; d <= 7; d++) {
+    const to = new Date(now.getTime() - d * 86_400_000);
+    const from = new Date(to.getTime() - hourMs);
+    counts.push(db.listLivePicks(500, { from: from.toISOString(), to: to.toISOString() }).length);
+  }
+  counts.sort((a, b) => a - b);
+  const typical = counts[3]!; // the middle of 7
+  return { lastHour, typical, low: typical >= QUIET_HOUR_FLOOR && lastHour < typical * LOW_RATIO };
+}
+
 // --------------------------------------------------------------------------- the Today page
 
 export function todaySnapshot(db: EngineDb, now = new Date()) {
@@ -175,6 +208,7 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
   const dayFrom = ukDayBounds(ukDateOf(now)).from;
   const recent = db.listLivePicks(200);
   const lastHour = recent.filter((p) => now.getTime() - Date.parse(p.firstSeenAt) < 3_600_000).length;
+  const volume = timed("alertVolume", () => alertVolumeAnomaly(db, now, lastHour));
 
   // Money out on each match right now: picks handed over today whose match isn't settled yet.
   const onMatch = new Map<string, { match: string; stake: number }>();
@@ -221,7 +255,7 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
     },
     today: { liveNet: live.net, liveSettled: live.settled, simNet: sim.net, simSettled: sim.settled },
     exposure: { openStake: Math.round(openStake * 100) / 100, biggestMatch: biggest ? { match: biggest.match, stake: Math.round(biggest.stake * 100) / 100 } : null },
-    alerts: { lastHour, telegram: telegramHealth(db, now) },
+    alerts: { lastHour, volume, telegram: telegramHealth(db, now) },
     queue: { waiting: open.filter((d) => d.state === "waiting").length, placing: open.filter((d) => d.state === "placing").length, notPlacedToday: notPlacedToday.notPlaced, sentToday: notPlacedToday.sent },
     stopped,
     speed,

@@ -1979,6 +1979,8 @@ export interface GoldenSlice {
   notify?: boolean;
   /** Claude's one or two sentence summary of whether it's proving itself (server/claude-golden-review.ts), refreshed daily. Null until the first run after it's no longer quiet, or with no API key set. */
   claudeNote?: { note: string; generatedAt: string } | null;
+  /** How close to its next stage (golden.ts's own thresholds), from its priced picks since it started. Null once "full" (nothing further to reach), or while "not holding up" (it has to re-prove the stage it lost first). */
+  nextStage?: { name: string; threshold: number; picksAway: number } | null;
 }
 export interface GoldenSuggestion {
   strategyKey: string;

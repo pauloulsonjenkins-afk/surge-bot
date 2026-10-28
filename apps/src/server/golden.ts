@@ -247,6 +247,17 @@ export function autoWatchGoldenFinds(db: EngineDb, now = new Date()): CustomSegm
 
 export type GoldenStatus = "quiet" | "candidate" | "trial" | "full" | "not holding up";
 
+/** How close a slice is to its next stage, from its current status and priced picks since it started. Null once it
+ * has no next stage to reach ("full"), or while it's "not holding up" (it has to re-prove the stage it already lost
+ * before a next one means anything). Shared by the Golden page (a number on the card) and the daily review's
+ * "worth watching" line, so the two always agree. */
+export function nextStageOf(status: GoldenStatus, counted: number): { name: string; threshold: number; picksAway: number } | null {
+  const next = status === "quiet" ? { threshold: CANDIDATE_FROM, name: "a candidate" } : status === "candidate" ? { threshold: TRIAL_FROM, name: "a Live trial" } : status === "trial" ? { threshold: FULL_FROM, name: "full stake" } : null;
+  if (!next) return null;
+  const picksAway = next.threshold - counted;
+  return picksAway > 0 ? { ...next, picksAway } : null;
+}
+
 /** The Golden page: each watched slice since its start (Live and Sim together), the rest of its strategy over the same time, its status and its own betting. */
 export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?: boolean } = {}) {
   const settings = getSendingSettings(db);
@@ -335,6 +346,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         bet,
         ownLive,
         notify: notify.slices[`${key}#${s.id}`] === true,
+        nextStage: nextStageOf(status, inn.counted),
       });
     }
   }
@@ -365,6 +377,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
         bet,
         ownLive: bet?.live && bet.liveSince ? liveSinceRecord(db, key, s.id, bet.liveSince) : null,
         notify: notify.slices[`${key}#${s.id}`] === true,
+        nextStage: nextStageOf("quiet", 0),
       });
     }
   }
