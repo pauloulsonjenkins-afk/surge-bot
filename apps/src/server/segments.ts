@@ -157,6 +157,15 @@ export const FEATURES = {
   // Added by hand only (the finder doesn't try it): next-goal picks there lost heavily in both halves of the record
   // to 22 Oct 2026 (Japan -28.7% over 60, Brazil -23.7% over 60).
   notJapanBrazil: { group: "league", label: "not Japan or Brazil", manual: true, test: (f: AlertFacts) => !/^(japan|brazil)$/i.test((f.country ?? "").trim()) },
+  // Added by hand only, for the slices from the 28 Oct 2026 strategy review (every alert to then, at 1 unit at the alert's
+  // own price, profitable in both the older and newer half): Blistering Momentum before 70' with 0-2 goals (141, +5.4%),
+  // Losing team pushing hard priced 2.10+ (70, +10.1%), Dominant momentum 0-0 before 60' priced under 1.50 (328, +1.7%),
+  // Action-packed before 70' (74, +4.0%). Manual so the finder doesn't add them to the many combinations it tries.
+  before60: { group: "minute", label: "before 60'", manual: true, test: (f: AlertFacts) => f.minute != null && f.minute < 60 },
+  before70: { group: "minute", label: "before 70'", manual: true, test: (f: AlertFacts) => f.minute != null && f.minute < 70 },
+  goals02: { group: "goals", label: "0-2 goals so far", manual: true, test: (f: AlertFacts) => (total(f) ?? 99) <= 2 },
+  priceUnder150: { group: "odds", label: "priced under 1.50", manual: true, test: (f: AlertFacts) => f.price != null && f.price < 1.5 },
+  price210plus: { group: "odds", label: "priced 2.10+", manual: true, test: (f: AlertFacts) => f.price != null && f.price >= 2.1 },
 } as const;
 export type Feature = keyof typeof FEATURES;
 

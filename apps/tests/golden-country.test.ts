@@ -47,3 +47,19 @@ test("the finder's new facts: the alert's price, minutes since the last goal, yo
   assert.ok(FEATURES.quiet20.test(f) && !FEATURES.goalLast10.test(f));
   assert.ok(FEATURES.redCard.test(f) && FEATURES.xgHigh.test(f) && FEATURES.seniorMen.test(f) && !FEATURES.youthWomen.test(f));
 });
+
+test("the 28 Oct 2026 review's rules: before 60' / 70', 0-2 goals, priced under 1.50 / 2.10+ - added by hand, never by the finder", () => {
+  const at = (minute: number, goalsHome: number, goalsAway: number, price: number | null) => ({ ...facts("England"), minute, goalsHome, goalsAway, price });
+  assert.equal(FEATURES.before60.test(at(59, 0, 0, 1.4)), true);
+  assert.equal(FEATURES.before60.test(at(60, 0, 0, 1.4)), false);
+  assert.equal(FEATURES.before70.test(at(69, 0, 0, 1.4)), true);
+  assert.equal(FEATURES.before70.test(at(70, 0, 0, 1.4)), false);
+  assert.equal(FEATURES.goals02.test(at(50, 1, 1, 1.4)), true);
+  assert.equal(FEATURES.goals02.test(at(50, 2, 1, 1.4)), false);
+  assert.equal(FEATURES.priceUnder150.test(at(50, 0, 0, 1.49)), true);
+  assert.equal(FEATURES.priceUnder150.test(at(50, 0, 0, 1.5)), false);
+  assert.equal(FEATURES.price210plus.test(at(50, 0, 0, 2.1)), true);
+  assert.equal(FEATURES.price210plus.test(at(50, 0, 0, null)), false, "no price, not in");
+  for (const f of ["before60", "before70", "goals02", "priceUnder150", "price210plus"] as const) assert.ok("manual" in FEATURES[f], `${f} is manual`);
+  assert.equal(ruleTest(["before70", "goals02"])(at(65, 1, 1, 1.6)), true, "Blistering's slice");
+});
