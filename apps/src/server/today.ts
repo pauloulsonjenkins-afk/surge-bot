@@ -20,8 +20,13 @@ import { reportTimings } from "./report-timings";
 
 // --------------------------------------------------------------------------- not placed, by reason
 
-const CATEGORIES: Array<{ test: RegExp; category: string; fix: string }> = [
-  { test: /below the minimum|below this strategy's minimum/i, category: "Price below the minimum odds", fix: "The strategy's own rule working. Only worth changing if the minimum is set too high." },
+/**
+ * `expected`: a reason that is GoalBrew's own rules or the market working as it should (a goal suspending the market,
+ * a price under the minimum, a safety limit), with nothing to fix. These don't count towards Today's "needs a look"
+ * warning: on 28 Oct 2026 it went amber for 7 of 19 not placed when 6 were exactly this.
+ */
+const CATEGORIES: Array<{ test: RegExp; category: string; fix: string; expected?: true }> = [
+  { test: /below the minimum|below this strategy's minimum/i, category: "Price below the minimum odds", expected: true, fix: "The strategy's own rule working. Only worth changing if the minimum is set too high." },
   { test: /shortened from/i, category: "Price shortened since the alert", fix: "The market moved first. Faster alerts help; otherwise it's the price rule working." },
   { test: /Only £[\d.]+ on offer/i, category: "Not enough money on offer", fix: "A thin market. Smaller stakes, or skip that league." },
   { test: /apart \(limit|price gap/i, category: "Back and lay too far apart", fix: "A thin or nervous market. Raise the gap limit only for strategies that need it." },
@@ -29,21 +34,21 @@ const CATEGORIES: Array<{ test: RegExp; category: string; fix: string }> = [
   { test: /not matched within|cancelled/i, category: "Not matched in time", fix: "The price moved away. A slightly bigger 'take down to' % may help." },
   { test: /spells a team|Match names|No selection called/i, category: "Team or selection name differs", fix: "Add Betfair's spelling under Betting → Limits → Match names." },
   { test: /wasn't found on Betfair|no .+ market|isn't on Betfair|Finding the match/i, category: "Match or market not on Betfair", fix: "Mark the league 'not on Betfair' so it stops being sent." },
-  { test: /suspended|has closed|MARKET_/i, category: "Market suspended or closed", fix: "Usually a goal just before the bet. Nothing to fix." },
-  { test: /Daily stake limit|Daily limit|Match limit|Daily loss stop/i, category: "A daily or match limit", fix: "Your safety limits working." },
+  { test: /suspended|has closed|MARKET_/i, category: "Market suspended or closed", expected: true, fix: "Usually a goal just before the bet. Nothing to fix." },
+  { test: /Daily stake limit|Daily limit|Match limit|Daily loss stop/i, category: "A daily or match limit", expected: true, fix: "Your safety limits working." },
   { test: /Paused:/i, category: "Paused: Betfair problems", fix: "The circuit breaker. Check Betfair's status." },
   { test: /Not enough money in the Betfair account|INSUFFICIENT_FUNDS/i, category: "Not enough money in the account", fix: "Top up the Betfair account." },
-  { test: /turned it down|betting software|no reason was recorded|but no bet was matched/i, category: "Old bot, no reason recorded", fix: "From before GoalBrew placed its own bets (BF Bot Manager). Nothing to fix now." },
+  { test: /turned it down|betting software|no reason was recorded|but no bet was matched/i, category: "Old bot, no reason recorded", expected: true, fix: "From before GoalBrew placed its own bets (BF Bot Manager). Nothing to fix now." },
   { test: /Too old/i, category: "Alert too late to bet", fix: "The alert arrived after the betting window. Check the Telegram delay." },
 ];
 
-export function categorise(reason: string | null): { category: string; fix: string } {
-  if (!reason) return { category: "No reason recorded", fix: "Look at the pick on Betting → Bets." };
+export function categorise(reason: string | null): { category: string; fix: string; expected: boolean } {
+  if (!reason) return { category: "No reason recorded", fix: "Look at the pick on Betting → Bets.", expected: false };
   // "Too old to bet. <last reason>": the last reason it was waiting for is the real cause.
   const inner = reason.replace(/^Too old to bet\.\s*/i, "");
-  for (const c of CATEGORIES) if (inner && c.test.test(inner)) return { category: c.category, fix: c.fix };
-  if (/^Too old/i.test(reason)) return { category: "Alert too late to bet", fix: "The alert arrived after the betting window. Check the Telegram delay." };
-  return { category: "Other", fix: "See the reason on the pick." };
+  for (const c of CATEGORIES) if (inner && c.test.test(inner)) return { category: c.category, fix: c.fix, expected: c.expected === true };
+  if (/^Too old/i.test(reason)) return { category: "Alert too late to bet", fix: "The alert arrived after the betting window. Check the Telegram delay.", expected: false };
+  return { category: "Other", fix: "See the reason on the pick.", expected: false };
 }
 
 export interface NotPlacedReport {
@@ -51,6 +56,8 @@ export interface NotPlacedReport {
   sent: number;
   placed: number;
   notPlaced: number;
+  /** Of those, the ones whose reason may need action (not an `expected` category). */
+  needsLook: number;
   byCategory: Array<{ category: string; fix: string; count: number; share: number; strategies: string[]; example: string }>;
   byStrategy: Array<{ strategy: string; sent: number; notPlaced: number; top: string | null }>;
 }
@@ -112,6 +119,7 @@ export function notPlacedReport(db: EngineDb, days = 30, now = new Date()): NotP
     sent: rows.length,
     placed: rows.length - missed.length,
     notPlaced: missed.length,
+    needsLook: missed.filter((r) => !categorise(r.reason).expected).length,
     byCategory: [...cats.entries()]
       .map(([category, e]) => ({ category, fix: e.fix, count: e.count, share: Math.round((1000 * e.count) / Math.max(1, missed.length)) / 10, strategies: [...e.strategies], example: e.example }))
       .sort((a, b) => b.count - a.count),
@@ -256,7 +264,7 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
     today: { liveNet: live.net, liveUnits: live.units, liveSettled: live.settled, simNet: sim.net, simUnits: sim.units, simSettled: sim.settled },
     exposure: { openStake: Math.round(openStake * 100) / 100, biggestMatch: biggest ? { match: biggest.match, stake: Math.round(biggest.stake * 100) / 100 } : null },
     alerts: { lastHour, volume, telegram: telegramHealth(db, now) },
-    queue: { waiting: open.filter((d) => d.state === "waiting").length, placing: open.filter((d) => d.state === "placing").length, notPlacedToday: notPlacedToday.notPlaced, sentToday: notPlacedToday.sent },
+    queue: { waiting: open.filter((d) => d.state === "waiting").length, placing: open.filter((d) => d.state === "placing").length, notPlacedToday: notPlacedToday.notPlaced, notPlacedNeedsLook: notPlacedToday.needsLook, sentToday: notPlacedToday.sent },
     stopped,
     speed,
     advice,

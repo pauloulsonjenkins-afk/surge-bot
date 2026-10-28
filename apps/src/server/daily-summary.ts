@@ -100,7 +100,7 @@ export function startDailySummary(db: EngineDb): () => void {
       // Claude's written note on the day so far (claude-review.ts): once a day, at the last slot, with the fullest
       // picture. Fire-and-forget, never delays this push.
       if (slot.endsWith(SUMMARY_TIMES[SUMMARY_TIMES.length - 1]!)) {
-        requestDailyClaudeReview(db);
+        void requestDailyClaudeReview(db);
         requestGoldenReviews(db);
       }
     } catch (err) {

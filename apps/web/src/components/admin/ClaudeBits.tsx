@@ -10,6 +10,7 @@ type Verdict = { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" |
 
 const LABEL = { weaker: "⚠️ Claude: weaker", stronger: "✅ Claude: stronger", in_line: "Claude: in line" } as const;
 const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
+const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
 const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /**
@@ -104,11 +105,20 @@ export function ClaudeReviewCard() {
     staleTime: 5 * 60_000,
   });
   if (q.isLoading || q.error || !q.data) return null;
-  const { configured, notes } = q.data;
+  const { configured, notes, failures = {} } = q.data;
   const list = (["daily", "weekly"] as const).map((k) => notes[k]).filter((n): n is NonNullable<typeof n> => !!n);
+  const failed = (["daily", "weekly"] as const).map((k) => failures[k]).filter((f): f is NonNullable<typeof f> => !!f);
+  const today = ukDay.format(new Date());
+  // "Today" only when it is today's: until 28 Oct 2026 Monday's note sat under "Today" on Wednesday after two failed.
+  const labelOf = (n: (typeof list)[number]) => (n.kind === "weekly" ? "This week" : ukDay.format(new Date(n.generatedAt)) === today ? "Today" : "Latest daily note");
   return (
-    <section className="rounded-xl border border-line bg-surface p-3.5">
+    <section className={`rounded-xl border p-3.5 ${failed.length > 0 ? "border-warn/60 bg-surface" : "border-line bg-surface"}`}>
       <h3 className="text-sm font-semibold text-ink">Claude&apos;s review</h3>
+      {failed.map((f) => (
+        <p key={f.kind} className="mt-1 text-xs text-warn">
+          {f.kind === "daily" ? "The daily" : "The weekly"} note due {when.format(new Date(f.at))} wasn&apos;t written: {f.reason} It tries again at the next one.
+        </p>
+      ))}
       {!configured ? (
         <p className="mt-1 text-xs text-ink-muted">Claude isn&apos;t set up on the engine yet (no ANTHROPIC_API_KEY).</p>
       ) : list.length === 0 ? (
@@ -116,7 +126,7 @@ export function ClaudeReviewCard() {
       ) : (
         <div className="mt-2 space-y-3">
           {list.map((n) => (
-            <ReviewNote key={n.kind} label={n.kind === "daily" ? "Today" : "This week"} at={n.generatedAt} note={n.note} />
+            <ReviewNote key={n.kind} label={labelOf(n)} at={n.generatedAt} note={n.note} />
           ))}
           <p className="text-xs text-ink-muted">Advice to read, not a setting: nothing changes unless you change it.</p>
         </div>

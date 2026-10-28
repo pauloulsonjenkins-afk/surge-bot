@@ -74,7 +74,7 @@ export function startWeeklyReview(db: EngineDb): void {
       await sendPush(db, { ...msg, url: "/more/admin/today", tag: "weekly-review" });
       log.info(`Weekly review sent: ${msg.title}`);
       // Claude's written note on the week (claude-review.ts): fire-and-forget, never delays this push.
-      requestWeeklyClaudeReview(db);
+      void requestWeeklyClaudeReview(db);
     } catch (err) {
       log.warn(`Weekly review failed: ${err instanceof Error ? err.message : String(err)}`);
     }

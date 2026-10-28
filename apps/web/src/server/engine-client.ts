@@ -1720,7 +1720,8 @@ export interface TodaySnapshot {
   today: { liveNet: number; liveUnits?: number; liveSettled: number; simNet: number; simUnits?: number; simSettled: number };
   exposure: { openStake: number; biggestMatch: { match: string; stake: number } | null };
   alerts: { lastHour: number; volume: { lastHour: number; typical: number; low: boolean } | null; telegram: { ok: boolean; problems: string[]; lastAlertAt: string | null } };
-  queue: { waiting: number; placing: number; notPlacedToday: number; sentToday: number };
+  /** notPlacedNeedsLook: of notPlacedToday, the ones whose reason may need action (missing on an older engine). */
+  queue: { waiting: number; placing: number; notPlacedToday: number; notPlacedNeedsLook?: number; sentToday: number };
   stopped: Array<{ strategy: string; reason: string | null }>;
   speed: { today: SpeedReport; week: SpeedReport };
   /** Suggestions to put a strategy Live or back to Sim (missing on an older engine). */
@@ -2072,6 +2073,8 @@ interface ClaudeReviewNote {
 export interface ClaudeReviews {
   configured: boolean;
   notes: Partial<Record<"daily" | "weekly", ClaudeReviewNote>>;
+  /** Why the latest note of a kind didn't arrive, until one does (missing on an older engine). */
+  failures?: Partial<Record<"daily" | "weekly", { kind: "daily" | "weekly"; reason: string; at: string }>>;
 }
 export function fetchClaudeReviews(): Promise<ClaudeReviews> {
   return engineCall<ClaudeReviews>("/internal/claude-review", "Claude's review");

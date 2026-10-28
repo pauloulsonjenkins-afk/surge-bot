@@ -62,6 +62,11 @@ function getClient(): Anthropic | null {
   return client;
 }
 
+/** Tests only: a stand-in for the Anthropic client (its messages.create), or undefined to go back to the real one. */
+export function setReviewClientForTest(c: Pick<Anthropic, "messages"> | undefined): void {
+  client = c as Anthropic | undefined;
+}
+
 export function claudeReviewConfigured(): boolean {
   return getClient() !== null;
 }
@@ -118,36 +123,97 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
   };
 }
 
-async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date): Promise<void> {
-  const anthropic = getClient();
-  if (!anthropic) return;
+/**
+ * Room for the note AND Sonnet 5.5's thinking, which it does by default (adaptive, at high effort) and which counts
+ * against max_tokens. At 4000 the 27 Oct 2026 21:30 note never arrived: the likeliest cause is thinking using most of
+ * it, leaving a cut-off note that is (rightly) not saved. 16000 is the usual non-streaming size.
+ */
+const MAX_TOKENS = 16_000;
+const ATTEMPTS = 2;
+
+/** One try: the note, or why there isn't one. */
+async function tryNote(anthropic: Anthropic, digest: unknown): Promise<{ note: string } | { failed: string }> {
   try {
-    const digest = buildDigest(db, from, now);
-    // Plenty of room: Sonnet thinks before it writes, and that thinking counts against max_tokens. At 600 the note
-    // was regularly stopping mid-sentence (seen on Today, 27 Oct 2026: "...matched odds home (39 settled, +17.4").
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 4000,
+      max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: JSON.stringify(digest) }],
     });
+    if (response.stop_reason === "refusal") return { failed: "Claude declined to write it." };
+    // Cut off: never shown, since a note that stops mid-sentence reads as if it were the whole thought.
+    if (response.stop_reason === "max_tokens") return { failed: "the reply ran out of room before the note was finished." };
     const note = response.content.find((b) => b.type === "text")?.text.trim();
-    if (!note) {
-      log.warn(`Claude ${kind} review: no text in the reply.`);
-      return;
-    }
-    // Still cut off: keep the previous note rather than show one that stops mid-sentence.
-    if (response.stop_reason === "max_tokens") {
-      log.warn(`Claude ${kind} review: cut off by max_tokens, not saved.`);
-      return;
-    }
-    const all = loadNotes(db);
-    all[kind] = { kind, note: truncateNote(note, 3000), generatedAt: now.toISOString() };
-    db.setSetting(SETTINGS_KEY, JSON.stringify(all));
-    log.info(`Claude ${kind} review note written (${note.length} chars).`);
+    return note ? { note } : { failed: "the reply had no text in it." };
   } catch (err) {
-    log.warn(`Claude ${kind} review failed: ${err instanceof Error ? err.message : String(err)}.`);
+    return { failed: `the request failed (${err instanceof Error ? err.message : String(err)}).` };
   }
+}
+
+async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date): Promise<void> {
+  const anthropic = getClient();
+  if (!anthropic) return;
+  let digest: unknown;
+  try {
+    digest = buildDigest(db, from, now);
+  } catch (err) {
+    recordFailure(db, kind, `GoalBrew couldn't gather the figures (${err instanceof Error ? err.message : String(err)}).`, now);
+    return;
+  }
+  let failed = "";
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    const r = await tryNote(anthropic, digest);
+    if ("note" in r) {
+      const all = loadNotes(db);
+      all[kind] = { kind, note: truncateNote(r.note, 3000), generatedAt: now.toISOString() };
+      db.setSetting(SETTINGS_KEY, JSON.stringify(all));
+      clearFailure(db, kind);
+      log.info(`Claude ${kind} review note written (${r.note.length} chars, attempt ${attempt}).`);
+      return;
+    }
+    failed = r.failed;
+    log.warn(`Claude ${kind} review attempt ${attempt} of ${ATTEMPTS}: ${failed}`);
+  }
+  recordFailure(db, kind, failed, now);
+}
+
+// --------------------------------------------------------------------------- failures, for the Today page
+
+const FAILURE_KEY = "claude_review_last_failure";
+
+/** Why the latest note of a kind didn't arrive: until 28 Oct 2026 this only went to the log, so Today quietly kept
+ * showing the previous day's note as "Today" with nothing saying the new one had failed. */
+export interface ClaudeReviewFailure {
+  kind: ReviewKind;
+  reason: string;
+  at: string;
+}
+
+function loadFailures(db: EngineDb): Partial<Record<ReviewKind, ClaudeReviewFailure>> {
+  try {
+    return JSON.parse(db.getSetting(FAILURE_KEY) ?? "{}") as Partial<Record<ReviewKind, ClaudeReviewFailure>>;
+  } catch {
+    return {};
+  }
+}
+
+function recordFailure(db: EngineDb, kind: ReviewKind, reason: string, now: Date): void {
+  const all = loadFailures(db);
+  all[kind] = { kind, reason, at: now.toISOString() };
+  db.setSetting(FAILURE_KEY, JSON.stringify(all));
+  log.warn(`Claude ${kind} review not written: ${reason}`);
+}
+
+function clearFailure(db: EngineDb, kind: ReviewKind): void {
+  const all = loadFailures(db);
+  if (!all[kind]) return;
+  delete all[kind];
+  db.setSetting(FAILURE_KEY, JSON.stringify(all));
+}
+
+/** The latest failure of each kind not yet followed by a successful note. */
+export function getClaudeReviewFailures(db: EngineDb): Partial<Record<ReviewKind, ClaudeReviewFailure>> {
+  return loadFailures(db);
 }
 
 function loadNotes(db: EngineDb): Partial<Record<ReviewKind, ClaudeReviewNote>> {
@@ -164,13 +230,13 @@ export function getClaudeReviewNotes(db: EngineDb): Partial<Record<ReviewKind, C
 }
 
 /** Called once a day's summary is due (daily-summary.ts) — fire-and-forget, never delays the push. */
-export function requestDailyClaudeReview(db: EngineDb, now = new Date()): void {
+export function requestDailyClaudeReview(db: EngineDb, now = new Date()): Promise<void> {
   const { from } = ukDayBounds(ukDateOf(now));
-  void writeNote(db, "daily", from, now);
+  return writeNote(db, "daily", from, now);
 }
 
 /** Called once the weekly review is due (weekly-review.ts) — fire-and-forget, never delays the push. */
-export function requestWeeklyClaudeReview(db: EngineDb, now = new Date()): void {
+export function requestWeeklyClaudeReview(db: EngineDb, now = new Date()): Promise<void> {
   const from = ukDayBounds(ukWeekStart(ukDateOf(now))).from;
-  void writeNote(db, "weekly", from, now);
+  return writeNote(db, "weekly", from, now);
 }

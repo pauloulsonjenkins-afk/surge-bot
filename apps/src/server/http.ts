@@ -112,7 +112,7 @@ import { layGroups, unwatchLayGroup, watchLayGroup } from "../inplayguru/lay-gro
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
 import { setGoldenNotify } from "./golden-notify";
-import { claudeReviewConfigured, getClaudeReviewNotes } from "./claude-review";
+import { claudeReviewConfigured, getClaudeReviewFailures, getClaudeReviewNotes } from "./claude-review";
 import { claudeGoldenConfigured, getGoldenNotes } from "./claude-golden-review";
 import { askAboutPick, claudeAskConfigured } from "./claude-ask";
 import { claudeBadgeVisible, computeClaudeVerdictCheck, setClaudeBadgeVisible } from "./claude-verdict-check";
@@ -524,7 +524,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     // Claude's daily/weekly written review notes (claude-review.ts): text to read, never a setting to apply.
     if (req.method === "GET" && path === "/internal/claude-review") {
       if (!requireAdmin(req, res)) return;
-      send(res, 200, { configured: claudeReviewConfigured(), notes: getClaudeReviewNotes(db) });
+      send(res, 200, { configured: claudeReviewConfigured(), notes: getClaudeReviewNotes(db), failures: getClaudeReviewFailures(db) });
       return;
     }
 

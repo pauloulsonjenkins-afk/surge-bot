@@ -16,6 +16,7 @@ import { AdviceRow } from "@/components/admin/Advice";
 import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
 import { toneOf, gbp, units } from "@/lib/format";
+import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
 
 
 function ago(iso: string | null): string {
@@ -180,7 +181,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
     d.limits.matchCap === 0 ||
     !tg.ok ||
     !!volume?.low ||
-    (d.queue.sentToday >= 5 && d.queue.notPlacedToday / d.queue.sentToday > 0.3) ||
+    notPlacedWarns(d.queue) ||
     !!d.betting.betfair.lastError;
   return (
     <>
@@ -281,8 +282,8 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Tile
           label="Bets in progress"
           value={`${d.queue.waiting + d.queue.placing} waiting`}
-          sub={`${d.queue.notPlacedToday} of ${d.queue.sentToday} not placed today`}
-          warn={d.queue.sentToday >= 5 && d.queue.notPlacedToday / d.queue.sentToday > 0.3}
+          sub={notPlacedText(d.queue)}
+          warn={notPlacedWarns(d.queue)}
         />
         <Tile
           label="Betfair link"

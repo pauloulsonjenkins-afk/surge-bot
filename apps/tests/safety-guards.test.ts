@@ -68,3 +68,13 @@ test("not-placed reasons are grouped, using the last reason behind 'too old'", (
   assert.equal(categorise("Betfair spells a team differently: add it under Sending → Match names.").category, "Team or selection name differs");
   assert.equal(categorise(null).category, "No reason recorded");
 });
+
+test("not-placed reasons that are the rules or the market working don't count as needing a look", () => {
+  const expected = (r: string | null) => categorise(r).expected;
+  assert.equal(expected("Betfair refused the bet (ERROR_IN_ORDER). Betfair's reply: order FAILURE MARKET_SUSPENDED; bet FAILURE ERROR_IN_ORDER."), true, "a goal suspended the market");
+  assert.equal(expected("Too old to bet. Price 1.07 is below the minimum 1.20."), true, "the strategy's minimum odds");
+  assert.equal(expected("Daily loss stop reached."), true, "a safety limit");
+  assert.equal(expected("£2.76 not matched within 120 s, so cancelled."), false, "not matched: worth a look");
+  assert.equal(expected("Betfair spells a team differently: add it under Sending → Match names."), false);
+  assert.equal(expected(null), false, "no reason at all is worth a look");
+});

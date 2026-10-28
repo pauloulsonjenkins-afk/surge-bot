@@ -1,5 +1,6 @@
 import type { TodaySnapshot } from "@/server/engine-client";
 import { gbp } from "@/lib/format";
+import { notPlacedWarns } from "@/lib/not-placed";
 
 /**
  * The phone widget's summary of the Today page (served by /api/widget): every value ready to show as it is, text and
@@ -24,7 +25,7 @@ export function widgetSummary(d: TodaySnapshot) {
         ? "Alerts may not be arriving"
         : d.stopped.length > 0
           ? `${d.stopped.length} strateg${d.stopped.length === 1 ? "y" : "ies"} stopped`
-          : d.queue.sentToday >= 5 && d.queue.notPlacedToday / d.queue.sentToday > 0.3
+          : notPlacedWarns(d.queue)
             ? `${d.queue.notPlacedToday} of ${d.queue.sentToday} not placed`
             : "";
   const updated = new Date(d.at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
