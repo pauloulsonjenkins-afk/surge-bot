@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { StrategyName } from "@/components/ui/StrategyName";
 import { SegmentLabel, sliceName } from "@/components/ui/SegmentLabel";
-import { useSliceStatus } from "@/queries/use-golden";
+import { useGolden, useSliceStatus } from "@/queries/use-golden";
 import { useUiStore } from "@/state/ui.store";
 import type { StrategyWeeksReport, WeekTally } from "@/server/engine-client";
 
@@ -143,10 +143,23 @@ export function StrategyWeekly({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const sliceStatus = useSliceStatus();
+  const golden = useGolden().data;
   const openSlices = useUiStore((s) => s.openSlices);
   const setSlicesOpen = useUiStore((s) => s.setSlicesOpen);
   if (!data) return <p className="text-xs text-ink-muted">Loading the weeks…</p>;
-  const withSlices = rows.map((r) => r.label.toLowerCase()).filter((k) => Object.keys(data.strategies).some((x) => x.startsWith(`${k}#`)));
+  /**
+   * A strategy's slice rows: those with bets in these weeks, plus any slice the admin chose to watch that has none yet
+   * (28 Oct 2026: Action-packed's new "before 70'" didn't show until its first bet settled, so it looked missing). The
+   * finder's own quiet ones still only show once they have bets, or there'd be dozens of empty rows.
+   */
+  const slicesOf = (key: string) => [
+    ...new Set([
+      ...Object.keys(data.strategies).filter((k) => k.startsWith(`${key}#`)),
+      ...(golden?.slices ?? []).filter((s) => s.strategyKey === key && !s.quiet).map((s) => `${key}#${s.id}`),
+    ]),
+  ];
+  const labels: Record<string, string> = { ...Object.fromEntries((golden?.slices ?? []).map((s) => [`${s.strategyKey}#${s.id}`, s.label])), ...sliceLabels };
+  const withSlices = rows.map((r) => r.label.toLowerCase()).filter((k) => slicesOf(k).length > 0);
   const allOpen = withSlices.length > 0 && withSlices.every((k) => openSlices.includes(k));
   // Columns start from the first week anything in this section has picks (no empty weeks before the data begins).
   const keys = rows.flatMap((r) => [r.label.toLowerCase(), ...Object.keys(data.strategies).filter((k) => k.startsWith(`${r.label.toLowerCase()}#`))]);
@@ -263,7 +276,7 @@ export function StrategyWeekly({
             // A watched slice (e.g. Second Pour's Golden) gets its own row under its strategy, from its start date. Every slice's
             // label starts "Golden: ", so the row is named by the slice itself (only Second Pour's own is simply "Golden"), and
             // the word is in gold only once the slice is confirmed.
-            const subs = Object.keys(data.strategies).filter((k) => k.startsWith(`${key}#`));
+            const subs = slicesOf(key);
             const shown = openSlices.includes(key);
             const mode = modeOf(r.label);
             return [
@@ -276,7 +289,7 @@ export function StrategyWeekly({
                       k,
                       <span className="block pl-2 text-xs font-normal text-ink">
                         {h && <span aria-label={h === "good" ? "doing very well" : "losing"} className={`mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle ${h === "good" ? "bg-hit" : "bg-loss"}`} />}
-                        ↳ <SegmentLabel label={sliceRowName(k, sliceLabels)} status={sliceStatus(key, k.split("#")[1]!)} />
+                        ↳ <SegmentLabel label={sliceRowName(k, labels)} status={sliceStatus(key, k.split("#")[1]!)} />
                       </span>,
                       mode,
                       false,
