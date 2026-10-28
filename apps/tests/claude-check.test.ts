@@ -9,6 +9,7 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildAlertContext, claudeConfigured, lastCheckFailure, parseVerdict, truncateNote } from "../src/server/claude-check";
 import { watchSegment } from "../src/server/golden";
+import { buildFeed, saveSendingSettings } from "../src/inplayguru/bet-feed";
 
 test("without an API key, claudeConfigured is false", () => {
   // No ANTHROPIC_API_KEY in the test environment: the module's lazily-cached client is never built.
@@ -113,6 +114,40 @@ test("buildAlertContext gives a Golden slice its real status and record, not jus
   assert.ok(slices, "the alert is in the newly-watched slice");
   assert.equal(slices[0]!.status, "quiet", "nothing settled yet, so it's still quiet");
   assert.equal(slices[0]!.counted, 0);
+});
+
+test("buildAlertContext gives the strategy's own record in this one league, but only once there's enough of it", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const S = "Blistering Momentum";
+  const KEY = S.toLowerCase();
+  saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 1000 });
+  const now = new Date();
+  let id = 1;
+  const alert = (n: number, league: string, result?: "hit" | "miss") =>
+    [`🔔 ${S}`, "", `🇫🇷 ${league}`, `Home ${n} vs Away ${n}`, "", "Timer: 60'", "Goals: 0 - 0", "Over/Under 0.50 Odds:", "2.00 1.80", ...(result ? ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", `Full-Time Score: ${result === "hit" ? "1-0" : "0-0"}`, "", result === "hit" ? "✅ Hit" : "❌ Miss"] : [])].join("\n");
+  const bet = (league: string, result: "hit" | "miss") => {
+    const n = id++;
+    const posted = new Date(now.getTime() - (100 - n) * 60_000).toISOString();
+    db.upsertLivePick("chat", n, alert(n, league), parseAlert(alert(n, league)), posted, posted);
+    buildFeed(db, { markSent: true, now: new Date(posted) });
+    db.upsertLivePick("chat", n, alert(n, league, result), parseAlert(alert(n, league, result)), posted);
+  };
+  // France Ligue 1: 9 losses - one short of LEAGUE_RECORD_MIN, so still too thin to show.
+  for (let i = 0; i < 9; i++) bet("France Ligue 1", "miss");
+  const thin = buildAlertContext(db, db.getLivePickByMessage("chat", 1)!, now);
+  assert.equal(thin.thisStrategyInThisLeague, null, "9 picks isn't enough yet");
+
+  // A 10th loss tips it over the threshold.
+  bet("France Ligue 1", "miss");
+  const ready = buildAlertContext(db, db.getLivePickByMessage("chat", 1)!, now);
+  const rec = ready.thisStrategyInThisLeague as { settledPicks: number; roi: number };
+  assert.equal(rec.settledPicks, 10);
+  assert.ok(rec.roi < 0, "ten straight losses");
+
+  // A different league has nothing recorded for this strategy at all.
+  bet("Italy Serie A", "hit");
+  const otherLeague = buildAlertContext(db, db.getLivePickByMessage("chat", id - 1)!, now);
+  assert.equal(otherLeague.thisStrategyInThisLeague, null, "only one pick in this league so far");
 });
 
 test("the last per-alert check failure is remembered for the admin page, and cleared once one succeeds", () => {

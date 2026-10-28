@@ -12,7 +12,8 @@
  * a no-op, so the feature is off by default and safe to deploy before the key exists.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import type { EngineDb, LivePick } from "../storage/engine-db";
+import { leagueIdentity, type EngineDb, type LivePick } from "../storage/engine-db";
+import { computeLeagueReturns } from "./league-returns";
 import { alertOddsOfPick, pickFacts, pickSegments, strategyLabel } from "../inplayguru/bet-feed";
 import { layGroups } from "../inplayguru/lay-groups";
 import { clashOf, exposureOf } from "../inplayguru/clash";
@@ -49,6 +50,9 @@ const SYSTEM_PROMPT = [
   "stats alone and don't mention the price.",
   "contradictingAlertsOnThisMatch, when given, lists other alerts on the SAME match in the last 30 minutes whose bet",
   "points the opposite way or partly disagrees. A recent contradiction is a real reason for caution, not noise.",
+  "thisStrategyInThisLeague, when given, is this strategy's OWN settled record in this one league specifically (not",
+  "the country's general stats) - a real weak or strong spot worth naming plainly when it disagrees with the alert.",
+  "Null means too few picks there yet to mean anything, not that the league is fine - say nothing about it then.",
   "goldenSlicesThisAlertIsIn, when given, is this alert's Golden slices (golden.ts) with their actual status and",
   "record - a slice already proved at full stake over hundreds of picks is real evidence; an unproven 'candidate' or",
   "'quiet' one with a handful of picks is not, whatever its name suggests. Weigh them accordingly, not just by name.",
@@ -170,6 +174,27 @@ function contradictingAlertsFor(db: EngineDb, pick: LivePick, now: Date): string
   return out.length > 0 ? out : null;
 }
 
+/** Below this many priced picks, this strategy's record in this one league is too thin to show Claude - kept quiet rather than noisy. */
+const LEAGUE_RECORD_MIN = 10;
+
+/**
+ * This strategy's own record in this one league (league-returns.ts - the same figures the Leagues page's "stop this
+ * strategy here" suggestion is built on), not the generic country base rates in leagueHistoricProfile. A strategy
+ * can be profitable overall and still have a real weak spot in one league; this is the general, always-current
+ * version of what the hand-picked LAY groups already do for a few specific countries. Null below LEAGUE_RECORD_MIN,
+ * so Claude is never handed a number too thin to mean anything.
+ */
+function strategyInLeagueFor(db: EngineDb, pick: LivePick, now: Date): { settledPicks: number; roi: number } | null {
+  const id = leagueIdentity(pick.competition, pick.detail?.country ?? null);
+  const strategyKey = strategyLabel(pick.strategy).toLowerCase();
+  const leagues = cachedReport(db, "claude-league-returns", () => computeLeagueReturns(db) as unknown as Record<string, unknown>, now.getTime(), 10 * 60_000) as unknown as ReturnType<
+    typeof computeLeagueReturns
+  >;
+  const m = leagues.find((l) => l.key === id.key)?.byStrategy[strategyKey]?.all;
+  if (!m || m.counted < LEAGUE_RECORD_MIN || m.staked <= 0) return null;
+  return { settledPicks: m.counted, roi: Math.round((m.profit / m.staked) * 1000) / 1000 };
+}
+
 /**
  * Golden slices (golden.ts) this alert sits in, with their actual status and record - not just the name, which
  * reads the same whether a slice is proven at full stake or still an unproven candidate. Reuses the same cached
@@ -212,6 +237,7 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
     marketPriceMovementSinceAlert: priceMovementFor(pick),
     contradictingAlertsOnThisMatch: contradictingAlertsFor(db, pick, now),
     leagueHistoricProfile: leagueProfileFor(d?.country ?? null),
+    thisStrategyInThisLeague: strategyInLeagueFor(db, pick, now),
     // Recent form and head-to-head for the two teams (null for a league with no football-data.co.uk file on it -
     // most of what InPlayGuru sends - which is expected, not missing data to guess around).
     recentFormAndHeadToHead: headToHeadFor(pick, now),
