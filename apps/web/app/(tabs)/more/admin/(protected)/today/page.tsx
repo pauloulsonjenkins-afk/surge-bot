@@ -40,6 +40,22 @@ function secs(n: number | null): string {
   return n === null ? "–" : n < 60 ? `${n} s` : `${Math.round(n / 6) / 10} min`;
 }
 
+/**
+ * A section folded to one line, opened on a tap: for what's only worth reading when something looks wrong. Today ran to
+ * about 4.8 phone screens with every section open (29 Oct 2026).
+ */
+function Fold({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <details className="rounded-xl border border-line bg-surface px-3.5">
+      <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium text-ink">
+        {title}
+        {hint && <span className="text-xs font-normal text-ink-muted">· {hint}</span>}
+      </summary>
+      <div className="pb-3.5">{children}</div>
+    </details>
+  );
+}
+
 function Speed({ s, label }: { s: SpeedReport; label: string }) {
   if (s.picks === 0 || s.total === null) return <p className="text-xs text-ink-muted">{label}: no placed bets to time yet.</p>;
   return (
@@ -89,7 +105,8 @@ function NotPlaced() {
   const { data, error } = useNotPlaced(days);
   const names = useStrategyNames();
   return (
-    <Card title="Why picks weren’t placed" subtitle="Picks handed over to bet that never got a matched Betfair bet, grouped by the reason, biggest first. Fix the top ones first.">
+    <Fold title="Why picks weren’t placed">
+      <p className="mb-2 text-xs text-ink-muted">Picks handed over to bet that never got a matched Betfair bet, grouped by the reason, biggest first.</p>
       <Segmented
         label="Period"
         value={String(days)}
@@ -162,7 +179,7 @@ function NotPlaced() {
           </details>
         </div>
       )}
-    </Card>
+    </Fold>
   );
 }
 
@@ -309,7 +326,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
       <TodayByStrategy />
 
       {d.autoStakes && d.autoStakes.length > 0 && (
-        <Card title="Automatic stakes: next steps" subtitle="These happen by themselves, at most one step a week per strategy, with a notification each time. Nothing to do.">
+        <Fold title="Automatic stakes: next steps" hint={`${d.autoStakes.length} waiting, nothing to do`}>
           <ul className="space-y-1 text-sm">
             {d.autoStakes.map((q) => (
               <li key={q.key}>
@@ -321,7 +338,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
               </li>
             ))}
           </ul>
-        </Card>
+        </Fold>
       )}
 
       {d.stopped.length > 0 && (
@@ -336,13 +353,13 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         </Card>
       )}
 
-
-      <Card title="Speed: alert to bet" subtitle="In-play prices move by the second. The slowest step is the one to fix.">
+      <Fold title="Speed: alert to bet">
+        <p className="mb-2 text-xs text-ink-muted">In-play prices move by the second. The slowest step is the one to fix.</p>
         <div className="space-y-1.5">
           <Speed s={d.speed.today} label="Today" />
           <Speed s={d.speed.week} label="Last 7 days" />
         </div>
-      </Card>
+      </Fold>
     </>
   );
 }

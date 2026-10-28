@@ -157,6 +157,16 @@ export default function TradeLogPage() {
   }
   // Three days at a time: a week of picks made the page about 16,000 px tall on a phone. A new filter starts again.
   const { shown: shownDays, more: moreDays } = useShowMore(groups, 3, `${mode}|${strategy}`);
+  // Each day folds to its heading (the date, its money and record); the newest starts open, the rest closed, so the
+  // page is a list of days to tap into rather than every pick at once (29 Oct 2026: about 6 phone screens).
+  const [toggled, setToggled] = useState<Set<string>>(() => new Set());
+  const dayOpen = (day: string, i: number) => (i === 0) !== toggled.has(day);
+  const toggleDay = (day: string) =>
+    setToggled((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(day)) next.add(day);
+      return next;
+    });
 
   if (meLoading || isLoading) return <ListSkeleton />;
 
@@ -207,15 +217,19 @@ export default function TradeLogPage() {
           detail={settledAll.length === 0 ? "Results appear here once matches finish." : "Try All, or another strategy."}
         />
       ) : (
-        shownDays.map((g) => {
+        shownDays.map((g, i) => {
+          const open = dayOpen(g.day, i);
           const misses = g.picks - g.hits;
           const profit = Math.round(g.profit * 100) / 100;
           const showMoney = admin && g.priced > 0;
           return (
             <section key={g.day} className="space-y-3">
               {/* The day's money is the figure to read first; the record sits under it. */}
-              <header className="flex items-end justify-between gap-3">
-                <h2 className="text-base font-semibold text-ink">{g.day}</h2>
+              <button type="button" aria-expanded={open} onClick={() => toggleDay(g.day)} className="flex min-h-11 w-full items-end justify-between gap-3 text-left">
+                <h2 className="flex items-center gap-1.5 text-base font-semibold text-ink">
+                  {g.day}
+                  <ChevronDown size={16} aria-hidden className={`text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
+                </h2>
                 <div className="text-right">
                   {showMoney && (
                     <p className={`font-display text-xl font-bold tabular-nums [font-stretch:108%] ${moneyTone(profit)}`}>{gbp(profit)}</p>
@@ -227,7 +241,8 @@ export default function TradeLogPage() {
                     <span className="text-ink-muted"> · {Math.round((g.hits / g.picks) * 100)}% hit rate</span>
                   </p>
                 </div>
-              </header>
+              </button>
+              {open && (
               <ul className="space-y-3">
                 {[...g.matches.values()].map((picks) => {
                   const first = picks[0]!;
@@ -251,6 +266,7 @@ export default function TradeLogPage() {
                   );
                 })}
               </ul>
+              )}
             </section>
           );
         })

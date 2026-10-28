@@ -25,7 +25,9 @@ export function ClampedText({ text, lines = 2, label, className = "" }: { text: 
 
   return (
     <div className={className}>
-      <span ref={ref} className={`block ${open ? "" : CLAMP[lines]}`}>
+      {/* Never "block" together with the clamp: line-clamp needs its own display (-webkit-box), and "block" overrode it, so
+          nothing was ever cut (29 Oct 2026: Claude's review on Today ran to 560 px, with no "more"). */}
+      <span ref={ref} className={open ? "block" : CLAMP[lines]}>
         {label && <span className="font-medium text-ink-muted">{label} </span>}
         {text}
       </span>

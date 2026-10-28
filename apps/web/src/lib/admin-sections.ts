@@ -1,10 +1,9 @@
 /**
  * The admin pages, grouped by how often they're used, in the order they appear in the desktop sidebar, the phone
- * admin row and the More page:
- * - Every day: today at a glance, each strategy, and the betting itself (bets placed, limits, the Betfair check).
- * - Money: profit and loss.
- * - Research: leagues (ours and their past seasons), pre-match value. Opened now and then.
- * - Site: members, settings, and fixing a result.
+ * admin row and the More page (four groups since the 29 Oct 2026 tidy-up, from six):
+ * - Every day: today at a glance, each strategy, its Golden slices, the betting itself, and profit and loss.
+ * - Research: leagues (ours and their past seasons). Opened now and then.
+ * - Settings and tools: settings, members, the notification log, Claude, and fixing a result.
  * - Horses: the separate racing log, one page with tabs.
  * On phones only "Every day" sits in the admin row; the rest are a tap away on More (see AdminNav).
  * Settled picks live on the Trade Log; "Fix a result" is the admin's editing view of it (raw alerts on a second tab).
@@ -15,24 +14,11 @@ export const ADMIN_GROUPS = [
     daily: true,
     items: [
       { href: "/more/admin/today", label: "Today", description: "One glance: betting on or off, today's result, money out, limits, alert health, speed and why picks weren't placed." },
-      { href: "/more/admin/strategies", label: "Strategies", description: "Each strategy's results, Live / Sim, stake, minimum odds and stop loss." },
-      { href: "/more/admin/sending", label: "Betting", description: "Bets placed on Betfair, the on / off switch and safety limits, and the check against Betfair's real results." },
+      { href: "/more/admin/strategies", label: "Strategies", description: "Each strategy's results, Live / Sim, stake, minimum odds and stop loss; LAY bets on a second tab." },
       { href: "/more/admin/golden", label: "Golden", description: "Parts of a strategy that may be worth more than the rest: being watched, confirmed, and new ones the finder suggests." },
+      { href: "/more/admin/sending", label: "Betting", description: "Bets placed on Betfair, the on / off switch and safety limits, and the check against Betfair's real results." },
+      { href: "/more/admin/winloss", label: "Profit", description: "Profit and loss by day and strategy, and running costs." },
     ],
-  },
-  {
-    // Looked at now and then, not every day: kept off the phone's admin row (27 Oct 2026 tidy-up).
-    label: "Insights",
-    daily: false,
-    items: [
-      { href: "/more/admin/claude", label: "Claude verdict check", description: "Whether Claude's per-alert warnings actually predict a worse result, once enough have settled, and the Live tab badge's on/off switch." },
-      { href: "/more/admin/notifications", label: "Notifications", short: "Alerts", description: "Every notification GoalBrew sent you in the last 60 days." },
-    ],
-  },
-  {
-    label: "Money",
-    daily: false,
-    items: [{ href: "/more/admin/winloss", label: "Profit", description: "Profit and loss by day and strategy, and running costs." }],
   },
   {
     label: "Research",
@@ -42,11 +28,14 @@ export const ADMIN_GROUPS = [
     ],
   },
   {
-    label: "Site",
+    // Set once and rarely opened: kept off the phone's admin row.
+    label: "Settings and tools",
     daily: false,
     items: [
-      { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, trials and full access, and the members' rules." },
       { href: "/more/admin/settings", label: "Settings", description: "Public view, Telegram and webhook alerts, download every pick, fresh start." },
+      { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, trials and full access, and the members' rules." },
+      { href: "/more/admin/notifications", label: "Notifications", short: "Alerts", description: "Every notification GoalBrew sent you in the last 60 days." },
+      { href: "/more/admin/claude", label: "Claude", description: "Pause or switch on Claude's per-alert check, whether its verdicts predict results, and the Live tab badge." },
       { href: "/more/admin/results", label: "Fix a result", short: "Fixes", description: "Correct a hit or miss, or remove a pick." },
     ],
   },
