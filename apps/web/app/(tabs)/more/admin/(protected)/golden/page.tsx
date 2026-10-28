@@ -11,7 +11,7 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { GoldenBadge, sliceName } from "@/components/ui/SegmentLabel";
 import { useGolden, useGoldenAction, type GoldenSlice, type GoldenSuggestion } from "@/queries/use-golden";
 import type { StrategyReturn } from "@/server/engine-client";
-import { signedPct, toneOf, gbp } from "@/lib/format";
+import { signedPct, toneOf, gbp, units as formatUnits } from "@/lib/format";
 
 const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 const dayTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -24,7 +24,13 @@ const FEW = 10;
 /** The one colour rule on this page: green making money, red losing, grey on fewer than FEW picks (too few to judge). */
 const judged = (roi: number | null | undefined, n: number) => (n < FEW ? "text-ink-muted" : toneOf(roi));
 
-/** One side of the comparison: its return per £1 as the figure to read, its record under it. */
+/** A return's units (flat 1-unit stake per bet), or its % per £1 from an older engine without them. */
+const unitsText = (r: { units?: number; roi: number | null; counted: number }) => (r.units !== undefined ? formatUnits(r.units) : signedPct(r.roi));
+
+/**
+ * One side of the comparison: its units as the figure to read (a stake change can't skew them, 28 Oct 2026), the
+ * return per £1 and its record under it.
+ */
 function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { live: StrategyReturn; sim: StrategyReturn } }) {
   const hits = r.hits ?? 0;
   const few = r.counted < FEW;
@@ -35,8 +41,9 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
         <p className="mt-0.5 text-sm text-ink-muted">Nothing settled yet</p>
       ) : (
         <>
-          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${judged(r.roi, r.counted)}`}>{r.counted > 0 ? signedPct(r.roi) : "–"}</p>
+          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${judged(r.roi, r.counted)}`}>{r.counted > 0 ? unitsText(r) : "–"}</p>
           <p className="text-xs tabular-nums text-ink-muted">
+            {r.counted > 0 && r.units !== undefined && `${signedPct(r.roi)} per £1 · `}
             {hits}–{r.settled - hits}
             {r.counted > 0 && ` · ${r.counted} priced`}
             {r.counted > 0 && few && " · too few to judge"}
@@ -45,8 +52,8 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
           {split && (
             <p className="text-xs tabular-nums text-ink-muted">
               Live{" "}
-              <span className={judged(split.live.roi, split.live.counted)}>{split.live.counted > 0 ? signedPct(split.live.roi) : "–"}</span> ({split.live.counted}) · Sim{" "}
-              <span className={judged(split.sim.roi, split.sim.counted)}>{split.sim.counted > 0 ? signedPct(split.sim.roi) : "–"}</span> ({split.sim.counted})
+              <span className={judged(split.live.roi, split.live.counted)}>{split.live.counted > 0 ? unitsText(split.live) : "–"}</span> ({split.live.counted}) · Sim{" "}
+              <span className={judged(split.sim.roi, split.sim.counted)}>{split.sim.counted > 0 ? unitsText(split.sim) : "–"}</span> ({split.sim.counted})
             </p>
           )}
         </>
@@ -155,7 +162,7 @@ export default function GoldenPage() {
             Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
             {s.ownLive && s.ownLive.n > 0 ? (
               <span className="tabular-nums">
-                {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={judged(s.ownLive.roi, s.ownLive.n)}>{signedPct(s.ownLive.roi)}</span> on {s.ownLive.n} · {gbp(s.ownLive.profit)}
+                {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={judged(s.ownLive.roi, s.ownLive.n)}>{s.ownLive.units !== undefined ? formatUnits(s.ownLive.units) : signedPct(s.ownLive.roi)}</span> on {s.ownLive.n} · {gbp(s.ownLive.profit)}
               </span>
             ) : (
               "none settled yet"

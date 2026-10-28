@@ -946,6 +946,8 @@ export interface StrategyReturn {
   counted: number;
   staked: number;
   profit: number;
+  /** Profit at a flat 1-unit stake per priced pick (missing on an older engine). */
+  units?: number;
   /** Profit per pound staked (0.12 = 12p back for every £1), or null when nothing was staked. */
   roi: number | null;
   avgOdds?: number | null;
@@ -1983,7 +1985,7 @@ export interface GoldenSlice {
   rest: { live: StrategyReturn; sim: StrategyReturn; all: StrategyReturn };
   bet: { live: boolean; stakePct: number | null; stake: number | null; liveSince?: string | null } | null;
   /** Its own Live bets since it was switched Live on its own (null when it isn't). */
-  ownLive?: { n: number; won: number; staked: number; profit: number; roi: number | null } | null;
+  ownLive?: { n: number; won: number; staked: number; profit: number; units?: number; roi: number | null } | null;
   /** A phone notification for each new alert in this slice (golden-notify.ts). */
   notify?: boolean;
   /** Claude's one or two sentence summary of whether it's proving itself (server/claude-golden-review.ts), refreshed daily. Null until the first run after it's no longer quiet, or with no API key set. */

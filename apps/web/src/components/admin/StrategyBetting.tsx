@@ -141,6 +141,11 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
       body: (
         <>
           <p>Its new picks will be bet with real money{settings.enabled ? "" : " once betting is switched on (Betting)"}.</p>
+          {/* 28 Oct 2026: a strategy green in Sim showed red the moment it went Live, which read as "going Live made it lose". */}
+          <p className="text-xs text-ink-muted">
+            Live and Sim are separate records. Once Live, its row shows its <em>Live</em> bets only, which can be red even though its Sim record is green (or the
+            reverse). Its Sim record isn&apos;t lost: it still shows beside the Live one.
+          </p>
           {isLay(s) && (
             <p>
               These are LAY bets: each one wins a small amount if {layWinsOn(s)}, and loses the full liability if {layLosesOn(s)}. They are placed only

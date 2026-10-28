@@ -6,7 +6,7 @@ import { trendOf } from "@/components/admin/StrategyWeekly";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import type { WeekTally } from "@/server/engine-client";
 import { marketName } from "@/lib/markets";
-import { gbp } from "@/lib/format";
+import { gbp, units as formatUnits } from "@/lib/format";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { roiText } from "@/lib/hit-rate";
 import { useStrategyNames } from "@/queries/use-strategy-names";
@@ -178,8 +178,9 @@ export function StrategyCard({
             {last7 && (
               <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
                 Last 7 days:{" "}
-                <span className={last7.counted > 0 ? roiTone(last7.profit) : ""}>{last7.counted > 0 ? gbp(last7.profit) : "–"}</span> · {last7.picks} bet
-                {last7.picks === 1 ? "" : "s"}
+                <span className={last7.counted > 0 ? roiTone(last7.units ?? last7.profit) : ""}>{last7.counted > 0 ? (last7.units !== undefined ? formatUnits(last7.units) : gbp(last7.profit)) : "–"}</span> ·{" "}
+                {last7.counted > 0 ? last7.counted : last7.picks} bet
+                {(last7.counted > 0 ? last7.counted : last7.picks) === 1 ? "" : "s"}
                 {prev28 && (() => {
                   const t = trendOf(last7, prev28);
                   return <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${t.cls}`}>{t.label}</span>;

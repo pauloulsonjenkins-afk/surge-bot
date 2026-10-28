@@ -351,7 +351,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
     }
   }
   // Watched slices with nothing settled since they started (just added, or started today) still show, empty.
-  const empty = (): StrategyReturn => ({ settled: 0, hits: 0, counted: 0, staked: 0, profit: 0, roi: null } as StrategyReturn);
+  const empty = (): StrategyReturn => ({ settled: 0, hits: 0, counted: 0, staked: 0, profit: 0, units: 0, roi: null } as StrategyReturn);
   const keys = new Set([...Object.keys(SEGMENTS), ...loadCustomSegments(db).map((c) => c.strategyKey)]);
   for (const key of keys) {
     for (const s of segmentsOf(key)) {
@@ -397,9 +397,9 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
 const SAFETY = { minBets: 30, worstRoi: -0.05 };
 
 /** A slice's own Live bets since it was switched Live (its strategy's Live bets in that slice). */
-export function liveSinceRecord(db: EngineDb, strategyKey: string, segmentId: string, since: string): { n: number; won: number; staked: number; profit: number; roi: number | null } {
+export function liveSinceRecord(db: EngineDb, strategyKey: string, segmentId: string, since: string): { n: number; won: number; staked: number; profit: number; units: number; roi: number | null } {
   const seg = segmentsOf(strategyKey).find((s) => s.id === segmentId);
-  const out = { n: 0, won: 0, staked: 0, profit: 0, roi: null as number | null };
+  const out = { n: 0, won: 0, staked: 0, profit: 0, units: 0, roi: null as number | null };
   if (!seg) return out;
   const { price } = pricingInputs(db);
   for (const r of db.listResultsForWinLoss(since)) {
@@ -410,7 +410,9 @@ export function liveSinceRecord(db: EngineDb, strategyKey: string, segmentId: st
     if (r.result === "hit") out.won++;
     out.staked += priced.stake;
     out.profit += priced.profit;
+    if (priced.stake > 0) out.units += priced.profit / priced.stake;
   }
+  out.units = Math.round(out.units * 100) / 100;
   out.roi = out.staked > 0 ? out.profit / out.staked : null;
   return out;
 }

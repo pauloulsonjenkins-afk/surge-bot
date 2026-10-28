@@ -163,11 +163,23 @@ export function StrategyWeekly({
     const last7 = s?.last7[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 };
     const trend = trendOf(last7, s?.prev28[mode] ?? last7);
     const isOpen = open === key && !total && !slice;
+    // The other mode's last 7 days, under the name, when it has enough bets and points the other way: a strategy green in
+    // Sim and red in Live (or the reverse) otherwise looked like switching it had changed its results (28 Oct 2026).
+    const other = !total && !slice && mode !== "all" ? (mode === "live" ? "sim" : "live") : null;
+    const otherLast7 = other ? s?.last7[other] : undefined;
+    const disagrees = otherLast7 && otherLast7.counted >= TREND_FROM && (last7.counted === 0 || unitsOf(otherLast7) > 0 !== unitsOf(last7) > 0);
     return (
       <li key={key} className={total ? "border-t border-line pt-1" : ""}>
         <button type="button" disabled={total || slice} aria-expanded={total || slice ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`} style={cols}>
           <span className={`${sticky} flex min-w-0 items-center gap-1 self-stretch text-sm ${total ? "font-semibold" : "font-medium"} text-ink`}>
-            <span className="truncate">{name}</span>
+            <span className="min-w-0">
+              <span className="block truncate">{name}</span>
+              {disagrees && otherLast7 && (
+                <span className={`block truncate text-xs font-normal ${unitsOf(otherLast7) > 0 ? "text-hit" : "text-loss"}`} title={`Its ${other === "live" ? "Live" : "Sim"} bets in the last 7 days, a separate record from the figures on this row`}>
+                  {other === "live" ? "Live" : "Sim"} {units(otherLast7)} ({otherLast7.counted})
+                </span>
+              )}
+            </span>
             {!total && !slice && <ChevronDown size={13} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />}
           </span>
           <span
@@ -221,13 +233,14 @@ export function StrategyWeekly({
   };
   return (
     <div className="overflow-x-auto">
-      {withSlices.length > 0 && (
-        <div className="sticky left-0 mb-1 flex justify-end">
-          <button type="button" onClick={() => setSlicesOpen(withSlices, !allOpen)} className="text-xs text-ink-muted underline">
+      <div className="sticky left-0 mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-xs text-ink-muted">Each row is its own mode&apos;s bets: Live for a Live strategy, Sim for a Sim one. A different-coloured line under a name is its other record.</p>
+        {withSlices.length > 0 && (
+          <button type="button" onClick={() => setSlicesOpen(withSlices, !allOpen)} className="shrink-0 text-xs text-ink-muted underline">
             {allOpen ? "Fold all slices" : "Show all slices"}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       <div className="min-w-[640px]">
         <div className={`${grid} pb-1 text-xs text-ink-muted`} style={cols}>
           <span className={`${sticky} self-stretch`}>Strategy</span>

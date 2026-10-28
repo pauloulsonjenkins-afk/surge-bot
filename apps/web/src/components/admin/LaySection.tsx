@@ -11,7 +11,7 @@ import { GoldenBadge } from "@/components/ui/SegmentLabel";
 import type { LayGroupInfo } from "@/server/engine-client";
 import { ClashSummary } from "@/components/admin/ClashSummary";
 import { BetSettings, LiveSimSwitch, type SendingStrategy } from "@/components/admin/StrategyBetting";
-import { gbp } from "@/lib/format";
+import { gbp, units as formatUnits } from "@/lib/format";
 
 /** The markets that are LAY bets: GoalBrew's own lay groups, and InPlayGuru's Away Win Lay. */
 const LAY_MARKETS = new Set(["NEXT_GOAL_LAY", "HOME_WIN_LAY", "AWAY_WIN_LAY"]);
@@ -19,6 +19,7 @@ export const isLayRow = (r: { market: string | null }) => LAY_MARKETS.has(r.mark
 
 const pct = (n: number | null | undefined) => (n == null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
 const tone = (n: number | null | undefined) => (n == null ? "text-ink-muted" : n >= 0 ? "text-hit" : "text-destructive");
+const splitUnits = (r: StrategyReturn) => (r.units !== undefined ? formatUnits(r.units) : pct(r.roi));
 
 /** One LAY strategy: what it lays and why, the risk, its record next to what it lays, and clashes. */
 function LayCard({
@@ -78,13 +79,23 @@ function LayCard({
             </span>
           )}
         </span>
+        {/* Units: profit as if every bet risked the same 1-unit liability, so a liability change can't skew it. */}
         <span className="shrink-0 text-right">
-          <span className={`block font-display text-xl font-bold tabular-nums ${tone(mine?.roi)}`}>{pct(mine?.roi)}</span>
+          <span className={`block font-display text-xl font-bold tabular-nums ${tone(mine?.roi)}`}>{mine?.units !== undefined && mine.counted > 0 ? formatUnits(mine.units) : pct(mine?.roi)}</span>
           <span className="block text-xs text-ink-muted">
-            per £1 risked · {mine?.counted ?? 0} {live ? "Live" : ""} bets
+            {mine?.units !== undefined && mine.counted > 0 && `${pct(mine.roi)} per £1 risked · `}
+            {mine?.counted ?? 0} {live ? "Live" : ""} bets
           </span>
         </span>
       </div>
+
+      {/* Live and Sim apart: a LAY switched Live starts a new record, and its Sim one shouldn't vanish from view. */}
+      {(row.returns?.live.counted ?? 0) > 0 && (row.returns?.sim.counted ?? 0) > 0 && (
+        <p className="text-xs tabular-nums text-ink-muted">
+          Live <span className={tone(row.returns!.live.roi)}>{splitUnits(row.returns!.live)}</span> ({row.returns!.live.counted}) · Sim{" "}
+          <span className={tone(row.returns!.sim.roi)}>{splitUnits(row.returns!.sim)}</span> ({row.returns!.sim.counted})
+        </p>
+      )}
 
       {/* Laid against backed, side by side: if what it lays starts winning, the lay should stop. */}
       {source && (
