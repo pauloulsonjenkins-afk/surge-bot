@@ -41,14 +41,25 @@ function previewOdds(v: string): number | null {
   return s && Number.isFinite(n) && n >= 1.01 ? n : null;
 }
 
-type Row = { horse: string; course: string; stake: string; odds: string; betType: "win" | "ew"; ewFraction: number; ewPlaces: string };
+export type Row = { horse: string; course: string; stake: string; odds: string; betType: "win" | "ew"; ewFraction: number; ewPlaces: string };
 const EMPTY: Row = { horse: "", course: "", stake: "", odds: "", betType: "win", ewFraction: 4, ewPlaces: "" };
 
 /**
- * The day's saved choices, or for a day with nothing saved yet, the last earlier day's amounts carried over (stake,
- * win or each-way, terms), with the horse and odds left blank. carriedFrom says which day they came from.
+ * A row's win or each-way (and places, when the tipster gives them) from that day's tip, for a day not saved yet:
+ * the tip says which it is, so the row shouldn't keep the previous day's choice for that position (28 Oct 2026: rank 2
+ * was each-way one day and win the next, and the carried-over choice was wrong until "Fill the form" was pressed).
  */
-function rowsFor(bets: HorseBet[], day: string): Record<number, Row> & { carriedFrom?: string } {
+export function withTipBetType(row: Row, tip: Pick<HorseSuggestion, "betType" | "ewPlaces"> | undefined): Row {
+  if (!tip) return row;
+  return { ...row, betType: tip.betType, ewPlaces: tip.betType === "ew" && tip.ewPlaces ? String(tip.ewPlaces) : row.ewPlaces };
+}
+
+/**
+ * The day's saved choices, or for a day with nothing saved yet, the last earlier day's amounts carried over (stake,
+ * terms), with the horse and odds left blank, and win or each-way from that day's tips when they're in (else carried
+ * over too). carriedFrom says which day they came from.
+ */
+export function rowsFor(bets: HorseBet[], day: string, tips: HorseSuggestion[] = []): Record<number, Row> & { carriedFrom?: string } {
   const out: Record<number, Row> & { carriedFrom?: string } = { 1: { ...EMPTY }, 2: { ...EMPTY }, 3: { ...EMPTY }, 4: { ...EMPTY } };
   if (!bets.some((b) => b.day === day)) {
     const before = bets.filter((b) => b.day < day).map((b) => b.day).sort().pop();
@@ -59,6 +70,7 @@ function rowsFor(bets: HorseBet[], day: string): Record<number, Row> & { carried
       }
       out.carriedFrom = before;
     }
+    for (const r of RANKS) out[r] = withTipBetType(out[r]!, tips.find((t) => t.rank === r));
     return out;
   }
   for (const b of bets) {
@@ -108,23 +120,39 @@ function EntryCard({
   suggestions: HorseSuggestion[];
 }) {
   const save = useSaveHorseDay();
-  const [rows, setRows] = useState<Record<number, Row> & { carriedFrom?: string }>(() => rowsFor(bets, day));
+  const [rows, setRows] = useState<Record<number, Row> & { carriedFrom?: string }>(() => rowsFor(bets, day, suggestions));
   const yankeeFor = (d: string) => yankeeStakeFor(days, bets, d);
   const [yankee, setYankee] = useState(() => yankeeFor(day));
   const [yankeeOn, setYankeeOn] = useState(() => yankeeFor(day) !== "");
   const [saved, setSaved] = useState(false);
+  // Rows whose win / each-way was changed by hand: tips arriving later never overwrite those.
+  const typeSetByHand = useRef(new Set<number>());
   // Load that day's saved choices whenever the date changes (or after a save, from the refreshed list).
   const loadedFor = useRef<string | null>(null);
   useEffect(() => {
     if (loadedFor.current === day) return;
     loadedFor.current = day;
-    setRows(rowsFor(bets, day));
+    typeSetByHand.current.clear();
+    setRows(rowsFor(bets, day, suggestions));
     const y = yankeeStakeFor(days, bets, day);
     setYankee(y);
     setYankeeOn(y !== "");
-  }, [bets, days, day]);
+  }, [bets, days, day, suggestions]);
+  // The tips can come in while the page is open (they're fetched between 10:00 and 14:00): on a day not saved yet, each
+  // row then takes the tip's win or each-way, unless it was set by hand.
+  const tipTypes = suggestions.map((s) => `${s.rank}:${s.betType}:${s.ewPlaces ?? ""}`).join("|");
+  useEffect(() => {
+    if (!tipTypes) return;
+    setRows((r) => {
+      if (!r.carriedFrom) return r;
+      const next = { ...r };
+      for (const s of suggestions) if (!typeSetByHand.current.has(s.rank) && next[s.rank]) next[s.rank] = withTipBetType(next[s.rank]!, s);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipTypes]);
 
-  // Copies the fetched horses, courses and the tipster's odds into the form. The amounts and everything else stay as they
+  // Copies the fetched horses, courses, the tipster's odds and win / each-way into the form. The amounts and everything else stay as they
   // are, and nothing is saved until Save is pressed, so each row can still be changed first.
   function fillFromSuggestions() {
     setSaved(false);
@@ -150,6 +178,7 @@ function EntryCard({
 
   const set = (rank: number, patch: Partial<Row>) => {
     setSaved(false);
+    if ("betType" in patch) typeSetByHand.current.add(rank);
     setRows((r) => ({ ...r, [rank]: { ...r[rank]!, ...patch } }));
   };
   // Carried-over amounts with no odds aren't a bet: a row is only sent when its odds are filled in.
