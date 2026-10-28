@@ -16,6 +16,7 @@ import { AdviceRow } from "@/components/admin/Advice";
 import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
 import { toneOf, gbp, units } from "@/lib/format";
+import { Fold } from "@/components/ui/Fold";
 import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
 
 
@@ -38,22 +39,6 @@ function Tile({ label, value, sub, warn, children }: { label: string; value: Rea
 
 function secs(n: number | null): string {
   return n === null ? "–" : n < 60 ? `${n} s` : `${Math.round(n / 6) / 10} min`;
-}
-
-/**
- * A section folded to one line, opened on a tap: for what's only worth reading when something looks wrong. Today ran to
- * about 4.8 phone screens with every section open (29 Oct 2026).
- */
-function Fold({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <details className="rounded-xl border border-line bg-surface px-3.5">
-      <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium text-ink">
-        {title}
-        {hint && <span className="text-xs font-normal text-ink-muted">· {hint}</span>}
-      </summary>
-      <div className="pb-3.5">{children}</div>
-    </details>
-  );
 }
 
 function Speed({ s, label }: { s: SpeedReport; label: string }) {

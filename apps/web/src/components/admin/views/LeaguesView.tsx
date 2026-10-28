@@ -257,11 +257,7 @@ export default function LeaguesPage() {
         as="h2"
         title="Leagues"
         subtitle={
-          <>
-          Every league the Dashboard has seen. The top of the page is for leagues whose matches aren’t on Betfair: stop them, then remove them
-          from your InPlayGuru league filter. Tap a league below to hide it, reset its stats or set its country and tier. Nothing is deleted, so
-          all of it can be undone. A hidden league leaves every stats page, except bets with real money on them, which always count.
-          </>
+          <>Every league your alerts come from. First, leagues not on Betfair to stop; below, tap a league to hide it, reset it or set its country. All undoable.</>
         }
       />
 

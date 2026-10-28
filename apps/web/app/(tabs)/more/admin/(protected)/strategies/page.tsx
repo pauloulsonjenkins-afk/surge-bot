@@ -20,7 +20,7 @@ import { useToday } from "@/queries/use-today";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { AdviceRow } from "@/components/admin/Advice";
 import { isLayRow, LaySection } from "@/components/admin/LaySection";
-import { INACTIVE_DAYS, modeOf, ownMode, hasPicks, CheckResult, SAMPLE, Period, PERIODS, periodStart, SortBy, View, VIEWS, SORTS, sortValue } from "@/components/admin/strategies/strategy-parts";
+import { INACTIVE_DAYS, adjustedRoi, modeOf, ownMode, hasPicks, CheckResult, SAMPLE, Period, PERIODS, periodStart, SortBy, View, VIEWS, SORTS, sortValue } from "@/components/admin/strategies/strategy-parts";
 import { StrategyCard } from "@/components/admin/strategies/StrategyCard";
 
 export default function StrategiesPage() {
@@ -48,6 +48,17 @@ export default function StrategiesPage() {
   // Strategies with no alert for INACTIVE_DAYS (retired, or deleted in InPlayGuru) and not Live: listed apart.
   const [loadedAt] = useState(() => Date.now());
   const isInactive = (r: AdminStrategy) => !r.sendingOn && (!r.lastAlertAt || loadedAt - Date.parse(r.lastAlertAt) > INACTIVE_DAYS * 86_400_000);
+  /**
+   * Parked: in Sim and clearly losing there (50+ priced Sim picks, below -2% per £1 once adjusted for luck). Folded away
+   * under the Sim strategies (29 Oct 2026 review: most of the 16 Sim strategies lose 4-7% a bet), so the page leads with
+   * what's Live and what's still being tested. They keep being recorded, and come back by themselves if they turn.
+   */
+  const isParked = (r: AdminStrategy) => {
+    const sim = r.returns?.sim;
+    if (r.sendingOn || isLayRow(r) || !sim || sim.counted < SAMPLE) return false;
+    const adj = adjustedRoi(sim.roi, sim.counted);
+    return adj !== null && adj < -0.02;
+  };
   const names = useStrategyNames();
   const adviceOf = useMemo(() => new Map(allAdvice.filter((a) => a.kind !== "league-block").map((a) => [a.key.toLowerCase(), a])), [allAdvice]);
   const betOf = useMemo(() => {
@@ -355,7 +366,7 @@ export default function StrategiesPage() {
             // Best first by the chosen figure (in the section's own mode), so what to act on is at the top and bottom.
             const valueOf = (r: AdminStrategy) => sortValue(r, view === "own" ? ownMode(r).mode : m, sortBy) ?? -Infinity;
             const group = strategies
-              .filter((r) => modeOf(r) === m && !isLayRow(r) && !isInactive(r))
+              .filter((r) => modeOf(r) === m && !isLayRow(r) && !isInactive(r) && !isParked(r))
               .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
             const renderCard = (r: AdminStrategy) => (
@@ -407,6 +418,17 @@ export default function StrategiesPage() {
                 ) : (
                 <ul className="space-y-2">{group.filter((r) => hasPicks(r, m)).map(renderCard)}</ul>
                 )}
+                {m === "sim" && (() => {
+                  const parked = strategies.filter((r) => modeOf(r) === "sim" && !isInactive(r) && isParked(r));
+                  return parked.length > 0 ? (
+                    <details className="rounded-xl border border-line bg-surface p-3">
+                      <summary className="cursor-pointer text-sm font-medium text-ink">
+                        Parked <span className="font-normal text-ink-muted">· {parked.length} · losing in Sim, still recorded</span>
+                      </summary>
+                      <ul className="mt-2 space-y-2">{parked.map(renderCard)}</ul>
+                    </details>
+                  ) : null;
+                })()}
                 {/* No alert for 14 days (retired or deleted in InPlayGuru): out of the way, record kept. */}
                 {m === "sim" && inactive.length > 0 && (
                   <details className="rounded-xl border border-line bg-surface p-3">

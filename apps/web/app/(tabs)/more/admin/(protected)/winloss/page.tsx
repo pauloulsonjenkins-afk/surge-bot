@@ -6,6 +6,7 @@ import { StrategyName } from "@/components/ui/StrategyName";
 import { useState } from "react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Fold } from "@/components/ui/Fold";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
 import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLines";
@@ -265,19 +266,17 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         )}
       </Card>
 
-      <Card title="By strategy" subtitle="One line per strategy, running total.">
+      <Fold title="By strategy" hint="one line each, running total">
         {points.length < 2 ? (
           <EmptyState title="Nothing to draw yet" detail="A line appears once there are results with a stake and odds in this period." />
         ) : (
           <WinLossLines data={strategyData} series={strategySeries} />
         )}
-      </Card>
+      </Fold>
 
       {/* ---- inputs ---- */}
-      <Card
-        title="Strategies"
-        subtitle="Tap a strategy to set the odds to assume where an alert carries none. Stakes are set on Strategies. Rows needing attention are marked."
-      >
+      <Fold title="Assumed odds and commission" hint="settings">
+        <p className="mb-2 text-xs text-ink-muted">Tap a strategy to set the odds to assume where an alert carries none. Stakes are set on Strategies.</p>
         {strategies.length === 0 ? (
           <p className="text-xs text-ink-muted">Strategies appear here once they have settled picks this year.</p>
         ) : (
@@ -384,10 +383,11 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
           </label>
           <p className="mt-1 text-xs text-ink-muted">Left at 0 unless you set it. Betfair takes commission from winning bets.</p>
         </div>
-      </Card>
+      </Fold>
 
       {/* ---- expenditure: last, and off unless ticked ---- */}
-      <Card title="Expenditure" subtitle="Your running costs, taken off the total so you can see if you are still profitable.">
+      <Fold title="Expenditure" hint={ex.enabled ? "on" : "off: profit is before running costs"}>
+        <p className="mb-2 text-xs text-ink-muted">Your running costs, taken off the total so you can see if you are still profitable.</p>
         <label className="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
@@ -433,7 +433,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
             </p>
           </div>
         )}
-      </Card>
+      </Fold>
     </div>
   );
 }

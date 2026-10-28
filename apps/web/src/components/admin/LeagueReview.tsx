@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { useShowMore } from "@/components/ui/ShowMore";
 import type { AdminLeagueRow, LeaguePatch } from "@/queries/use-leagues";
 
 /**
@@ -58,6 +59,8 @@ export function LeagueReview({ rows, busy, onChange }: { rows: AdminLeagueRow[];
   const review = rows.filter(needsReview).sort((a, b) => (b.exchange?.off ?? 0) - (a.exchange?.off ?? 0) || a.league.localeCompare(b.league));
   const todo = rows.filter(toSwitchOff).sort((a, b) => a.league.localeCompare(b.league));
   const stopped = rows.filter((r) => r.noSend && r.ipgDone).sort((a, b) => a.league.localeCompare(b.league));
+  // Five at a time, worst first: 21 rows with two buttons each filled about three phone screens (29 Oct 2026).
+  const { shown: reviewShown, more: reviewMore } = useShowMore(review, 5);
 
   async function copy() {
     try {
@@ -74,7 +77,7 @@ export function LeagueReview({ rows, busy, onChange }: { rows: AdminLeagueRow[];
       {review.length > 0 ? (
         <Card
           title={`Needs review (${review.length})`}
-          subtitle={`Leagues where ${REVIEW_AFTER} or more alerts weren't on Betfair. Stop a league to stop sending its alerts and hide it from the stats (you can undo it), or keep it if you still want it.`}
+          subtitle={`${REVIEW_AFTER}+ alerts not on Betfair. Stop it (undoable) or keep it.`}
           actions={
             <button type="button" disabled={busy} onClick={() => review.forEach((r) => onChange(r.key, STOP))} className={btnPrimary}>
               Stop all {review.length}
@@ -82,7 +85,7 @@ export function LeagueReview({ rows, busy, onChange }: { rows: AdminLeagueRow[];
           }
         >
           <ul className="divide-y divide-line">
-            {review.map((r) => (
+            {reviewShown.map((r) => (
               <Row key={r.key} r={r}>
                 <button type="button" disabled={busy} onClick={() => onChange(r.key, { keep: true })} className={btn}>
                   Keep
@@ -92,6 +95,7 @@ export function LeagueReview({ rows, busy, onChange }: { rows: AdminLeagueRow[];
                 </button>
               </Row>
             ))}
+            {reviewMore && <li className="pt-2">{reviewMore}</li>}
           </ul>
         </Card>
       ) : (
