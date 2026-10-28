@@ -3,12 +3,16 @@
  * on the Today page (and on the strategy's card) with an Apply button. Nothing changes until the admin presses Apply.
  *
  *   Try Live (a Sim strategy), all of:
- *     - 50+ priced Sim picks, with the return still above zero once pulled towards zero for luck (adjusted);
+ *     - 200+ priced Sim picks (PROMOTE_FROM), with the return still above zero once pulled towards zero for luck
+ *       (adjusted), AND making money in both the older and the newer half of them;
  *     - still making money in Sim over the last 30 days (20+ priced picks);
  *     - pre-match strategies only: beating the kick-off price over 50+ price checks (the in-play check leaves out picks a
  *       goal settled, so it isn't a fair verdict);
  *     - a stop loss set.
- *     Apply: Live at £1 (or its own stake if it has one).
+ *     Apply: Live at a TRIAL stake, 1% of the balance (or £1 for a flat-stake strategy), whatever its own stake was; the
+ *     stake ladder raises it from there once its Live bets earn it.
+ *     Stricter since 29 Oct 2026: at 50 picks, strategies were promoted on short good Sim runs and then lost Live
+ *     (Fav Pressure Level +£18.53 in Sim, -£11.08 Live; LAY home win +£33.46 in Sim, -£10.46 Live).
  *   Back to Sim (a Live strategy):
  *     - losing over the last 30 days: 30+ priced Live bets and an adjusted return below -2%.
  *   THE STAKE LADDER (a Live strategy, judged on its Live bets since its rules last changed):
@@ -32,8 +36,8 @@
  * and "Back to Sim" are never automatic.
  */
 import type { EngineDb } from "../storage/engine-db";
-import { ALL_TIME, computeStrategyReturns, type StrategyReturn } from "./winloss";
-import { getSendingSettings, saveSendingSettings } from "../inplayguru/bet-feed";
+import { ALL_TIME, computeStrategyReturns, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
+import { getSendingSettings, saveSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { getStopLossRules } from "../inplayguru/stop-loss";
 import { priceCheckReport } from "../betfair/price-check";
 import { displayName } from "../inplayguru/strategy-names";
@@ -42,6 +46,32 @@ import { log } from "./log";
 import { BLOCK_FROM, computeLeagueReturns, getLeagueBlocks, isLeagueBlocked, judge, setLeagueBlock } from "./league-returns";
 
 const SAMPLE = 50;
+/** Priced Sim picks a strategy needs before "Try Live" is suggested (see the header). */
+export const PROMOTE_FROM = 200;
+/** The stake "Try Live" puts a strategy Live at: a trial, not its full stake. */
+const TRIAL_STAKE = { pct: 1 } as const;
+const TRIAL_FLAT = { flat: 1 } as const;
+
+/**
+ * A strategy's priced Sim picks split into the older and newer half, as the return per £1 of each: both must be in profit
+ * for "Try Live", so one lucky spell can't carry it. Null when it has no priced Sim picks.
+ */
+export function simHalves(db: EngineDb, rows: ResultRow[], key: string): [number, number] | null {
+  const { price } = pricingInputs(db);
+  const picks: Array<{ stake: number; profit: number }> = [];
+  for (const r of rows) {
+    if (r.placement !== "sim" || r.byHand || strategyLabel(r.strategy).toLowerCase() !== key) continue;
+    const p = price(r).priced;
+    if (p.kind === "priced" && p.stake > 0) picks.push({ stake: p.stake, profit: p.profit });
+  }
+  if (picks.length === 0) return null;
+  const half = (xs: typeof picks) => {
+    const staked = xs.reduce((a, x) => a + x.stake, 0);
+    return staked > 0 ? xs.reduce((a, x) => a + x.profit, 0) / staked : 0;
+  };
+  const mid = Math.floor(picks.length / 2);
+  return [half(picks.slice(0, mid)), half(picks.slice(mid))];
+}
 const STATE_KEY = "strategy_advice_state";
 /** When each strategy's stake last moved on the ladder (manually or automatically), so automatic steps are 7 days apart. */
 const LAST_STEP_KEY = "stake_ladder_last_step";
@@ -142,11 +172,15 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       const recentLive = rec?.live;
       const liveAdj = recentLive ? adjusted(recentLive.roi, recentLive.counted) : null;
       const liveLosing = !!recentLive && recentLive.counted >= 30 && liveAdj !== null && liveAdj < -0.02;
+      const halves = sim.counted >= PROMOTE_FROM ? simHalves(db, rows, key) : null;
       const ok =
         !liveLosing &&
-        sim.counted >= SAMPLE &&
+        sim.counted >= PROMOTE_FROM &&
         adj !== null &&
         adj > 0 &&
+        !!halves &&
+        halves[0] > 0 &&
+        halves[1] > 0 &&
         !!recentSim &&
         recentSim.counted >= 20 &&
         recentSim.roi !== null &&
@@ -155,13 +189,13 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
         !!stop &&
         (stop.dailyLoss !== null || stop.lossRun !== null);
       if (ok) {
-        const to = stake ?? { flat: 1 };
+        const to = stake && "flat" in stake ? TRIAL_FLAT : TRIAL_STAKE;
         out.push({
           key,
           kind: "try-live",
-          action: `Put Live at ${stakeWords(to)}`,
+          action: `Put Live at a ${stakeWords(to)} trial stake`,
           to,
-          reason: `${pct(sim.roi!)} per £1 over ${sim.counted} Sim picks (${pct(adj!)} adjusted), ${pct(recentSim!.roi!)} in the last 30 days${check ? `, and beating the kick-off price by ${check.edge.toFixed(1)}% over ${check.picks} checks` : ""}.`,
+          reason: `${pct(sim.roi!)} per £1 over ${sim.counted} Sim picks (${pct(adj!)} adjusted; older half ${pct(halves![0])}, newer ${pct(halves![1])}), ${pct(recentSim!.roi!)} in the last 30 days${check ? `, and beating the kick-off price by ${check.edge.toFixed(1)}% over ${check.picks} checks` : ""}.`,
         });
       }
       continue;

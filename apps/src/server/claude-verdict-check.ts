@@ -13,7 +13,7 @@
  * shown that "weaker" verdicts actually predict worse results than "in line" ones.
  */
 import type { EngineDb } from "../storage/engine-db";
-import { claudeConfigured, lastCheckFailure } from "./claude-check";
+import { claudeCheckPaused, claudeConfigured, lastCheckFailure } from "./claude-check";
 import { computeVerdictTrackRecord, type Verdict, type VerdictRow } from "./claude-track-record";
 
 const VERDICT_THRESHOLD = 100;
@@ -27,6 +27,10 @@ export interface ClaudeVerdictCheck {
   /** Plain-language verdict on the verdicts: whether "weaker" has actually done worse than "in line". Null until ready. */
   summary: string;
   badgeVisible: boolean;
+  /** The per-alert check is paused: no calls, no new verdicts (claude-check.ts). */
+  paused: boolean;
+  /** "In line" verdicts are left off the Live tab. */
+  hideInLine: boolean;
   /** Whether the engine has an API key to call Claude with at all (added 27 Oct 2026: if not, nothing below runs). */
   configured: boolean;
   /** Why the last per-alert check failed, and when, if one has since another succeeded (claude-check.ts). */
@@ -38,7 +42,7 @@ export function computeClaudeVerdictCheck(db: EngineDb): ClaudeVerdictCheck {
   const { overall: byVerdict, settledCount } = computeVerdictTrackRecord(db);
   const ready = settledCount >= VERDICT_THRESHOLD;
   const summary = !ready ? `${settledCount} of ${VERDICT_THRESHOLD} settled.` : verdictSummary(byVerdict);
-  return { settledCount, threshold: VERDICT_THRESHOLD, ready, byVerdict, summary, badgeVisible: claudeBadgeVisible(db), configured: claudeConfigured(), lastFailure: lastCheckFailure(db) };
+  return { settledCount, threshold: VERDICT_THRESHOLD, ready, byVerdict, summary, badgeVisible: claudeBadgeVisible(db), paused: claudeCheckPaused(db), hideInLine: claudeHideInLine(db), configured: claudeConfigured(), lastFailure: lastCheckFailure(db) };
 }
 
 /** A margin worth calling real, not noise: "weaker" needs to return at least this much worse per £1 than "in line". */
@@ -59,6 +63,21 @@ function verdictSummary(byVerdict: Record<Verdict, VerdictRow>): string {
 
 function pct(n: number): string {
   return `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
+}
+
+const HIDE_IN_LINE_KEY = "claude_hide_in_line";
+
+/**
+ * Whether "in line" verdicts are left off the Live tab, so only "stronger" and "weaker" show (the owner's choice, 29 Oct
+ * 2026: in line says nothing new). Display only: the call is the same either way, since the verdict isn't known until
+ * Claude has answered. On by default.
+ */
+export function claudeHideInLine(db: EngineDb): boolean {
+  return db.getSetting(HIDE_IN_LINE_KEY) !== "false";
+}
+
+export function setClaudeHideInLine(db: EngineDb, hide: boolean): void {
+  db.setSetting(HIDE_IN_LINE_KEY, hide ? "true" : "false");
 }
 
 /** Whether the per-alert verdict badge is shown on the Live tab. Off (shadow mode) until the admin turns it on. */

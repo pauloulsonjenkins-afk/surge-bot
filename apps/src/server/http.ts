@@ -115,7 +115,8 @@ import { setGoldenNotify } from "./golden-notify";
 import { claudeReviewConfigured, getClaudeReviewFailures, getClaudeReviewNotes } from "./claude-review";
 import { claudeGoldenConfigured, getGoldenNotes } from "./claude-golden-review";
 import { askAboutPick, claudeAskConfigured } from "./claude-ask";
-import { claudeBadgeVisible, computeClaudeVerdictCheck, setClaudeBadgeVisible } from "./claude-verdict-check";
+import { claudeBadgeVisible, claudeHideInLine, computeClaudeVerdictCheck, setClaudeBadgeVisible, setClaudeHideInLine } from "./claude-verdict-check";
+import { setClaudeCheckPaused } from "./claude-check";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -433,6 +434,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           // verdicts are stored and the verdict-check page can read them, but nothing is shown here as a badge
           // until the admin turns it on, once the check shows the warnings actually predict worse results.
           const verdicts = claudeBadgeVisible(db) ? db.getClaudeVerdicts(picks.map((p) => p.id)) : null;
+          // "In line" left off when the admin chose so: it says nothing the alert itself doesn't.
+          if (verdicts && claudeHideInLine(db)) for (const [id, v] of verdicts) if (v.verdict === "in_line") verdicts.delete(id);
           // Watched slices each pick is in (e.g. Second Pour's Golden), for the Live tab's badge.
           return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), claudeVerdict: verdicts?.get(p.id) ?? null })) };
         }),
@@ -562,11 +565,15 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (!requireAdmin(req, res)) return;
       if (req.method === "PUT") {
         const body = await readJsonBody(req);
-        if (typeof body.badgeVisible !== "boolean") {
-          send(res, 400, { error: "badgeVisible_must_be_boolean" });
+        // Any of the three switches, each on its own: the badge, pausing the per-alert check, hiding "in line".
+        const flags = ["badgeVisible", "paused", "hideInLine"] as const;
+        if (!flags.some((f) => f in body) || flags.some((f) => f in body && typeof body[f] !== "boolean")) {
+          send(res, 400, { error: "switches_must_be_boolean" });
           return;
         }
-        setClaudeBadgeVisible(db, body.badgeVisible);
+        if (typeof body.badgeVisible === "boolean") setClaudeBadgeVisible(db, body.badgeVisible);
+        if (typeof body.paused === "boolean") setClaudeCheckPaused(db, body.paused);
+        if (typeof body.hideInLine === "boolean") setClaudeHideInLine(db, body.hideInLine);
       }
       send(res, 200, { ...computeClaudeVerdictCheck(db) });
       return;

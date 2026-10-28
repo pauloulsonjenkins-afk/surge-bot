@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
-import type { ClaudeVerdictCheck } from "@/server/engine-client";
+import type { ClaudeSwitches, ClaudeVerdictCheck } from "@/server/engine-client";
 
 export type { ClaudeVerdictCheck };
 
@@ -16,12 +16,12 @@ export function useClaudeVerdictCheck() {
   });
 }
 
-/** Shows or hides the Live tab's Claude badge (shadow mode switch) — never touches a bet. */
-export function useSetClaudeBadgeVisible() {
+/** The Claude page's switches (badge, pause, hide "in line") — none of them touches a bet. */
+export function useSetClaudeSwitches() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (badgeVisible: boolean) => {
-      const res = await fetch("/api/admin/claude-verdict-check", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ badgeVisible }) });
+    mutationFn: async (body: ClaudeSwitches) => {
+      const res = await fetch("/api/admin/claude-verdict-check", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const out = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(out.error ?? "Couldn't change that.");
       return out as ClaudeVerdictCheck;

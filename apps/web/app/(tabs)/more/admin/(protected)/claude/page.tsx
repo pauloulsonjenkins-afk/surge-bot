@@ -4,7 +4,7 @@ import { Card, PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { signedPct, toneOf } from "@/lib/format";
-import { useClaudeVerdictCheck, useSetClaudeBadgeVisible, type ClaudeVerdictCheck } from "@/queries/use-claude-verdict-check";
+import { useClaudeVerdictCheck, useSetClaudeSwitches, type ClaudeVerdictCheck } from "@/queries/use-claude-verdict-check";
 
 /** Below this many priced picks a return is noise, same rule as the Golden page. */
 const FEW = 20;
@@ -42,7 +42,7 @@ function Row({ label, row }: { label: string; row: ClaudeVerdictCheck["byVerdict
  */
 export default function ClaudeVerdictCheckPage() {
   const { data, isLoading, error } = useClaudeVerdictCheck();
-  const setVisible = useSetClaudeBadgeVisible();
+  const setVisible = useSetClaudeSwitches();
 
   return (
     <div className="space-y-4 p-4">
@@ -94,6 +94,27 @@ export default function ClaudeVerdictCheckPage() {
         </Card>
       )}
 
+      {/* The money switch first (29 Oct 2026): each per-alert check is a paid call, and its record had "weaker" verdicts
+          winning more often than "stronger" ones. The daily and weekly reviews aren't affected. */}
+      {data && data.paused !== undefined && (
+        <Card title="Per-alert check">
+          <p className="mb-3 text-sm text-ink-muted">
+            {data.paused
+              ? "Paused: Claude isn't asked about new alerts, so nothing is spent on it. The daily and weekly reviews carry on."
+              : "On: Claude gives a verdict on every new alert (a paid call each time). Worth it only while the verdicts above show it predicts results."}
+          </p>
+          <button
+            type="button"
+            aria-pressed={!data.paused}
+            disabled={setVisible.isPending}
+            onClick={() => setVisible.mutate({ paused: !data.paused })}
+            className="inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium text-ink ring-1 ring-inset ring-line disabled:opacity-40"
+          >
+            Per-alert check: {data.paused ? "paused" : "on"}
+          </button>
+        </Card>
+      )}
+
       {data && (
         <Card title="Live tab badge">
           <p className="mb-3 text-sm text-ink-muted">
@@ -105,11 +126,22 @@ export default function ClaudeVerdictCheckPage() {
             type="button"
             aria-pressed={data.badgeVisible}
             disabled={setVisible.isPending}
-            onClick={() => setVisible.mutate(!data.badgeVisible)}
+            onClick={() => setVisible.mutate({ badgeVisible: !data.badgeVisible })}
             className="inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium text-ink ring-1 ring-inset ring-line disabled:opacity-40"
           >
             Badge on Live tab: {data.badgeVisible ? "on" : "off"}
           </button>
+          {data.hideInLine !== undefined && (
+            <button
+              type="button"
+              aria-pressed={data.hideInLine}
+              disabled={setVisible.isPending}
+              onClick={() => setVisible.mutate({ hideInLine: !data.hideInLine })}
+              className="ml-2 inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium text-ink ring-1 ring-inset ring-line disabled:opacity-40"
+            >
+              {data.hideInLine ? "Only stronger / weaker" : "All verdicts, in line too"}
+            </button>
+          )}
           {setVisible.error && <p className="mt-2 text-destructive">Couldn&apos;t save that: {setVisible.error.message}</p>}
         </Card>
       )}

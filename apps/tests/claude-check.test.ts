@@ -212,3 +212,18 @@ test("the last per-alert check failure is remembered for the admin page, and cle
   db.setSetting("claude_check_last_failure", "null");
   assert.equal(lastCheckFailure(db), null, "cleared once a later check succeeded");
 });
+
+test("the per-alert check is paused by default (29 Oct 2026), and 'in line' verdicts are hidden from Live by default", async () => {
+  const { claudeCheckPaused, setClaudeCheckPaused } = await import("../src/server/claude-check");
+  const { claudeHideInLine, setClaudeHideInLine, computeClaudeVerdictCheck } = await import("../src/server/claude-verdict-check");
+  const db = new EngineDb(":memory:", () => {});
+  assert.equal(claudeCheckPaused(db), true);
+  assert.equal(claudeHideInLine(db), true);
+  setClaudeCheckPaused(db, false);
+  setClaudeHideInLine(db, false);
+  assert.equal(claudeCheckPaused(db), false);
+  assert.equal(claudeHideInLine(db), false);
+  const c = computeClaudeVerdictCheck(db);
+  assert.equal(c.paused, false);
+  assert.equal(c.hideInLine, false);
+});

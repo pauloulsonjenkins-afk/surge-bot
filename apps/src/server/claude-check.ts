@@ -342,7 +342,23 @@ export function lastCheckFailure(db: EngineDb): { reason: string; at: string } |
  * The reason for the latest failure is kept (lastCheckFailure) so it's visible on the admin page, not only in
  * the engine's own logs: 27 Oct 2026, the owner found no verdicts were landing with nothing to show why.
  */
+const PAUSED_KEY = "claude_check_paused";
+
+/**
+ * Whether the per-alert check is paused (Claude page switch). Paused 29 Oct 2026 by default from then on: its own track
+ * record had "weaker" verdicts winning 56.7% against 33.3% for "stronger", so each call cost money for advice pointing the
+ * wrong way. The daily and weekly reviews (claude-review.ts) carry on regardless. Nothing is called while paused.
+ */
+export function claudeCheckPaused(db: EngineDb): boolean {
+  return db.getSetting(PAUSED_KEY) !== "false";
+}
+
+export function setClaudeCheckPaused(db: EngineDb, paused: boolean): void {
+  db.setSetting(PAUSED_KEY, paused ? "true" : "false");
+}
+
 export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = new Date()): Promise<void> {
+  if (claudeCheckPaused(db)) return;
   const anthropic = getClient();
   if (!anthropic) return;
   const fail = (reason: string) => {

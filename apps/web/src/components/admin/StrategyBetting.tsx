@@ -7,6 +7,7 @@ import { StopLossControls } from "@/components/admin/StopLossControls";
 import { useSaveSending, type SendingSettings, type SendingState } from "@/queries/use-sending";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { useToday } from "@/queries/use-today";
 
 /**
  * One strategy's betting controls, shown on the Strategies page: the Live / Sim switch, and (when opened) its stake,
@@ -112,6 +113,10 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
   const key = s.label.toLowerCase();
   const supported = canBet(s, settings);
   const canGoLive = supported && hasStake(s) && !save.isPending;
+  // Whether GoalBrew's own rule says it's ready (a "ready to try Live" suggestion): 200+ priced Sim bets, in profit in
+  // both halves. Null while the suggestions haven't loaded, so the dialog says nothing it can't back up.
+  const today = useToday();
+  const ready = today.data ? (today.data.advice ?? []).some((a) => a.key.toLowerCase() === key && a.kind === "try-live") : null;
 
   function confirmLive(): Promise<boolean> {
     const stake = s.stakeNow ?? s.stake ?? 0;
@@ -140,6 +145,17 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
       ],
       body: (
         <>
+          {/* 29 Oct 2026: strategies switched Live after a short good Sim run lost real money (Fav Pressure Level +£18.53 in
+              Sim, -£11.08 Live). The suggestion's own Apply goes Live at a trial stake; a manual switch skips that. */}
+          {ready === false && !isLay(s) && (
+            <p className="rounded-md border border-warn/60 bg-warn/10 p-2 text-sm">
+              <strong>Not ready by GoalBrew&apos;s rule</strong>, which needs 200+ priced Sim bets making money in both the older and newer half. A good Sim run on
+              fewer is often luck. If you go Live anyway, use a small trial stake (1% of the balance) and let the stake ladder raise it.
+            </p>
+          )}
+          {ready === true && (
+            <p className="text-sm text-hit">Ready by GoalBrew&apos;s rule. The suggestion&apos;s Apply button puts it Live at a 1% trial stake; this switch uses the stake below.</p>
+          )}
           <p>Its new picks will be bet with real money{settings.enabled ? "" : " once betting is switched on (Betting)"}.</p>
           {/* 28 Oct 2026: a strategy green in Sim showed red the moment it went Live, which read as "going Live made it lose". */}
           <p className="text-xs text-ink-muted">

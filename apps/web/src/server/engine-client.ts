@@ -2054,6 +2054,10 @@ export interface ClaudeVerdictCheck {
   byVerdict: { stronger: ClaudeVerdictRow; in_line: ClaudeVerdictRow; weaker: ClaudeVerdictRow };
   summary: string;
   badgeVisible: boolean;
+  /** The per-alert check is paused: no calls (missing on an older engine). */
+  paused?: boolean;
+  /** "In line" verdicts are left off the Live tab (missing on an older engine). */
+  hideInLine?: boolean;
   configured: boolean;
   lastFailure: { reason: string; at: string } | null;
 }
@@ -2062,8 +2066,10 @@ export function fetchClaudeVerdictCheck(): Promise<ClaudeVerdictCheck> {
   return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check");
 }
 
-export function setClaudeBadgeVisible(badgeVisible: boolean): Promise<ClaudeVerdictCheck> {
-  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check", { method: "PUT", body: { badgeVisible } });
+/** The Claude page's switches, any of them: the Live tab badge, pausing the per-alert check, hiding "in line" verdicts. */
+export type ClaudeSwitches = Partial<Record<"badgeVisible" | "paused" | "hideInLine", boolean>>;
+export function setClaudeSwitches(body: ClaudeSwitches): Promise<ClaudeVerdictCheck> {
+  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check", { method: "PUT", body });
 }
 
 /** Claude's latest daily and weekly written notes (engine claude-review.ts). Advice to read, never a setting. */
