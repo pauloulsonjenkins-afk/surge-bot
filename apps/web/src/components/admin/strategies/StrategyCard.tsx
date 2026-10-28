@@ -165,7 +165,7 @@ export function StrategyCard({
           <span className="min-w-[9rem] flex-1">
             <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
               <span className="min-w-0 break-words">
-                <StrategyName label={row.label} />
+                <StrategyName label={row.label} withOriginal />
               </span>
               {!bet && <ModeBadge mode={modeOf(row)} />}
               {bet?.enabled && bet.stopLoss?.stopped && <span className="rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>}

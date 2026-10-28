@@ -30,6 +30,26 @@ function titleIfLower(s: string): string {
   return s === s.toLowerCase() ? s.replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : s;
 }
 
+/**
+ * The admin's short names (chosen 28 Oct 2026): InPlayGuru's names, cut down so two can't truncate to the same
+ * "Favourite press…" on a phone. Close to InPlayGuru's own, so they still match the Telegram alerts; members keep the
+ * coffee names. Keyed by strategyKey; anything not listed shows InPlayGuru's name as before.
+ */
+export const ADMIN_SHORT_NAMES: Record<string, string> = {
+  "favourite pressure 2nd half": "Fav Pressure 2H",
+  "favourite pressure level": "Fav Pressure Level",
+  "underdog taking charge": "Underdog Charge",
+  "losing team pushing hard": "Losing Team Push",
+  "blistering momentum": "Blistering Mom",
+  "over 1.5 goals / early goal": "Early Goal O1.5",
+  "pass master 1st half": "Pass Master 1H",
+  "dominant momentum 0-0": "Dominant 0-0",
+  "early pressure with low score": "Early Pressure",
+  "both teams to score": "BTTS",
+  "first half goal": "1st Half Goal",
+  "lay next goal · japan and brazil": "LAY · Japan/Brazil",
+};
+
 function remembered(): Names | undefined {
   try {
     const raw = localStorage.getItem(STORE);
@@ -69,8 +89,9 @@ export function useStrategyNames() {
     }
   }, [names, query.isPlaceholderData]);
 
-  // What a strategy is called for this viewer: the admin always sees InPlayGuru's name.
-  const shownName = (raw: string) => (admin ? titleIfLower(strategyLabel(raw)) : (names?.[strategyKey(raw)]?.name ?? strategyLabel(raw)));
+  // What a strategy is called for this viewer: the admin sees InPlayGuru's name, or its short form (ADMIN_SHORT_NAMES).
+  const shownName = (raw: string) =>
+    admin ? (ADMIN_SHORT_NAMES[strategyKey(raw)] ?? titleIfLower(strategyLabel(raw))) : (names?.[strategyKey(raw)]?.name ?? strategyLabel(raw));
   return useMemo(
     () => ({
       name: shownName,
@@ -80,11 +101,14 @@ export function useStrategyNames() {
         const original = titleIfLower(strategyLabel(raw));
         return shown.toLowerCase() === original.toLowerCase() ? shown : `${shown} (${original})`;
       },
-      /** The two halves of `full`, for showing the original name smaller (null when it's the same name). */
+      /**
+       * The two halves of `full`, for showing the original name smaller (null when it's the same name). `short`: the
+       * admin's short form of it, which compact places show alone (the original goes in a tooltip instead).
+       */
       parts: (raw: string) => {
         const shown = shownName(raw);
         const original = titleIfLower(strategyLabel(raw));
-        return { name: shown, original: shown.toLowerCase() === original.toLowerCase() ? null : original };
+        return { name: shown, original: shown.toLowerCase() === original.toLowerCase() ? null : original, short: admin && strategyKey(raw) in ADMIN_SHORT_NAMES };
       },
       info: (raw: string) => names?.[strategyKey(raw)],
       /** The members' (coffee) name, for the admin's rename box. */

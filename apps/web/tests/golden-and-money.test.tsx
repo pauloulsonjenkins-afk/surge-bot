@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { gbp, signedPct, toneOf } from "@/lib/format";
 import { bestStatus, GoldenBadge, SegmentLabel, sliceName } from "@/components/ui/SegmentLabel";
 import { sliceHealth, sliceRowName, trendOf } from "@/components/admin/StrategyWeekly";
+import { ADMIN_SHORT_NAMES } from "@/queries/use-strategy-names";
 import { parseStake } from "@/components/admin/SegmentBetting";
 
 test("money: a true minus sign, a plus only when asked, never £-2.00", () => {
@@ -76,6 +77,12 @@ test("weekly trend: too few bets says so; turning up, slipping and steady by the
   assert.equal(trendOf(t(10, 5), t(20, -4)).label, "Turning up");
   assert.equal(trendOf(t(10, -5), t(20, 4)).label, "Slipping");
   assert.equal(trendOf(t(10, 5), t(20, 4)).label, "Steady +");
+});
+
+test("admin short names: all different, and short enough not to truncate on a phone", () => {
+  const shorts = Object.values(ADMIN_SHORT_NAMES);
+  assert.equal(new Set(shorts.map((s) => s.toLowerCase())).size, shorts.length, "no two alike");
+  for (const s of shorts) assert.ok(s.length <= 18, `${s} is too long`);
 });
 
 test("folded slices: green once a slice makes 0.1u a bet over 5+ bets, red once it's down; too few bets says nothing", () => {
