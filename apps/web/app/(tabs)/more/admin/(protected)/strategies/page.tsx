@@ -391,11 +391,7 @@ export default function StrategiesPage() {
                     {m === "live" ? "Live strategies" : "Simulation strategies"}{" "}
                     <span className="text-sm font-normal text-ink-muted">· {group.length}</span>
                   </h3>
-                  <p className="text-xs text-ink-muted">
-                    {m === "live"
-                      ? "New picks are bet with real money, at each strategy's stake."
-                      : "New picks are recorded and settled as if bet, but no money is placed. Switch one to Live with its Sim / Live switch."}
-                  </p>
+                  <p className="text-xs text-ink-muted">{m === "live" ? "Bet with real money." : "Recorded as if bet; no money placed."}</p>
                 </div>
                 {layout === "weekly" ? (
                   <StrategyWeekly
@@ -404,6 +400,8 @@ export default function StrategiesPage() {
                     modeOf={(label) => (label === "__all__" ? (view === "own" ? "all" : view) : view === "own" ? ownMode(byKey.get(label.toLowerCase())!).mode : view)}
                     renderCard={(key) => (byKey.has(key) ? renderCard(byKey.get(key)!) : null)}
                     showTotal={m === "sim"}
+                    // The "each row is its own mode" note once, on the first section shown, not repeated on both.
+                    showHelp={m === "live" || !strategies.some((r) => modeOf(r) === "live" && !isLayRow(r) && !isInactive(r))}
                     sliceLabels={Object.fromEntries(strategies.flatMap((x) => (x.returns?.segments ?? []).map((s) => [`${x.label.toLowerCase()}#${s.id}`, s.label])))}
                   />
                 ) : (

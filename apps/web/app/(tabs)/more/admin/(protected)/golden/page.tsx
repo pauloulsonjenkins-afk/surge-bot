@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import { useSending } from "@/queries/use-sending";
@@ -13,8 +14,18 @@ import { useGolden, useGoldenAction, type GoldenSlice, type GoldenSuggestion } f
 import type { StrategyReturn } from "@/server/engine-client";
 import { signedPct, toneOf, gbp, units as formatUnits } from "@/lib/format";
 
-const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
-const dayTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const day = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/London",
+  day: "numeric",
+  month: "short",
+});
+const dayTime = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/London",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 /** Buttons and links that act as buttons in a slice's row: 44px tall on a phone, the same look side by side. */
 const action = "inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium ring-1 ring-inset ring-line disabled:opacity-40";
 
@@ -41,7 +52,9 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
         <p className="mt-0.5 text-sm text-ink-muted">Nothing settled yet</p>
       ) : (
         <>
-          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${judged(r.roi, r.counted)}`}>{r.counted > 0 ? unitsText(r) : "–"}</p>
+          <p className={`mt-0.5 font-display text-lg font-bold tabular-nums [font-stretch:112%] ${judged(r.roi, r.counted)}`}>
+            {r.counted > 0 ? unitsText(r) : "–"}
+          </p>
           <p className="text-xs tabular-nums text-ink-muted">
             {r.counted > 0 && r.units !== undefined && `${signedPct(r.roi)} per £1 · `}
             {hits}–{r.settled - hits}
@@ -51,9 +64,9 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
           {/* Live and Sim apart, so a switch between them never changes what's shown above (that's both together). */}
           {split && (
             <p className="text-xs tabular-nums text-ink-muted">
-              Live{" "}
-              <span className={judged(split.live.roi, split.live.counted)}>{split.live.counted > 0 ? unitsText(split.live) : "–"}</span> ({split.live.counted}) · Sim{" "}
-              <span className={judged(split.sim.roi, split.sim.counted)}>{split.sim.counted > 0 ? unitsText(split.sim) : "–"}</span> ({split.sim.counted})
+              Live <span className={judged(split.live.roi, split.live.counted)}>{split.live.counted > 0 ? unitsText(split.live) : "–"}</span> (
+              {split.live.counted}) · Sim <span className={judged(split.sim.roi, split.sim.counted)}>{split.sim.counted > 0 ? unitsText(split.sim) : "–"}</span>{" "}
+              ({split.sim.counted})
             </p>
           )}
         </>
@@ -98,6 +111,14 @@ export default function GoldenPage() {
   const [search, setSearch] = useState("");
   const [resultFilter, setResultFilter] = useState<"all" | "profit" | "loss">("all");
   const [sortBy, setSortBy] = useState<"strategy" | "nextStage">("strategy");
+  // Slices opened to their full detail ("strategyKey#id"); all start as one compact row each.
+  const [openSlices, setOpenSlices] = useState<Set<string>>(() => new Set());
+  const toggleSlice = (key: string) =>
+    setOpenSlices((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   const candidateFrom = data?.candidateFrom ?? 50;
   const trialFrom = data?.trialFrom ?? 150;
   const fullFrom = data?.fullFrom ?? 300;
@@ -113,7 +134,11 @@ export default function GoldenPage() {
     if (ok) act.mutate({ action: "watch", strategyKey: g.strategyKey, rule: g.rule });
   };
   const stop = async (s: GoldenSlice) => {
-    const ok = await dialog.confirm({ title: `Stop watching ${sliceName(s.label)}?`, confirmLabel: "Stop watching", body: <p>Its record is kept in the strategy&apos;s figures; only this line goes.</p> });
+    const ok = await dialog.confirm({
+      title: `Stop watching ${sliceName(s.label)}?`,
+      confirmLabel: "Stop watching",
+      body: <p>Its record is kept in the strategy&apos;s figures; only this line goes.</p>,
+    });
     if (ok) act.mutate({ action: "unwatch", strategyKey: s.strategyKey, id: s.id });
   };
   const checked = data ? new Date(data.suggestions.at) : null;
@@ -132,83 +157,133 @@ export default function GoldenPage() {
     return true;
   });
 
+  /**
+   * One slice: a compact row (its name, its units against the rest of the strategy, its stage, whether it's bet Live
+   * or notifies) that opens to everything else on a tap. Each used to show it all at once, 500-600 px tall on a phone,
+   * 28 of them making a page about 16,800 px long (28 Oct 2026).
+   */
   const renderSlice = (s: GoldenSlice, showStrategy: boolean) => {
     const since = new Date(s.since);
+    const key = `${s.strategyKey}#${s.id}`;
+    const isOpen = openSlices.has(key);
+    const mine = s.slice.all;
     return (
-      <li key={`${s.strategyKey}#${s.id}`} className="space-y-2 py-3 text-sm">
-        {/* Badge and date first, so the slice's name gets the full width on a phone. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <GoldenBadge status={s.status} candidate={`Candidate · ${s.slice.all.counted} of ${trialFrom}`} trial={`Live trial suggested · ${s.slice.all.counted} of ${fullFrom}`} />
-          <span className="text-xs text-ink-muted">
-            {/* A slice set up ahead of time counts from midnight; until then, say so rather than "since" a date to come. */}
-            {since.getTime() > now ? "counted from" : "since"} {day.format(since)}
-          </span>
-          {/* Sorting by this elsewhere on the page, so it's worth showing even when you're not: a number beats having to read the daily review to find out. */}
-          {s.nextStage && (
-            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
-              {s.nextStage.picksAway} from {s.nextStage.name}
-            </span>
-          )}
-        </div>
-        {showStrategy && <p className="text-xs text-ink-muted">{s.strategy}</p>}
-        <p className="font-medium text-ink">{sliceName(s.label)}</p>
-        <div className="grid grid-cols-2 gap-2">
-          <Side r={s.slice.all} name="This part · Live + Sim" split={s.slice} />
-          <Side r={s.rest.all} name={`Rest of ${s.strategy}`} split={s.rest} />
-        </div>
-        {s.claudeNote && <ClaudeNote note={s.claudeNote.note} />}
-        {s.bet?.live && (
-          <p className="text-xs text-ink-muted">
-            Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
-            {s.ownLive && s.ownLive.n > 0 ? (
-              <span className="tabular-nums">
-                {s.ownLive.won}–{s.ownLive.n - s.ownLive.won} <span className={judged(s.ownLive.roi, s.ownLive.n)}>{s.ownLive.units !== undefined ? formatUnits(s.ownLive.units) : signedPct(s.ownLive.roi)}</span> on {s.ownLive.n} · {gbp(s.ownLive.profit)}
+      <li key={key} className="py-2.5 text-sm">
+        <button type="button" aria-expanded={isOpen} onClick={() => toggleSlice(key)} className="flex min-h-11 w-full items-start gap-2 text-left">
+          <span className="min-w-0 flex-1">
+            {showStrategy && <span className="block text-xs text-ink-muted">{s.strategy}</span>}
+            <span className="block font-medium text-ink">{sliceName(s.label)}</span>
+            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-ink-muted">
+              <GoldenBadge
+                status={s.status}
+                candidate={`Candidate · ${mine.counted} of ${trialFrom}`}
+                trial={`Live trial suggested · ${mine.counted} of ${fullFrom}`}
+              />
+              <span>
+                <span className={`font-semibold ${judged(mine.roi, mine.counted)}`}>{mine.counted > 0 ? unitsText(mine) : "–"}</span> ({mine.counted})
+                {s.rest.all.counted > 0 && (
+                  <>
+                    {" "}
+                    vs rest <span className={judged(s.rest.all.roi, s.rest.all.counted)}>{unitsText(s.rest.all)}</span>
+                  </>
+                )}
               </span>
-            ) : (
-              "none settled yet"
+              {s.bet?.live && <span className="rounded-full bg-accent/15 px-1.5 font-medium text-accent">Live</span>}
+              {s.notify && <span aria-label="Notifies you">🔔</span>}
+            </span>
+          </span>
+          <ChevronDown size={16} aria-hidden className={`mt-1 shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        </button>
+        {isOpen && (
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+              {/* A slice set up ahead of time counts from midnight; until then, say so rather than "since" a date to come. */}
+              <span>
+                {since.getTime() > now ? "Counted from" : "Watched since"} {day.format(since)}
+              </span>
+              {s.nextStage && (
+                <span className="rounded-full bg-accent/15 px-2 py-0.5 font-medium text-accent">
+                  {s.nextStage.picksAway} from {s.nextStage.name}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Side r={s.slice.all} name="This slice" split={s.slice} />
+              <Side r={s.rest.all} name="Rest of the strategy" split={s.rest} />
+            </div>
+            {s.claudeNote && <ClaudeNote note={s.claudeNote.note} />}
+            {s.bet?.live && (
+              <p className="text-xs text-ink-muted">
+                Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
+                {s.ownLive && s.ownLive.n > 0 ? (
+                  <span className="tabular-nums">
+                    {s.ownLive.won}–{s.ownLive.n - s.ownLive.won}{" "}
+                    <span className={judged(s.ownLive.roi, s.ownLive.n)}>
+                      {s.ownLive.units !== undefined ? formatUnits(s.ownLive.units) : signedPct(s.ownLive.roi)}
+                    </span>{" "}
+                    on {s.ownLive.n} · {gbp(s.ownLive.profit)}
+                  </span>
+                ) : (
+                  "none settled yet"
+                )}
+              </p>
             )}
-          </p>
+            {s.recent && s.recent.n > 0 && s.status !== "candidate" && s.status !== "quiet" && (
+              <p className="text-xs tabular-nums text-ink-muted">
+                Last {s.recent.n} picks: {s.recent.won}–{s.recent.n - s.recent.won}{" "}
+                <span className={judged(s.recent.roi, s.recent.n)}>{signedPct(s.recent.roi)}</span>
+              </p>
+            )}
+            {s.why && <p className="text-xs text-destructive">Not holding up: {s.why}.</p>}
+            <p className={`text-xs ${s.bet?.live ? "font-medium text-ink" : "text-ink-muted"}`}>{betText(s)}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-pressed={s.notify === true}
+                disabled={act.isPending}
+                onClick={() =>
+                  act.mutate({
+                    action: "notify",
+                    strategyKey: s.strategyKey,
+                    id: s.id,
+                    on: !s.notify,
+                  })
+                }
+                className={`${action} ${s.notify ? "gold-chip-outline font-semibold" : "text-ink"}`}
+              >
+                {s.notify ? "🔔 Notify me: on" : "Notify me: off"}
+              </button>
+              <button
+                type="button"
+                aria-expanded={betting === `${s.strategyKey}#${s.id}`}
+                onClick={() => setBetting(betting === `${s.strategyKey}#${s.id}` ? null : `${s.strategyKey}#${s.id}`)}
+                className={`${action} text-accent`}
+              >
+                Change betting
+              </button>
+              {s.custom && (
+                <button type="button" disabled={act.isPending} onClick={() => void stop(s)} className={`${action} text-ink-muted`}>
+                  Stop watching
+                </button>
+              )}
+            </div>
+            {/* The slice's own Live / Sim switch and stake, here rather than a trip to Strategies. */}
+            {betting === `${s.strategyKey}#${s.id}` &&
+              (sending.data ? (
+                <SegmentBetting
+                  strategyKey={s.strategyKey}
+                  strategyName={s.strategy}
+                  segment={{ id: s.id, label: s.label }}
+                  settings={sending.data.settings}
+                  strategyLive={s.strategyLive}
+                />
+              ) : sending.error ? (
+                <p className="text-xs text-destructive">Couldn&apos;t load the betting settings: {sending.error.message}</p>
+              ) : (
+                <Skeleton className="h-20 w-full" />
+              ))}
+          </div>
         )}
-        {s.recent && s.recent.n > 0 && s.status !== "candidate" && s.status !== "quiet" && (
-          <p className="text-xs tabular-nums text-ink-muted">
-            Last {s.recent.n} picks: {s.recent.won}–{s.recent.n - s.recent.won} <span className={judged(s.recent.roi, s.recent.n)}>{signedPct(s.recent.roi)}</span>
-          </p>
-        )}
-        {s.why && <p className="text-xs text-destructive">Not holding up: {s.why}.</p>}
-        <p className={`text-xs ${s.bet?.live ? "font-medium text-ink" : "text-ink-muted"}`}>{betText(s)}</p>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            aria-pressed={s.notify === true}
-            disabled={act.isPending}
-            onClick={() => act.mutate({ action: "notify", strategyKey: s.strategyKey, id: s.id, on: !s.notify })}
-            className={`${action} ${s.notify ? "gold-chip-outline font-semibold" : "text-ink"}`}
-          >
-            {s.notify ? "🔔 Notify me: on" : "Notify me: off"}
-          </button>
-          <button
-            type="button"
-            aria-expanded={betting === `${s.strategyKey}#${s.id}`}
-            onClick={() => setBetting(betting === `${s.strategyKey}#${s.id}` ? null : `${s.strategyKey}#${s.id}`)}
-            className={`${action} text-accent`}
-          >
-            Change betting
-          </button>
-          {s.custom && (
-            <button type="button" disabled={act.isPending} onClick={() => void stop(s)} className={`${action} text-ink-muted`}>
-              Stop watching
-            </button>
-          )}
-        </div>
-        {/* The slice's own Live / Sim switch and stake, here rather than a trip to Strategies. */}
-        {betting === `${s.strategyKey}#${s.id}` &&
-          (sending.data ? (
-            <SegmentBetting strategyKey={s.strategyKey} strategyName={s.strategy} segment={{ id: s.id, label: s.label }} settings={sending.data.settings} strategyLive={s.strategyLive} />
-          ) : sending.error ? (
-            <p className="text-xs text-destructive">Couldn&apos;t load the betting settings: {sending.error.message}</p>
-          ) : (
-            <Skeleton className="h-20 w-full" />
-          ))}
       </li>
     );
   };
@@ -234,22 +309,24 @@ export default function GoldenPage() {
         <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">How Golden works</summary>
         <div className="space-y-2 pb-3">
           <p>
-            Each slice is counted from the day it started being watched, on new matches only. Its bets are <b className="text-ink">part of its strategy&apos;s bets</b>, not
-            extra ones: the figures show that part against the rest of the same strategy, Live and Sim picks together.
+            Each slice is counted from the day it started being watched, on new matches only. Its bets are{" "}
+            <b className="text-ink">part of its strategy&apos;s bets</b>, not extra ones: the figures show that part against the rest of the same strategy, Live
+            and Sim picks together.
           </p>
           <p>
-            Watched quietly (no notification) until {candidateFrom} priced picks in profit make it a <b className="text-ink">candidate</b> (one notification). At{" "}
-            {trialFrom}+, still in profit in both halves of its record, a <b className="text-ink">small Live trial</b> is suggested — 1% stake, with a stop loss (one
-            notification). At {fullFrom}+, once that trial is itself in profit, <b className="text-gold">full stake</b> is suggested (one notification). Nothing is ever
-            switched Live or re-staked automatically — every suggestion is the admin&apos;s call.
+            Watched quietly (no notification) until {candidateFrom} priced picks in profit make it a <b className="text-ink">candidate</b> (one notification).
+            At {trialFrom}+, still in profit in both halves of its record, a <b className="text-ink">small Live trial</b> is suggested — 1% stake, with a stop
+            loss (one notification). At {fullFrom}+, once that trial is itself in profit, <b className="text-gold">full stake</b> is suggested (one
+            notification). Nothing is ever switched Live or re-staked automatically — every suggestion is the admin&apos;s call.
           </p>
           <p>
-            It has to keep earning its stage: if its last 30 picks lose more than 5% per £1, the stage goes at once (with a notification), and it only comes back after
-            30 more picks back in profit.
+            It has to keep earning its stage: if its last 30 picks lose more than 5% per £1, the stage goes at once (with a notification), and it only comes
+            back after 30 more picks back in profit.
           </p>
           <p>
-            Bet one on its own with its &ldquo;Change betting&rdquo; button below (or from its strategy&apos;s card on Strategies). Safety: a slice bet Live on its own goes back to Sim by itself, with a
-            notification, if it stops holding up or its own Live bets lose more than {worst}% per £1 over {minBets}+ bets.
+            Bet one on its own with its &ldquo;Change betting&rdquo; button below (or from its strategy&apos;s card on Strategies). Safety: a slice bet Live on
+            its own goes back to Sim by itself, with a notification, if it stops holding up or its own Live bets lose more than {worst}% per £1 over {minBets}+
+            bets.
           </p>
         </div>
       </details>
@@ -301,40 +378,49 @@ export default function GoldenPage() {
                 </div>
               </div>
             )}
+            {/* Folded to one line: it's set once and rarely changed, and it pushed every slice down a phone screen. */}
             {allMainSlices.length > 0 && (
-              <div className="mb-4 rounded-md bg-surface-2 p-3 text-xs text-ink-muted">
-                <p>
-                  <span className="font-medium text-ink">Alert notifications.</span> Switch &ldquo;Notify me&rdquo; on for a slice to get a notification on
-                  your phone the moment one of its alerts arrives: the match, the bet, the price and whether GoalBrew bets it. One per alert, even if
-                  it&apos;s in several slices. Each notification has a &ldquo;Mute these&rdquo; button.{" "}
-                  {allMainSlices.filter((s) => s.notify).length} switched on.
-                </p>
-                <button
-                  type="button"
-                  aria-pressed={data.notifyQuiet !== false}
-                  disabled={act.isPending}
-                  onClick={() => act.mutate({ action: "quiet", quiet: data.notifyQuiet === false })}
-                  className={`${action} mt-2 text-ink`}
-                >
-                  Quiet 23:00–07:00: {data.notifyQuiet === false ? "off" : "on"}
-                </button>
-                {/* A switch that couldn't be saved says so here, by the switches, not only at the foot of the page. */}
-                {act.error && <p className="mt-2 text-destructive">Couldn&apos;t save that: {act.error.message}</p>}
-              </div>
+              <details className="mb-3 rounded-md bg-surface-2 px-3 text-xs text-ink-muted">
+                <summary className="flex min-h-11 cursor-pointer items-center gap-1 font-medium text-ink">
+                  🔔 Alert notifications · {allMainSlices.filter((s) => s.notify).length} on · quiet 23:00–07:00 {data.notifyQuiet === false ? "off" : "on"}
+                </summary>
+                <div className="pb-3">
+                  <p>
+                    Switch &ldquo;Notify me&rdquo; on for a slice (open it below) to get a notification the moment one of its alerts arrives: the match, the
+                    bet, the price and whether GoalBrew bets it. One per alert, even if it&apos;s in several slices. Each has a &ldquo;Mute these&rdquo; button.
+                  </p>
+                  <button
+                    type="button"
+                    aria-pressed={data.notifyQuiet !== false}
+                    disabled={act.isPending}
+                    onClick={() =>
+                      act.mutate({
+                        action: "quiet",
+                        quiet: data.notifyQuiet === false,
+                      })
+                    }
+                    className={`${action} mt-2 text-ink`}
+                  >
+                    Quiet 23:00–07:00: {data.notifyQuiet === false ? "off" : "on"}
+                  </button>
+                </div>
+              </details>
             )}
+            {/* A switch that couldn't be saved says so here, near the switches, not only at the foot of the page. */}
+            {act.error && <p className="mb-3 text-xs text-destructive">Couldn&apos;t save that: {act.error.message}</p>}
             {mainSlices.length === 0 ? (
               <p className="text-sm text-ink-muted">{allMainSlices.length === 0 ? "Nothing is being watched yet." : "Nothing matches that filter."}</p>
             ) : sortBy === "nextStage" ? (
               <ul className="divide-y divide-line">
-                {[...mainSlices]
-                  .sort((a, b) => (a.nextStage?.picksAway ?? Infinity) - (b.nextStage?.picksAway ?? Infinity))
-                  .map((s) => renderSlice(s, true))}
+                {[...mainSlices].sort((a, b) => (a.nextStage?.picksAway ?? Infinity) - (b.nextStage?.picksAway ?? Infinity)).map((s) => renderSlice(s, true))}
               </ul>
             ) : (
               <div className="space-y-5">
                 {byStrategy(mainSlices).map((g) => (
                   <section key={g.strategy}>
-                    <h3 className="text-sm font-semibold text-ink">{g.strategy}</h3>
+                    <h3 className="text-sm font-semibold text-ink">
+                      {g.strategy} <span className="font-normal text-ink-muted">· {g.slices.length}</span>
+                    </h3>
                     <ul className="mt-1 divide-y divide-line">{g.slices.map((s) => renderSlice(s, false))}</ul>
                   </section>
                 ))}
@@ -344,13 +430,11 @@ export default function GoldenPage() {
 
           {quietSlices.length > 0 && (
             <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm">
-              <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">
-                Watched quietly by the finder ({quietSlices.length})
-              </summary>
+              <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">Watched quietly by the finder ({quietSlices.length})</summary>
               <div className="space-y-1 pb-3">
                 <p className="text-xs text-ink-muted">
-                  New ideas the finder found itself, counted from the day found. No notifications yet: once one reaches {candidateFrom} priced picks in
-                  profit, you&apos;ll be told it&apos;s a candidate.
+                  New ideas the finder found itself, counted from the day found. No notifications yet: once one reaches {candidateFrom} priced picks in profit,
+                  you&apos;ll be told it&apos;s a candidate.
                 </p>
                 <ul className="divide-y divide-line">
                   {quietSlices.map((s) => (
@@ -390,7 +474,8 @@ export default function GoldenPage() {
                         <span className={judged(g.rest.roi, g.rest.n)}>{signedPct(g.rest.roi)}</span> over {g.rest.n}
                       </span>
                       <span className="block text-xs tabular-nums text-ink-muted">
-                        Older half {signedPct(g.halves[0]?.slice)} vs {signedPct(g.halves[0]?.rest)} · newer half {signedPct(g.halves[1]?.slice)} vs {signedPct(g.halves[1]?.rest)}
+                        Older half {signedPct(g.halves[0]?.slice)} vs {signedPct(g.halves[0]?.rest)} · newer half {signedPct(g.halves[1]?.slice)} vs{" "}
+                        {signedPct(g.halves[1]?.rest)}
                       </span>
                     </span>
                     <button type="button" disabled={act.isPending} onClick={() => void watch(g)} className={`${action} shrink-0 text-ink`}>

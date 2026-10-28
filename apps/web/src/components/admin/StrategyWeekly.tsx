@@ -126,8 +126,11 @@ export function StrategyWeekly({
   modeOf,
   renderCard,
   showTotal = false,
+  showHelp = true,
   sliceLabels,
 }: {
+  /** The short "each row is its own mode's bets" note above the grid. */
+  showHelp?: boolean;
   /** "strategy#slice" -> its label, for the slice rows. */
   sliceLabels?: Record<string, string>;
   rows: Array<{ label: string }>;
@@ -173,7 +176,8 @@ export function StrategyWeekly({
         <button type="button" disabled={total || slice} aria-expanded={total || slice ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`} style={cols}>
           <span className={`${sticky} flex min-w-0 items-center gap-1 self-stretch text-sm ${total ? "font-semibold" : "font-medium"} text-ink`}>
             <span className="min-w-0">
-              <span className="block truncate">{name}</span>
+              {/* Up to two lines, not cut short: "Fav Pressure Le…" on a phone hid which strategy it was. */}
+              <span className="line-clamp-2 break-words leading-tight">{name}</span>
               {disagrees && otherLast7 && (
                 <span className={`block truncate text-xs font-normal ${unitsOf(otherLast7) > 0 ? "text-hit" : "text-loss"}`} title={`Its ${other === "live" ? "Live" : "Sim"} bets in the last 7 days, a separate record from the figures on this row`}>
                   {other === "live" ? "Live" : "Sim"} {units(otherLast7)} ({otherLast7.counted})
@@ -234,7 +238,7 @@ export function StrategyWeekly({
   return (
     <div className="overflow-x-auto">
       <div className="sticky left-0 mb-1 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xs text-ink-muted">Each row is its own mode&apos;s bets: Live for a Live strategy, Sim for a Sim one. A different-coloured line under a name is its other record.</p>
+        {showHelp && <p className="text-xs text-ink-muted">Each row shows its own mode&apos;s bets. A coloured line under a name is its other record.</p>}
         {withSlices.length > 0 && (
           <button type="button" onClick={() => setSlicesOpen(withSlices, !allOpen)} className="shrink-0 text-xs text-ink-muted underline">
             {allOpen ? "Fold all slices" : "Show all slices"}

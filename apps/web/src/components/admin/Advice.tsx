@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { ClashSummary } from "@/components/admin/ClashSummary";
+import { ClampedText } from "@/components/ui/ClampedText";
 
 /**
  * Strategy suggestions (strategy-advice.ts in the engine): shown on Today and on Strategies, each with its own Apply.
@@ -78,7 +79,8 @@ export function AdviceRow({ a, name, link = true }: { a: StrategyAdvice; name: s
           <span className="font-medium text-ink">{name}</span>
         )}{" "}
         <span className={good ? "text-hit" : "text-warn"}>{ADVICE_LABEL[a.kind]}</span>
-        <span className="block text-xs text-ink-muted">{a.reason}</span>
+        {/* Two lines, the rest a tap away: on a phone a long reason pushed everything else down a screen. */}
+        <ClampedText text={a.reason} lines={2} className="block text-xs text-ink-muted" />
       </span>
       <ApplyAdvice a={a} name={name} />
     </li>
