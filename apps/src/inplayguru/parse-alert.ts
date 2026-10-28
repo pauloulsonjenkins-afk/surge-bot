@@ -107,7 +107,15 @@ export interface ParsedAlert {
   };
 
   matched: number | null;
+  /** The overall %, same as before this field split out: "Strike Rate: 78% overall (1,204 picks) · 71% league (96 picks)". */
   strikeRate: number | null;
+  /** How many picks the overall % above is over, when the alert gives it. Null for an older alert with no count. */
+  strikeRatePicks: number | null;
+  /** InPlayGuru's own strike rate for this strategy IN THIS LEAGUE specifically, and its sample - a second, independent
+   * figure from GoalBrew's own thisStrategyInThisLeague (claude-check.ts), calculated across InPlayGuru's whole user
+   * base rather than just this account's settled bets. Null when the alert doesn't carry one (most do). */
+  strikeRateLeague: number | null;
+  strikeRateLeaguePicks: number | null;
   freePick: { n: number; of: number } | null;
 
   htScore: string | null;
@@ -423,8 +431,13 @@ export function parseAlert(text: string): ParsedAlert {
   // ---- footer facts ----
   const matchedM = text.match(/Matched:\s*£\s*([\d,]+(?:\.\d+)?)/i);
   const matched = num(matchedM?.[1]);
-  const strikeM = text.match(/Strike Rate:\s*(\d+(?:\.\d+)?)\s*%/i);
-  const strikeRate = num(strikeM?.[1]);
+  // "Strike Rate: 78% overall (1,204 picks) · 71% league (96 picks)" - the league half is optional (an older alert,
+  // or a league InPlayGuru has too little data on yet, may give the overall figure alone).
+  const strikeM = text.match(/Strike Rate:\s*(\d+(?:\.\d+)?)\s*%\s*overall\s*\(([\d,]+)\s*picks?\)(?:\s*[·•]\s*(\d+(?:\.\d+)?)\s*%\s*league\s*\(([\d,]+)\s*picks?\))?/i);
+  const strikeRate = num(strikeM?.[1]) ?? num(text.match(/Strike Rate:\s*(\d+(?:\.\d+)?)\s*%/i)?.[1]);
+  const strikeRatePicks = strikeM?.[2] ? Number(strikeM[2].replace(/,/g, "")) : null;
+  const strikeRateLeague = strikeM?.[3] ? num(strikeM[3]) : null;
+  const strikeRateLeaguePicks = strikeM?.[4] ? Number(strikeM[4].replace(/,/g, "")) : null;
   const freeM = text.match(/Free pick\s+(\d+)\s+of\s+(\d+)/i);
   const freePick = freeM?.[1] && freeM[2] ? { n: Number(freeM[1]), of: Number(freeM[2]) } : null;
 
@@ -664,6 +677,9 @@ export function parseAlert(text: string): ParsedAlert {
     odds,
     matched,
     strikeRate,
+    strikeRatePicks,
+    strikeRateLeague,
+    strikeRateLeaguePicks,
     freePick,
     htScore,
     ftScore,

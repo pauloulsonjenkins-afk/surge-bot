@@ -53,6 +53,10 @@ const SYSTEM_PROMPT = [
   "thisStrategyInThisLeague, when given, is this strategy's OWN settled record in this one league specifically (not",
   "the country's general stats) - a real weak or strong spot worth naming plainly when it disagrees with the alert.",
   "Null means too few picks there yet to mean anything, not that the league is fine - say nothing about it then.",
+  "alertStrikeRate and alertStrikeRateInThisLeague are InPlayGuru's OWN live strike rate for this strategy (overall,",
+  "and in this league) - a second, independent figure from thisStrategyInThisLeague, since it comes from InPlayGuru's",
+  "whole user base rather than just this account's settled bets. The two agreeing is stronger evidence than either",
+  "alone; the two disagreeing is worth a cautious note. Ignore a figure with too small a sample to mean much.",
   "goldenSlicesThisAlertIsIn, when given, is this alert's Golden slices (golden.ts) with their actual status and",
   "record - a slice already proved at full stake over hundreds of picks is real evidence; an unproven 'candidate' or",
   "'quiet' one with a handful of picks is not, whatever its name suggests. Weigh them accordingly, not just by name.",
@@ -228,7 +232,12 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
     stats: d?.stats ?? {},
     odds: d?.odds ?? null,
     alertMatchedVolume: d?.matched ?? null,
+    // InPlayGuru's own strike rate for this strategy, overall and in this league specifically - a second, independent
+    // figure from thisStrategyInThisLeague below (InPlayGuru's whole user base, not just this account's own bets).
     alertStrikeRate: d?.strikeRate ?? null,
+    alertStrikeRatePicks: d?.strikeRatePicks ?? null,
+    alertStrikeRateInThisLeague: d?.strikeRateLeague ?? null,
+    alertStrikeRateInThisLeaguePicks: d?.strikeRateLeaguePicks ?? null,
     competition: pick.competition,
     country: d?.country ?? null,
     strategyRecentForm: form ? { settledPicks: form.all.settled, roi: form.all.roi, currentStreak: form.streak } : null,

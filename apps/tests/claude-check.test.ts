@@ -150,6 +150,20 @@ test("buildAlertContext gives the strategy's own record in this one league, but 
   assert.equal(otherLeague.thisStrategyInThisLeague, null, "only one pick in this league so far");
 });
 
+test("buildAlertContext carries InPlayGuru's own strike rate, overall and in this league", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const text = [
+    "🔔 Blistering Momentum", "", "🇫🇷 France Ligue 1", "Home vs Away", "", "Timer: 60'", "Goals: 1 - 0", "Over/Under 1.50 Odds:", "1.80 2.00", "",
+    "🎯 Strike Rate: 78% overall (1,204 picks) · 71% league (96 picks)",
+  ].join("\n");
+  db.upsertLivePick("chat", 1, text, parseAlert(text), new Date().toISOString());
+  const context = buildAlertContext(db, db.getLivePickByMessage("chat", 1)!, new Date());
+  assert.equal(context.alertStrikeRate, 78);
+  assert.equal(context.alertStrikeRatePicks, 1204);
+  assert.equal(context.alertStrikeRateInThisLeague, 71);
+  assert.equal(context.alertStrikeRateInThisLeaguePicks, 96);
+});
+
 test("the last per-alert check failure is remembered for the admin page, and cleared once one succeeds", () => {
   const db = new EngineDb(":memory:", () => {});
   assert.equal(lastCheckFailure(db), null, "nothing yet");
