@@ -176,8 +176,9 @@ export function StrategyWeekly({
         <button type="button" disabled={total || slice} aria-expanded={total || slice ? undefined : isOpen} onClick={() => setOpen(isOpen ? null : key)} className={`${grid} w-full py-1 text-left disabled:cursor-default`} style={cols}>
           <span className={`${sticky} flex min-w-0 items-center gap-1 self-stretch text-sm ${total ? "font-semibold" : "font-medium"} text-ink`}>
             <span className="min-w-0">
-              {/* Up to two lines, not cut short: "Fav Pressure Le…" on a phone hid which strategy it was. */}
-              <span className="line-clamp-2 break-words leading-tight">{name}</span>
+              {/* Never cut short ("Fav Pressure Le…", "of which favourit…" hid what the row was): a strategy's name up to
+                  two lines, a slice's in full however many lines it takes. */}
+              <span className={`break-words leading-tight ${slice ? "" : "line-clamp-2"}`}>{name}</span>
               {disagrees && otherLast7 && (
                 <span className={`block truncate text-xs font-normal ${unitsOf(otherLast7) > 0 ? "text-hit" : "text-loss"}`} title={`Its ${other === "live" ? "Live" : "Sim"} bets in the last 7 days, a separate record from the figures on this row`}>
                   {other === "live" ? "Live" : "Sim"} {units(otherLast7)} ({otherLast7.counted})
@@ -273,9 +274,9 @@ export function StrategyWeekly({
                     const h = sliceHealth(data.strategies[k]?.last7[mode] ?? { picks: 0, won: 0, lost: 0, counted: 0, staked: 0, profit: 0 });
                     return line(
                       k,
-                      <span className="pl-3 text-xs text-ink-muted">
+                      <span className="block pl-2 text-xs font-normal text-ink">
                         {h && <span aria-label={h === "good" ? "doing very well" : "losing"} className={`mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle ${h === "good" ? "bg-hit" : "bg-loss"}`} />}
-                        ↳ of which <SegmentLabel label={sliceRowName(k, sliceLabels)} status={sliceStatus(key, k.split("#")[1]!)} />
+                        ↳ <SegmentLabel label={sliceRowName(k, sliceLabels)} status={sliceStatus(key, k.split("#")[1]!)} />
                       </span>,
                       mode,
                       false,
