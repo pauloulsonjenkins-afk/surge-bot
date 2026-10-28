@@ -169,6 +169,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
   const names = useStrategyNames();
   const bankAge = d.bank.at ? Date.parse(d.at) - Date.parse(d.bank.at) : null;
   const tg = d.alerts.telegram;
+  const volume = d.alerts.volume;
   // Devices that get GoalBrew's notifications. On 20 Oct 2026 there were none, so "Telegram alerts have stopped",
   // the daily results and every safety notice reached nobody (a 14-hour outage went unnoticed overnight).
   const push = useQuery({ queryKey: ["push"], queryFn: ({ signal }) => getJson<{ devices: unknown[] }>("/api/admin/push", "notification settings", signal), staleTime: 5 * 60_000 });
@@ -178,6 +179,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
     (bankAge !== null && bankAge > 30 * 60_000) ||
     d.limits.matchCap === 0 ||
     !tg.ok ||
+    !!volume?.low ||
     (d.queue.sentToday >= 5 && d.queue.notPlacedToday / d.queue.sentToday > 0.3) ||
     !!d.betting.betfair.lastError;
   return (
@@ -201,6 +203,11 @@ function Tiles({ d }: { d: TodaySnapshot }) {
       {!tg.ok && (
         <p className="rounded-xl border border-warn/60 bg-warn/10 p-3 text-sm text-ink">
           <strong>Alerts may not be arriving.</strong> {tg.problems.join(" ")}
+        </p>
+      )}
+      {tg.ok && volume?.low && (
+        <p className="rounded-xl border border-warn/60 bg-warn/10 p-3 text-sm text-ink">
+          <strong>Alerts have gone quiet.</strong> Only {volume.lastHour} in the last hour, against a usual {volume.typical} for this time of day. Telegram&apos;s connection looks fine, so this is likely InPlayGuru itself, not GoalBrew.
         </p>
       )}
 
@@ -257,7 +264,12 @@ function Tiles({ d }: { d: TodaySnapshot }) {
             </Link>
           )}
         </Tile>
-        <Tile label="Alerts" value={`${d.alerts.lastHour} in the last hour`} sub={`last ${ago(tg.lastAlertAt)} · Telegram ${tg.ok ? "OK" : "problem"}`} warn={!tg.ok} />
+        <Tile
+          label="Alerts"
+          value={`${d.alerts.lastHour} in the last hour`}
+          sub={`last ${ago(tg.lastAlertAt)} · Telegram ${tg.ok ? "OK" : "problem"}${volume?.low ? ` · usually ${volume.typical} by now` : ""}`}
+          warn={!tg.ok || !!volume?.low}
+        />
         <Tile
           label="Bets in progress"
           value={`${d.queue.waiting + d.queue.placing} waiting`}

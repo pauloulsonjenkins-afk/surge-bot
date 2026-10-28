@@ -1713,7 +1713,7 @@ export interface TodaySnapshot {
   limits: { dailyLossLimit: number; lossStop: string | null; matchCap: number; dailyCap: number; maxStake: number };
   today: { liveNet: number; liveSettled: number; simNet: number; simSettled: number };
   exposure: { openStake: number; biggestMatch: { match: string; stake: number } | null };
-  alerts: { lastHour: number; telegram: { ok: boolean; problems: string[]; lastAlertAt: string | null } };
+  alerts: { lastHour: number; volume: { lastHour: number; typical: number; low: boolean } | null; telegram: { ok: boolean; problems: string[]; lastAlertAt: string | null } };
   queue: { waiting: number; placing: number; notPlacedToday: number; sentToday: number };
   stopped: Array<{ strategy: string; reason: string | null }>;
   speed: { today: SpeedReport; week: SpeedReport };
