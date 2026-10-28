@@ -13,12 +13,15 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import type { EngineDb, LivePick } from "../storage/engine-db";
-import { pickFacts, pickSegments, strategyLabel } from "../inplayguru/bet-feed";
+import { alertOddsOfPick, pickFacts, pickSegments, strategyLabel } from "../inplayguru/bet-feed";
 import { layGroups } from "../inplayguru/lay-groups";
+import { clashOf, exposureOf } from "../inplayguru/clash";
 import { computeStrategyForm } from "./winloss";
 import { historyMatches, leagueProfiles, tablePositions } from "../history/football-data";
 import { edgeCard } from "../edge/edge";
 import { describeTrackRecord, trackRecord } from "./claude-track-record";
+import { goldenReport } from "./golden";
+import { cachedReport } from "./report-cache";
 import { log } from "./log";
 
 /** Cheap by design (see docs/claude-in-goalbrew.md § 3): a bounded classification call, not a chat. */
@@ -38,6 +41,14 @@ const SYSTEM_PROMPT = [
   "the same way or the opposite way to the alert (e.g. a team near the bottom pressing hard is weaker evidence than",
   "the same pressure from a team near the top). Both are null for most leagues (data only covers the main European",
   "leagues) - when null, judge from the in-play stats alone and don't speculate about either team's history.",
+  "marketPriceMovementSinceAlert, when given, says whether Betfair's price has shortened or drifted since the alert's",
+  "own quote - an independent read, since the market reacts to things a stats line can't carry. Weigh it alongside",
+  "the stats; a big drift against the alert is worth noting even if the in-play numbers look fine.",
+  "contradictingAlertsOnThisMatch, when given, lists other alerts on the SAME match in the last 30 minutes whose bet",
+  "points the opposite way or partly disagrees. A recent contradiction is a real reason for caution, not noise.",
+  "goldenSlicesThisAlertIsIn, when given, is this alert's Golden slices (golden.ts) with their actual status and",
+  "record - a slice already proved at full stake over hundreds of picks is real evidence; an unproven 'candidate' or",
+  "'quiet' one with a handful of picks is not, whatever its name suggests. Weigh them accordingly, not just by name.",
   "yourPastVerdictsOnSettledAlerts, when given, is how your own earlier verdicts actually turned out once those picks",
   "settled. Use it to calibrate. If it says the verdicts aren't telling winners from losers (or have pointed the wrong",
   "way), your usual reasoning isn't predicting results yet: answer in_line unless this alert's evidence is clear, and",
@@ -114,6 +125,61 @@ function tablePositionsFor(pick: LivePick, now: Date): { home: string | null; aw
 }
 
 /**
+ * How Betfair's price has moved since the alert's own quoted price: a second, independent read on this alert,
+ * since the market reacts to everything (injuries, cards, context) a stats line can't carry. Null until Betfair's
+ * price has actually been checked for this pick.
+ */
+function priceMovementFor(pick: LivePick): string | null {
+  const alertOdds = alertOddsOfPick(pick);
+  const nowOdds = pick.exchangeOdds;
+  if (alertOdds === null || nowOdds === null || alertOdds <= 1) return null;
+  const pctChange = Math.round(((nowOdds - alertOdds) / alertOdds) * 1000) / 10;
+  if (Math.abs(pctChange) < 1) return `Betfair's price (${nowOdds.toFixed(2)}) is about the same as the alert's own quote (${alertOdds.toFixed(2)}): the market broadly agrees with the alert.`;
+  return pctChange < 0
+    ? `Betfair's price has shortened from ${alertOdds.toFixed(2)} to ${nowOdds.toFixed(2)} (${pctChange}%) since the alert: the market now favours this more than the alert's own price did.`
+    : `Betfair's price has drifted from ${alertOdds.toFixed(2)} to ${nowOdds.toFixed(2)} (+${pctChange}%) since the alert: the market favours this less than the alert's own price did.`;
+}
+
+/**
+ * Other alerts on the SAME match, in the last 30 minutes, whose bet cancels or partly disagrees with this one
+ * (clash.ts's own logic, already used to keep a LAY from being made against a Live back bet). A human glancing at
+ * Live would notice "wait, didn't it just say the opposite ten minutes ago" - Claude otherwise only ever sees one
+ * alert at a time.
+ */
+function contradictingAlertsFor(db: EngineDb, pick: LivePick, now: Date): string[] | null {
+  if (!pick.home || !pick.away) return null;
+  const mine = exposureOf(pick);
+  if (!mine) return null;
+  const since = new Date(now.getTime() - 30 * 60_000).toISOString();
+  const matchOf = (p: LivePick) => `${(p.home ?? "").toLowerCase()}|${(p.away ?? "").toLowerCase()}`;
+  const mineMatch = matchOf(pick);
+  const out: string[] = [];
+  for (const p of db.listLivePicks(200, { from: since, to: now.toISOString() })) {
+    if (p.id === pick.id || matchOf(p) !== mineMatch) continue;
+    const kind = clashOf(mine, exposureOf(p));
+    if (kind !== "cancels" && kind !== "offsets") continue;
+    const minsAgo = Math.round((now.getTime() - Date.parse(p.messageAt ?? p.firstSeenAt)) / 60_000);
+    out.push(`${strategyLabel(p.strategy)}'s "${p.detail?.selection ?? p.selection ?? p.market}" alert ${minsAgo} min ago ${kind === "cancels" ? "pointed the opposite way" : "partly disagreed"}.`);
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * Golden slices (golden.ts) this alert sits in, with their actual status and record - not just the name, which
+ * reads the same whether a slice is proven at full stake or still an unproven candidate. Reuses the same cached
+ * report the Golden page itself reads (cachedReport's "golden" key), so this rarely costs a fresh computation.
+ */
+function goldenSlicesFor(db: EngineDb, pick: LivePick, now: Date): Array<{ label: string; status: string; sinceStartRoi: number | null; counted: number }> | null {
+  const segs = pickSegments(pick);
+  if (segs.length === 0) return null;
+  const ids = new Set(segs.map((s) => s.id));
+  const strategyKey = strategyLabel(pick.strategy).toLowerCase();
+  const report = cachedReport(db, "golden", () => goldenReport(db, now) as unknown as Record<string, unknown>, now.getTime()) as unknown as ReturnType<typeof goldenReport>;
+  const mine = report.slices.filter((s) => s.strategyKey === strategyKey && ids.has(s.id));
+  return mine.length > 0 ? mine.map((s) => ({ label: s.label, status: s.status, sinceStartRoi: s.slice.all.roi, counted: s.slice.all.counted })) : null;
+}
+
+/**
  * The context sent to Claude: the alert itself, plus what the engine already knows around it. Exported so
  * claude-ask.ts (phase 4, "ask about this pick") can reuse exactly the same context-assembly.
  */
@@ -135,8 +201,10 @@ export function buildAlertContext(db: EngineDb, pick: LivePick, now = new Date()
     competition: pick.competition,
     country: d?.country ?? null,
     strategyRecentForm: form ? { settledPicks: form.all.settled, roi: form.all.roi, currentStreak: form.streak } : null,
-    goldenSlicesThisAlertIsIn: pickSegments(pick).map((s) => s.label),
+    goldenSlicesThisAlertIsIn: goldenSlicesFor(db, pick, now),
     knownLosingPatternsThisAlertMatches: lays.map((g) => g.why),
+    marketPriceMovementSinceAlert: priceMovementFor(pick),
+    contradictingAlertsOnThisMatch: contradictingAlertsFor(db, pick, now),
     leagueHistoricProfile: leagueProfileFor(d?.country ?? null),
     // Recent form and head-to-head for the two teams (null for a league with no football-data.co.uk file on it -
     // most of what InPlayGuru sends - which is expected, not missing data to guess around).
