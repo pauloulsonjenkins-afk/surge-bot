@@ -35,6 +35,7 @@ import { startGoalTimes } from "../fixtures/goal-times";
 import { logHorseResults } from "./horse-results";
 import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
 import { notifyBetResults } from "./bet-result-notify";
+import { maybeSendDripReport } from "./drip-shadow-report";
 import { monitorLayBadges } from "./lay-badges";
 
 async function main(): Promise<void> {
@@ -208,6 +209,10 @@ async function main(): Promise<void> {
   // A notification when a bet with real money on it settles (a Betfair bet, or one placed by hand): won or lost, and how much.
   const betResults = setInterval(() => void notifyBetResults(db).catch((err) => log.warn(`Bet result notifications failed: ${err instanceof Error ? err.message : String(err)}`)), 60_000);
   betResults.unref();
+
+  // The drip shadow test's one report, on 15 Nov 2026 (server/drip-shadow-report.ts).
+  const dripReport = setInterval(() => void maybeSendDripReport(db).catch((err) => log.warn(`Drip shadow report failed: ${err instanceof Error ? err.message : String(err)}`)), 10 * 60_000);
+  dripReport.unref();
 
   // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
   startDailySummary(db);

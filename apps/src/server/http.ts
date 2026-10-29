@@ -120,6 +120,7 @@ import { claudeBadgeVisible, claudeHideInLine, computeClaudeVerdictCheck, setCla
 import { setClaudeCheckPaused } from "./claude-check";
 import { similarAlertsFor } from "./similar-alerts";
 import { computeByMethod } from "./by-method";
+import { computeDripReport } from "./drip-shadow-report";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -1227,6 +1228,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (path === "/internal/by-method" && req.method === "GET") {
       if (!requireAdmin(req, res)) return;
       send(res, 200, { ...cachedReport(db, `by-method:${ukDateOf(new Date())}`, () => ({ ...computeByMethod(db), at: new Date().toISOString() })) });
+      return;
+    }
+
+    // The drip shadow test's report (drip-shadow-report.ts): what staggered back orders would have done. Admin only, information only.
+    if (path === "/internal/drip-shadow" && req.method === "GET") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, { ...computeDripReport(db) });
       return;
     }
 

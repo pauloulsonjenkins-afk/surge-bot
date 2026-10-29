@@ -30,6 +30,7 @@ import { betableUntil, exchangeNamer, feedMarket, getSendingSettings, strategyLa
 import { log } from "../server/log";
 import { notifyUnplaced, UNPLACED_AFTER_MS } from "./unplaced";
 import { runPriceChecks } from "./price-check";
+import { runDripShadow } from "./drip-shadow";
 import { learnName, nameToLearn, notifyLearned } from "./name-learning";
 
 const LOGIN_URL = "https://identitysso-cert.betfair.com/api/certlogin";
@@ -355,6 +356,19 @@ export class BetfairReader {
     const r = books[0]?.runners?.find((x) => x.selectionId === selectionId);
     const price = (side === "lay" ? r?.ex?.availableToLay?.[0]?.price : r?.ex?.availableToBack?.[0]?.price) ?? r?.lastPriceTraded ?? null;
     return price !== null && price > 1 ? price : null;
+  }
+
+  /** Both best prices of one selection and the market's and selection's status (read only; the drip shadow test records these). */
+  async quote(marketId: string, selectionId: number): Promise<{ marketStatus: string | null; runnerStatus: string | null; back: number | null; lay: number | null }> {
+    const books = await this.call<Array<{ status?: string; runners?: Array<{ selectionId: number; status?: string; ex?: { availableToBack?: Array<{ price: number }>; availableToLay?: Array<{ price: number }> } }> }>>(
+      "listMarketBook",
+      { marketIds: [marketId], priceProjection: { priceData: ["EX_BEST_OFFERS"] } },
+    );
+    const book = books[0];
+    const r = book?.runners?.find((x) => x.selectionId === selectionId);
+    const back = r?.ex?.availableToBack?.[0]?.price;
+    const lay = r?.ex?.availableToLay?.[0]?.price;
+    return { marketStatus: book?.status ?? null, runnerStatus: r?.status ?? null, back: typeof back === "number" && back > 1 ? back : null, lay: typeof lay === "number" && lay > 1 ? lay : null };
   }
 
   /** Every bet placed or settled in the last day (or `lookbackMs`), in the stored shape. */
@@ -861,6 +875,8 @@ export function startBetfairPoller(db: EngineDb): () => void {
       if (repriced > 0) onReady?.();
       // And read the price of recent picks' bets again a few minutes later (Strategies: price check).
       await runPriceChecks(db, reader).catch((err: unknown) => log.warn(`Price check failed: ${err instanceof Error ? err.message : String(err)}`));
+      // And, silently, the price paths of the four half-time strategies for the drip shadow test (betfair/drip-shadow.ts).
+      await runDripShadow(db, reader).catch((err: unknown) => log.warn(`Drip shadow failed: ${err instanceof Error ? err.message : String(err)}`));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Log a new problem once, not every 45 seconds.

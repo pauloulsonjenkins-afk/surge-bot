@@ -2120,3 +2120,8 @@ export interface ByMethodReport {
 export function fetchByMethod(): Promise<ByMethodReport> {
   return engineCall<ByMethodReport>("/internal/by-method", "the by-hand comparison");
 }
+
+/** The drip shadow test's report (engine drip-shadow-report.ts): admin only, no page uses it. */
+export function fetchDripShadow(): Promise<{ headline: string; text: string; recorded: number; settled: number }> {
+  return engineCall<{ headline: string; text: string; recorded: number; settled: number }>("/internal/drip-shadow", "the drip test report");
+}
