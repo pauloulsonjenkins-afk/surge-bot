@@ -11,12 +11,15 @@
  * - The first pass only notes what has already settled, so switching this on sends nothing old.
  * - Quiet hours, 23:00 to 07:00 UK, hold them back (nothing is marked done): they come with the first pass after 07:00,
  *   as one summary when there are more than a few.
+ * - A busy day (more than BUSY_AFTER bets told, or waiting, within an hour - a Saturday) switches to HOURLY: results are
+ *   held and sent as one summary at most once an hour, with today's running total, instead of a buzz per bet.
  * - Information only. Nothing here changes a bet or a setting.
  */
 import type { EngineDb } from "../storage/engine-db";
 import { displayName } from "../inplayguru/strategy-names";
 import { pricingInputs } from "./winloss";
 import { isQuietHour } from "./golden-notify";
+import { accountToday } from "../inplayguru/stop-loss";
 import { sendPush } from "./push";
 import { log } from "./log";
 
@@ -25,26 +28,39 @@ const STATE_KEY = "bet_result_notified";
 const WINDOW_MS = 72 * 3_600_000;
 /** More new results than this in one pass come as one summary rather than one notification each. */
 const MAX_SEPARATE = 3;
+/** More bets than this told or waiting within an hour makes it a busy day: from then on, one summary an hour. */
+const BUSY_AFTER = 3;
+const HOUR_MS = 3_600_000;
 /** How many bets are remembered as told. */
 const KEEP = 600;
 
 type Told = Record<string, "hit" | "miss">;
-let lastVersion = -1;
+interface State {
+  done: Told;
+  /** When each of the recent notifications went out (ISO), to tell a busy hour from a quiet one. */
+  sent: string[];
+  /** When the last hourly summary went out. */
+  digestAt: string | null;
+}
+/** Per database: the results version last read, and whether results are being held for the hour's summary (look again even though nothing new has settled). */
+const watch = new WeakMap<EngineDb, { version: number; holding: boolean }>();
 
 const money = (n: number) => `${n >= 0 ? "+" : "−"}£${Math.abs(n).toFixed(2)}`;
 
-function loadTold(db: EngineDb): Told | null {
+function loadState(db: EngineDb): State | null {
   try {
     const raw = db.getSetting(STATE_KEY);
-    return raw ? ((JSON.parse(raw) as { done?: Told }).done ?? {}) : null;
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Partial<State>;
+    return { done: s.done ?? {}, sent: s.sent ?? [], digestAt: s.digestAt ?? null };
   } catch {
     return null;
   }
 }
 
-function saveTold(db: EngineDb, told: Told): void {
-  const ids = Object.keys(told).sort((a, b) => Number(b) - Number(a)).slice(0, KEEP);
-  db.setSetting(STATE_KEY, JSON.stringify({ done: Object.fromEntries(ids.map((id) => [id, told[id]!])) }));
+function saveState(db: EngineDb, s: State): void {
+  const ids = Object.keys(s.done).sort((a, b) => Number(b) - Number(a)).slice(0, KEEP);
+  db.setSetting(STATE_KEY, JSON.stringify({ done: Object.fromEntries(ids.map((id) => [id, s.done[id]!])), sent: s.sent.slice(-30), digestAt: s.digestAt }));
 }
 
 interface Settled {
@@ -72,33 +88,56 @@ function settledBets(db: EngineDb, now: Date): Settled[] {
 
 /** The notifications for the bets that settled (or changed) since the last pass. Returns how many were sent. */
 export async function notifyBetResults(db: EngineDb, now = new Date()): Promise<number> {
-  // Nothing new settled since the last pass: nothing to read (the version moves on any result written).
+  // Nothing new settled since the last pass, and nothing held for the hour: nothing to read (the version moves on any result written).
   const version = db.resultsVersion();
-  if (version === lastVersion) return 0;
-  const told = loadTold(db);
+  const w = watch.get(db) ?? { version: -1, holding: false };
+  watch.set(db, w);
+  if (version === w.version && !w.holding) return 0;
+  const state = loadState(db);
   const bets = settledBets(db, now);
-  if (told === null) {
+  if (state === null) {
     // First pass ever: remember what's already settled, tell none of it.
-    saveTold(db, Object.fromEntries(bets.map((b) => [String(b.id), b.result])));
-    lastVersion = version;
+    saveState(db, { done: Object.fromEntries(bets.map((b) => [String(b.id), b.result])), sent: [], digestAt: null });
+    w.version = version;
     return 0;
   }
   if (isQuietHour(now)) return 0;
+  const told = state.done;
   const fresh = bets.filter((b) => told[String(b.id)] !== b.result);
-  lastVersion = version;
-  if (fresh.length === 0) return 0;
+  if (fresh.length === 0) {
+    w.version = version;
+    w.holding = false;
+    return 0;
+  }
+  const recent = state.sent.filter((t) => now.getTime() - Date.parse(t) < HOUR_MS).length;
+  // Results already held for the hour go out as the summary even if the hour itself has since quietened.
+  const busy = recent + fresh.length > BUSY_AFTER || w.holding;
+  // An hour since the last notification of any kind: so the first busy result waits, rather than going out on its own.
+  const last = state.sent.at(-1);
+  const digestDue = last === undefined || now.getTime() - Date.parse(last) >= HOUR_MS;
+  // A busy hour: held (not marked done) until an hour has passed since the last summary, then all sent as one.
+  if (busy && !digestDue) {
+    w.holding = true;
+    return 0;
+  }
+  w.version = version;
+  w.holding = false;
+
   // A bet already told with the other result has been corrected (Fix a result): said so, not told as new.
   const corrected = new Set(fresh.filter((b) => told[String(b.id)] !== undefined).map((b) => b.id));
   for (const b of fresh) told[String(b.id)] = b.result;
+  state.sent.push(now.toISOString());
+  if (busy || fresh.length > MAX_SEPARATE) state.digestAt = now.toISOString();
   // Marked first, so a slow or failed push never sends it twice.
-  saveTold(db, told);
+  saveState(db, state);
 
-  if (fresh.length > MAX_SEPARATE) {
+  if (busy || fresh.length > MAX_SEPARATE) {
     const won = fresh.filter((b) => b.profit > 0).length;
     const total = fresh.reduce((t, b) => t + b.profit, 0);
+    const today = accountToday(db, now, "live").net;
     await sendPush(db, {
-      title: `${fresh.length} bets settled: ${money(total)}`,
-      body: `${won} won, ${fresh.length - won} lost. ${fresh.map((b) => `${displayName(db, b.strategy)} ${money(b.profit)}`).join(" · ")}`.slice(0, 220),
+      title: `${fresh.length} bet${fresh.length === 1 ? "" : "s"} settled: ${money(total)}`,
+      body: `${won} won, ${fresh.length - won} lost. Today so far ${money(today)}. ${fresh.map((b) => `${displayName(db, b.strategy)} ${money(b.profit)}`).join(" · ")}`.slice(0, 220),
       url: "/trade-log",
       tag: "bet-results",
     });

@@ -78,3 +78,31 @@ test("more than three at once come as one summary", async () => {
   assert.equal(await notifyBetResults(db, noon()), 1);
   assert.match(pushes(db)[0]!.title, /^5 bets settled: /);
 });
+
+test("a busy day goes hourly: results are held, then sent as one summary with today's total once the hour is up", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const t0 = noon();
+  await notifyBetResults(db, t0); // baseline
+  // Three results trickle in, one at a time, a few minutes apart: still sent one each (a quiet day's behaviour).
+  for (let n = 20; n < 23; n++) {
+    handBet(db, n);
+    settle(db, n, "hit");
+    assert.equal(await notifyBetResults(db, new Date(t0.getTime() + (n - 19) * 60_000)), 1, `bet ${n}: sent on its own`);
+  }
+  // The fourth within the hour makes it a busy day: held, not sent.
+  handBet(db, 23);
+  settle(db, 23, "miss");
+  const held = new Date(t0.getTime() + 10 * 60_000);
+  const before = pushes(db).length;
+  assert.equal(await notifyBetResults(db, held), 0, "held for the hour");
+  handBet(db, 24);
+  settle(db, 24, "hit");
+  assert.equal(await notifyBetResults(db, new Date(t0.getTime() + 30 * 60_000)), 0, "still held, nothing more sent");
+  assert.equal(pushes(db).length, before);
+  // An hour on: everything held goes as one summary.
+  assert.equal(await notifyBetResults(db, new Date(t0.getTime() + 3 * 3_600_000)), 1);
+  const [p] = pushes(db);
+  assert.match(p!.title, /^2 bets settled: /);
+  assert.match(p!.body, /Today so far/);
+  assert.equal(await notifyBetResults(db, new Date(t0.getTime() + 3 * 3_600_000 + 60_000)), 0, "not told twice");
+});
