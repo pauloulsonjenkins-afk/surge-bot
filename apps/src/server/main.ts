@@ -34,6 +34,7 @@ import { startValueSettling } from "../edge/value-strategy";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { logHorseResults } from "./horse-results";
 import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
+import { notifyBetResults } from "./bet-result-notify";
 import { monitorLayBadges } from "./lay-badges";
 
 async function main(): Promise<void> {
@@ -203,6 +204,10 @@ async function main(): Promise<void> {
     void logHorseResults(db, reader).catch((err) => log.warn(`Horse results from Betfair failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3 * 60_000);
   horseResults.unref();
+
+  // A notification when a bet with real money on it settles (a Betfair bet, or one placed by hand): won or lost, and how much.
+  const betResults = setInterval(() => void notifyBetResults(db).catch((err) => log.warn(`Bet result notifications failed: ${err instanceof Error ? err.message : String(err)}`)), 60_000);
+  betResults.unref();
 
   // Today's profit so far as a push notification at 06:50, 14:00, 17:00 and 21:30 UK time.
   startDailySummary(db);
