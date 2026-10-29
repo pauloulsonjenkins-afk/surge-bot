@@ -2103,3 +2103,20 @@ export function fetchClaudeReviews(): Promise<ClaudeReviews> {
 export function askClaudeAboutPick(id: number, question: string): Promise<{ answer: string }> {
   return engineCall<{ answer: string }>("/internal/picks/ask", "Claude", { method: "POST", body: { id, question }, timeoutMs: 60000 });
 }
+
+
+/** Bets placed by hand against bets GoalBrew placed, by period (engine by-method.ts): real-money bets only, admin only. */
+export interface MethodTotals {
+  bets: number;
+  won: number;
+  staked: number;
+  profit: number;
+  units: number;
+}
+export interface ByMethodReport {
+  periods: Record<"today" | "d7" | "d30" | "all", Record<"auto" | "hand", MethodTotals>>;
+  at: string;
+}
+export function fetchByMethod(): Promise<ByMethodReport> {
+  return engineCall<ByMethodReport>("/internal/by-method", "the by-hand comparison");
+}

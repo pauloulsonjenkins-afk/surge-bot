@@ -7,6 +7,7 @@ import { useState } from "react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Fold } from "@/components/ui/Fold";
+import { ByMethodCard } from "@/components/admin/ByMethodCard";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
 import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLines";
@@ -228,6 +229,9 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
           </p>
         )}
       </Card>
+
+      {/* ---- bets by hand against bets GoalBrew placed (real money only) ---- */}
+      <ByMethodCard />
 
       {/* ---- daily performance: one bar per day, this month ---- */}
       {state.mtdDaily && (

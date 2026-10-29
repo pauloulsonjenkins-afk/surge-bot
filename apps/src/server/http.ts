@@ -29,6 +29,7 @@
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
+ *   GET  /internal/by-method                    bets placed by hand against bets GoalBrew placed, by period (admin site only)
  *   GET/PUT /internal/access                    whether the public pages may be seen signed-out (admin site only)
  *   /internal/users/*                           website user sign-up, sign-in and page access (admin site only; see users-routes.ts)
  *   GET  /internal/strategies[?since=ISO]       every strategy with its counts, switch, stake and merge, counted from `since` (admin site only)
@@ -118,6 +119,7 @@ import { askAboutPick, claudeAskConfigured } from "./claude-ask";
 import { claudeBadgeVisible, claudeHideInLine, computeClaudeVerdictCheck, setClaudeBadgeVisible, setClaudeHideInLine } from "./claude-verdict-check";
 import { setClaudeCheckPaused } from "./claude-check";
 import { similarAlertsFor } from "./similar-alerts";
+import { computeByMethod } from "./by-method";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -1218,6 +1220,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       // After a change, worked out anew; otherwise reused for up to a minute (report-cache.ts). The UK day is in the key,
       // so "today" and the month roll over at midnight even with no new data.
       send(res, 200, req.method === "GET" ? cachedReport(db, `winloss:${winLossMode}:${ukDateOf(new Date())}`, winLoss) : winLoss());
+      return;
+    }
+
+    // Bets placed by hand against bets GoalBrew placed itself, by period (by-method.ts): information only.
+    if (path === "/internal/by-method" && req.method === "GET") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, { ...cachedReport(db, `by-method:${ukDateOf(new Date())}`, () => ({ ...computeByMethod(db), at: new Date().toISOString() })) });
       return;
     }
 
