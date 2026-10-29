@@ -568,7 +568,7 @@ export function feedMarket(p: LivePick, settings: SendingSettings, alias: (name:
     return overUnderMarket(p.detail?.targetLine ?? null) ?? { error: "Could not work out the Over/Under line." };
   }
   if (p.market === "BOTH_TEAMS_TO_SCORE") return { marketType: settings.bttsMarketType, selectionName: settings.bttsSelection };
-  if (p.market === "FIRST_HALF_GOALS") return { marketType: settings.firstHalfGoalsMarketType, selectionName: settings.firstHalfGoalsSelection };
+  if (p.market === "FIRST_HALF_GOALS" || p.market === "FIRST_HALF_GOAL_LIVE") return { marketType: settings.firstHalfGoalsMarketType, selectionName: settings.firstHalfGoalsSelection };
   if (p.market === "FAVOURITE_TO_SCORE") {
     const side = p.detail?.favourite ?? null;
     if (side === null) return { error: "Could not tell which side is the favourite." };

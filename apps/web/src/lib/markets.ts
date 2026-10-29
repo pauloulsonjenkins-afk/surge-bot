@@ -12,6 +12,7 @@ const MARKET_LABEL: Record<string, string> = {
   TWO_MORE_GOALS: "Two more goals",
   NO_MORE_GOALS: "No more goals",
   FIRST_HALF_GOALS: "1st half goals (pre-match)",
+  FIRST_HALF_GOAL_LIVE: "1st half goal (in-play)",
   AWAY_WIN_LAY: "Away win lay (pre-match)",
   NEXT_GOAL_LAY: "LAY next goal (lay Over goals so far + 0.5)",
   HOME_WIN_LAY: "LAY home win (lay the home side, Match Odds)",

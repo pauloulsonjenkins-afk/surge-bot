@@ -30,6 +30,7 @@ const MARKET_LABEL: Record<string, string> = {
   NEXT_GOAL_LAY: "LAY next goal",
   HOME_WIN_LAY: "LAY home win",
   FIRST_HALF_GOALS: "1st half goals (pre-match)",
+  FIRST_HALF_GOAL_LIVE: "1st half goal (in-play)",
 };
 
 export function marketName(market: string | null): string | null {

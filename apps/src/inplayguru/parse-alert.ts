@@ -33,6 +33,8 @@ type MarketCode =
   /** No more goals in the match: Under (goals at the alert + 0.5). */
   | "NO_MORE_GOALS"
   | "FIRST_HALF_GOALS"
+  /** An in-play first-half goal: back Over 0.5 first-half goals from 0-0 (alerts from the "FH Goal" strategies, 29 Oct 2026). */
+  | "FIRST_HALF_GOAL_LIVE"
   /** Lay the away side before kick-off: wins on a home win or a draw. Laid only by GoalBrew's direct betting (Match Odds). */
   | "AWAY_WIN_LAY"
   /**
@@ -155,6 +157,9 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /\bunderdog\b/, market: "UNDERDOG_DOUBLE_CHANCE" },
   // "First Half Goal": a PRE-MATCH alert (no timer, no score) backing Over 0.5 goals in the first half.
   { test: /\b(?:first|1st|1h)\s*half\s+goals?\b/, market: "FIRST_HALF_GOALS" },
+  // "FH Goal xG Game State" and "FH Goal 15-30 Spin" (added 29 Oct 2026, Sim test): IN-PLAY, 0-0 between 15' and 35',
+  // backed as a goal before half-time (Over 0.5 first-half goals).
+  { test: /^fh goal\b/, market: "FIRST_HALF_GOAL_LIVE" },
   // "Time to fight": Over the next goal, the same bet as Momentum (line = goals so far + 0.5).
   { test: /time to fight/, market: "NEXT_GOAL" },
   // "Pass Master 1st half": two more goals in the match, Over (goals at the alert + 1.5), any team (from 14 Oct 2026).
@@ -569,6 +574,16 @@ export function parseAlert(text: string): ParsedAlert {
         flags.push("A goal has already been scored, so Over 0.5 first-half goals is already decided.");
       }
     }
+  } else if (market === "FIRST_HALF_GOAL_LIVE") {
+    // Fixed line: Over 0.5 goals in the first half, backed in play while it is still 0-0.
+    targetLine = 0.5;
+    selection = "Over 0.5 first-half goals";
+    if (!settled) {
+      if (minute !== null && minute > 45) flags.push("The first half is over, so Over 0.5 first-half goals can no longer be bet.");
+      if (goalsHome !== null && goalsAway !== null && goalsHome + goalsAway > 0) {
+        flags.push("A goal has already been scored, so Over 0.5 first-half goals is already decided.");
+      }
+    }
   } else if (market === "AWAY_WIN_LAY") {
     // Lay the away side before kick-off: wins if the home side wins or it's a draw. Priced from the away side's
     // pre-match win price, which the alert carries.
@@ -638,7 +653,7 @@ export function parseAlert(text: string): ParsedAlert {
 
   // First-half goals is graded on the half-time score, not the full-time one.
   const ht = htScore ? htScore.match(/^(\d+)-(\d+)$/) : null;
-  if (market === "FIRST_HALF_GOALS" && ht && ht[1] !== undefined && ht[2] !== undefined) {
+  if ((market === "FIRST_HALF_GOALS" || market === "FIRST_HALF_GOAL_LIVE") && ht && ht[1] !== undefined && ht[2] !== undefined) {
     finalResult = Number(ht[1]) + Number(ht[2]) > 0 ? "hit" : "miss";
     resultSource = "score";
   }
