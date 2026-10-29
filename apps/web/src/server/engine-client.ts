@@ -74,6 +74,11 @@ export interface LivePick {
    * admin display only.
    */
   claudeVerdict?: { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string; checkedAt: string } | null;
+  /**
+   * How alerts like this one (same strategy, minute band and price band) did over the last `days` days (engine
+   * similar-alerts.ts). Information only, admin only; n under 10 comes with no figures ("too few"). Missing on an older engine.
+   */
+  similar?: { n: number; wonPct: number | null; roiPct: number | null; days: number } | null;
   /** Not found on Betfair: the nearest events its search returned, to choose from (missing on an older engine). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
@@ -170,6 +175,11 @@ export interface PublicPick {
    * (admin only — stripped for everyone else, like which picks were bet). Never used to place, skip or gate a bet.
    */
   claudeVerdict?: { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string; checkedAt: string } | null;
+  /**
+   * How alerts like this one (same strategy, minute band and price band) did over the last `days` days (engine
+   * similar-alerts.ts). Information only, admin only; n under 10 comes with no figures ("too few"). Missing on an older engine.
+   */
+  similar?: { n: number; wonPct: number | null; roiPct: number | null; days: number } | null;
   /** Not found on Betfair: the nearest events its search returned (admin only). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   flags: string[];
@@ -214,6 +224,7 @@ export function toPublicPick(p: LivePick): PublicPick {
     waitingClearedAt: p.waitingClearedAt ?? null,
     segments: p.segments ?? [],
     claudeVerdict: p.claudeVerdict ?? null,
+    similar: p.similar ?? null,
     exchangeCandidates: p.exchangeCandidates ?? null,
     flags: p.flags,
     detail: p.detail

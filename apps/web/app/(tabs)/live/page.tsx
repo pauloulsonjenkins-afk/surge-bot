@@ -338,6 +338,26 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
               .filter(Boolean)
               .join(" · ")}
           </span>
+          {/* How alerts like this one did over the last 30 days: information only, nothing here changes a bet. */}
+          {admin && pick.similar && (
+            <span
+              className="mt-0.5 block truncate text-xs tabular-nums text-ink-muted"
+              title="Settled alerts from the same strategy, in the same match-minute band and price band, over the last 30 days: bets, how many won, and the return per £1. Information only."
+            >
+              {pick.similar.roiPct === null || pick.similar.wonPct === null ? (
+                <>Similar alerts: too few to judge ({pick.similar.n})</>
+              ) : (
+                <>
+                  {pick.similar.n} bets · {pick.similar.wonPct}% won ·{" "}
+                  <span className={pick.similar.roiPct > 0 ? "text-hit" : pick.similar.roiPct < 0 ? "text-loss" : ""}>
+                    {pick.similar.roiPct > 0 ? "+" : pick.similar.roiPct < 0 ? "−" : ""}
+                    {Math.abs(pick.similar.roiPct)}% per £1
+                  </span>{" "}
+                  · last {pick.similar.days} days
+                </>
+              )}
+            </span>
+          )}
         </span>
 
         <ChevronDown

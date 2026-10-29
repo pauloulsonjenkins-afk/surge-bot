@@ -117,6 +117,7 @@ import { claudeGoldenConfigured, getGoldenNotes } from "./claude-golden-review";
 import { askAboutPick, claudeAskConfigured } from "./claude-ask";
 import { claudeBadgeVisible, claudeHideInLine, computeClaudeVerdictCheck, setClaudeBadgeVisible, setClaudeHideInLine } from "./claude-verdict-check";
 import { setClaudeCheckPaused } from "./claude-check";
+import { similarAlertsFor } from "./similar-alerts";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -437,7 +438,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           // "In line" left off when the admin chose so: it says nothing the alert itself doesn't.
           if (verdicts && claudeHideInLine(db)) for (const [id, v] of verdicts) if (v.verdict === "in_line") verdicts.delete(id);
           // Watched slices each pick is in (e.g. Second Pour's Golden), for the Live tab's badge.
-          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), claudeVerdict: verdicts?.get(p.id) ?? null })) };
+          // How alerts like each one did over the last 30 days (similar-alerts.ts): information only, admin only on the site.
+          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), claudeVerdict: verdicts?.get(p.id) ?? null, similar: similarAlertsFor(db, p) })) };
         }),
       );
       return;
