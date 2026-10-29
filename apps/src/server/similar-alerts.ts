@@ -68,6 +68,8 @@ function tallies(db: EngineDb, now: Date): Record<string, Tally> {
 /** The lookup for one unsettled alert, or null when it has no price to place it by (or is already settled). */
 export function similarAlertsFor(db: EngineDb, pick: LivePick, now = new Date()): SimilarAlerts | null {
   if (pick.status === "settled") return null;
+  // Not a LAY: it wins a little and loses its liability, so a back bet's return at the alert's price is the wrong figure.
+  if (/_LAY$/.test(pick.market ?? "")) return null;
   const odds = alertOddsOfPick(pick);
   if (odds === null || !(odds > 1)) return null;
   const table = cachedReport(db, "similar-alerts", () => tallies(db, now) as Record<string, unknown>, now.getTime(), TTL_MS) as Record<string, Tally>;

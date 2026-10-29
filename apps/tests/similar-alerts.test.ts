@@ -54,3 +54,9 @@ test("a settled alert gets no line", () => {
   const db = new EngineDb(":memory:", () => {});
   assert.equal(similarAlertsFor(db, add(db, 1, 62, "1.55", "hit")), null);
 });
+
+test("a LAY alert gets no line: its return isn't a back bet's", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const live = { ...add(db, 1, 62, "1.55"), market: "NEXT_GOAL_LAY" as const };
+  assert.equal(similarAlertsFor(db, live), null);
+});
