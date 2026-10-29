@@ -160,6 +160,11 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   // "FH Goal xG Game State" and "FH Goal 15-30 Spin" (added 29 Oct 2026, Sim test): IN-PLAY, 0-0 between 15' and 35',
   // backed as a goal before half-time (Over 0.5 first-half goals).
   { test: /^fh goal\b/, market: "FIRST_HALF_GOAL_LIVE" },
+  // "Away Super Fav 1 Goal" / "OG 1 Goal SH" (added 29 Oct 2026, Sim test, from a Telegram group): half-time entry on
+  // high-scoring matches, backed as the next goal (line = goals so far + 0.5). The "2 Goals" / "2 SHG" versions back two
+  // more goals (goals so far + 1.5), the same bet as Pass Master 1st half.
+  { test: /^(?:away super fav 1 goal|og 1 goal sh)\b/, market: "NEXT_GOAL" },
+  { test: /^(?:away super fav 2 goals|og 2 shg)\b/, market: "TWO_MORE_GOALS" },
   // "Time to fight": Over the next goal, the same bet as Momentum (line = goals so far + 0.5).
   { test: /time to fight/, market: "NEXT_GOAL" },
   // "Pass Master 1st half": two more goals in the match, Over (goals at the alert + 1.5), any team (from 14 Oct 2026).
