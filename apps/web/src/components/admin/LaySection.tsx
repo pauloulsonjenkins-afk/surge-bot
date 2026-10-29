@@ -71,6 +71,13 @@ function LayCard({
               />
             )}
           </span>
+          {/* The badge judges recent form, the big figure the whole record, so the two can disagree: say why, in the
+              badge's own words (29 Oct 2026: "Not holding up" in red beside +14.7u in green, with no reason given). */}
+          {badge?.status === "not holding up" && badge.why && (
+            <span className="mt-0.5 block text-xs text-loss">
+              Not holding up: {badge.why}.{badge.roi !== null && badge.roi > 0 ? " Its whole record is still in profit; the badge is about recent form." : ""}
+            </span>
+          )}
           <span className="mt-0.5 block text-xs text-ink-muted">{why || "InPlayGuru's own lay strategy."}</span>
           {/* Live or Sim, as on every strategy card (asks first before real money). */}
           {bet && settings && (

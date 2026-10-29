@@ -372,12 +372,17 @@ export async function checkAlertWithClaude(db: EngineDb, pick: LivePick, now = n
   try {
     const context = buildAlertContext(db, pick, now);
     const model = isAmbiguous(context) ? AMBIGUOUS_MODEL : MODEL;
+    // Sonnet 5.5 refuses a forced tool ("tool_choice: type tool and any are not supported for this model", every
+    // ambiguous alert from 28 Oct 2026 until the check was paused), and thinks before it answers, which counts against
+    // max_tokens. So it's asked to use the tool (the system prompt says to, always) with room to think; Haiku keeps the
+    // forced call, which it supports.
+    const sonnet = model === AMBIGUOUS_MODEL;
     const response = await anthropic.messages.create({
       model,
-      max_tokens: 2000,
+      max_tokens: sonnet ? 16_000 : 2000,
       system: SYSTEM_PROMPT,
       tools: [VERDICT_TOOL],
-      tool_choice: { type: "tool", name: VERDICT_TOOL.name },
+      tool_choice: sonnet ? { type: "auto" } : { type: "tool", name: VERDICT_TOOL.name },
       messages: [{ role: "user", content: JSON.stringify(context) }],
     });
     const call = response.content.find((b) => b.type === "tool_use" && b.name === VERDICT_TOOL.name);

@@ -42,7 +42,8 @@ export function computeClaudeVerdictCheck(db: EngineDb): ClaudeVerdictCheck {
   const { overall: byVerdict, settledCount } = computeVerdictTrackRecord(db);
   const ready = settledCount >= VERDICT_THRESHOLD;
   const summary = !ready ? `${settledCount} of ${VERDICT_THRESHOLD} settled.` : verdictSummary(byVerdict);
-  return { settledCount, threshold: VERDICT_THRESHOLD, ready, byVerdict, summary, badgeVisible: claudeBadgeVisible(db), paused: claudeCheckPaused(db), hideInLine: claudeHideInLine(db), configured: claudeConfigured(), lastFailure: lastCheckFailure(db) };
+  return { settledCount, threshold: VERDICT_THRESHOLD, ready, byVerdict, summary, badgeVisible: claudeBadgeVisible(db), paused: claudeCheckPaused(db), hideInLine: claudeHideInLine(db), configured: claudeConfigured(), lastFailure: claudeCheckPaused(db) ? null : lastCheckFailure(db) };
+  // (lastFailure: while paused nothing is called, so an old failure would stay on show for good, reading as a live problem.)
 }
 
 /** A margin worth calling real, not noise: "weaker" needs to return at least this much worse per £1 than "in line". */
