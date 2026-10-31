@@ -12,7 +12,6 @@ import { goldenReport } from "./golden";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { ukWeekStart } from "../members/time";
-import { requestWeeklyClaudeReview } from "./claude-review";
 import { log } from "./log";
 
 const SENT_KEY = "weekly_review_last";
@@ -73,8 +72,6 @@ export function startWeeklyReview(db: EngineDb): void {
       const msg = buildWeeklyReview(db);
       await sendPush(db, { ...msg, url: "/more/admin/today", tag: "weekly-review" });
       log.info(`Weekly review sent: ${msg.title}`);
-      // Claude's written note on the week (claude-review.ts): fire-and-forget, never delays this push.
-      void requestWeeklyClaudeReview(db);
     } catch (err) {
       log.warn(`Weekly review failed: ${err instanceof Error ? err.message : String(err)}`);
     }

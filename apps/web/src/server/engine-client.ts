@@ -69,12 +69,6 @@ export interface LivePick {
   /** Watched slices this pick is in, e.g. Second Pour's Golden (missing on an older engine). */
   segments?: Array<{ id: string; label: string }>;
   /**
-   * Claude's advisory second opinion on this one alert (server/claude-check.ts), when a verdict has landed —
-   * null until it does, or if ANTHROPIC_API_KEY isn't set on the engine. Never used to place, skip or gate a bet;
-   * admin display only.
-   */
-  claudeVerdict?: { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string; checkedAt: string } | null;
-  /**
    * How alerts like this one (same strategy, minute band and price band) did over the last `days` days (engine
    * similar-alerts.ts). Information only, admin only; n under 10 comes with no figures ("too few"). Missing on an older engine.
    */
@@ -171,11 +165,6 @@ export interface PublicPick {
   /** Watched slices this pick is in, e.g. Second Pour's Golden. */
   segments?: Array<{ id: string; label: string }>;
   /**
-   * Claude's advisory second opinion on this one alert (server/claude-check.ts), when a verdict has landed
-   * (admin only — stripped for everyone else, like which picks were bet). Never used to place, skip or gate a bet.
-   */
-  claudeVerdict?: { verdict: "stronger" | "in_line" | "weaker"; confidence: "low" | "medium" | "high"; note: string; checkedAt: string } | null;
-  /**
    * How alerts like this one (same strategy, minute band and price band) did over the last `days` days (engine
    * similar-alerts.ts). Information only, admin only; n under 10 comes with no figures ("too few"). Missing on an older engine.
    */
@@ -223,7 +212,6 @@ export function toPublicPick(p: LivePick): PublicPick {
     marketCheckDetail: p.marketCheckDetail ?? null,
     waitingClearedAt: p.waitingClearedAt ?? null,
     segments: p.segments ?? [],
-    claudeVerdict: p.claudeVerdict ?? null,
     similar: p.similar ?? null,
     exchangeCandidates: p.exchangeCandidates ?? null,
     flags: p.flags,
@@ -1999,8 +1987,6 @@ export interface GoldenSlice {
   ownLive?: { n: number; won: number; staked: number; profit: number; units?: number; roi: number | null } | null;
   /** A phone notification for each new alert in this slice (golden-notify.ts). */
   notify?: boolean;
-  /** Claude's one or two sentence summary of whether it's proving itself (server/claude-golden-review.ts), refreshed daily. Null until the first run after it's no longer quiet, or with no API key set. */
-  claudeNote?: { note: string; generatedAt: string } | null;
   /** How close to its next stage (golden.ts's own thresholds), from its priced picks since it started. Null once "full" (nothing further to reach), or while "not holding up" (it has to re-prove the stage it lost first). */
   nextStage?: { name: string; threshold: number; picksAway: number } | null;
 }
@@ -2026,8 +2012,6 @@ export interface GoldenReport {
   safety?: { minBets: number; worstRoi: number };
   /** Golden alert notifications: none between 23:00 and 07:00 UK while on. */
   notifyQuiet?: boolean;
-  /** Whether the engine has an API key to ask Claude for slice summaries at all. */
-  claudeConfigured?: boolean;
 }
 
 export function fetchGolden(): Promise<GoldenReport> {
@@ -2046,64 +2030,21 @@ export function goldenAction(body: GoldenActionBody): Promise<GoldenReport> {
   return engineCall<GoldenReport>(path, "Golden", { method: "POST", body, timeoutMs: 30000 });
 }
 
-/**
- * Claude's per-alert verdicts (server/claude-check.ts) compared against settled results, by verdict, once enough
- * have settled (server/claude-verdict-check.ts). Advisory only: the badge switch below only shows/hides a Live
- * tab badge, it never touches a bet.
- */
-interface ClaudeVerdictRow {
-  n: number;
-  hits: number;
-  hitRate: number | null;
-  counted: number;
-  roi: number | null;
-}
-export interface ClaudeVerdictCheck {
-  settledCount: number;
-  threshold: number;
-  ready: boolean;
-  byVerdict: { stronger: ClaudeVerdictRow; in_line: ClaudeVerdictRow; weaker: ClaudeVerdictRow };
-  summary: string;
-  badgeVisible: boolean;
-  /** The per-alert check is paused: no calls (missing on an older engine). */
-  paused?: boolean;
-  /** "In line" verdicts are left off the Live tab (missing on an older engine). */
-  hideInLine?: boolean;
-  configured: boolean;
-  lastFailure: { reason: string; at: string } | null;
-}
-
-export function fetchClaudeVerdictCheck(): Promise<ClaudeVerdictCheck> {
-  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check");
-}
-
-/** The Claude page's switches, any of them: the Live tab badge, pausing the per-alert check, hiding "in line" verdicts. */
-export type ClaudeSwitches = Partial<Record<"badgeVisible" | "paused" | "hideInLine", boolean>>;
-export function setClaudeSwitches(body: ClaudeSwitches): Promise<ClaudeVerdictCheck> {
-  return engineCall<ClaudeVerdictCheck>("/internal/claude-verdict-check", "the Claude verdict check", { method: "PUT", body });
-}
-
-/** Claude's latest daily and weekly written notes (engine claude-review.ts). Advice to read, never a setting. */
+/** Claude's daily written note (engine claude-review.ts). Advice to read, never a setting. */
 interface ClaudeReviewNote {
-  kind: "daily" | "weekly";
+  kind: "daily";
   note: string;
   generatedAt: string;
 }
 export interface ClaudeReviews {
   configured: boolean;
-  notes: Partial<Record<"daily" | "weekly", ClaudeReviewNote>>;
+  notes: Partial<Record<"daily", ClaudeReviewNote>>;
   /** Why the latest note of a kind didn't arrive, until one does (missing on an older engine). */
-  failures?: Partial<Record<"daily" | "weekly", { kind: "daily" | "weekly"; reason: string; at: string }>>;
+  failures?: Partial<Record<"daily", { kind: "daily"; reason: string; at: string }>>;
 }
 export function fetchClaudeReviews(): Promise<ClaudeReviews> {
   return engineCall<ClaudeReviews>("/internal/claude-review", "Claude's review");
 }
-
-/** Ask Claude one question about one pick (engine claude-ask.ts). Advice only. */
-export function askClaudeAboutPick(id: number, question: string): Promise<{ answer: string }> {
-  return engineCall<{ answer: string }>("/internal/picks/ask", "Claude", { method: "POST", body: { id, question }, timeoutMs: 60000 });
-}
-
 
 /** Bets placed by hand against bets GoalBrew placed, by period (engine by-method.ts): real-money bets only, admin only. */
 export interface MethodTotals {

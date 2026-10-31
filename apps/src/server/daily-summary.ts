@@ -8,7 +8,6 @@ import { computeStrategyReturns, type StrategyReturn } from "./winloss";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { requestDailyClaudeReview } from "./claude-review";
-import { requestGoldenReviews } from "./claude-golden-review";
 import { log } from "./log";
 
 /** When the summary goes out, UK time (HH:MM). */
@@ -101,7 +100,6 @@ export function startDailySummary(db: EngineDb): () => void {
       // picture. Fire-and-forget, never delays this push.
       if (slot.endsWith(SUMMARY_TIMES[SUMMARY_TIMES.length - 1]!)) {
         void requestDailyClaudeReview(db);
-        requestGoldenReviews(db);
       }
     } catch (err) {
       log.error(`Daily summary failed: ${err instanceof Error ? err.message : String(err)}`);

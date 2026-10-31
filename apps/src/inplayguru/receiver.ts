@@ -12,7 +12,6 @@ import type { EngineDb } from "../storage/engine-db";
 import { log } from "../server/log";
 import { sha256Hex } from "./verify";
 import { isRealAlert, parseAlert } from "./parse-alert";
-import { checkAlertWithClaude } from "../server/claude-check";
 
 export type PickOutcome = "captured" | "duplicate";
 
@@ -97,10 +96,5 @@ export function useWebhookAlert(db: EngineDb, body: string, bodySha256: string, 
   // A stable number from the body, so InPlayGuru sending the same webhook again updates the same pick.
   const messageId = parseInt(bodySha256.slice(0, 12), 16);
   const outcome = db.upsertLivePick(WEBHOOK_CHAT, messageId, text, parsed, at);
-  if (outcome === "inserted") {
-    const stored = db.getLivePickByMessage(WEBHOOK_CHAT, messageId);
-    // Claude's second opinion (claude-check.ts): fire-and-forget, never delays or gates this alert.
-    if (stored) void checkAlertWithClaude(db, stored);
-  }
   return outcome === "inserted" ? "added" : "updated";
 }

@@ -1,16 +1,16 @@
 /**
- * Claude's daily / weekly review (design in docs/claude-in-goalbrew.md, phase 2).
+ * Claude's daily review: the ONLY use of Claude in GoalBrew (31 Oct 2026, the owner's request: one analysis a day, the
+ * daily report; the per-alert checks, "ask about a pick", Golden slice notes and the weekly note were removed).
  *
- * ADVISORY ONLY, same boundary as claude-check.ts: this never writes to SendingSettings, never calls buildFeed or
- * direct betting, and never changes a strategy's Live switch, a Golden slice's betting, or a LAY group's stake. It
- * hands Claude a read-only digest (the day's or week's figures, already computed by winloss.ts/golden.ts, plus a
- * tally of its own per-alert verdicts from claude-check.ts) and asks for a short written note, which is stored for
- * the admin to read on the Today / admin pages. The note is text to read: it may name an idea worth looking at
+ * ADVISORY ONLY: this never writes to SendingSettings, never calls buildFeed or direct betting, and never changes a
+ * strategy's Live switch, a Golden slice's betting, or a LAY group's stake. It hands Claude a read-only digest (the
+ * day's figures, already computed by winloss.ts/golden.ts) and asks for a short written note, which is stored for
+ * the admin to read on the Today page. The note is text to read: it may name an idea worth looking at
  * (try X Live, narrow Y around a losing pattern), but it is never a setting the admin's answer changes — nothing
  * downstream of this file acts on what it says.
  *
- * Runs on the same schedule as the existing push notifications (daily-summary.ts, weekly-review.ts) and shares
- * their "has this slot already been sent" bookkeeping, but writes its own note instead of sending a push, so a
+ * Runs on the same schedule as the daily push notification (daily-summary.ts) and shares its "has this slot already
+ * been sent" bookkeeping, but writes its own note instead of sending a push, so a
  * missing or slow Claude reply never delays or blocks the push the owner already relies on.
  */
 import Anthropic from "@anthropic-ai/sdk";
@@ -20,15 +20,21 @@ import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
 import { goldenReport } from "./golden";
 import { ukDateOf, ukDayBounds } from "./uk-time";
-import { ukWeekStart } from "../members/time";
-import { truncateNote } from "./claude-check";
-import { describeTrackRecord, trackRecord } from "./claude-track-record";
 import { log } from "./log";
 
 const MODEL = "claude-sonnet-5-5";
+const NOTE_LIMIT = 3000;
+
+/** A note cut at a word boundary with an ellipsis, so a long reply never fills the page. */
+function truncateNote(s: string, limit = NOTE_LIMIT): string {
+  if (s.length <= limit) return s;
+  const cut = s.slice(0, limit);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
 const SETTINGS_KEY = "claude_review_notes";
 
-export type ReviewKind = "daily" | "weekly";
+export type ReviewKind = "daily";
 
 export interface ClaudeReviewNote {
   kind: ReviewKind;
@@ -45,8 +51,6 @@ const SYSTEM_PROMPT = [
   "ready to try Live or ready to come off it, a LAY group candidate, a losing pattern worth narrowing a strategy",
   "around. Only raise an idea the figures given actually back up — say plainly when nothing stands out rather than",
   "inventing one.",
-  "perAlertVerdictsTrackRecord, when given, is how your own per-alert verdicts have turned out once settled: say in a",
-  "sentence whether they are telling winners from losers yet, since that decides whether they deserve trust.",
   "Finish with one line on what's worth watching next, from goldenSlicesCloseToNextStage (how many picks a slice is",
   "from becoming a candidate, a Live trial or full stake) if anything is given there — e.g. 'X is 6 picks from a Live",
   "trial'. This is never a results forecast: you cannot and must not predict tomorrow's results or say a strategy",
@@ -107,18 +111,10 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
     status: s.status,
     why: s.why,
   }));
-  // How often Claude's own per-alert check (claude-check.ts) flagged something weaker this period, for a sanity
-  // cross-check in the review ("does the written note agree with what the per-alert checks already flagged").
-  const verdictTally = db.sqlite
-    .prepare(`SELECT verdict, COUNT(*) as n FROM claude_verdicts WHERE checked_at >= ? GROUP BY verdict`)
-    .all(from) as Array<{ verdict: string; n: number }>;
   return {
     periodFrom: from,
     strategies,
     goldenSlices: golden,
-    perAlertVerdictsThisPeriod: verdictTally,
-    // How those verdicts have turned out over their whole life, so the review can say whether Claude's own checks are earning their place.
-    perAlertVerdictsTrackRecord: describeTrackRecord(trackRecord(db, now), null),
     goldenSlicesCloseToNextStage: goldenCloseToNextStage(db, now),
   };
 }
@@ -165,7 +161,7 @@ async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date
     const r = await tryNote(anthropic, digest);
     if ("note" in r) {
       const all = loadNotes(db);
-      all[kind] = { kind, note: truncateNote(r.note, 3000), generatedAt: now.toISOString() };
+      all[kind] = { kind, note: truncateNote(r.note), generatedAt: now.toISOString() };
       db.setSetting(SETTINGS_KEY, JSON.stringify(all));
       clearFailure(db, kind);
       log.info(`Claude ${kind} review note written (${r.note.length} chars, attempt ${attempt}).`);
@@ -233,10 +229,4 @@ export function getClaudeReviewNotes(db: EngineDb): Partial<Record<ReviewKind, C
 export function requestDailyClaudeReview(db: EngineDb, now = new Date()): Promise<void> {
   const { from } = ukDayBounds(ukDateOf(now));
   return writeNote(db, "daily", from, now);
-}
-
-/** Called once the weekly review is due (weekly-review.ts) — fire-and-forget, never delays the push. */
-export function requestWeeklyClaudeReview(db: EngineDb, now = new Date()): Promise<void> {
-  const from = ukDayBounds(ukWeekStart(ukDateOf(now))).from;
-  return writeNote(db, "weekly", from, now);
 }

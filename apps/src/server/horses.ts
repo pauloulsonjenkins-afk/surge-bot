@@ -1,6 +1,8 @@
 /**
- * Horses: a daily record of four racing bets (NAP, Next best, 3rd and 4th choice), entered by hand on the admin Horses
- * page, each marked won, lost or void once the race is run. Nothing here is automatic and nothing is sent anywhere.
+ * Horses: a daily record of four racing bets (NAP, Next best, 3rd and 4th choice), each marked won, lost or void once
+ * the race is run. From 31 Oct 2026 each day's four are filled from the day's tips and saved by the engine, using the
+ * last day's amounts (autoFillHorseDay); they can still be changed by hand on the admin Horses page. Nothing here
+ * places a bet or sends anything anywhere.
  *
  * Money (the stake is per part, so "£5 each-way" costs £10):
  *   win bet       won: stake x odds back; lost: nothing back; void (non-runner): stake back
@@ -255,4 +257,63 @@ export function setHorseResult(db: EngineDb, id: unknown, result: unknown): void
   if (!Number.isInteger(n) || n <= 0) throw new Error("No such bet.");
   if (result !== "pending" && result !== "won" && result !== "placed" && result !== "lost" && result !== "void") throw new Error("Choose won, placed, lost, void or pending.");
   if (!db.setHorseResult(n, result)) throw new Error("No such bet.");
+}
+
+const AUTOFILL_KEY = "horse_autofill_day";
+
+/**
+ * Fills a day's four bets from that day's tips and saves them (31 Oct 2026, the owner's request: the form used to
+ * carry yesterday's amounts over and wait to be filled and saved by hand). The same carrying-over the Horses page
+ * does, done by the engine: each rank takes the last earlier day's stake (and EW Yankee unit stake, when that day had
+ * one) and the tip's horse, course, odds, win or each-way and places. The odds are the tipster's, so the page still
+ * shows them for the admin to put right with the price actually taken.
+ *
+ * Only a day with nothing saved yet is filled, and only once a day: a day the admin has started, changed or cleared is
+ * never touched. A rank with no tip, no tipster price or no earlier stake is left blank. Nothing is sent anywhere.
+ * Returns how many bets were saved and a one-line note for the import status.
+ */
+export function autoFillHorseDay(db: EngineDb, day: string): { saved: number; note: string } {
+  if (!isDay(day)) return { saved: 0, note: "not a date" };
+  const bets = db.listHorseBets();
+  if (bets.some((b) => b.day === day)) return { saved: 0, note: "the day already has bets" };
+  const before = bets.map((b) => b.day).filter((d) => d < day).sort().pop();
+  if (!before) return { saved: 0, note: "no earlier day to copy the amounts from: save one day by hand first" };
+  const tips = db.listHorseSuggestions().filter((s) => s.day === day);
+  if (tips.length === 0) return { saved: 0, note: "no tips for the day yet" };
+  const previous = new Map(bets.filter((b) => b.day === before).map((b) => [b.rank, b] as const));
+  const entries: HorseEntry[] = [];
+  for (const t of tips) {
+    const prev = previous.get(t.rank);
+    if (!prev || !t.oddsText || parseOdds(t.oddsText) === null) continue;
+    entries.push({
+      rank: t.rank,
+      horse: t.horse,
+      course: t.course,
+      stake: prev.stake,
+      odds: t.oddsText,
+      betType: t.betType,
+      ewFraction: prev.ewFraction ?? 4,
+      ewPlaces: t.ewPlaces ?? prev.ewPlaces,
+    });
+  }
+  if (entries.length === 0) return { saved: 0, note: "no tip had a price and an earlier stake to copy" };
+  // The EW Yankee needs all four selections: carried over only when all four are there.
+  const carried = db.listHorseDays().find((d) => d.day === before)?.yankeeStake ?? null;
+  const yankee = carried !== null && entries.length === 4 ? carried : null;
+  try {
+    const saved = saveHorseDay(db, day, entries, yankee);
+    return { saved: saved.length, note: `${saved.length} bet${saved.length === 1 ? "" : "s"} saved from the tips${yankee !== null ? " with the EW Yankee" : ""}` };
+  } catch (err) {
+    return { saved: 0, note: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Once a day: fills today's bets from today's tips, as soon as the tips are in (see autoFillHorseDay). */
+export function autoFillHorsesOnce(db: EngineDb, day: string): void {
+  if (db.getSetting(AUTOFILL_KEY) === day) return;
+  if (db.listHorseSuggestions().every((s) => s.day !== day)) return;
+  db.setSetting(AUTOFILL_KEY, day);
+  const r = autoFillHorseDay(db, day);
+  const status = getHorseImportStatus(db);
+  if (status && status.day === day) setHorseImportStatus(db, { ...status, message: `${status.count} tips in; ${r.saved > 0 ? r.note : `not saved as bets: ${r.note}`}` });
 }

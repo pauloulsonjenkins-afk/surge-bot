@@ -3,7 +3,7 @@
  * admin row and the More page (four groups since the 29 Oct 2026 tidy-up, from six):
  * - Every day: today at a glance, each strategy, its Golden slices, the betting itself, and profit and loss.
  * - Research: leagues (ours and their past seasons). Opened now and then.
- * - Settings and tools: settings, members, the notification log, Claude, and fixing a result.
+ * - Settings and tools: settings, members, the notification log, and fixing a result.
  * - Horses: the separate racing log, one page with tabs.
  * On phones only "Every day" sits in the admin row; the rest are a tap away on More (see AdminNav).
  * Settled picks live on the Trade Log; "Fix a result" is the admin's editing view of it (raw alerts on a second tab).
@@ -35,7 +35,6 @@ export const ADMIN_GROUPS = [
       { href: "/more/admin/settings", label: "Settings", description: "Public view, Telegram and webhook alerts, download every pick, fresh start." },
       { href: "/more/admin/members", label: "Members", description: "Accounts, sign-ups, trials and full access, and the members' rules." },
       { href: "/more/admin/notifications", label: "Notifications", short: "Alerts", description: "Every notification GoalBrew sent you in the last 60 days." },
-      { href: "/more/admin/claude", label: "Claude", description: "Pause or switch on Claude's per-alert check, whether its verdicts predict results, and the Live tab badge." },
       { href: "/more/admin/results", label: "Fix a result", short: "Fixes", description: "Correct a hit or miss, or remove a pick." },
     ],
   },

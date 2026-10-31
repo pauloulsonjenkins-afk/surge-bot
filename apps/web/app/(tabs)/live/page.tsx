@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClaudeVerdict } from "@/components/admin/ClaudeBits";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { PageHeader, Segmented } from "@/components/ui/Card";
@@ -399,8 +398,6 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
             </ul>
           )}
 
-          {/* Claude's advisory second opinion (claude-check.ts): admin only, never a gate on the pick itself. */}
-          {admin && pick.claudeVerdict && <ClaudeVerdict pickId={pick.id} v={pick.claudeVerdict} />}
 
           {admin && issue && (
             <p className="flex items-start gap-1.5 text-xs text-warn">

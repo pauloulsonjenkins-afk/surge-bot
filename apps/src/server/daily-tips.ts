@@ -18,7 +18,7 @@
 import { request as httpsRequest, Agent } from "node:https";
 import { request as httpRequest } from "node:http";
 import type { EngineDb } from "../storage/engine-db";
-import { getHorseImportStatus, saveHorseSuggestions, setHorseImportStatus } from "./horses";
+import { autoFillHorsesOnce, getHorseImportStatus, saveHorseSuggestions, setHorseImportStatus } from "./horses";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { log } from "./log";
@@ -210,6 +210,8 @@ let running = false;
 export async function tipsTick(db: EngineDb, now = new Date(), fetcher: () => Promise<TipLine[]> = () => fetchTips()): Promise<void> {
   if (running) return;
   const day = ukDateOf(now);
+  // Today's bets filled from today's tips and saved, once (horses.ts: autoFillHorseDay).
+  autoFillHorsesOnce(db, day);
   if (doneToday(db, day)) return;
   let plan = getPlan(db);
   if (!plan || plan.day !== day) {
@@ -226,6 +228,7 @@ export async function tipsTick(db: EngineDb, now = new Date(), fetcher: () => Pr
     const stored = saveHorseSuggestions(db, day, tips, "tips");
     setHorseImportStatus(db, { at: new Date().toISOString(), ok: true, message: `${stored.length} tips in`, day, count: stored.length });
     log.info(`Horse tips: ${stored.length} stored for ${day}.`);
+    autoFillHorsesOnce(db, day);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     log.warn(`Horse tips: attempt ${plan.attempts} of ${MAX_ATTEMPTS} failed: ${reason}`);

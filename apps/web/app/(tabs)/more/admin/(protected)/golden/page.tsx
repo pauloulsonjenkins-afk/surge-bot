@@ -6,7 +6,6 @@ import { Card, PageHeader } from "@/components/ui/Card";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import { useSending } from "@/queries/use-sending";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { ClampedText } from "@/components/ui/ClampedText";
 import { QueryError } from "@/components/ui/QueryError";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import { GoldenBadge, sliceName } from "@/components/ui/SegmentLabel";
@@ -73,11 +72,6 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
       )}
     </div>
   );
-}
-
-/** Claude's slice summary: two lines, and a "more" only when there's more to read. */
-function ClaudeNote({ note }: { note: string }) {
-  return <ClampedText text={note} label="Claude:" lines={2} className="rounded-md bg-surface-2/60 px-2.5 py-2 text-xs text-ink" />;
 }
 
 function betText(s: GoldenSlice): string {
@@ -211,7 +205,6 @@ export default function GoldenPage() {
               <Side r={s.slice.all} name="This slice" split={s.slice} />
               <Side r={s.rest.all} name="Rest of the strategy" split={s.rest} />
             </div>
-            {s.claudeNote && <ClaudeNote note={s.claudeNote.note} />}
             {s.bet?.live && (
               <p className="text-xs text-ink-muted">
                 Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
