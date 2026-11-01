@@ -1775,10 +1775,13 @@ export function fetchPickDetail(id: number): Promise<{ detail: PickDetail }> {
 /** A strategy suggestion (engine strategy-advice.ts): Live / Sim, or one step on the stake ladder. */
 export interface StrategyAdvice {
   key: string;
-  kind: "try-live" | "back-to-sim" | "stake-up" | "stake-down" | "league-block";
+  kind: "try-live" | "back-to-sim" | "stake-up" | "stake-down" | "league-block" | "slice-live" | "slice-sim" | "slice-stake-up" | "slice-stake-down";
   reason: string;
   /** What Apply does, in words. Missing from an older engine. */
   action?: string;
+  /** A Golden slice's suggestion: how to show it ("Time to fight · 1 goal apart"); the key is then "strategy#slice". */
+  name?: string;
+  slice?: { strategyKey: string; id: string };
   /** league-block: the league the strategy would be stopped in. */
   league?: { key: string; name: string };
 }
@@ -1874,6 +1877,23 @@ export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kin
   const data = (await res.json().catch(() => ({}))) as { advice?: StrategyAdvice[]; error?: string };
   if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
   return { advice: data.advice ?? [] };
+}
+
+/** Every suggestion showing, carried out in one go (engine applyAllAdvice). League stops are left out. */
+export async function applyAllStrategyAdvice(): Promise<{ applied: StrategyAdvice[]; failed: Array<{ key: string; kind: string; error: string }>; advice: StrategyAdvice[] }> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  const res = await fetch(`${baseUrl}/internal/strategy-advice/apply-all`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+    body: "{}",
+    cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as { applied?: StrategyAdvice[]; failed?: Array<{ key: string; kind: string; error: string }>; advice?: StrategyAdvice[]; error?: string };
+  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  return { applied: data.applied ?? [], failed: data.failed ?? [], advice: data.advice ?? [] };
 }
 
 /** Retries a bet GoalBrew didn't get placed (Live: Retry bet). */

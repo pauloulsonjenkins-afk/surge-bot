@@ -28,6 +28,18 @@
  *     whole likely range of its return there below zero (league-returns.ts). Apply: it isn't bet in that league any
  *     more; its picks there are recorded in Sim instead. Undo on Leagues → Profit.
  *
+ *   GOLDEN SLICES (1 Nov 2026, the owner's request: the parts of a strategy that work, not the whole strategy):
+ *     - Slice ready to try Live: a watched slice that has reached candidate or better (50+ priced picks, in profit, its
+ *       last 30 not losing more than 5%), is not already Live on its own, and isn't following a Live strategy.
+ *       Apply: its own Live switch on at a 1% trial stake.
+ *     - Slice back to Sim: Live on its own, and its own Live bets are losing 10% or more per £1 over 15+ bets.
+ *     - Slice stake up: Live on its own, 20+ priced picks, +10% or better per £1, 3+ units, last 30 not losing. One step up
+ *       the ladder, never above BEST_SLICE_PCT (4%); the single best such slice goes to 4% in one go, the owner's "run the best one at 4%+".
+ *     - Slice stake down: Live on its own with its own Live bets losing over 15+ bets: one step down.
+ *   EARLY WARNING (a Live strategy): 12+ priced Live bets in the last 30 days, 8% or more below zero and down a unit or
+ *     more, at a stake of 3% or higher: back to Sim, ahead of the slower 30-bet rule. Underdog taking charge, 1 Nov 2026:
+ *     -9.1% over 16 Live bets at 4%.
+ *
  * One notification per change: the same suggestion isn't sent again until it has gone away and come back.
  *
  * AUTOMATIC STAKES (Sending: ladderAuto): stake raises and cuts are applied by the hourly check instead of waiting,
@@ -37,7 +49,8 @@
  */
 import type { EngineDb } from "../storage/engine-db";
 import { ALL_TIME, computeStrategyReturns, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
-import { getSendingSettings, saveSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
+import { getSendingSettings, saveSendingSettings, strategyLabel, type SendingSettings } from "../inplayguru/bet-feed";
+import { goldenReport } from "./golden";
 import { getStopLossRules } from "../inplayguru/stop-loss";
 import { priceCheckReport } from "../betfair/price-check";
 import { displayName } from "../inplayguru/strategy-names";
@@ -103,7 +116,7 @@ function lastSteps(db: EngineDb): Record<string, string> {
 const PCT_STEPS = [1, 1.5, 2, 3, 4, 5];
 const FLAT_STEPS = [1, 2, 3, 5];
 
-export type AdviceKind = "try-live" | "back-to-sim" | "stake-up" | "stake-down" | "league-block";
+export type AdviceKind = "try-live" | "back-to-sim" | "stake-up" | "stake-down" | "league-block" | "slice-live" | "slice-sim" | "slice-stake-up" | "slice-stake-down";
 
 export interface Advice {
   key: string;
@@ -117,7 +130,28 @@ export interface Advice {
   league?: { key: string; name: string };
   /** stake-down: undoing a raise whose bets since went badly (not held back by the 7 days between automatic steps). */
   fast?: boolean;
+  /** A Golden slice's suggestion: key is "strategy#slice", and name is how to show it ("Time to fight · 1 goal apart"). */
+  name?: string;
+  slice?: { strategyKey: string; id: string };
 }
+
+/** The Golden slice figures the advice reads (engine golden.ts), so it can be tested without a database. */
+type SliceInput = ReturnType<typeof goldenReport>["slices"][number];
+
+/** The trial stake a slice is put Live at: a part of a strategy earning its way, not its full stake. */
+const SLICE_TRIAL_PCT = 1;
+/** The best performing slice is suggested at this stake or more: the owner's own target for it. */
+export const BEST_SLICE_PCT = 4;
+const SLICE_SIM_BETS = 15;
+const SLICE_SIM_ROI = -0.1;
+const SLICE_UP_PICKS = 20;
+const SLICE_UP_ROI = 0.1;
+const SLICE_UP_UNITS = 3;
+/** Early warning for a Live strategy (see the header). */
+const EARLY_BETS = 12;
+const EARLY_ROI = -0.08;
+const EARLY_UNITS = -1;
+const EARLY_STAKE_PCT = 3;
 
 /** One suggestion's identity: a strategy can have one per kind, and one league-block per league. */
 const adviceId = (a: Pick<Advice, "key" | "kind" | "league">) => (a.league ? `${a.key}@${a.league.key}` : a.key);
@@ -139,6 +173,70 @@ function beatsBreakeven(r: StrategyReturn): boolean {
   if (!r.counted || r.pricedHits === undefined) return false;
   const be = r.breakevenEffective ?? r.breakeven;
   return be !== null && (100 * r.pricedHits) / r.counted > be;
+}
+
+/**
+ * Suggestions for Golden slices: put one Live on its own, take one back to Sim, or move its stake. Pure: the slices and
+ * the betting settings in, the suggestions out.
+ */
+export function sliceAdviceFrom(slices: SliceInput[], settings: SendingSettings): Advice[] {
+  const out: Advice[] = [];
+  const cfgOf = (s: SliceInput) => settings.segmentBets[`${s.strategyKey}#${s.id}`] ?? null;
+  const nameOf = (s: SliceInput) => `${s.strategy} · ${s.label.replace(/^Golden: /, "").replace(/ since .*$/, "")}`;
+  const per = (r: { units?: number; counted: number }) => (r.counted > 0 && r.units !== undefined ? r.units / r.counted : -Infinity);
+  const base = (s: SliceInput) => ({ key: `${s.strategyKey}#${s.id}`, name: nameOf(s), slice: { strategyKey: s.strategyKey, id: s.id } });
+  const upCandidates: Array<{ s: SliceInput; now: number }> = [];
+  for (const s of slices) {
+    const cfg = cfgOf(s);
+    const mine = s.slice.all;
+    const withLiveStrategy = cfg === null && s.strategyLive;
+    if (!cfg?.live) {
+      if (withLiveStrategy || !["candidate", "trial", "full"].includes(s.status) || mine.counted < 50 || mine.roi === null || mine.roi <= 0) continue;
+      const rest = s.rest.all;
+      out.push({
+        ...base(s),
+        kind: "slice-live",
+        action: `Put this slice Live at ${SLICE_TRIAL_PCT}% of the balance`,
+        to: { pct: SLICE_TRIAL_PCT },
+        reason: `${pct(mine.roi)} per £1${mine.units !== undefined ? ` (${mine.units > 0 ? "+" : ""}${mine.units} units)` : ""} over ${mine.counted} priced picks${rest.counted > 0 && rest.roi !== null ? `, against ${pct(rest.roi)} over ${rest.counted} for the rest of ${s.strategy}` : ""}${s.recent && s.recent.n >= 10 && s.recent.roi !== null ? `; its last ${s.recent.n} are ${pct(s.recent.roi)}` : ""}. Only this part of ${s.strategy} would bet with real money; the rest stays as it is.`,
+      });
+      continue;
+    }
+    // Live on its own from here.
+    const own = s.ownLive;
+    const stakeNow = cfg.stakePct ?? null;
+    if (own && own.n >= SLICE_SIM_BETS && own.roi !== null && own.roi <= SLICE_SIM_ROI) {
+      out.push({ ...base(s), kind: "slice-sim", action: "Put this slice back to Sim", reason: `Its own Live bets are ${pct(own.roi)} per £1 over ${own.n} bets${own.units !== undefined ? ` (${own.units} units)` : ""}.` });
+      continue;
+    }
+    if (own && own.n >= SLICE_SIM_BETS && own.roi !== null && own.roi < 0 && stakeNow !== null) {
+      const down = ladderStep({ pct: stakeNow }, -1);
+      if (down && "pct" in down) {
+        out.push({ ...base(s), kind: "slice-stake-down", action: `Lower to ${down.pct}% of the balance`, to: down, reason: `Its own Live bets are ${pct(own.roi)} per £1 over ${own.n} bets.` });
+        continue;
+      }
+    }
+    const recentOk = !s.recent || s.recent.n < 10 || (s.recent.roi !== null && s.recent.roi >= 0);
+    if (stakeNow !== null && stakeNow < BEST_SLICE_PCT && s.status !== "not holding up" && mine.counted >= SLICE_UP_PICKS && mine.roi !== null && mine.roi >= SLICE_UP_ROI && (mine.units ?? 0) >= SLICE_UP_UNITS && recentOk) upCandidates.push({ s, now: stakeNow });
+  }
+  // The best of the ones earning a raise goes straight to the owner's target; the rest go up one step.
+  upCandidates.sort((a, b) => per(b.s.slice.all) - per(a.s.slice.all));
+  upCandidates.forEach(({ s, now }, i) => {
+    const mine = s.slice.all;
+    const best = i === 0 && now < BEST_SLICE_PCT;
+    const step = ladderStep({ pct: now }, 1);
+    // Slices are small samples: their stake never goes above the best-performer level, whatever the ladder allows.
+    const to = best ? { pct: BEST_SLICE_PCT } : step && "pct" in step ? { pct: Math.min(step.pct, BEST_SLICE_PCT) } : null;
+    if (!to || to.pct <= now) return;
+    out.push({
+      ...base(s),
+      kind: "slice-stake-up",
+      action: `Raise to ${to.pct}% of the balance${best ? " (your best performer)" : ""}`,
+      to,
+      reason: `${pct(mine.roi!)} per £1 (${mine.units! > 0 ? "+" : ""}${mine.units} units) over ${mine.counted} priced picks${best ? ", the best of your Live slices per pick" : ""}${s.recent && s.recent.n >= 10 && s.recent.roi !== null ? `; its last ${s.recent.n} are ${pct(s.recent.roi)}` : ""}. Currently ${now}% of the balance.`,
+    });
+  });
+  return out;
 }
 
 export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
@@ -204,6 +302,11 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
     if (rec) {
       const l = rec.live;
       const adj = adjusted(l.roi, l.counted);
+      // The early warning: a heavy stake on a clearly losing short record, ahead of the slower rule below.
+      if (l.counted >= EARLY_BETS && l.counted < 30 && l.roi !== null && l.roi <= EARLY_ROI && (l.units ?? 0) <= EARLY_UNITS && (settings.stakePct[key] ?? 0) >= EARLY_STAKE_PCT) {
+        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `Early warning: ${pct(l.roi)} per £1 (${l.units} units) over its last ${l.counted} Live bets at ${settings.stakePct[key]}% of the balance. Too few bets to be sure, but a stake this size is costly if it is real.` });
+        continue;
+      }
       if (l.counted >= 30 && adj !== null && adj < -0.02) {
         // The strategy's whole Live record since its rules last changed, for comparison: it's often still green even
         // when the last 30 days have turned, which otherwise reads as a contradiction once the admin switches to Sim
@@ -272,6 +375,12 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       });
     }
   }
+  // Golden slices: the working parts of a strategy, bet on their own.
+  try {
+    out.push(...sliceAdviceFrom(goldenReport(db, now, { skipFinder: true }).slices, settings));
+  } catch (err) {
+    log.warn(`Slice suggestions failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
   return out;
 }
 
@@ -282,6 +391,9 @@ export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = n
   const k = a.key;
   if (a.kind === "league-block") setLeagueBlock(db, k, a.league!.key, a.league!.name, true, now);
   else if (a.kind === "back-to-sim") saveSendingSettings(db, { strategies: { [k]: false } });
+  else if (a.kind === "slice-live") saveSendingSettings(db, { segmentBets: { [k]: { live: true, stakePct: (a.to as { pct: number }).pct } } });
+  else if (a.kind === "slice-sim") saveSendingSettings(db, { segmentBets: { [k]: { live: false } } });
+  else if (a.kind === "slice-stake-up" || a.kind === "slice-stake-down") saveSendingSettings(db, { segmentBets: { [k]: { stakePct: (a.to as { pct: number }).pct } } });
   else {
     const to = a.to!;
     const stake = "pct" in to ? { stakePct: { [k]: to.pct } } : { stakes: { [k]: to.flat } };
@@ -296,8 +408,26 @@ export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = n
     else delete r[k];
     db.setSetting(RAISES_KEY, JSON.stringify(r));
   }
-  log.info(`Strategy suggestion applied: ${displayName(db, k)}: ${a.action}.`);
+  log.info(`Strategy suggestion applied: ${a.name ?? displayName(db, k)}: ${a.action}.`);
   return a;
+}
+
+/**
+ * Applies every suggestion currently showing, one by one, and says which went through and which no longer applied (the
+ * list can change between the page loading and the button being pressed). League stops are left out: they change what
+ * is bet where, and are worth a look each.
+ */
+export function applyAllAdvice(db: EngineDb, now = new Date()): { applied: Advice[]; failed: Array<{ key: string; kind: AdviceKind; error: string }> } {
+  const applied: Advice[] = [];
+  const failed: Array<{ key: string; kind: AdviceKind; error: string }> = [];
+  for (const a of visibleAdvice(db, now).filter((x) => x.kind !== "league-block")) {
+    try {
+      applied.push(applyAdvice(db, a.key, a.kind, now));
+    } catch (err) {
+      failed.push({ key: a.key, kind: a.kind, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { applied, failed };
 }
 
 const LABEL: Record<AdviceKind, string> = {
@@ -306,6 +436,10 @@ const LABEL: Record<AdviceKind, string> = {
   "stake-up": "worth a bigger stake",
   "stake-down": "worth a smaller stake",
   "league-block": "losing in one league",
+  "slice-live": "slice ready to try Live",
+  "slice-sim": "slice losing: consider Sim",
+  "slice-stake-up": "slice worth a bigger stake",
+  "slice-stake-down": "slice worth a smaller stake",
 };
 
 /**
@@ -393,7 +527,7 @@ export async function notifyAdvice(db: EngineDb, now = new Date()): Promise<numb
   for (const a of advice) next[adviceId(a)] = sig(a);
   db.setSetting(STATE_KEY, JSON.stringify(next));
   if (fresh.length === 0) return 0;
-  const line = (a: Advice) => `${displayName(db, a.key)}: ${LABEL[a.kind]} (${a.action.toLowerCase()})`;
+  const line = (a: Advice) => `${a.name ?? displayName(db, a.key)}: ${LABEL[a.kind]} (${a.action.toLowerCase()})`;
   const body = fresh.length === 1 ? `${line(fresh[0]!)}. ${fresh[0]!.reason} Tap to review and apply.` : fresh.map(line).join(" · ");
   log.info(`Strategy suggestions: ${fresh.map(line).join("; ")}`);
   await sendPush(db, { title: fresh.length === 1 ? "Strategy suggestion" : `${fresh.length} strategy suggestions`, body, url: "/more/admin/today", tag: "strategy-advice" });

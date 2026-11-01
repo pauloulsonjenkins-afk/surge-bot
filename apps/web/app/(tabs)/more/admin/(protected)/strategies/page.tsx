@@ -18,7 +18,7 @@ import { PriceCheck } from "@/components/admin/PriceCheck";
 import { usePriceCheck } from "@/queries/use-price-check";
 import { useToday } from "@/queries/use-today";
 import type { StrategyAdvice } from "@/server/engine-client";
-import { AdviceRow } from "@/components/admin/Advice";
+import { AdviceRow, ApplyAllAdvice, adviceTitle } from "@/components/admin/Advice";
 import { isLayRow, LaySection } from "@/components/admin/LaySection";
 import { INACTIVE_DAYS, adjustedRoi, modeOf, ownMode, hasPicks, CheckResult, SAMPLE, Period, PERIODS, periodStart, SortBy, View, VIEWS, SORTS, sortValue } from "@/components/admin/strategies/strategy-parts";
 import { StrategyCard } from "@/components/admin/strategies/StrategyCard";
@@ -223,9 +223,12 @@ export default function StrategiesPage() {
             <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-ink">{allAdvice.length}</span>
           </h3>
           <p className="mt-0.5 text-xs text-ink-muted">From each strategy&apos;s results since its rules last changed. Nothing changes until you press the button and confirm.</p>
+          <div className="mt-2">
+            <ApplyAllAdvice advice={allAdvice} nameOf={(a) => adviceTitle(a, names.name)} />
+          </div>
           <ul className="mt-3 space-y-3 text-sm">
             {allAdvice.map((a) => (
-              <AdviceRow key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} a={a} name={a.league ? `${names.name(a.key)} in ${a.league.name}` : names.name(a.key)} link={!!a.league} />
+              <AdviceRow key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} a={a} name={adviceTitle(a, names.name)} link={!!a.league} />
             ))}
           </ul>
         </section>

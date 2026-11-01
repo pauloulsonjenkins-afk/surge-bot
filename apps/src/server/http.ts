@@ -103,7 +103,7 @@ import { log } from "./log";
 import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
-import { applyAdvice, visibleAdvice } from "./strategy-advice";
+import { applyAdvice, applyAllAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -620,11 +620,20 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
+    // Every suggestion showing, carried out in one go (the admin pressed Apply all and confirmed): strategy-advice.ts.
+    if (req.method === "POST" && path === "/internal/strategy-advice/apply-all") {
+      if (!requireAdmin(req, res)) return;
+      const done = applyAllAdvice(db);
+      log.info(`Apply all: ${done.applied.length} suggestion(s) applied, ${done.failed.length} no longer applied.`);
+      send(res, 200, { ...done, advice: visibleAdvice(db) });
+      return;
+    }
+
     // A strategy suggestion carried out (the admin pressed Apply on Today): stake ladder, Live or Sim (strategy-advice.ts).
     if (req.method === "POST" && path === "/internal/strategy-advice/apply") {
       if (!requireAdmin(req, res)) return;
       const body = await readJsonBody(req);
-      const kinds = ["try-live", "back-to-sim", "stake-up", "stake-down", "league-block"] as const;
+      const kinds = ["try-live", "back-to-sim", "stake-up", "stake-down", "league-block", "slice-live", "slice-sim", "slice-stake-up", "slice-stake-down"] as const;
       const kind = kinds.find((k) => k === body.kind);
       if (typeof body.key !== "string" || !kind) {
         send(res, 400, { error: "Which suggestion?" });

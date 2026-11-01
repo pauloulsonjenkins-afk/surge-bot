@@ -19,6 +19,7 @@ import { computeStrategyReturns } from "./winloss";
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
 import { goldenReport } from "./golden";
+import { visibleAdvice } from "./strategy-advice";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { log } from "./log";
 
@@ -51,6 +52,8 @@ const SYSTEM_PROMPT = [
   "ready to try Live or ready to come off it, a LAY group candidate, a losing pattern worth narrowing a strategy",
   "around. Only raise an idea the figures given actually back up — say plainly when nothing stands out rather than",
   "inventing one.",
+  "pendingRecommendations are changes the site is already suggesting (each has an Apply button for the owner): say in a",
+  "sentence or two which of them today's figures back or argue against, and never tell the owner to apply one; they decide.",
   "Finish with one line on what's worth watching next, from goldenSlicesCloseToNextStage (how many picks a slice is",
   "from becoming a candidate, a Live trial or full stake) if anything is given there — e.g. 'X is 6 picks from a Live",
   "trial'. This is never a results forecast: you cannot and must not predict tomorrow's results or say a strategy",
@@ -116,6 +119,8 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
     strategies,
     goldenSlices: golden,
     goldenSlicesCloseToNextStage: goldenCloseToNextStage(db, now),
+    // What the Today page is suggesting right now (strategy-advice.ts), so the note and the suggestions never disagree unseen.
+    pendingRecommendations: visibleAdvice(db, now).map((a) => ({ what: a.name ?? displayName(db, a.key), kind: a.kind, action: a.action, why: a.reason })),
   };
 }
 

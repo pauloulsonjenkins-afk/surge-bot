@@ -8,6 +8,7 @@ import { computeStrategyReturns, type StrategyReturn } from "./winloss";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { requestDailyClaudeReview } from "./claude-review";
+import { visibleAdvice } from "./strategy-advice";
 import { log } from "./log";
 
 /** When the summary goes out, UK time (HH:MM). */
@@ -31,6 +32,16 @@ function record(r: StrategyReturn): string {
 }
 
 /** The notification for the UK day `now` falls in. */
+/** "3 suggestions waiting on Today" when there are any (strategy-advice.ts), else nothing. */
+function waitingLine(db: EngineDb, now: Date): string {
+  try {
+    const n = visibleAdvice(db, now).length;
+    return n > 0 ? `${n} suggestion${n === 1 ? "" : "s"} waiting on Today` : "";
+  } catch {
+    return "";
+  }
+}
+
 export function buildDailySummary(db: EngineDb, now = new Date()): { title: string; body: string } {
   const { from } = ukDayBounds(ukDateOf(now));
   const returns = Object.entries(computeStrategyReturns(db, from));
@@ -67,7 +78,7 @@ export function buildDailySummary(db: EngineDb, now = new Date()): { title: stri
   if (rows.length > MAX_LINES) lines.push(`+${rows.length - MAX_LINES} more in the app`);
 
   const headline = live.settled > 0 ? `Live ${money(live.profit)}` : `Sim ${money(sim.profit)}`;
-  return { title: `GoalBrew ${time}: ${headline} today`, body: lines.join("\n") };
+  return { title: `GoalBrew ${time}: ${headline} today`, body: [...lines, waitingLine(db, now)].filter(Boolean).join("\n") };
 }
 
 /** The summary time due at `now` that hasn't been sent yet, as "YYYY-MM-DD HH:MM", or null. */

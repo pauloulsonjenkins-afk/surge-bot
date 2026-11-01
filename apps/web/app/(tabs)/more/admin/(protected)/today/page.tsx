@@ -12,7 +12,7 @@ import { useSaveSending } from "@/queries/use-sending";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useQuery } from "@tanstack/react-query";
 import { getJson } from "@/queries/fetch-json";
-import { AdviceRow } from "@/components/admin/Advice";
+import { AdviceRow, ApplyAllAdvice, adviceTitle } from "@/components/admin/Advice";
 import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
 import { toneOf, gbp, units } from "@/lib/format";
@@ -298,9 +298,10 @@ function Tiles({ d }: { d: TodaySnapshot }) {
 
       {d.advice && d.advice.length > 0 && (
         <Card title="Suggestions" subtitle="From results since each strategy's rules last changed. Nothing changes until you press Apply; you get one notification per new suggestion.">
-          <ul className="space-y-3 text-sm">
+          <ApplyAllAdvice advice={d.advice} nameOf={(a) => adviceTitle(a, names.name)} />
+          <ul className="mt-3 space-y-3 text-sm">
             {d.advice.map((a) => (
-              <AdviceRow key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} a={a} name={a.league ? `${names.name(a.key)} in ${a.league.name}` : names.name(a.key)} />
+              <AdviceRow key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} a={a} name={adviceTitle(a, names.name)} />
             ))}
           </ul>
         </Card>

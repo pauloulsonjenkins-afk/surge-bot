@@ -6,7 +6,7 @@ import { applyStrategyAdvice, type StrategyAdvice } from "@/server/engine-client
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS: StrategyAdvice["kind"][] = ["try-live", "back-to-sim", "stake-up", "stake-down", "league-block"];
+const KINDS: StrategyAdvice["kind"][] = ["try-live", "back-to-sim", "stake-up", "stake-down", "league-block", "slice-live", "slice-sim", "slice-stake-up", "slice-stake-down"];
 
 /** Body: { key, kind, league? (league-block: its league key) }. Carries out one strategy suggestion from Today (admin only). */
 export async function POST(request: Request) {
