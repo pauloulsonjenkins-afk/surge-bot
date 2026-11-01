@@ -20,6 +20,42 @@ export function parseStake(text: string): number | null | undefined {
 }
 
 /**
+ * A slice's Live / Sim switch with its confirmation ("bet them with real money"), shared by the slice's own box below
+ * and the Strategies page's Golden slices list, so the same words and the same checks come with either.
+ */
+export function useSliceLive(strategyKey: string, strategyName: string, segment: { id: string; label: string }) {
+  const key = `${strategyKey}#${segment.id}`;
+  const save = useSaveSending();
+  const dialog = useDialog();
+  const name = segment.label.replace(/^Golden: /, "").replace(/ since .*$/, "");
+  const stakeText = (p: number | null) => (p != null ? `${p}% of the balance` : "the strategy's stake");
+
+  /** Switches the slice to Live (after asking) or back to Sim, at stake p (% of the balance, or null for the strategy's own). */
+  async function toggleLive(next: boolean, p: number | null): Promise<void> {
+    if (next) {
+      const ok = await dialog.confirm({
+        title: `Bet ${name} alerts Live?`,
+        tone: "money",
+        confirmLabel: "Bet them Live",
+        body: (
+          <>
+            <p>
+              {strategyName}&apos;s {name} alerts will be bet with real money at {stakeText(p)}, whether {strategyName} itself is Live or in Sim. Your highest stake,
+              match limit, daily loss stop and its stop loss still apply.
+            </p>
+            <p className="text-xs text-ink-muted">For all of {strategyName}&apos;s picks (this slice is a part of them):</p>
+            <ClashSummary strategyKey={strategyKey} compact />
+          </>
+        ),
+      });
+      if (!ok) return;
+    }
+    save.mutate({ segmentBets: { [key]: { live: next, stakePct: p } } });
+  }
+  return { save, toggleLive };
+}
+
+/**
  * Bet a watched slice on its own (e.g. Second Pour's Golden alerts): its own Live / Sim switch and stake (% of the
  * balance). "Follow the strategy" removes it, so the slice is bet like the rest of the strategy again.
  */
@@ -38,7 +74,7 @@ export function SegmentBetting({
 }) {
   const key = `${strategyKey}#${segment.id}`;
   const cfg = settings.segmentBets?.[key] ?? null;
-  const save = useSaveSending();
+  const { save, toggleLive } = useSliceLive(strategyKey, strategyName, segment);
   const dialog = useDialog();
   const golden = useGolden();
   const statusId = useId();
@@ -62,25 +98,7 @@ export function SegmentBetting({
   async function setLive(next: boolean) {
     const p = readStake();
     if (p === undefined) return;
-    if (next) {
-      const ok = await dialog.confirm({
-        title: `Bet ${name} alerts Live?`,
-        tone: "money",
-        confirmLabel: "Bet them Live",
-        body: (
-          <>
-            <p>
-              {strategyName}&apos;s {name} alerts will be bet with real money at {stakeText(p)}, whether {strategyName} itself is Live or in Sim. Your highest stake,
-              match limit, daily loss stop and its stop loss still apply.
-            </p>
-            <p className="text-xs text-ink-muted">For all of {strategyName}&apos;s picks (this slice is a part of them):</p>
-            <ClashSummary strategyKey={strategyKey} compact />
-          </>
-        ),
-      });
-      if (!ok) return;
-    }
-    save.mutate({ segmentBets: { [key]: { live: next, stakePct: p } } });
+    await toggleLive(next, p);
   }
 
   /** Saves a new stake and keeps the slice Live or Sim as it is now (asking first when it bets real money). */

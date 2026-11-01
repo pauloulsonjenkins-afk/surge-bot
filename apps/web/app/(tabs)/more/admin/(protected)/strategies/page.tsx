@@ -22,6 +22,7 @@ import { AdviceRow } from "@/components/admin/Advice";
 import { isLayRow, LaySection } from "@/components/admin/LaySection";
 import { INACTIVE_DAYS, adjustedRoi, modeOf, ownMode, hasPicks, CheckResult, SAMPLE, Period, PERIODS, periodStart, SortBy, View, VIEWS, SORTS, sortValue } from "@/components/admin/strategies/strategy-parts";
 import { StrategyCard } from "@/components/admin/strategies/StrategyCard";
+import { GoldenSlicesSection } from "@/components/admin/strategies/GoldenSlicesSection";
 
 export default function StrategiesPage() {
   const [period, setPeriod] = useState<Period>("ALL");
@@ -205,7 +206,7 @@ export default function StrategiesPage() {
         title="Strategies"
         subtitle={
           <>
-            Each strategy&apos;s results and Live / Sim switch; tap one for its stake and limits. Overall limits are on{" "}
+            Golden slices you can put Live on their own, then each strategy&apos;s results and Live / Sim switch; tap one for its stake and limits. Overall limits are on{" "}
             <Link href="/more/admin/sending?tab=limits" className="text-accent underline">
               Betting
             </Link>
@@ -239,6 +240,9 @@ export default function StrategiesPage() {
           { value: "lay", label: `LAY bets${strategies.some(isLayRow) ? ` · ${strategies.filter(isLayRow).length}` : ""}` },
         ]}
       />
+
+      {/* The parts of a strategy doing well, each with its own Live switch, ahead of the strategies (1 Nov 2026). */}
+      {side === "back" && <GoldenSlicesSection />}
 
       {side === "lay" && data && <LaySection rows={strategies.filter(isLayRow)} all={strategies} betOf={betOf} settings={sending.data?.settings} bank={sending.data?.bank} />}
 
