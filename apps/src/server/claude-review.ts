@@ -132,8 +132,16 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
 const MAX_TOKENS = 16_000;
 const ATTEMPTS = 2;
 
+/** Why a request failed, in a sentence: the account being out of credit is by far the commonest cause, and says what to do. */
+export function plainFailure(message: string): { text: string; retryHelps: boolean } {
+  if (/credit balance is too low/i.test(message)) return { text: "Anthropic credit has run out. Add credit under Plans & Billing at console.anthropic.com and the next note will be written.", retryHelps: false };
+  if (/invalid x-api-key|authentication_error|401/i.test(message)) return { text: "Anthropic didn't accept the API key. Check ANTHROPIC_API_KEY on the engine.", retryHelps: false };
+  if (/overloaded|529|rate_limit|429|timeout|ETIMEDOUT|ECONNRESET/i.test(message)) return { text: "Anthropic was busy or unreachable. It tries again at the next note.", retryHelps: true };
+  return { text: `the request failed (${message.replace(/\s+/g, " ").slice(0, 160)}).`, retryHelps: true };
+}
+
 /** One try: the note, or why there isn't one. */
-async function tryNote(anthropic: Anthropic, digest: unknown): Promise<{ note: string } | { failed: string }> {
+async function tryNote(anthropic: Anthropic, digest: unknown): Promise<{ note: string } | { failed: string; retryHelps?: boolean }> {
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
@@ -147,7 +155,8 @@ async function tryNote(anthropic: Anthropic, digest: unknown): Promise<{ note: s
     const note = response.content.find((b) => b.type === "text")?.text.trim();
     return note ? { note } : { failed: "the reply had no text in it." };
   } catch (err) {
-    return { failed: `the request failed (${err instanceof Error ? err.message : String(err)}).` };
+    const f = plainFailure(err instanceof Error ? err.message : String(err));
+    return { failed: f.text, retryHelps: f.retryHelps };
   }
 }
 
@@ -174,6 +183,7 @@ async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date
     }
     failed = r.failed;
     log.warn(`Claude ${kind} review attempt ${attempt} of ${ATTEMPTS}: ${failed}`);
+    if (r.retryHelps === false) break;
   }
   recordFailure(db, kind, failed, now);
 }

@@ -91,11 +91,27 @@ test("daily review: two failures keep yesterday's note and say why on Today, unt
     assert.equal(fails.calls(), 2, "one retry, no more");
     assert.equal(getClaudeReviewNotes(db).daily?.note, "Yesterday's note.", "never replaced by a cut-off one");
     const f = getClaudeReviewFailures(db).daily;
-    assert.ok(f && /overloaded/.test(f.reason), "the last attempt's reason is kept");
+    assert.ok(f && /busy or unreachable/.test(f.reason), "the last attempt's reason is kept, in plain words");
     assert.equal(f!.at, "2026-10-27T21:30:00.000Z");
     setReviewClientForTest(fakeClaude([{ stop_reason: "end_turn", text: "Today's note." }]).client);
     await requestDailyClaudeReview(db, new Date("2026-10-28T21:30:00Z"));
     assert.equal(getClaudeReviewFailures(db).daily, undefined, "cleared once one works");
+  } finally {
+    setReviewClientForTest(undefined);
+  }
+});
+
+test("daily review: an account out of credit is told plainly, tried once (a retry can't help), and keeps the last note", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  setReviewClientForTest(fakeClaude([{ stop_reason: "end_turn", text: "Yesterday's note." }]).client);
+  await requestDailyClaudeReview(db, new Date("2026-10-30T21:30:00Z"));
+  const broke = fakeClaude([new Error('400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}'), new Error("unused")]);
+  setReviewClientForTest(broke.client);
+  try {
+    await requestDailyClaudeReview(db, new Date("2026-10-31T21:30:00Z"));
+    assert.equal(broke.calls(), 1, "no second try");
+    assert.match(getClaudeReviewFailures(db).daily!.reason, /^Anthropic credit has run out\. Add credit under Plans & Billing/);
+    assert.equal(getClaudeReviewNotes(db).daily?.note, "Yesterday's note.");
   } finally {
     setReviewClientForTest(undefined);
   }

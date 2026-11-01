@@ -8,6 +8,14 @@ import type { ClaudeReviews } from "@/server/engine-client";
 const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
 const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
+/** A stored failure reason as one short sentence (older ones carry the raw error text, JSON and all). */
+export function plainReason(reason: string): string {
+  if (/credit balance is too low/i.test(reason)) return "Anthropic credit has run out. Add credit under Plans & Billing at console.anthropic.com.";
+  if (/invalid x-api-key|authentication_error/i.test(reason)) return "Anthropic didn't accept the API key.";
+  const flat = reason.replace(/\s+/g, " ");
+  return flat.length > 140 ? `${flat.slice(0, 140)}…` : flat;
+}
+
 /** One review note: four lines to start, the rest a tap away (only when there is a rest), so a long note never pushes the page down. */
 function ReviewNote({ label, at, note }: { label: string; at: string; note: string }) {
   return (
@@ -36,11 +44,11 @@ export function ClaudeReviewCard() {
   // "Today" only when it is today's: until 28 Oct 2026 Monday's note sat under "Today" on Wednesday after two failed.
   const labelOf = (n: (typeof list)[number]) => (ukDay.format(new Date(n.generatedAt)) === today ? "Today" : "Latest daily note");
   return (
-    <section className={`rounded-xl border p-3.5 ${failed.length > 0 ? "border-warn/60 bg-surface" : "border-line bg-surface"}`}>
+    <section className="rounded-xl border border-line bg-surface p-3.5">
       <h3 className="text-sm font-semibold text-ink">Claude&apos;s review</h3>
       {failed.map((f) => (
         <p key={f.kind} className="mt-1 text-xs text-warn">
-          The daily note due {when.format(new Date(f.at))} wasn&apos;t written: {f.reason} It tries again at the next one.
+          Note not written ({when.format(new Date(f.at))}): {plainReason(f.reason)}
         </p>
       ))}
       {!configured ? (
