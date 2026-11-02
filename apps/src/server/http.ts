@@ -116,6 +116,7 @@ import { similarAlertsFor } from "./similar-alerts";
 import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
 import { archiveRows, getArchived, setArchived } from "./archive";
+import { addTipChannel, getTipChannels, refreshTipChannels, removeTipChannel } from "../tips/reader";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -1198,6 +1199,32 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       send(res, 200, { keys: Object.keys(getArchived(db)), rows: archiveRows(db) });
+      return;
+    }
+
+    // Free tip channels (tips/): the channels read, and what each message was taken to be. Admin only, read-only for betting.
+    if (path === "/internal/tips" && (req.method === "GET" || req.method === "POST")) {
+      if (!requireAdmin(req, res)) return;
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        try {
+          if (body.action === "add" && typeof body.channel === "string") addTipChannel(db, body.channel);
+          else if (body.action === "remove" && typeof body.channel === "string") removeTipChannel(db, body.channel);
+          else if (body.action === "review" && typeof body.chatKey === "string" && typeof body.messageId === "number") {
+            const r = body.review === "tip" || body.review === "not" ? body.review : null;
+            db.setChannelTipReview(body.chatKey, body.messageId, r);
+          } else {
+            send(res, 400, { error: "unknown_action" });
+            return;
+          }
+        } catch (err) {
+          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't do that." });
+          return;
+        }
+        if (body.action === "add") void refreshTipChannels();
+      }
+      const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+      send(res, 200, { channels: getTipChannels(db), tips: db.listChannelTips(since) });
       return;
     }
 

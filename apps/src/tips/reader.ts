@@ -1,0 +1,161 @@
+/**
+ * Reads the free tip channels the owner chose (Free tips page) over the Telegram login already in use, and stores each
+ * message with how classify.ts read it. Read-only: nothing here places or suggests a bet, and the alert channel's
+ * handling (telegram/listener.ts) is untouched.
+ *
+ * The channels are kept as the owner typed them (@name, a t.me link, or a number) in the `tip_channels` setting, so one
+ * can be added without a restart. Live messages and edits are stored as they arrive; every few minutes the last
+ * messages of each channel are read back too, so anything missed while the engine was down is caught.
+ */
+import type { TelegramClient, Api } from "telegram";
+import { NewMessage, type NewMessageEvent } from "telegram/events";
+import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMessage";
+import type { EngineDb } from "../storage/engine-db";
+import { log } from "../server/log";
+import { classifyTip } from "./classify";
+
+const KEY = "tip_channels";
+const SYNC_EVERY_MS = 5 * 60 * 1000;
+const FIRST_READ = 200;
+const LATER_READ = 40;
+
+export function getTipChannels(db: EngineDb): string[] {
+  try {
+    const v = JSON.parse(db.getSetting(KEY) ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** "https://t.me/name", "t.me/name", "@name" and "name" are all the same channel; a number is a chat id. */
+export function normaliseChannel(raw: string): string {
+  const s = raw.trim().replace(/^https?:\/\//i, "").replace(/^t\.me\//i, "").replace(/^@/, "").replace(/[/?#].*$/, "");
+  return /^-?\d+$/.test(s) ? s : s ? `@${s}` : "";
+}
+
+export function addTipChannel(db: EngineDb, raw: string): string[] {
+  const c = normaliseChannel(raw);
+  if (!c) throw new Error("Enter a channel name like @freetips, or a t.me link.");
+  const all = getTipChannels(db);
+  if (!all.some((x) => x.toLowerCase() === c.toLowerCase())) all.push(c);
+  db.setSetting(KEY, JSON.stringify(all));
+  return all;
+}
+
+export function removeTipChannel(db: EngineDb, raw: string): string[] {
+  const c = normaliseChannel(raw).toLowerCase();
+  const all = getTipChannels(db).filter((x) => x.toLowerCase() !== c);
+  db.setSetting(KEY, JSON.stringify(all));
+  return all;
+}
+
+/** Classifies and stores one message. Returns true when something was written. */
+export function recordTip(db: EngineDb, m: { chatKey: string; messageId: number; date: number; text: string; channel: string }): boolean {
+  const text = m.text.trim();
+  if (!text) return false;
+  if (db.getChannelTipText(m.chatKey, m.messageId) === m.text) return false;
+  const r = classifyTip(m.text);
+  db.upsertChannelTip({
+    chatKey: m.chatKey,
+    messageId: m.messageId,
+    channel: m.channel,
+    postedAt: new Date(m.date * 1000).toISOString(),
+    text: m.text,
+    verdict: r.verdict,
+    reasons: r.reasons,
+    match: r.match,
+    selection: r.selection,
+    odds: r.odds,
+    stake: r.stake,
+  });
+  return true;
+}
+
+interface Active {
+  client: TelegramClient;
+  db: EngineDb;
+  stopped: () => boolean;
+  /** Marked chat id (as message.chatId prints it) to the channel's display name. */
+  known: Map<string, string>;
+  firstDone: Set<string>;
+}
+
+let active: Active | null = null;
+let timer: NodeJS.Timeout | null = null;
+let attachedClient: TelegramClient | null = null;
+
+async function resolve(a: Active): Promise<void> {
+  const next = new Map<string, string>();
+  for (const ref of getTipChannels(a.db)) {
+    try {
+      const entity = await a.client.getEntity(/^-?\d+$/.test(ref) ? Number(ref) : ref);
+      const id = (await a.client.getPeerId(entity)).toString();
+      const e = entity as { title?: string; username?: string };
+      next.set(id, e.title ?? (e.username ? `@${e.username}` : ref));
+    } catch (err) {
+      log.warn(`Free tips: couldn't find the channel ${ref}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  a.known = next;
+}
+
+async function sync(a: Active): Promise<void> {
+  if (a.stopped()) return;
+  try {
+    await resolve(a);
+    let stored = 0;
+    for (const [id, name] of a.known) {
+      const first = !a.firstDone.has(id);
+      const messages = (await a.client.getMessages(Number(id), { limit: first ? FIRST_READ : LATER_READ })) as Api.Message[];
+      a.firstDone.add(id);
+      for (const m of [...messages].reverse()) {
+        if (recordTip(a.db, { chatKey: id, messageId: m.id, date: m.date, text: m.message ?? "", channel: name })) stored++;
+      }
+    }
+    if (stored > 0) log.info(`Free tips: stored ${stored} message(s) from ${a.known.size} channel(s).`);
+  } catch (err) {
+    log.error(`Free tips read failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Re-reads the channel list now (after one is added), without waiting for the next pass. */
+export async function refreshTipChannels(): Promise<void> {
+  if (active) await sync(active);
+}
+
+/**
+ * Starts reading the chosen channels on this Telegram client. `stopped` says when this attachment is no longer current
+ * (the listener was stopped or reconnected), so an old client's handlers do nothing.
+ */
+export function startTipReader(client: TelegramClient, db: EngineDb, stopped: () => boolean): void {
+  const a: Active = { client, db, stopped, known: new Map(), firstDone: new Set() };
+  active = a;
+  if (attachedClient !== client) {
+    attachedClient = client;
+    const handle = (event: NewMessageEvent | EditedMessageEvent) => {
+      try {
+        if (!active || active.client !== client || active.stopped()) return;
+        const message = event.message;
+        const id = message.chatId?.toString();
+        const name = id ? active.known.get(id) : undefined;
+        if (!id || !name) return;
+        recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: message.message ?? "", channel: name });
+      } catch (err) {
+        log.error(`Free tips couldn't store a message: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    client.addEventHandler((e: NewMessageEvent) => handle(e), new NewMessage({}));
+    client.addEventHandler((e: EditedMessageEvent) => handle(e), new EditedMessage({}));
+  }
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => void sync(a), SYNC_EVERY_MS);
+  timer.unref();
+  void sync(a);
+}
+
+export function stopTipReader(): void {
+  active = null;
+  if (timer) clearInterval(timer);
+  timer = null;
+}

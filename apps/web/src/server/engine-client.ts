@@ -2110,3 +2110,31 @@ export function setArchive(label: string, archived: boolean, note?: string): Pro
 export function fetchDripShadow(): Promise<{ headline: string; text: string; recorded: number; settled: number }> {
   return engineCall<{ headline: string; text: string; recorded: number; settled: number }>("/internal/drip-shadow", "the drip test report");
 }
+
+/** Free tip channels (engine tips/): the channels read, and each message with how it was classified. Admin only. */
+export interface ChannelTip {
+  chatKey: string;
+  messageId: number;
+  channel: string;
+  postedAt: string;
+  text: string;
+  /** The reading: tip, maybe, advert or other. */
+  verdict: "tip" | "maybe" | "advert" | "other";
+  reasons: string[];
+  match: string | null;
+  selection: string | null;
+  odds: number | null;
+  stake: string | null;
+  /** The owner's own call, which wins over the reading. */
+  review: "tip" | "not" | null;
+}
+export interface TipsState {
+  channels: string[];
+  tips: ChannelTip[];
+}
+export function fetchTips(): Promise<TipsState> {
+  return engineCall<TipsState>("/internal/tips", "the free tips");
+}
+export function changeTips(body: Record<string, unknown>): Promise<TipsState> {
+  return engineCall<TipsState>("/internal/tips", "the free tips", { method: "POST", body });
+}

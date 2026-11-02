@@ -799,6 +799,24 @@ export class EngineDb {
         PRIMARY KEY (pick_id, kind)
       );
 
+      -- Free tip channels (tips/): every message read from a watched channel, with how it was classified. review is the
+      -- owner's own call ('tip' or 'not'), which always wins over verdict. Read-only: nothing here is used to bet.
+      CREATE TABLE IF NOT EXISTS channel_tips (
+        chat_key   TEXT NOT NULL,
+        message_id INTEGER NOT NULL,
+        channel    TEXT NOT NULL,
+        posted_at  TEXT NOT NULL,
+        text       TEXT NOT NULL,
+        verdict    TEXT NOT NULL,
+        reasons    TEXT NOT NULL,
+        match_name TEXT,
+        selection  TEXT,
+        odds       REAL,
+        stake      TEXT,
+        review     TEXT,
+        PRIMARY KEY (chat_key, message_id)
+      );
+
       -- Edge (edge/edge.ts): the pre-match insight card for each upcoming fixture, worked out a few times a day and
       -- read by the Members Fixtures page. Read-only for betting: nothing here is used to bet.
       CREATE TABLE IF NOT EXISTS edge_cards (
@@ -1174,6 +1192,49 @@ export class EngineDb {
       )
       .all(Math.min(Math.max(limit, 1), 50)) as Array<{ id: number; received_at: string; body_sha256: string; content_type: string | null; signature_verified: number; body: string }>;
     return rows.map((r) => ({ id: r.id, receivedAt: r.received_at, bodySha256: r.body_sha256, contentType: r.content_type, signatureVerified: !!r.signature_verified, body: r.body }));
+  }
+
+  /** Stores (or re-reads, after an edit) one channel message. The owner's review is kept when the text is re-classified. */
+  upsertChannelTip(t: { chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null }): void {
+    this.db
+      .prepare(
+        `INSERT INTO channel_tips (chat_key, message_id, channel, posted_at, text, verdict, reasons, match_name, selection, odds, stake)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(chat_key, message_id) DO UPDATE SET channel = excluded.channel, text = excluded.text, verdict = excluded.verdict,
+           reasons = excluded.reasons, match_name = excluded.match_name, selection = excluded.selection, odds = excluded.odds, stake = excluded.stake`,
+      )
+      .run(t.chatKey, t.messageId, t.channel, t.postedAt, t.text, t.verdict, JSON.stringify(t.reasons), t.match, t.selection, t.odds, t.stake);
+  }
+
+  getChannelTipText(chatKey: string, messageId: number): string | null {
+    const r = this.db.prepare(`SELECT text FROM channel_tips WHERE chat_key = ? AND message_id = ?`).get(chatKey, messageId) as { text: string } | undefined;
+    return r ? r.text : null;
+  }
+
+  /** Newest first, since `since`. */
+  listChannelTips(since: string, limit = 400): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null }> {
+    const rows = this.db
+      .prepare(`SELECT * FROM channel_tips WHERE posted_at >= ? ORDER BY posted_at DESC LIMIT ?`)
+      .all(since, limit) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; verdict: string; reasons: string; match_name: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null }>;
+    return rows.map((r) => ({
+      chatKey: r.chat_key,
+      messageId: r.message_id,
+      channel: r.channel,
+      postedAt: r.posted_at,
+      text: r.text,
+      verdict: r.verdict,
+      reasons: JSON.parse(r.reasons) as string[],
+      match: r.match_name,
+      selection: r.selection,
+      odds: r.odds,
+      stake: r.stake,
+      review: r.review,
+    }));
+  }
+
+  /** The owner's call on a message: 'tip', 'not', or null to clear it. */
+  setChannelTipReview(chatKey: string, messageId: number, review: "tip" | "not" | null): boolean {
+    return this.db.prepare(`UPDATE channel_tips SET review = ? WHERE chat_key = ? AND message_id = ?`).run(review, chatKey, messageId).changes > 0;
   }
 
   /**

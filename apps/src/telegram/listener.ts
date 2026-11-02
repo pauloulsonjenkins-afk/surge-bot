@@ -36,6 +36,7 @@ import { recordSimBets } from "../inplayguru/bet-feed";
 import { requestExchangeCheck } from "../betfair/exchange";
 import { wakeMembers } from "../members/runner";
 import { notifyGoldenAlert } from "../server/golden-notify";
+import { startTipReader, stopTipReader } from "../tips/reader";
 import { log } from "../server/log";
 
 const SYNC_EVERY_MS = 2 * 60 * 1000;
@@ -106,6 +107,7 @@ export function stopTelegramListener(): void {
   status.watching = null;
   if (syncTimer) clearInterval(syncTimer);
   syncTimer = null;
+  stopTipReader();
 }
 
 interface IncomingText {
@@ -315,6 +317,9 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
       syncing = false;
     }
   };
+
+  // The free tip channels the owner chose (tips/reader.ts), read on this same login. Separate from the alert chat above.
+  startTipReader(client, db, stopped);
 
   void sync();
   if (syncTimer) clearInterval(syncTimer);
