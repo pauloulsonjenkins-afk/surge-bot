@@ -871,6 +871,10 @@ export class EngineDb {
 
     `);
 
+    // Tracking arrived after the first free-tips table: null = not yet tried, 'done' = recorded as a pick, 'no: why' = set aside.
+    const tipCols = this.db.prepare(`PRAGMA table_info(channel_tips)`).all() as Array<{ name: string }>;
+    if (!tipCols.some((c) => c.name === "tracked")) this.db.exec(`ALTER TABLE channel_tips ADD COLUMN tracked TEXT`);
+
     // Usernames arrived after the first accounts: those have none and sign in with their email.
     const userCols = this.db.prepare(`PRAGMA table_info(app_users)`).all() as Array<{ name: string }>;
     if (!userCols.some((c) => c.name === "username")) this.db.exec(`ALTER TABLE app_users ADD COLUMN username TEXT`);
@@ -1212,10 +1216,10 @@ export class EngineDb {
   }
 
   /** Newest first, since `since`. */
-  listChannelTips(since: string, limit = 400): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null }> {
+  listChannelTips(since: string, limit = 400): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null }> {
     const rows = this.db
       .prepare(`SELECT * FROM channel_tips WHERE posted_at >= ? ORDER BY posted_at DESC LIMIT ?`)
-      .all(since, limit) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; verdict: string; reasons: string; match_name: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null }>;
+      .all(since, limit) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; verdict: string; reasons: string; match_name: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null }>;
     return rows.map((r) => ({
       chatKey: r.chat_key,
       messageId: r.message_id,
@@ -1229,7 +1233,23 @@ export class EngineDb {
       odds: r.odds,
       stake: r.stake,
       review: r.review,
+      tracked: r.tracked,
     }));
+  }
+
+  /** Messages taken as tips (by the reading, or the owner's 'Tip') not yet recorded as a pick or set aside, posted since `since`. */
+  listUntrackedTips(since: string): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null }> {
+    const rows = this.db
+      .prepare(
+        `SELECT chat_key, message_id, channel, posted_at, text, match_name, selection, odds FROM channel_tips
+         WHERE tracked IS NULL AND posted_at >= ? AND (review = 'tip' OR (review IS NULL AND verdict = 'tip')) ORDER BY posted_at`,
+      )
+      .all(since) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; selection: string | null; odds: number | null }>;
+    return rows.map((r) => ({ chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, selection: r.selection, odds: r.odds }));
+  }
+
+  setChannelTipTracked(chatKey: string, messageId: number, tracked: string): void {
+    this.db.prepare(`UPDATE channel_tips SET tracked = ? WHERE chat_key = ? AND message_id = ?`).run(tracked, chatKey, messageId);
   }
 
   /** The owner's call on a message: 'tip', 'not', or null to clear it. */

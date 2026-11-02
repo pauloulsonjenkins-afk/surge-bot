@@ -2127,6 +2127,8 @@ export interface ChannelTip {
   stake: string | null;
   /** The owner's own call, which wins over the reading. */
   review: "tip" | "not" | null;
+  /** null = waiting to be priced on Betfair, "done" = recorded in Sim as Telegram tips, "no: why" = can't be tracked. */
+  tracked: string | null;
 }
 export interface TipsState {
   channels: string[];

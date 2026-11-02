@@ -13,6 +13,8 @@ import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMe
 import type { EngineDb } from "../storage/engine-db";
 import { log } from "../server/log";
 import { classifyTip } from "./classify";
+import { trackTips } from "./track";
+import { getExchangeReader } from "../betfair/exchange";
 
 const KEY = "tip_channels";
 const SYNC_EVERY_MS = 5 * 60 * 1000;
@@ -114,6 +116,9 @@ async function sync(a: Active): Promise<void> {
       }
     }
     if (stored > 0) log.info(`Free tips: stored ${stored} message(s) from ${a.known.size} channel(s).`);
+    // Tips that can be placed on Betfair become Sim picks of the "Telegram tips" strategy (tips/track.ts).
+    const betfair = getExchangeReader();
+    if (betfair) await trackTips(a.db, betfair);
   } catch (err) {
     log.error(`Free tips read failed: ${err instanceof Error ? err.message : String(err)}`);
   }

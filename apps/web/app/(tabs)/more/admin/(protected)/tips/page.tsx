@@ -53,7 +53,7 @@ export default function TipsPage() {
       <PageHeader
         as="h2"
         title="Free tips"
-        subtitle="Telegram channels you follow, read for real bets. Adverts for premium groups are filtered out. Nothing here places a bet."
+        subtitle="Telegram channels you follow, read for real bets. Adverts for premium groups are filtered out. Tips that can be placed on Betfair are recorded in Sim as the strategy Telegram tips (it stays in Sim until you switch it Live)."
       />
 
       <section className="rounded-xl border border-line bg-surface p-3.5">
@@ -126,6 +126,11 @@ export default function TipsPage() {
                     {t.stake && <span className="text-ink-muted"> · {t.stake}</span>}
                   </p>
                 </div>
+              )}
+              {effective(t) === "tip" && (
+                <p className="mt-1 text-xs font-medium text-ink">
+                  {t.tracked === "done" ? "Recorded in Sim as Telegram tips" : t.tracked ? `Not tracked: ${t.tracked.replace(/^no: /, "")}` : "Waiting to be priced on Betfair"}
+                </p>
               )}
               <p className="mt-1.5 line-clamp-4 whitespace-pre-line text-xs text-ink-muted">{t.text}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
