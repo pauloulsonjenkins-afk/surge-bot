@@ -18,6 +18,9 @@ import { INACTIVE_DAYS, SAMPLE, adjustedRoi, modeOf, ownMode, returnsFor, roiTon
 import { roiText } from "@/lib/hit-rate";
 import type { StrategyAdvice } from "@/server/engine-client";
 
+/** Below this many priced bets a return isn't shown on the overview. */
+const MIN_SHOWN = 10;
+
 /** The address of a strategy's own page. */
 export const strategyHref = (label: string) => `/more/admin/strategies/${encodeURIComponent(label.toLowerCase())}`;
 
@@ -82,13 +85,22 @@ export default function StrategiesPage() {
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-ink">{names.name(r.label)}</span>
             <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
-              <span>{mode === "live" ? "Live" : "Sim"}</span>
-              <span>· {money?.counted ?? 0} bets</span>
+              {/* The strategy's real state, which is where it is listed; the figures may come from its other side (past Live bets). */}
+              <span>{modeOf(r) === "live" ? "Live" : "Sim"}</span>
+              <span>
+                · {money?.counted ?? 0} {money?.counted === 1 ? "bet" : "bets"}
+                {modeOf(r) !== mode ? ` (${mode === "live" ? "Live" : "Sim"} bets)` : ""}
+              </span>
               {showTrend && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${trend.cls}`}>{trend.label}</span>}
               {a && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${isGoodAdvice(a) ? "bg-hit/15 text-hit" : "bg-warn/20 text-warn"}`}>{ADVICE_LABEL[a.kind]}</span>}
             </span>
           </span>
-          <span className={`shrink-0 text-sm font-medium tabular-nums ${roiTone(money?.roi ?? null)}`}>{money && money.counted > 0 ? roiText(money.roi) : "–"}</span>
+          {/* A return from a handful of bets means nothing (2 bets read +352%), so it is greyed and marked until there are enough. */}
+          {money && money.counted >= MIN_SHOWN ? (
+            <span className={`shrink-0 text-sm font-medium tabular-nums ${roiTone(money.roi)}`}>{roiText(money.roi)}</span>
+          ) : (
+            <span className="shrink-0 text-xs text-ink-muted">{money && money.counted > 0 ? "too few" : "–"}</span>
+          )}
           <ChevronRight size={16} aria-hidden className="shrink-0 text-ink-muted" />
         </Link>
       </li>

@@ -57,16 +57,19 @@ test("old strategies are archived by themselves: the retired list once, quiet on
   const recent = new Date(Date.now() - 86_400_000).toISOString();
   const add = (name: string, id: number, at: string) => db.upsertLivePick("chat", id, named(name, id), parseAlert(named(name, id)), at, at);
   add("Late goal hunter", 1, recent); // on the retired list, even though it alerted yesterday
+  add("Sustained momentum", 6, recent); // retired AND still switched Live: archived, and put back to Sim
   add("Quiet one", 2, old); // nothing for 40 days
   add("Busy one", 3, recent);
   add("Quiet but live", 4, old);
   add("Quiet restored", 5, old);
   saveStopLossRule(db, "Quiet but live", { dailyLoss: 10 });
-  saveSendingSettings(db, { enabled: true, stakes: { "quiet but live": 1 }, strategies: { "quiet but live": true } });
+  saveStopLossRule(db, "Sustained momentum", { dailyLoss: 10 });
+  saveSendingSettings(db, { enabled: true, stakes: { "quiet but live": 1, "sustained momentum": 1 }, strategies: { "quiet but live": true, "sustained momentum": true } });
   setArchived(db, "Quiet restored", true);
   setArchived(db, "Quiet restored", false); // restored on purpose
   const done = autoArchive(db);
-  assert.deepEqual(done.sort(), ["late goal hunter", "quiet one"]);
+  assert.deepEqual(done.sort(), ["late goal hunter", "quiet one", "sustained momentum"]);
+  assert.equal(getSendingSettings(db).strategies["sustained momentum"], false, "no longer Live");
   assert.equal(isArchived(db, "Busy one"), false);
   assert.equal(isArchived(db, "Quiet but live"), false);
   assert.equal(isArchived(db, "Quiet restored"), false);

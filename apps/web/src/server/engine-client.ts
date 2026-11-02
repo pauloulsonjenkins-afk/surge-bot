@@ -974,6 +974,8 @@ interface EquityPoint {
   result: "hit" | "miss";
   profit: number;
   total: number;
+  /** Running units (profit at a flat 1-unit stake per pick); missing on an older engine. */
+  units?: number;
 }
 
 export interface StrategyEquity {
@@ -2055,12 +2057,17 @@ interface ClaudeReviewNote {
   kind: "daily";
   note: string;
   generatedAt: string;
+  /** The standouts Claude is at least 85% sure of: each one of the site's own suggestions, accepted with its Apply or rejected. */
+  recommendations?: Array<StrategyAdvice & { confidence: number; why: string }>;
 }
 export interface ClaudeReviews {
   configured: boolean;
   notes: Partial<Record<"daily", ClaudeReviewNote>>;
   /** Why the latest note of a kind didn't arrive, until one does (missing on an older engine). */
   failures?: Partial<Record<"daily", { kind: "daily"; reason: string; at: string }>>;
+}
+export function rejectClaudeRecommendation(body: { key: string; kind: string; league?: string }): Promise<{ ok: boolean }> {
+  return engineCall<{ ok: boolean }>("/internal/claude-review/reject", "Claude's review", { method: "POST", body });
 }
 export function fetchClaudeReviews(): Promise<ClaudeReviews> {
   return engineCall<ClaudeReviews>("/internal/claude-review", "Claude's review");

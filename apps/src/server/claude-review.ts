@@ -19,7 +19,7 @@ import { computeStrategyReturns } from "./winloss";
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
 import { goldenReport } from "./golden";
-import { visibleAdvice } from "./strategy-advice";
+import { visibleAdvice, type Advice } from "./strategy-advice";
 import { getArchived } from "./archive";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { log } from "./log";
@@ -38,10 +38,60 @@ const SETTINGS_KEY = "claude_review_notes";
 
 export type ReviewKind = "daily";
 
+/** A change Claude is confident enough in to put in front of the owner, who accepts or rejects it. */
+export interface ClaudeRecommendation extends Advice {
+  /** Claude's own estimate, as a percent, that doing this beats leaving things as they are. */
+  confidence: number;
+  /** Claude's one-sentence reason. */
+  why: string;
+}
+
 export interface ClaudeReviewNote {
   kind: ReviewKind;
   note: string;
   generatedAt: string;
+  /** Only the standouts: each is one of the site's own suggestions that Claude backs with at least MIN_CONFIDENCE. */
+  recommendations?: ClaudeRecommendation[];
+}
+
+/** Claude's recommendations are only shown at or above this confidence (the owner wants high-confidence ones only). */
+export const MIN_CONFIDENCE = 85;
+/** At most this many, so a recommendation still means something. */
+const MAX_RECOMMENDATIONS = 3;
+
+/** One suggestion's identity, as Claude is given it and hands it back. */
+export const adviceRef = (a: Pick<Advice, "key" | "kind" | "league">) => `${a.key}|${a.kind}|${a.league?.key ?? ""}`;
+
+/**
+ * Reads Claude's reply: JSON with the note and its recommendations, or (if it isn't JSON) the whole text as the note with
+ * no recommendations. A recommendation only counts if it names one of the site's current suggestions (so Accept is exactly
+ * that suggestion's Apply, nothing Claude made up) and its confidence is at least MIN_CONFIDENCE.
+ */
+export function parseReview(text: string, current: Advice[]): { note: string; recommendations: ClaudeRecommendation[] } {
+  const body = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  type Reply = { note?: unknown; recommendations?: unknown };
+  const tryParse = (s: string): Reply | null => {
+    try {
+      const v = JSON.parse(s) as unknown;
+      return v && typeof v === "object" ? (v as Reply) : null;
+    } catch {
+      return null;
+    }
+  };
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  const parsed = tryParse(body) ?? (start >= 0 && end > start ? tryParse(body.slice(start, end + 1)) : null);
+  if (!parsed || typeof parsed.note !== "string") return { note: text.trim(), recommendations: [] };
+  const byRef = new Map(current.map((a) => [adviceRef(a), a]));
+  const out: ClaudeRecommendation[] = [];
+  for (const r of Array.isArray(parsed.recommendations) ? (parsed.recommendations as Array<Record<string, unknown>>) : []) {
+    const a = typeof r.id === "string" ? byRef.get(r.id) : undefined;
+    const conf = typeof r.confidence === "number" ? Math.round(r.confidence) : NaN;
+    if (!a || !Number.isFinite(conf) || conf < MIN_CONFIDENCE || out.some((x) => adviceRef(x) === adviceRef(a))) continue;
+    out.push({ ...a, confidence: Math.min(conf, 99), why: (typeof r.why === "string" ? r.why : "").replace(/\s+/g, " ").trim().slice(0, 240) });
+  }
+  out.sort((x, y) => y.confidence - x.confidence);
+  return { note: parsed.note.trim(), recommendations: out.slice(0, MAX_RECOMMENDATIONS) };
 }
 
 const SYSTEM_PROMPT = [
@@ -59,7 +109,12 @@ const SYSTEM_PROMPT = [
   "from becoming a candidate, a Live trial or full stake) if anything is given there — e.g. 'X is 6 picks from a Live",
   "trial'. This is never a results forecast: you cannot and must not predict tomorrow's results or say a strategy",
   "will do well. If the list is empty, skip this line rather than inventing something to watch.",
-  "3-7 sentences, plain and concrete, no hedging filler, no bullet points.",
+  "The note is 3-7 sentences, plain and concrete, no hedging filler, no bullet points.",
+  'Reply with JSON only, no other text: {"note": "<the note>", "recommendations": [{"id": "<id copied exactly from a pendingRecommendations item>", "confidence": <whole number 0-100>, "why": "<one sentence>"}]}.',
+  "recommendations are for the one to three pendingRecommendations that really stand out, which the owner will accept or",
+  "reject with one tap. Include one only if you are at least 85% confident that doing it beats leaving things as they are,",
+  "given the figures: confidence is your honest estimate, not a mood, and a short or lucky record is never high confidence.",
+  "Most days nothing qualifies: return an empty list then. Never invent an id, and never recommend anything not in the list.",
 ].join(" ");
 
 let client: Anthropic | null | undefined;
@@ -124,7 +179,7 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
     goldenSlices: golden,
     goldenSlicesCloseToNextStage: goldenCloseToNextStage(db, now),
     // What the Today page is suggesting right now (strategy-advice.ts), so the note and the suggestions never disagree unseen.
-    pendingRecommendations: visibleAdvice(db, now).map((a) => ({ what: a.name ?? displayName(db, a.key), kind: a.kind, action: a.action, why: a.reason })),
+    pendingRecommendations: visibleAdvice(db, now).map((a) => ({ id: adviceRef(a), what: a.name ?? displayName(db, a.key), kind: a.kind, action: a.action, why: a.reason })),
   };
 }
 
@@ -145,7 +200,7 @@ export function plainFailure(message: string): { text: string; retryHelps: boole
 }
 
 /** One try: the note, or why there isn't one. */
-async function tryNote(anthropic: Anthropic, digest: unknown): Promise<{ note: string } | { failed: string; retryHelps?: boolean }> {
+async function tryNote(anthropic: Anthropic, digest: unknown, current: Advice[]): Promise<{ note: string; recommendations: ClaudeRecommendation[] } | { failed: string; retryHelps?: boolean }> {
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
@@ -156,8 +211,10 @@ async function tryNote(anthropic: Anthropic, digest: unknown): Promise<{ note: s
     if (response.stop_reason === "refusal") return { failed: "Claude declined to write it." };
     // Cut off: never shown, since a note that stops mid-sentence reads as if it were the whole thought.
     if (response.stop_reason === "max_tokens") return { failed: "the reply ran out of room before the note was finished." };
-    const note = response.content.find((b) => b.type === "text")?.text.trim();
-    return note ? { note } : { failed: "the reply had no text in it." };
+    const text = response.content.find((b) => b.type === "text")?.text.trim();
+    if (!text) return { failed: "the reply had no text in it." };
+    const read = parseReview(text, current);
+    return read.note ? read : { failed: "the reply had no note in it." };
   } catch (err) {
     const f = plainFailure(err instanceof Error ? err.message : String(err));
     return { failed: f.text, retryHelps: f.retryHelps };
@@ -174,12 +231,13 @@ async function writeNote(db: EngineDb, kind: ReviewKind, from: string, now: Date
     recordFailure(db, kind, `GoalBrew couldn't gather the figures (${err instanceof Error ? err.message : String(err)}).`, now);
     return;
   }
+  const current = visibleAdvice(db, now);
   let failed = "";
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-    const r = await tryNote(anthropic, digest);
+    const r = await tryNote(anthropic, digest, current);
     if ("note" in r) {
       const all = loadNotes(db);
-      all[kind] = { kind, note: truncateNote(r.note), generatedAt: now.toISOString() };
+      all[kind] = { kind, note: truncateNote(r.note), generatedAt: now.toISOString(), recommendations: r.recommendations };
       db.setSetting(SETTINGS_KEY, JSON.stringify(all));
       clearFailure(db, kind);
       log.info(`Claude ${kind} review note written (${r.note.length} chars, attempt ${attempt}).`);
@@ -240,8 +298,33 @@ function loadNotes(db: EngineDb): Partial<Record<ReviewKind, ClaudeReviewNote>> 
 }
 
 /** The latest stored note of each kind, for the admin page. Null for a kind that hasn't run yet, or has no API key. */
-export function getClaudeReviewNotes(db: EngineDb): Partial<Record<ReviewKind, ClaudeReviewNote>> {
-  return loadNotes(db);
+export function getClaudeReviewNotes(db: EngineDb, now = new Date()): Partial<Record<ReviewKind, ClaudeReviewNote>> {
+  const notes = loadNotes(db);
+  const daily = notes.daily;
+  if (daily?.recommendations?.length) {
+    // Only the ones still open: not rejected, and still a current suggestion (accepting one, or the figures moving on, removes it).
+    const rejected = loadRejected(db);
+    const open = new Set(visibleAdvice(db, now).map(adviceRef));
+    notes.daily = { ...daily, recommendations: daily.recommendations.filter((r) => !rejected[adviceRef(r)] && open.has(adviceRef(r))) };
+  }
+  return notes;
+}
+
+const REJECTED_KEY = "claude_rec_rejected";
+
+function loadRejected(db: EngineDb): Record<string, string> {
+  try {
+    return JSON.parse(db.getSetting(REJECTED_KEY) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+/** The owner turned a recommendation down: it stays hidden (until the engine's own suggestion changes shape). */
+export function rejectClaudeRecommendation(db: EngineDb, ref: { key: string; kind: string; leagueKey?: string }, now = new Date()): void {
+  const all = loadRejected(db);
+  all[`${ref.key.toLowerCase()}|${ref.kind}|${ref.leagueKey ?? ""}`] = now.toISOString();
+  db.setSetting(REJECTED_KEY, JSON.stringify(all));
 }
 
 /** Called once a day's summary is due (daily-summary.ts) — fire-and-forget, never delays the push. */

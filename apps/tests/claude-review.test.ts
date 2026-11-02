@@ -9,7 +9,7 @@ import { parseAlert } from "../src/inplayguru/parse-alert";
 import { recordSimBets, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { loadCustomSegments, TRIAL_FROM, watchSegment } from "../src/server/golden";
 import { setCustomSegments } from "../src/server/segments";
-import { getClaudeReviewFailures, getClaudeReviewNotes, goldenCloseToNextStage, requestDailyClaudeReview, setReviewClientForTest } from "../src/server/claude-review";
+import { adviceRef, getClaudeReviewFailures, getClaudeReviewNotes, goldenCloseToNextStage, parseReview, rejectClaudeRecommendation, requestDailyClaudeReview, setReviewClientForTest } from "../src/server/claude-review";
 
 const alert = (n: number, result: "hit" | "miss") =>
   [
@@ -115,4 +115,44 @@ test("daily review: an account out of credit is told plainly, tried once (a retr
   } finally {
     setReviewClientForTest(undefined);
   }
+});
+
+const advice = [
+  { key: "alpha", kind: "back-to-sim", action: "Put back to Sim", reason: "-9% over 40 Live bets." },
+  { key: "beta", kind: "try-live", action: "Put Live at a 1% trial stake", reason: "+6% over 220 Sim picks." },
+  { key: "gamma", kind: "stake-up", action: "Raise to 2%", reason: "+8% over 60 Live bets." },
+] as Parameters<typeof parseReview>[1];
+const reply = (recs: unknown[]) => JSON.stringify({ note: "Alpha has slipped.", recommendations: recs });
+
+test("parseReview: only current suggestions at 85% or more are kept, best first, with Claude's own reason", () => {
+  const r = parseReview(
+    reply([
+      { id: adviceRef(advice[1]!), confidence: 88, why: "Sim is steady in both halves." },
+      { id: adviceRef(advice[0]!), confidence: 94.4, why: "A clear Live loss." },
+      { id: adviceRef(advice[2]!), confidence: 70, why: "Not sure enough." },
+      { id: "made|up|", confidence: 99, why: "Not a real suggestion." },
+      { id: adviceRef(advice[0]!), confidence: 90, why: "A duplicate." },
+    ]),
+    advice,
+  );
+  assert.equal(r.note, "Alpha has slipped.");
+  assert.deepEqual(r.recommendations.map((x) => [x.key, x.confidence]), [["alpha", 94], ["beta", 88]]);
+  assert.equal(r.recommendations[0]!.action, "Put back to Sim", "Accept is the site's own action, not Claude's wording");
+});
+
+test("parseReview: JSON in a code fence still reads; plain text is just the note; nothing qualifying is an empty list", () => {
+  assert.equal(parseReview("```json\n" + reply([]) + "\n```", advice).note, "Alpha has slipped.");
+  const plain = parseReview("Just a note, no JSON.", advice);
+  assert.equal(plain.note, "Just a note, no JSON.");
+  assert.deepEqual(plain.recommendations, []);
+  assert.deepEqual(parseReview(reply([]), advice).recommendations, []);
+});
+
+test("a rejected recommendation is hidden from the stored note", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  // Stored as the engine would have saved it; the figures don't back it any more, so it isn't "open" either way.
+  db.setSetting("claude_review_notes", JSON.stringify({ daily: { kind: "daily", note: "n", generatedAt: new Date().toISOString(), recommendations: [{ ...advice[0], confidence: 90, why: "w" }] } }));
+  assert.deepEqual(getClaudeReviewNotes(db).daily?.recommendations, [], "no longer a current suggestion: not shown");
+  rejectClaudeRecommendation(db, { key: "alpha", kind: "back-to-sim" });
+  assert.deepEqual(getClaudeReviewNotes(db).daily?.recommendations, []);
 });

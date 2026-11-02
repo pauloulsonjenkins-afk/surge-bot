@@ -84,7 +84,6 @@ export function setArchived(db: EngineDb, label: string, archived: boolean, note
 }
 
 const KEPT_KEY = "archive_kept";
-const SEEDED_KEY = "archive_seeded_v1";
 /** Strategies with no new alert for this long, and not Live, are archived. */
 export const QUIET_DAYS = 30;
 /** The strategies the owner retired on 2 Nov 2026 (deleted from InPlayGuru, or judged not worth running). Archived once. */
@@ -106,7 +105,7 @@ function loadKept(db: EngineDb): Record<string, string> {
 }
 
 /**
- * Archives old strategies without being asked: once, the retired list above; and always, any strategy with no alert for
+ * Archives old strategies without being asked: the retired list above (even if one is still Live), and any strategy with no alert for
  * QUIET_DAYS days that isn't Live. A strategy restored from the Archive page is never archived again by this. Returns the
  * keys archived this time.
  */
@@ -116,18 +115,18 @@ export function autoArchive(db: EngineDb, now = new Date()): string[] {
   const live = getSendingSettings(db).strategies;
   const rows = db.listStrategiesForAdmin();
   const done: string[] = [];
-  const seeded = db.getSetting(SEEDED_KEY) !== null;
   const retired = new Map(RETIRED);
   for (const r of rows) {
     const key = r.label.trim().toLowerCase();
-    if (archived[key] || kept[key] || live[key] === true) continue;
+    const isRetired = retired.has(key);
+    // A retired strategy is archived even if still switched Live (archiving puts it back to Sim); a quiet one never is.
+    if (archived[key] || kept[key] || (live[key] === true && !isRetired)) continue;
     const quiet = now.getTime() - Date.parse(r.lastAlertAt) > QUIET_DAYS * 86_400_000;
-    const note = !seeded && retired.has(key) ? retired.get(key)! : quiet ? `No alerts for ${QUIET_DAYS} days (last ${r.lastAlertAt.slice(0, 10)}).` : null;
+    const note = isRetired ? retired.get(key)! : quiet ? `No alerts for ${QUIET_DAYS} days (last ${r.lastAlertAt.slice(0, 10)}).` : null;
     if (note === null) continue;
     setArchived(db, r.label, true, note, now);
     done.push(key);
   }
-  db.setSetting(SEEDED_KEY, now.toISOString());
   return done;
 }
 

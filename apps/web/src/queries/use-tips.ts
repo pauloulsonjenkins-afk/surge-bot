@@ -1,7 +1,7 @@
-﻿"use client";
+"use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { TipsState } from "@/server/engine-client";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import type { StrategyEquity, TipsState } from "@/server/engine-client";
 import { getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
 
@@ -27,5 +27,16 @@ export function useChangeTips() {
       return body;
     },
     onSuccess: (data) => qc.setQueryData(["tips"], data),
+  });
+}
+
+/** Each channel strategy's bets, one after another, for the results graph (the same data as a strategy's own curve). */
+export function useChannelEquity(labels: string[]) {
+  return useQueries({
+    queries: labels.map((label) => ({
+      queryKey: ["strategy-equity", label, "all"],
+      queryFn: ({ signal }: { signal: AbortSignal }) => getJson<StrategyEquity>(`/api/admin/strategies/equity?label=${encodeURIComponent(label)}`, "the results", signal),
+      staleTime: 60_000,
+    })),
   });
 }

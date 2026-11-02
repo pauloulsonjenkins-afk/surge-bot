@@ -4,9 +4,12 @@ import { useState } from "react";
 import { PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
-import { useChangeTips, useTips, type ChannelTip } from "@/queries/use-tips";
-import { useWinLoss } from "@/queries/use-winloss";
-import { WinLossLines, gbp } from "@/components/admin/WinLossLines";
+import { useChangeTips, useChannelEquity, useTips, type ChannelTip } from "@/queries/use-tips";
+import Link from "next/link";
+import { useAdminStrategies } from "@/queries/use-strategies";
+import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLines";
+import { units } from "@/lib/format";
+import { strategyHref } from "../strategies/page";
 
 const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -33,28 +36,78 @@ const BADGE: Record<Shown, string> = {
   other: "bg-surface-2 text-ink-muted",
 };
 
-const STRATEGY_KEY = "telegram tips";
+const PREFIX = "Telegram: ";
+const PALETTE = ["#d98a00", "#0fa37f", "#3f7ce0", "#a266d9", "#d6497a", "#2ea3b5", "#8c6d1f", "#5b8c2a"];
+const dayLabel = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 
-/** The Telegram tips strategy's cumulative profit and loss, from the Profit page's data. */
+/**
+ * Results, one line per channel (each channel is a strategy of its own, "Telegram: <channel>"): every settled bet counts
+ * as a win or a loss, drawn as running units (profit at a flat 1 unit a bet, so a stake change can't skew it) or in £.
+ */
 function ResultsGraph() {
-  const { data } = useWinLoss("all");
+  const { data } = useAdminStrategies(null);
+  const channels = (data?.strategies ?? []).filter((r) => r.label.startsWith(PREFIX));
+  const curves = useChannelEquity(channels.map((c) => c.label));
+  const [inUnits, setInUnits] = useState(true);
   if (!data) return null;
-  const line = data.strategies.find((s) => s.key === STRATEGY_KEY);
-  if (!line) {
-    return <p className="rounded-xl border border-line bg-surface p-3.5 text-sm text-ink-muted">Results will appear here once the first tip has been placed in Sim and has finished.</p>;
+  if (channels.length === 0) {
+    return <p className="rounded-xl border border-line bg-surface p-3.5 text-sm text-ink-muted">Results will appear here, one line per channel, once the first tip has been placed in Sim and has finished.</p>;
   }
-  const rows = data.series.ytd.map((p) => ({ label: p.label.slice(5), t: p.s[STRATEGY_KEY] ?? 0 }));
-  const last = rows.length ? rows[rows.length - 1]!.t : 0;
+  const series: LineSeries[] = channels.map((c, i) => ({ key: `k${i}`, name: c.label.slice(PREFIX.length), color: PALETTE[i % PALETTE.length]! }));
+  const events = curves
+    .flatMap((q, i) => (q.data?.points ?? []).map((p) => ({ at: p.at, i, v: inUnits ? (p.units ?? 0) : p.total })))
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const running = channels.map(() => 0);
+  const rows = events.map((e) => {
+    running[e.i] = e.v;
+    const row: Record<string, number | string> = { label: dayLabel.format(new Date(e.at)) };
+    running.forEach((v, i) => (row[`k${i}`] = v));
+    return row;
+  });
   return (
     <section className="rounded-xl border border-line bg-surface p-3.5">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm font-medium text-ink">Telegram tips: results</p>
-        <p className={`text-sm font-medium tabular-nums ${last > 0 ? "text-hit" : last < 0 ? "text-loss" : "text-ink-muted"}`}>{gbp(last)}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-ink">Results by channel</p>
+        <div className="inline-flex rounded-md border border-line p-0.5" role="group" aria-label="Show results in">
+          {([[true, "Units"], [false, "£"]] as const).map(([u, label]) => (
+            <button key={label} type="button" aria-pressed={inUnits === u} onClick={() => setInUnits(u)} className={`rounded px-3 py-2 text-xs font-medium ${inUnits === u ? "bg-accent text-accent-ink" : "text-ink"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
-      <p className="text-xs text-ink-muted">{line.counted} bets so far this year, in Sim at the strategy&apos;s stake, priced at Betfair&apos;s price when each tip was read.</p>
-      <div className="mt-2">
-        <WinLossLines data={rows} series={[{ key: "t", name: "Telegram tips", color: "var(--chart)" }]} />
-      </div>
+      <p className="text-xs text-ink-muted">In Sim at each channel&apos;s stake, priced at Betfair&apos;s price when the tip was read. One unit is a flat stake on every bet. Tap a channel in the key to highlight its line.</p>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-ink-muted">No tip has finished yet, so there is nothing to draw.</p>
+      ) : (
+        <div className="mt-2">
+          <WinLossLines data={rows} series={series} inUnits={inUnits} selectable />
+        </div>
+      )}
+      <ul className="mt-3 divide-y divide-line">
+        {channels.map((c, i) => {
+          const pts = curves[i]?.data?.points ?? [];
+          const wins = pts.filter((p) => p.result === "hit").length;
+          const losses = pts.length - wins;
+          const last = pts[pts.length - 1];
+          return (
+            <li key={c.label}>
+              <Link href={strategyHref(c.label)} className="flex min-h-12 items-center justify-between gap-3 py-2">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-ink">{c.label.slice(PREFIX.length)}</span>
+                  <span className="text-xs text-ink-muted">
+                    {pts.length} bets: {wins} won, {losses} lost{pts.length > 0 ? ` · ${Math.round((100 * wins) / pts.length)}% hit` : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right text-sm font-medium tabular-nums">
+                  <span className={(last?.units ?? 0) > 0 ? "text-hit" : (last?.units ?? 0) < 0 ? "text-loss" : "text-ink-muted"}>{last ? units(last.units ?? 0) : "–"}</span>
+                  <span className="block text-xs font-normal text-ink-muted">{last ? gbp(last.total) : ""}</span>
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -86,8 +139,14 @@ export default function TipsPage() {
 
       <ResultsGraph />
 
-      <section className="rounded-xl border border-line bg-surface p-3.5">
-        <p className="text-sm font-medium text-ink">Channels</p>
+      <details className="rounded-xl border border-line bg-surface p-3.5" open={data.channels.length === 0}>
+        <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 text-sm font-medium text-ink">
+          <span>Settings</span>
+          <span className="text-xs font-normal text-ink-muted">
+            {data.channels.length} channel{data.channels.length === 1 ? "" : "s"} · costs
+          </span>
+        </summary>
+        <p className="mt-2 text-sm font-medium text-ink">Channels</p>
         <ul className="mt-2 space-y-1.5">
           {data.channels.length === 0 && <li className="text-sm text-ink-muted">None yet. Add a channel below (the Telegram account GoalBrew is logged in as must already be a member).</li>}
           {data.channels.map((c) => (
@@ -119,18 +178,42 @@ export default function TipsPage() {
           </button>
         </form>
         {change.error && <p className="mt-2 text-sm text-destructive">{change.error.message}</p>}
-        {data.stats.map((s) => {
-          const days = Math.max((Date.parse(s.to) - Date.parse(s.from)) / 86_400_000, 1);
-          const perDay = s.photos / days;
-          // About 0.2p to read one slip image with a small Claude model (an estimate, not a quote).
-          const perMonth = perDay * 30 * 0.002;
-          return (
-            <p key={s.name} className="mt-2 text-xs text-ink-muted">
-              {s.name}: {s.photos} photos and {s.withText} text posts in the last {Math.round(days)} days, about {Math.round(perDay)} photos a day. Reading the images would cost roughly £{perMonth.toFixed(2)} a month.
-            </p>
-          );
-        })}
-      </section>
+        <p className="mt-4 text-sm font-medium text-ink">Costs</p>
+        <p className="mt-1 text-xs text-ink-muted">
+          Reading the text posts is free. Today nothing here costs anything: slip images are not read. If they were, each image would cost about 0.2p to read with a small Claude model (an estimate, not a quote), so the monthly figure is what that would add up to.
+        </p>
+        {data.stats.length === 0 ? (
+          <p className="mt-2 text-xs text-ink-muted">Photo counts appear here once the channels have been read.</p>
+        ) : (
+          (() => {
+            const lines = data.stats.map((s) => {
+              const days = Math.max((Date.parse(s.to) - Date.parse(s.from)) / 86_400_000, 1);
+              const perDay = s.photos / days;
+              return { s, days, perDay, perMonth: perDay * 30 * 0.002 };
+            });
+            const total = lines.reduce((a, l) => a + l.perMonth, 0);
+            return (
+              <>
+                <ul className="mt-2 divide-y divide-line">
+                  {lines.map((l) => (
+                    <li key={l.s.name} className="flex items-start justify-between gap-3 py-2">
+                      <span className="min-w-0 text-xs text-ink-muted">
+                        <span className="block truncate text-sm text-ink">{l.s.name}</span>
+                        {l.s.photos} photos and {l.s.withText} text posts in the last {Math.round(l.days)} days (about {Math.round(l.perDay)} photos a day)
+                      </span>
+                      <span className="shrink-0 text-sm tabular-nums text-ink">£{l.perMonth.toFixed(2)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 flex justify-between text-sm font-medium text-ink">
+                  <span>If images were read, per month</span>
+                  <span className="tabular-nums">£{total.toFixed(2)}</span>
+                </p>
+              </>
+            );
+          })()
+        )}
+      </details>
 
       <div className="flex gap-1.5 overflow-x-auto" role="tablist">
         {TABS.map((x) => (

@@ -458,6 +458,8 @@ export interface EquityPoint {
   profit: number;
   /** Running profit after this pick. */
   total: number;
+  /** Running units (profit at a flat 1-unit stake per pick) after this pick: a stake change can't skew it. */
+  units: number;
 }
 
 export type ResultRow = ReturnType<EngineDb["listResultsForWinLoss"]>[number];
@@ -550,7 +552,7 @@ class ReturnTally {
     this.peak = Math.max(this.peak, this.profit);
     this.maxDrawdown = Math.max(this.maxDrawdown, this.peak - this.profit);
     this.days.set(day, (this.days.get(day) ?? 0) + priced.profit);
-    this.points.push({ at: r.firstSeenAt, result: r.result, profit: r2(priced.profit), total: r2(this.profit) });
+    this.points.push({ at: r.firstSeenAt, result: r.result, profit: r2(priced.profit), total: r2(this.profit), units: r2(this.units) });
   }
 
   result(): StrategyReturn {

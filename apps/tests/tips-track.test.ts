@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
-import { readTipBet, trackTips, TIPS_STRATEGY } from "../src/tips/track";
+import { readTipBet, trackTips, tipsStrategy } from "../src/tips/track";
 import { recordTip } from "../src/tips/reader";
 import { settleValuePicks } from "../src/edge/value-strategy";
 
@@ -33,7 +33,8 @@ test("a tip is recorded once as a Sim pick, at Betfair's price, and settles from
   assert.equal(await trackTips(db, reader()), 0, "not added twice");
   const open = db.listOpenEdgePicks();
   assert.equal(open.length, 1);
-  assert.equal(open[0]!.detail.strategyRaw, TIPS_STRATEGY);
+  assert.equal(open[0]!.detail.strategyRaw, "Telegram: Free tips");
+  assert.equal(tipsStrategy("CVPICKS 🟢💰 Free Betting Club"), "Telegram: CVPICKS Free Betting Club", "emoji dropped from the name");
   assert.equal(db.listChannelTips("1970-01-01T00:00:00.000Z")[0]!.tracked, "done");
   const later = new Date(Date.parse(kickoff) + 3 * 3_600_000);
   assert.equal(await settleValuePicks(db, { runnerResult: async () => "WINNER" }, later), 1);

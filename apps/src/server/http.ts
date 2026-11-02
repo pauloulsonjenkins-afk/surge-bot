@@ -111,7 +111,7 @@ import { layGroups, unwatchLayGroup, watchLayGroup } from "../inplayguru/lay-gro
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { goldenReport, unwatchSegment, watchSegment } from "./golden";
 import { setGoldenNotify } from "./golden-notify";
-import { claudeReviewConfigured, getClaudeReviewFailures, getClaudeReviewNotes } from "./claude-review";
+import { claudeReviewConfigured, getClaudeReviewFailures, getClaudeReviewNotes, rejectClaudeRecommendation } from "./claude-review";
 import { similarAlertsFor } from "./similar-alerts";
 import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
@@ -523,6 +523,19 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (req.method === "GET" && path === "/internal/claude-review") {
       if (!requireAdmin(req, res)) return;
       send(res, 200, { configured: claudeReviewConfigured(), notes: getClaudeReviewNotes(db), failures: getClaudeReviewFailures(db) });
+      return;
+    }
+
+    // The owner turns down one of Claude's recommendations (accepting one is the ordinary Apply on the suggestion).
+    if (req.method === "POST" && path === "/internal/claude-review/reject") {
+      if (!requireAdmin(req, res)) return;
+      const body = await readJsonBody(req);
+      if (typeof body.key !== "string" || typeof body.kind !== "string") {
+        send(res, 400, { error: "key_and_kind_required" });
+        return;
+      }
+      rejectClaudeRecommendation(db, { key: body.key, kind: body.kind, leagueKey: typeof body.league === "string" ? body.league : undefined });
+      send(res, 200, { ok: true });
       return;
     }
 

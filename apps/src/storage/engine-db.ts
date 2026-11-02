@@ -1248,7 +1248,7 @@ export class EngineDb {
     return rows.map((r) => ({ chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, selection: r.selection, odds: r.odds }));
   }
 
-  setChannelTipTracked(chatKey: string, messageId: number, tracked: string): void {
+  setChannelTipTracked(chatKey: string, messageId: number, tracked: string | null): void {
     this.db.prepare(`UPDATE channel_tips SET tracked = ? WHERE chat_key = ? AND message_id = ?`).run(tracked, chatKey, messageId);
   }
 

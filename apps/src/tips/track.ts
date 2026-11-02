@@ -20,8 +20,12 @@ import { getSendingSettings } from "../inplayguru/bet-feed";
 import { getBank, resolveStake } from "../inplayguru/stake";
 import { log } from "../server/log";
 
-export const TIPS_STRATEGY = "Telegram tips";
-const KEY_NAME = TIPS_STRATEGY.toLowerCase();
+/** Each channel is a strategy of its own, so each builds its own record: "Telegram: <channel name>". */
+export const TIPS_PREFIX = "Telegram: ";
+export function tipsStrategy(channel: string): string {
+  const clean = channel.replace(/[^\p{L}\p{N} .&'-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim();
+  return `${TIPS_PREFIX}${clean || "channel"}`;
+}
 /** A tip is looked at while it is this young; after that, if it still can't be placed, it is set aside. */
 const MAX_AGE_MS = 36 * 3_600_000;
 
@@ -49,6 +53,7 @@ export function readTipBet(selection: string | null, text: string, home: string,
     const code = `OVER_UNDER_${line.replace(".", "")}`;
     return { marketType: code, selectionName: `${ou[1] === "over" ? "Over" : "Under"} ${line} Goals`, words: `${ou[1] === "over" ? "Over" : "Under"} ${line} goals` };
   }
+  if (/\b(over|under)\s*\d(\.0|\.25|\.75)\b/.test(s)) return { reason: "Asian goal lines (like 2.0 or 2.25) aren't tracked, only whole-and-a-half lines like 2.5." };
   if (/btts|both teams to score/.test(s)) {
     const no = /\bno\b|\bnot\b|\bn\b/.test(s.replace(/both teams to score|btts/g, ""));
     return { marketType: "BOTH_TEAMS_TO_SCORE", selectionName: no ? "No" : "Yes", words: `Both teams to score: ${no ? "No" : "Yes"}` };
@@ -72,11 +77,11 @@ function pickId(chatKey: string, messageId: number): number {
   return (h >>> 1) || 1;
 }
 
-function detailFor(home: string, away: string, selection: string, e: { kickoff: string; marketId: string; selectionId: number; marketType: string; selectionName: string; price: number }): ParsedAlert {
+function detailFor(strategy: string, home: string, away: string, selection: string, e: { kickoff: string; marketId: string; selectionId: number; marketType: string; selectionName: string; price: number }): ParsedAlert {
   return {
-    strategyRaw: TIPS_STRATEGY,
-    strategyKey: KEY_NAME,
-    strategyParts: [KEY_NAME],
+    strategyRaw: strategy,
+    strategyKey: strategy.toLowerCase(),
+    strategyParts: [strategy.toLowerCase()],
     market: null,
     underdog: null,
     favourite: null,
@@ -146,6 +151,8 @@ async function trackOne(
   }
   if (check.price === null) return { done: false, retry: true, reason: "No price on Betfair yet." };
 
+  const strategy = tipsStrategy(t.channel);
+  const KEY_NAME = strategy.toLowerCase();
   const settings = getSendingSettings(db);
   const staked = resolveStake(settings, KEY_NAME, getBank(db), { now, live: false });
   const stake = staked.stake ?? 1;
@@ -154,14 +161,14 @@ async function trackOne(
   const skipped = minPrice !== null && check.price < minPrice ? `Odds ${check.price.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.` : null;
   db.addEdgePick({
     messageId: pickId(t.chatKey, t.messageId),
-    strategy: TIPS_STRATEGY,
+    strategy,
     selection: bet.words,
     competition: "Unknown",
     country: "",
     home,
     away,
-    text: `${TIPS_STRATEGY}\n${t.channel}\n${home} vs ${away}\n${bet.words} @ ${check.price.toFixed(2)} (Betfair)${t.odds !== null ? `\nThe channel quoted ${t.odds}.` : ""}\n\n${t.text.slice(0, 400)}`,
-    detail: detailFor(home, away, bet.words, { kickoff: open, marketId: check.marketId, selectionId: check.selectionId, marketType: bet.marketType, selectionName, price: check.price }),
+    text: `${strategy}\n${t.channel}\n${home} vs ${away}\n${bet.words} @ ${check.price.toFixed(2)} (Betfair)${t.odds !== null ? `\nThe channel quoted ${t.odds}.` : ""}\n\n${t.text.slice(0, 400)}`,
+    detail: detailFor(strategy, home, away, bet.words, { kickoff: open, marketId: check.marketId, selectionId: check.selectionId, marketType: bet.marketType, selectionName, price: check.price }),
     event: judged.event,
     eventId: judged.eventId,
     odds: check.price,
@@ -183,9 +190,9 @@ export async function trackTips(db: EngineDb, reader: Pick<BetfairReader, "searc
       } else if (!r.retry) db.setChannelTipTracked(t.chatKey, t.messageId, `no: ${r.reason}`);
       else if (now.getTime() - Date.parse(t.postedAt) > MAX_AGE_MS - 3_600_000) db.setChannelTipTracked(t.chatKey, t.messageId, `no: ${r.reason}`);
     } catch (err) {
-      log.warn(`${TIPS_STRATEGY}: ${err instanceof Error ? err.message : String(err)}`);
+      log.warn(`Telegram tips: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  if (added > 0) log.info(`${TIPS_STRATEGY}: ${added} new Sim pick${added === 1 ? "" : "s"}.`);
+  if (added > 0) log.info(`Telegram tips: ${added} new Sim pick${added === 1 ? "" : "s"}.`);
   return added;
 }

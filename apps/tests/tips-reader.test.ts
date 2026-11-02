@@ -11,6 +11,10 @@ test("channels are kept once, however they were typed", () => {
   assert.equal(normaliseChannel("https://t.me/FreeTips"), "@FreeTips");
   assert.equal(normaliseChannel("https://web.telegram.org/a/#-1001401746016"), "-1001401746016");
   assert.equal(normaliseChannel("-1001401746016"), "-1001401746016");
+  assert.equal(normaliseChannel("1001401746016"), "-1001401746016", "typed without the minus sign: put back");
+  const dup = new EngineDb(":memory:", () => {});
+  dup.setSetting("tip_channels", JSON.stringify(["1001639112568", "-1001639112568", "@A"]));
+  assert.deepEqual(getTipChannels(dup), ["-1001639112568", "@A"], "the same channel typed two ways is one");
   addTipChannel(db, "t.me/FreeTips");
   addTipChannel(db, "@freetips");
   assert.deepEqual(getTipChannels(db), ["@FreeTips"]);

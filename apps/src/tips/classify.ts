@@ -45,7 +45,7 @@ const MARKET_WORDS =
 const FIXTURE = /([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})[ \t]+(?:vs\.?|VS\.?|v\.?|V\.?|-|–|—|x)[ \t]+([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})/u;
 const DECIMAL_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bprice\b[:\s]*|\bat\b\s*)(\d{1,2}\.\d{1,3})\b|\b(\d{1,2}\.\d{2})\b/i;
 const FRACTION_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bat\b\s*)(\d{1,3})\s?\/\s?(\d{1,3})\b/i;
-const STAKE = /\b(\d+(?:\.\d+)?)\s?(units?|u|pts?|points?|stars?)\b|\bstake[:\s]+([^\n]{1,20})/i;
+const STAKE = /\b(\d+(?:\.\d+)?)\s?(units?|u|pts?|points?|stars?)\b|\bstake[:\s]+(\d[^\n]{0,15})/i;
 const TIP_LABEL = /\b(tip|bet|pick|selection|prediction|our (?:bet|pick)|today'?s (?:bet|tip|pick))\b\s*[:\-–]/i;
 const BRAG =
   /\b(cashe+d|cash(ed)? out|delivered|secured|smashed|landed|collected|compensation|bo+m+|another (big )?(green|win|winner)|(wins|won|has won|did it|banked|profit(s)?|winner)\b(?! at))\b|\b(wins|won) the\b|\bwinner\b/i;
