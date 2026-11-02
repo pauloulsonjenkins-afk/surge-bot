@@ -47,6 +47,8 @@ const DECIMAL_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bprice\b[:\s]*|\bat\b\s*)(\d{1,2}
 const FRACTION_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bat\b\s*)(\d{1,3})\s?\/\s?(\d{1,3})\b/i;
 const STAKE = /\b(\d+(?:\.\d+)?)\s?(units?|u|pts?|points?|stars?)\b|\bstake[:\s]+([^\n]{1,20})/i;
 const TIP_LABEL = /\b(tip|bet|pick|selection|prediction|our (?:bet|pick)|today'?s (?:bet|tip|pick))\b\s*[:\-–]/i;
+const BRAG =
+  /\b(cashe+d|cash(ed)? out|delivered|secured|smashed|landed|collected|compensation|bo+m+|another (big )?(green|win|winner)|(wins|won|has won|did it|banked|profit(s)?|winner)\b(?! at))\b|\b(wins|won) the\b|\bwinner\b/i;
 const RESULT_ONLY = /^\s*(?:[✅❌✔️❎🟢🔴]|won|lost|win|loss|void)\b|\bresult[s]?\b[:\s]/i;
 
 function oddsFrom(text: string): number | null {
@@ -112,6 +114,13 @@ export function classifyTip(text: string): TipRead {
   else {
     const line = t.split("\n").map((l) => l.trim()).find((l) => l && MARKET_WORDS.test(l) && oddsFrom(l) !== null);
     if (line) selection = line.slice(0, 80);
+  }
+
+  // A celebration of a bet already won ("CASHED!!!", "KUPS WINS THE FIRST HALF", "compensation delivered") is advertising,
+  // however much it looks like a tip: it names the match, the market and the price, but the match is over.
+  if (BRAG.test(t) || (t.match(/!/g) ?? []).length >= 4) {
+    // Selling as well as boasting ("guaranteed wins, join VIP") is an advert; boasting alone is just other.
+    return { verdict: advert > 0 ? "advert" : "other", reasons: [...reasons.filter((x) => ADVERT_PATTERNS.some(([, why]) => why === x)), "celebrates a bet already won, so it isn't a new tip"], match, selection: null, odds, stake: null };
   }
 
   if (RESULT_ONLY.test(t) && odds === null && !labelled) {

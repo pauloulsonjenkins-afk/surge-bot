@@ -39,6 +39,15 @@ test("results and chatter are not tips", () => {
   assert.equal(classifyTip("   ").verdict, "other");
 });
 
+test("a celebration of a bet already won is not a tip, even though it names the match and price", () => {
+  const brag = "STAKE 50 COMPENSATION CASHEEEEEEEEEED!!! 🔥\n\nBOOOOOOOOM!!!\n\nKUPS KUOPIO WINS THE FIRST HALF!!!\n\n🏆 KuPS Kuopio vs IF Gnistan\nKuPS TO WIN FIRST HALF @1.90";
+  const r = classifyTip(brag);
+  assert.equal(r.verdict, "other");
+  assert.match(r.reasons[0] ?? "", /already won/);
+  // a forward-looking tip that says "to win" is still a tip
+  assert.equal(classifyTip("Tip: Liverpool to win\nLiverpool v Everton @ 1.70").verdict, "tip");
+});
+
 test("a bet with no price is worth a look, not a tip", () => {
   const r = classifyTip("Tip: Man City to win\nMan City vs Fulham");
   assert.equal(r.verdict, "maybe");
