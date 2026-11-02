@@ -51,6 +51,7 @@ import type { EngineDb } from "../storage/engine-db";
 import { ALL_TIME, computeStrategyReturns, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
 import { getSendingSettings, saveSendingSettings, strategyLabel, type SendingSettings } from "../inplayguru/bet-feed";
 import { goldenReport } from "./golden";
+import { getArchived } from "./archive";
 import { getStopLossRules } from "../inplayguru/stop-loss";
 import { priceCheckReport } from "../betfair/price-check";
 import { displayName } from "../inplayguru/strategy-names";
@@ -251,7 +252,9 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
   const checks = priceCheckReport(db, 30, now);
   const raised = raises(db);
   const out: Advice[] = [];
+  const archived = getArchived(db);
   for (const [key, r] of Object.entries(all)) {
+    if (archived[key]) continue; // archived: hidden everywhere, nothing suggested (archive.ts)
     const live = settings.enabled && settings.strategies[key] === true;
     const rec = recent[key];
     const stake = settings.stakePct[key] !== undefined ? { pct: settings.stakePct[key]! } : settings.stakes[key] !== undefined ? { flat: settings.stakes[key]! } : null;
@@ -377,7 +380,7 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
   }
   // Golden slices: the working parts of a strategy, bet on their own.
   try {
-    out.push(...sliceAdviceFrom(goldenReport(db, now, { skipFinder: true }).slices, settings));
+    out.push(...sliceAdviceFrom(goldenReport(db, now, { skipFinder: true }).slices.filter((sl) => !archived[sl.strategyKey]), settings));
   } catch (err) {
     log.warn(`Slice suggestions failed: ${err instanceof Error ? err.message : String(err)}`);
   }

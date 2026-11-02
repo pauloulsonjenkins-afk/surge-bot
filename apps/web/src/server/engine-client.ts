@@ -2082,6 +2082,30 @@ export function fetchByMethod(): Promise<ByMethodReport> {
   return engineCall<ByMethodReport>("/internal/by-method", "the by-hand comparison");
 }
 
+/** The strategy archive (engine archive.ts): old strategies hidden from every page, kept on record. Admin only. */
+export interface ArchiveRow {
+  key: string;
+  label: string;
+  archivedAt: string;
+  note: string | null;
+  alerts: number;
+  firstAlertAt: string | null;
+  lastAlertAt: string | null;
+  live: { counted: number; profit: number; units: number; roi: number | null };
+  sim: { counted: number; profit: number; units: number; roi: number | null };
+}
+export interface ArchiveState {
+  /** Lower-case keys of every archived strategy: what the pages filter on. */
+  keys: string[];
+  rows: ArchiveRow[];
+}
+export function fetchArchive(): Promise<ArchiveState> {
+  return engineCall<ArchiveState>("/internal/archive", "the archive");
+}
+export function setArchive(label: string, archived: boolean, note?: string): Promise<{ keys: string[]; switchedOff: string[] }> {
+  return engineCall<{ keys: string[]; switchedOff: string[] }>("/internal/archive", "the archive", { method: "POST", body: { label, archived, note } });
+}
+
 /** The drip shadow test's report (engine drip-shadow-report.ts): admin only, no page uses it. */
 export function fetchDripShadow(): Promise<{ headline: string; text: string; recorded: number; settled: number }> {
   return engineCall<{ headline: string; text: string; recorded: number; settled: number }>("/internal/drip-shadow", "the drip test report");

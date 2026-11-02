@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, Segmented } from "@/components/ui/Card";
 import { useAdminStrategies, type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { useIsArchived } from "@/queries/use-archive";
 import { gbp, signedPct, toneOf } from "@/lib/format";
 
 type Mode = "live" | "sim";
@@ -37,10 +38,12 @@ function verdict(r: AdminStrategy, day: StrategyReturn): { kind: "look" | "wait"
 export function TodayByStrategy() {
   const { data, error, isLoading } = useAdminStrategies();
   const names = useStrategyNames();
+  const isArchived = useIsArchived();
   const [mode, setMode] = useState<Mode>("live");
   const [open, setOpen] = useState(false);
 
   const rows = (data?.strategies ?? [])
+    .filter((r) => !isArchived(r.label))
     .map((r) => ({ r, day: r.today?.[mode] }))
     .filter((x): x is { r: AdminStrategy; day: StrategyReturn } => !!x.day && x.day.settled > 0)
     .sort((a, b) => b.day.profit - a.day.profit);

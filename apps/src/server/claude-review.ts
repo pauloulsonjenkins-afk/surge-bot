@@ -20,6 +20,7 @@ import { getSendingSettings } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
 import { goldenReport } from "./golden";
 import { visibleAdvice } from "./strategy-advice";
+import { getArchived } from "./archive";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { log } from "./log";
 
@@ -99,7 +100,10 @@ export function goldenCloseToNextStage(db: EngineDb, now: Date): Array<{ strateg
 function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unknown> {
   const returns = computeStrategyReturns(db, from);
   const settings = getSendingSettings(db);
-  const strategies = Object.entries(returns).map(([key, r]) => ({
+  const archived = getArchived(db);
+  const strategies = Object.entries(returns)
+    .filter(([key]) => !archived[key])
+    .map(([key, r]) => ({
     name: displayName(db, key),
     live: settings.strategies[key] === true,
     liveSettled: r.live.settled,
@@ -108,7 +112,7 @@ function buildDigest(db: EngineDb, from: string, now: Date): Record<string, unkn
     simRoi: r.sim.roi,
     longestLosingRun: r.live.settled > 0 ? r.live.longestLosingRun : r.sim.longestLosingRun,
   }));
-  const golden = goldenReport(db, now, { skipFinder: true }).slices.map((s) => ({
+  const golden = goldenReport(db, now, { skipFinder: true }).slices.filter((s) => !archived[s.strategyKey]).map((s) => ({
     strategy: s.strategy,
     label: s.label,
     status: s.status,

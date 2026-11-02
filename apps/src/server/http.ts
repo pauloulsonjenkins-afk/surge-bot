@@ -115,6 +115,7 @@ import { claudeReviewConfigured, getClaudeReviewFailures, getClaudeReviewNotes }
 import { similarAlertsFor } from "./similar-alerts";
 import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
+import { archiveRows, getArchived, setArchived } from "./archive";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -1175,6 +1176,28 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (path === "/internal/by-method" && req.method === "GET") {
       if (!requireAdmin(req, res)) return;
       send(res, 200, { ...cachedReport(db, `by-method:${ukDateOf(new Date())}`, () => ({ ...computeByMethod(db), at: new Date().toISOString() })) });
+      return;
+    }
+
+    // The strategy archive (archive.ts): old strategies hidden from every page, kept on record. Admin only.
+    if (path === "/internal/archive" && (req.method === "GET" || req.method === "POST")) {
+      if (!requireAdmin(req, res)) return;
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        const label = typeof body.label === "string" ? body.label.trim() : "";
+        if (!label || typeof body.archived !== "boolean") {
+          send(res, 400, { error: "label_and_archived_required" });
+          return;
+        }
+        try {
+          const done = setArchived(db, label, body.archived, typeof body.note === "string" ? body.note : null);
+          send(res, 200, { ...done, keys: Object.keys(getArchived(db)) });
+        } catch (err) {
+          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't do that." });
+        }
+        return;
+      }
+      send(res, 200, { keys: Object.keys(getArchived(db)), rows: archiveRows(db) });
       return;
     }
 

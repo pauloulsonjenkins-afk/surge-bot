@@ -17,6 +17,7 @@ import { useSaveWinLoss, useWinLoss, type WinLossState } from "@/queries/use-win
 import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import type { PickMode } from "@/server/engine-client";
 import { useStrategyNames } from "@/queries/use-strategy-names";
+import { useIsArchived } from "@/queries/use-archive";
 
 type PeriodKey = "d1" | "d7" | "mtd" | "ytd";
 const PERIODS: Array<{ key: PeriodKey; label: string }> = [
@@ -27,7 +28,8 @@ const PERIODS: Array<{ key: PeriodKey; label: string }> = [
 ];
 
 // Distinct on both the light and dark themes.
-const PALETTE = ["#d98a00", "#0fa37f", "#3f7ce0", "#a266d9", "#d6497a", "#2ea3b5"];
+// Twelve, since this chart can carry a line per strategy: the first six as before, then six more that stay apart from them.
+const PALETTE = ["#d98a00", "#0fa37f", "#3f7ce0", "#a266d9", "#d6497a", "#2ea3b5", "#8c6d1f", "#5b8c2a", "#c4572a", "#6c7ae0", "#b0407f", "#3a8f8f"];
 
 const inputCls = "w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink";
 
@@ -96,6 +98,7 @@ const MODE_NOTE: Record<PickMode, string> = {
 
 function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
   const strategyNames = useStrategyNames();
+  const isArchived = useIsArchived();
   const saveWinLoss = useSaveWinLoss(mode);
   const [period, setPeriod] = useState<PeriodKey>("mtd");
   const [oddsDraft, setOddsDraft] = useState<Record<string, string>>({});
@@ -116,8 +119,12 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
   const ex = state.settings.expenditure;
   // `strategies` are the originals (their stake and odds are settings). `lines` are what the figures and graph show,
   // with merged strategies added together. An engine that isn't updated yet has no `reported`, so fall back to the originals.
-  const strategies = state.strategies;
-  const lines = state.reported ?? strategies;
+  // Archived strategies get no row or line of their own (the Archive page lists them) but are still in every total: one
+  // "Archived" row carries their share so the rows add up to the total.
+  const strategies = state.strategies.filter((s) => !isArchived(s.label));
+  const allLines = state.reported ?? state.strategies;
+  const lines = allLines.filter((s) => !isArchived(s.label));
+  const archivedLines = allLines.filter((s) => isArchived(s.label));
 
   // Keep the expenditure boxes in step with what the engine has saved (e.g. the start month it filled in on first tick).
   const savedCost = `${ex.monthly}|${ex.startMonth ?? ""}`;
@@ -205,6 +212,13 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
             {lines.map((s) => (
               <Figures key={s.key} title={strategyNames.name(s.label)} values={PERIODS.map((p) => state.periods[p.key].strategies[s.key] ?? 0)} />
             ))}
+            {archivedLines.length > 0 && (
+              <Figures
+                title={`Archived strategies (${archivedLines.length})`}
+                muted
+                values={PERIODS.map((p) => archivedLines.reduce((t, s) => t + (state.periods[p.key].strategies[s.key] ?? 0), 0))}
+              />
+            )}
             <Figures
               title={mode === "live" ? "Live total" : mode === "sim" ? "Sim total" : "Total"}
               bold
@@ -274,7 +288,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         {points.length < 2 ? (
           <EmptyState title="Nothing to draw yet" detail="A line appears once there are results with a stake and odds in this period." />
         ) : (
-          <WinLossLines data={strategyData} series={strategySeries} />
+          <WinLossLines data={strategyData} series={strategySeries} selectable />
         )}
       </Fold>
 

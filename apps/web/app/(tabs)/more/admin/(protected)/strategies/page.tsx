@@ -4,6 +4,7 @@ import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
 import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, useStrategyWeeks, type AdminStrategy } from "@/queries/use-strategies";
 import { StrategyWeekly } from "@/components/admin/StrategyWeekly";
+import { useIsArchived } from "@/queries/use-archive";
 import { useFreshStart } from "@/queries/use-fresh-start";
 import { useDeleteStrategyFlow } from "@/components/admin/useDeleteStrategyFlow";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -83,7 +84,9 @@ export default function StrategiesPage() {
   const [side, setSide] = useState<"back" | "lay">("back");
   const [showOptions, setShowOptions] = useState(false);
   const weeksData = useStrategyWeeks();
-  const strategies = useMemo(() => data?.strategies ?? [], [data]);
+  // Archived strategies are hidden here (the Archive page lists them); their bets still count in every money total.
+  const isArchived = useIsArchived();
+  const strategies = useMemo(() => (data?.strategies ?? []).filter((r) => !isArchived(r.label)), [data, isArchived]);
   const inactive = strategies.filter((r) => isInactive(r) && !isLayRow(r));
   const ignored = data?.ignored ?? [];
 
