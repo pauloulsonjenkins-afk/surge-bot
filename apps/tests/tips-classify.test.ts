@@ -48,6 +48,16 @@ test("a celebration of a bet already won is not a tip, even though it names the 
   assert.equal(classifyTip("Tip: Liverpool to win\nLiverpool v Everton @ 1.70").verdict, "tip");
 });
 
+test("a shouty, all-caps tip that looks ahead (CVPICKS Thursday free bet) is a tip", () => {
+  const tip =
+    "🚨🎁 THURSDAY FREE BET IS HERE!!! ⚽🔥\n\nGOOD MORNING, CV PICKS FAMILY!!! 🟢\n\nAfter another brilliant Wednesday, we're ready to keep the momentum going! 🚀\n\n🏆 GANGWON FC VS KUCHING CITY FC\n🎯 GANGWON FC TO WIN\n💰 ODDS @1.48\n⏰ 10:00 UK | 11:00 EU\n\nWe're backing Gangwon FC to take the victory! ⚽💪\n\nLET'S KICK OFF THURSDAY WITH ANOTHER BIG GREEN!!! 🐐";
+  const r = classifyTip(tip);
+  assert.equal(r.verdict, "tip");
+  assert.equal(r.match, "GANGWON FC v KUCHING CITY FC");
+  assert.equal(r.odds, 1.48);
+  assert.match(r.selection ?? "", /GANGWON FC TO WIN/);
+});
+
 test("a bet with no price is worth a look, not a tip", () => {
   const r = classifyTip("Tip: Man City to win\nMan City vs Fulham");
   assert.equal(r.verdict, "maybe");

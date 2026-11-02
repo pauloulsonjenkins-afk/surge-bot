@@ -116,7 +116,7 @@ import { similarAlertsFor } from "./similar-alerts";
 import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
 import { archiveRows, getArchived, setArchived } from "./archive";
-import { addTipChannel, getTipChannels, refreshTipChannels, removeTipChannel } from "../tips/reader";
+import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel } from "../tips/reader";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -1224,7 +1224,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         if (body.action === "add") void refreshTipChannels();
       }
       const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
-      send(res, 200, { channels: getTipChannels(db), tips: db.listChannelTips(since) });
+      send(res, 200, { channels: getTipChannels(db), stats: Object.values(getTipStats(db)), tips: db.listChannelTips(since) });
       return;
     }
 

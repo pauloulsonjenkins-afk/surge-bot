@@ -89,6 +89,17 @@ export default function TipsPage() {
           </button>
         </form>
         {change.error && <p className="mt-2 text-sm text-destructive">{change.error.message}</p>}
+        {data.stats.map((s) => {
+          const days = Math.max((Date.parse(s.to) - Date.parse(s.from)) / 86_400_000, 1);
+          const perDay = s.photos / days;
+          // About 0.2p to read one slip image with a small Claude model (an estimate, not a quote).
+          const perMonth = perDay * 30 * 0.002;
+          return (
+            <p key={s.name} className="mt-2 text-xs text-ink-muted">
+              {s.name}: {s.photos} photos and {s.withText} text posts in the last {Math.round(days)} days, about {Math.round(perDay)} photos a day. Reading the images would cost roughly £{perMonth.toFixed(2)} a month.
+            </p>
+          );
+        })}
       </section>
 
       <div className="flex gap-1.5 overflow-x-auto" role="tablist">

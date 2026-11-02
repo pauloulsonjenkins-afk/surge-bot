@@ -33,7 +33,7 @@ const ADVERT_PATTERNS: Array<[RegExp, string]> = [
   [/\b(dm|pm|message|contact|whatsapp)\s+(me|us|admin|@)/i, "asks you to message them"],
   [/\bt\.me\/|https?:\/\/|www\.|\.com\b|\.co\.uk\b/i, "has a link"],
   [/\b(guaranteed|guarantee|100\s?%|sure\s?(win|thing)|fixed\s?match(es)?|insider|leaked)\b/i, "promises a sure win"],
-  [/\b(discount|offer|limited (spots|places|time)|only \d+ (spots|places)|% off|promo|bonus|sign\s?up|register|free bet|welcome offer)\b/i, "a promotion or bonus"],
+  [/\b(discount|offer|limited (spots|places|time)|only \d+ (spots|places)|% off|promo|bonus|sign\s?up|register|welcome offer)\b/i, "a promotion or bonus"],
   [/\b(price|£\s?\d+\s?(a|per)\s?(week|month)|\$\s?\d+\s?(a|per)\s?(week|month)|per month|per week|lifetime)\b/i, "quotes a price for a service"],
   [/\b(profit|profits|won|winning)\s+(proof|screenshot|record)|\bproof\b|\bscreenshots?\b/i, "shows 'proof' of winnings"],
   [/\b(18\+|gamble responsibly|begambleaware|t&cs? apply)\b/i, "gambling-advert small print"],
@@ -42,13 +42,15 @@ const ADVERT_PATTERNS: Array<[RegExp, string]> = [
 /** Words that appear in real tips. */
 const MARKET_WORDS =
   /\b(over|under|btts|both teams to score|to win|win|draw|double chance|1x|x2|12|handicap|ah|asian|corners?|cards?|goals?|clean sheet|first half|1st half|second half|2nd half|dnb|draw no bet|anytime|scorer|acca|accumulator|lay|back)\b/i;
-const FIXTURE = /([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})[ \t]+(?:vs\.?|v\.?|-|–|—|x)[ \t]+([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})/u;
+const FIXTURE = /([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})[ \t]+(?:vs\.?|VS\.?|v\.?|V\.?|-|–|—|x)[ \t]+([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})/u;
 const DECIMAL_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bprice\b[:\s]*|\bat\b\s*)(\d{1,2}\.\d{1,3})\b|\b(\d{1,2}\.\d{2})\b/i;
 const FRACTION_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bat\b\s*)(\d{1,3})\s?\/\s?(\d{1,3})\b/i;
 const STAKE = /\b(\d+(?:\.\d+)?)\s?(units?|u|pts?|points?|stars?)\b|\bstake[:\s]+([^\n]{1,20})/i;
 const TIP_LABEL = /\b(tip|bet|pick|selection|prediction|our (?:bet|pick)|today'?s (?:bet|tip|pick))\b\s*[:\-–]/i;
 const BRAG =
   /\b(cashe+d|cash(ed)? out|delivered|secured|smashed|landed|collected|compensation|bo+m+|another (big )?(green|win|winner)|(wins|won|has won|did it|banked|profit(s)?|winner)\b(?! at))\b|\b(wins|won) the\b|\bwinner\b/i;
+/** Wording that looks ahead to a match not yet played: a kick-off time, "is here", "we're backing". It outweighs boasting words in the same post. */
+const FORWARD = /\bis here\b|we'?re backing|we back\b|\d{1,2}[:.]\d{2}\s*(uk|eu|gmt|bst|cet)\b|kick[- ]?off (time|at)|\bstarts? (at|in)\b|today'?s (bet|tip|pick)|(free )?bet of the day/i;
 const RESULT_ONLY = /^\s*(?:[✅❌✔️❎🟢🔴]|won|lost|win|loss|void)\b|\bresult[s]?\b[:\s]/i;
 
 function oddsFrom(text: string): number | null {
@@ -114,11 +116,16 @@ export function classifyTip(text: string): TipRead {
   else {
     const line = t.split("\n").map((l) => l.trim()).find((l) => l && MARKET_WORDS.test(l) && oddsFrom(l) !== null);
     if (line) selection = line.slice(0, 80);
+    else {
+      // "GANGWON FC TO WIN" with the price on its own line ("ODDS @1.48"): the line that names the bet.
+      const bare = t.split("\n").map((l) => l.trim()).find((l) => l.length <= 60 && /\b(to win|over \d|under \d|btts|both teams to score)\b/i.test(l));
+      if (bare) selection = bare;
+    }
   }
 
   // A celebration of a bet already won ("CASHED!!!", "KUPS WINS THE FIRST HALF", "compensation delivered") is advertising,
   // however much it looks like a tip: it names the match, the market and the price, but the match is over.
-  if (BRAG.test(t) || (t.match(/!/g) ?? []).length >= 4) {
+  if (!FORWARD.test(t) && (BRAG.test(t) || (t.match(/!/g) ?? []).length >= 4)) {
     // Selling as well as boasting ("guaranteed wins, join VIP") is an advert; boasting alone is just other.
     return { verdict: advert > 0 ? "advert" : "other", reasons: [...reasons.filter((x) => ADVERT_PATTERNS.some(([, why]) => why === x)), "celebrates a bet already won, so it isn't a new tip"], match, selection: null, odds, stake: null };
   }

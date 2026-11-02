@@ -18,7 +18,7 @@ import { getExchangeReader } from "../betfair/exchange";
 
 const KEY = "tip_channels";
 const SYNC_EVERY_MS = 5 * 60 * 1000;
-const FIRST_READ = 200;
+const FIRST_READ = 400;
 const LATER_READ = 40;
 
 export function getTipChannels(db: EngineDb): string[] {
@@ -53,6 +53,44 @@ export function removeTipChannel(db: EngineDb, raw: string): string[] {
   const all = getTipChannels(db).filter((x) => x.toLowerCase() !== c);
   db.setSetting(KEY, JSON.stringify(all));
   return all;
+}
+
+const STATS_KEY = "tip_channel_stats";
+
+export interface TipChannelStats {
+  name: string;
+  /** The span of the messages counted. */
+  from: string;
+  to: string;
+  messages: number;
+  /** Messages that are a photo (a forwarded bet slip is one). */
+  photos: number;
+  /** Messages with words in them, which the reader classifies for free. */
+  withText: number;
+}
+
+export function getTipStats(db: EngineDb): Record<string, TipChannelStats> {
+  try {
+    return JSON.parse(db.getSetting(STATS_KEY) ?? "{}") as Record<string, TipChannelStats>;
+  } catch {
+    return {};
+  }
+}
+
+/** How many photos a channel posts, from its latest messages: what reading the images would cost depends on it. */
+function saveTipStats(db: EngineDb, id: string, name: string, messages: Array<{ date: number; message?: string; photo?: unknown }>): void {
+  if (messages.length === 0) return;
+  const dates = messages.map((m) => m.date);
+  const all = getTipStats(db);
+  all[id] = {
+    name,
+    from: new Date(Math.min(...dates) * 1000).toISOString(),
+    to: new Date(Math.max(...dates) * 1000).toISOString(),
+    messages: messages.length,
+    photos: messages.filter((m) => !!m.photo).length,
+    withText: messages.filter((m) => (m.message ?? "").trim().length > 0).length,
+  };
+  db.setSetting(STATS_KEY, JSON.stringify(all));
 }
 
 /** Classifies and stores one message. Returns true when something was written. */
@@ -125,6 +163,7 @@ async function sync(a: Active): Promise<void> {
       const first = !a.firstDone.has(id);
       const messages = (await a.client.getMessages(Number(id), { limit: first ? FIRST_READ : LATER_READ })) as Api.Message[];
       a.firstDone.add(id);
+      if (first) saveTipStats(a.db, id, name, messages);
       for (const m of [...messages].reverse()) {
         if (recordTip(a.db, { chatKey: id, messageId: m.id, date: m.date, text: m.message ?? "", channel: name })) stored++;
       }

@@ -2132,6 +2132,8 @@ export interface ChannelTip {
 }
 export interface TipsState {
   channels: string[];
+  /** Photos and words in each channel's latest messages (what reading the bet-slip images would cost depends on it). */
+  stats: Array<{ name: string; from: string; to: string; messages: number; photos: number; withText: number }>;
   tips: ChannelTip[];
 }
 export function fetchTips(): Promise<TipsState> {
