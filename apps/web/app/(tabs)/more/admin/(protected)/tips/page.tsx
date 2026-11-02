@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useChangeTips, useTips, type ChannelTip } from "@/queries/use-tips";
+import { useWinLoss } from "@/queries/use-winloss";
+import { WinLossLines, gbp } from "@/components/admin/WinLossLines";
 
 const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -31,6 +33,32 @@ const BADGE: Record<Shown, string> = {
   other: "bg-surface-2 text-ink-muted",
 };
 
+const STRATEGY_KEY = "telegram tips";
+
+/** The Telegram tips strategy's cumulative profit and loss, from the Profit page's data. */
+function ResultsGraph() {
+  const { data } = useWinLoss("all");
+  if (!data) return null;
+  const line = data.strategies.find((s) => s.key === STRATEGY_KEY);
+  if (!line) {
+    return <p className="rounded-xl border border-line bg-surface p-3.5 text-sm text-ink-muted">Results will appear here once the first tip has been placed in Sim and has finished.</p>;
+  }
+  const rows = data.series.ytd.map((p) => ({ label: p.label.slice(5), t: p.s[STRATEGY_KEY] ?? 0 }));
+  const last = rows.length ? rows[rows.length - 1]!.t : 0;
+  return (
+    <section className="rounded-xl border border-line bg-surface p-3.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium text-ink">Telegram tips: results</p>
+        <p className={`text-sm font-medium tabular-nums ${last > 0 ? "text-hit" : last < 0 ? "text-loss" : "text-ink-muted"}`}>{gbp(last)}</p>
+      </div>
+      <p className="text-xs text-ink-muted">{line.counted} bets so far this year, in Sim at the strategy&apos;s stake, priced at Betfair&apos;s price when each tip was read.</p>
+      <div className="mt-2">
+        <WinLossLines data={rows} series={[{ key: "t", name: "Telegram tips", color: "var(--chart)" }]} />
+      </div>
+    </section>
+  );
+}
+
 /**
  * Free tips: the Telegram channels you follow, with each message read as a tip, an advert or neither. Read-only: nothing
  * here places a bet. Your Tip / Not a tip buttons override the reading.
@@ -55,6 +83,8 @@ export default function TipsPage() {
         title="Free tips"
         subtitle="Telegram channels you follow, read for real bets. Adverts for premium groups are filtered out. Tips that can be placed on Betfair are recorded in Sim as the strategy Telegram tips (it stays in Sim until you switch it Live)."
       />
+
+      <ResultsGraph />
 
       <section className="rounded-xl border border-line bg-surface p-3.5">
         <p className="text-sm font-medium text-ink">Channels</p>

@@ -73,10 +73,76 @@ export function setArchived(db: EngineDb, label: string, archived: boolean, note
     if (patch.strategies || patch.segmentBets) saveSendingSettings(db, patch);
   } else {
     delete all[key];
+    // Restored on purpose: the automatic archiving below leaves it alone from now on.
+    const kept = loadKept(db);
+    kept[key] = (now ?? new Date()).toISOString();
+    db.setSetting(KEPT_KEY, JSON.stringify(kept));
   }
   db.setSetting(KEY, JSON.stringify(all));
   log.info(`Strategy "${label}" ${archived ? `archived${switchedOff.length ? ` (switched back to Sim: ${switchedOff.join(", ")})` : ""}` : "restored from the archive"}.`);
   return { key, archived, switchedOff };
+}
+
+const KEPT_KEY = "archive_kept";
+const SEEDED_KEY = "archive_seeded_v1";
+/** Strategies with no new alert for this long, and not Live, are archived. */
+export const QUIET_DAYS = 30;
+/** The strategies the owner retired on 2 Nov 2026 (deleted from InPlayGuru, or judged not worth running). Archived once. */
+const RETIRED: Array<[string, string]> = [
+  ["first half goal", "Retired 2 Nov 2026: replaced by the FH Goal strategies."],
+  ["pass master 1st half", "Retired 2 Nov 2026."],
+  ["late goal hunter", "Deleted from InPlayGuru, 2 Nov 2026."],
+  ["sustained momentum", "Deleted from InPlayGuru, 2 Nov 2026."],
+  ["both teams to score", "Retired 2 Nov 2026."],
+  ["fh goal xg game state", "Retired 2 Nov 2026."],
+];
+
+function loadKept(db: EngineDb): Record<string, string> {
+  try {
+    return JSON.parse(db.getSetting(KEPT_KEY) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Archives old strategies without being asked: once, the retired list above; and always, any strategy with no alert for
+ * QUIET_DAYS days that isn't Live. A strategy restored from the Archive page is never archived again by this. Returns the
+ * keys archived this time.
+ */
+export function autoArchive(db: EngineDb, now = new Date()): string[] {
+  const archived = load(db);
+  const kept = loadKept(db);
+  const live = getSendingSettings(db).strategies;
+  const rows = db.listStrategiesForAdmin();
+  const done: string[] = [];
+  const seeded = db.getSetting(SEEDED_KEY) !== null;
+  const retired = new Map(RETIRED);
+  for (const r of rows) {
+    const key = r.label.trim().toLowerCase();
+    if (archived[key] || kept[key] || live[key] === true) continue;
+    const quiet = now.getTime() - Date.parse(r.lastAlertAt) > QUIET_DAYS * 86_400_000;
+    const note = !seeded && retired.has(key) ? retired.get(key)! : quiet ? `No alerts for ${QUIET_DAYS} days (last ${r.lastAlertAt.slice(0, 10)}).` : null;
+    if (note === null) continue;
+    setArchived(db, r.label, true, note, now);
+    done.push(key);
+  }
+  db.setSetting(SEEDED_KEY, now.toISOString());
+  return done;
+}
+
+/** Runs the automatic archiving a minute after start and every six hours. */
+export function startAutoArchive(db: EngineDb): void {
+  const run = () => {
+    try {
+      const done = autoArchive(db);
+      if (done.length > 0) log.info(`Archived ${done.length} old strateg${done.length === 1 ? "y" : "ies"}: ${done.join(", ")}.`);
+    } catch (err) {
+      log.warn(`Automatic archiving failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  setTimeout(run, 60_000).unref?.();
+  setInterval(run, 6 * 3_600_000).unref?.();
 }
 
 export interface ArchiveRow {

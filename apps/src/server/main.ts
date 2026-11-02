@@ -31,6 +31,7 @@ import { notifyLeagueMilestones } from "./league-returns";
 import { startEdge } from "../edge/edge";
 import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startValueSettling } from "../edge/value-strategy";
+import { startAutoArchive } from "./archive";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { logHorseResults } from "./horse-results";
 import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
@@ -235,6 +236,8 @@ async function main(): Promise<void> {
   startEdgePrices(db);
   // Best Value Cuppa (Sim only): settles its picks from Betfair's results.
   startValueSettling(db);
+  // Old strategies move to the Archive by themselves (server/archive.ts).
+  startAutoArchive(db);
 
   // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
   // real bets on the house Betfair account for admin members. See src/members/runner.ts and live.ts.
