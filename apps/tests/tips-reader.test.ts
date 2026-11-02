@@ -9,6 +9,8 @@ const now = Math.floor(Date.now() / 1000);
 test("channels are kept once, however they were typed", () => {
   const db = new EngineDb(":memory:", () => {});
   assert.equal(normaliseChannel("https://t.me/FreeTips"), "@FreeTips");
+  assert.equal(normaliseChannel("https://web.telegram.org/a/#-1001401746016"), "-1001401746016");
+  assert.equal(normaliseChannel("-1001401746016"), "-1001401746016");
   addTipChannel(db, "t.me/FreeTips");
   addTipChannel(db, "@freetips");
   assert.deepEqual(getTipChannels(db), ["@FreeTips"]);

@@ -32,6 +32,9 @@ export function getTipChannels(db: EngineDb): string[] {
 
 /** "https://t.me/name", "t.me/name", "@name" and "name" are all the same channel; a number is a chat id. */
 export function normaliseChannel(raw: string): string {
+  // A Telegram Web address (web.telegram.org/a/#-1001401746016) carries the chat's number after the #.
+  const web = /web\.telegram\.org\/.*#(-?\d+)/i.exec(raw);
+  if (web) return web[1]!;
   const s = raw.trim().replace(/^https?:\/\//i, "").replace(/^t\.me\//i, "").replace(/^@/, "").replace(/[/?#].*$/, "");
   return /^-?\d+$/.test(s) ? s : s ? `@${s}` : "";
 }
@@ -89,9 +92,20 @@ let attachedClient: TelegramClient | null = null;
 
 async function resolve(a: Active): Promise<void> {
   const next = new Map<string, string>();
+  let dialogsLoaded = false;
   for (const ref of getTipChannels(a.db)) {
     try {
-      const entity = await a.client.getEntity(/^-?\d+$/.test(ref) ? Number(ref) : ref);
+      const ask = () => a.client.getEntity(/^-?\d+$/.test(ref) ? Number(ref) : ref);
+      let entity;
+      try {
+        entity = await ask();
+      } catch (err) {
+        // A number only works once the login has seen the chat; loading the chat list teaches it (as the alert listener does).
+        if (dialogsLoaded || !/^-?\d+$/.test(ref)) throw err;
+        dialogsLoaded = true;
+        await a.client.getDialogs({ limit: 200 });
+        entity = await ask();
+      }
       const id = (await a.client.getPeerId(entity)).toString();
       const e = entity as { title?: string; username?: string };
       next.set(id, e.title ?? (e.username ? `@${e.username}` : ref));
