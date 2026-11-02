@@ -13,6 +13,7 @@ import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMe
 import type { EngineDb } from "../storage/engine-db";
 import { log } from "../server/log";
 import { classifyTip } from "./classify";
+import { applyLearning, type Reviewed } from "./similar";
 import { trackTips } from "./track";
 import { getExchangeReader } from "../betfair/exchange";
 
@@ -93,12 +94,44 @@ function saveTipStats(db: EngineDb, id: string, name: string, messages: Array<{ 
   db.setSetting(STATS_KEY, JSON.stringify(all));
 }
 
+/** The owner's calls from this channel in the last 60 days: what new messages are compared with (similar.ts). */
+function reviewedIn(db: EngineDb, chatKey: string): Reviewed[] {
+  const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+  return db
+    .listChannelTips(since, 2000)
+    .filter((t) => t.chatKey === chatKey && (t.review === "tip" || t.review === "not"))
+    .map((t) => ({ text: t.text, review: t.review as "tip" | "not" }));
+}
+
+function readWithLearning(db: EngineDb, chatKey: string, text: string) {
+  return applyLearning(classifyTip(text), text, reviewedIn(db, chatKey));
+}
+
+/**
+ * After the owner confirms or rejects a message: reads this channel's other recent messages again, so ones that look like it
+ * move too. Messages the owner has already called are left alone. Returns how many readings changed.
+ */
+export function rescoreChannel(db: EngineDb, chatKey: string): number {
+  const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+  const reviewed = reviewedIn(db, chatKey);
+  let changed = 0;
+  for (const t of db.listChannelTips(since, 2000)) {
+    if (t.chatKey !== chatKey || t.review !== null) continue;
+    // Not compared with itself: it has no call, so it isn't in `reviewed`.
+    const r = applyLearning(classifyTip(t.text), t.text, reviewed);
+    if (r.verdict === t.verdict && r.reasons.length === t.reasons.length) continue;
+    db.upsertChannelTip({ chatKey: t.chatKey, messageId: t.messageId, channel: t.channel, postedAt: t.postedAt, text: t.text, verdict: r.verdict, reasons: r.reasons, match: r.match, selection: r.selection, odds: r.odds, stake: r.stake });
+    changed++;
+  }
+  return changed;
+}
+
 /** Classifies and stores one message. Returns true when something was written. */
 export function recordTip(db: EngineDb, m: { chatKey: string; messageId: number; date: number; text: string; channel: string }): boolean {
   const text = m.text.trim();
   if (!text) return false;
   if (db.getChannelTipText(m.chatKey, m.messageId) === m.text) return false;
-  const r = classifyTip(m.text);
+  const r = readWithLearning(db, m.chatKey, m.text);
   db.upsertChannelTip({
     chatKey: m.chatKey,
     messageId: m.messageId,

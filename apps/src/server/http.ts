@@ -116,7 +116,7 @@ import { similarAlertsFor } from "./similar-alerts";
 import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
 import { archiveRows, getArchived, setArchived } from "./archive";
-import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel } from "../tips/reader";
+import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel, rescoreChannel } from "../tips/reader";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -1213,6 +1213,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           else if (body.action === "review" && typeof body.chatKey === "string" && typeof body.messageId === "number") {
             const r = body.review === "tip" || body.review === "not" ? body.review : null;
             db.setChannelTipReview(body.chatKey, body.messageId, r);
+            // Messages that read like this one move with it (tips/similar.ts).
+            rescoreChannel(db, body.chatKey);
           } else {
             send(res, 400, { error: "unknown_action" });
             return;

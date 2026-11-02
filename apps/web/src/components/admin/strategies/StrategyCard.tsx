@@ -41,7 +41,10 @@ export function StrategyCard({
   bank,
   check,
   advice,
+  defaultOpen = false,
 }: {
+  /** Opens the card straight away (the strategy's own page). */
+  defaultOpen?: boolean;
   /** Its kick-off price check result (pre-match strategies), for the Ready for Live checklist. */
   check?: CheckResult;
   /** Today's suggestion for it (Live / Sim or the stake ladder), if any: the one place those rules live. */
@@ -100,7 +103,7 @@ export function StrategyCard({
   const info = names.info(row.label);
   const shownName = names.name(row.label);
   const [about, setAbout] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
 
   const ret = money as StrategyReturn | null;
   const judge = judged(ret, hitRate, settled);
