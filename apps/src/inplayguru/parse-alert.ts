@@ -154,6 +154,11 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /\b(?:first|1st|1h)\b[^/]*\bcorners?\b|\bcorners?\b[^/]*\b(?:first|1st|1h)\b/, market: "FIRST_HALF_CORNERS" },
   // "Underdog taking charge action" backs the underdog to win or draw. This must come before the
   // "momentum" / "action" rules below, which would otherwise read it as an Over goals bet.
+  // "GS Match Odds Fave" / "GS Over 1.5 at 0-0" / "GS Over 1.5 at 1-0" (added 2 Nov 2026, Sim test, from the owner's "GS strat" PDF, the
+  // Match Odds Stack): a hot pre-match favourite ahead on xG. Match Odds backs the favourite to win (the side with the
+  // shorter live price); the two Over 1.5 ones back Over 1.5 goals in the match, from 0-0 and from 1-0 to the favourite.
+  { test: /^gs match odds/, market: "FAVOURITE_TO_WIN" },
+  { test: /^gs over 1\.5/, market: "OVER_1_5" },
   { test: /\bunderdog\b/, market: "UNDERDOG_DOUBLE_CHANCE" },
   // "First Half Goal": a PRE-MATCH alert (no timer, no score) backing Over 0.5 goals in the first half.
   { test: /\b(?:first|1st|1h)\s*half\s+goals?\b/, market: "FIRST_HALF_GOALS" },
