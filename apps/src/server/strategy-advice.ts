@@ -272,7 +272,14 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       // Sim (the rule below), "Put Live" would only flip-flop. Boiling Point, 24 Oct 2026: +2.4% in Sim, -6.6% Live.
       const recentLive = rec?.live;
       const liveAdj = recentLive ? adjusted(recentLive.roi, recentLive.counted) : null;
-      const liveLosing = !!recentLive && recentLive.counted >= 30 && liveAdj !== null && liveAdj < -0.02;
+      // ...and so does its whole Live record since its rules last changed. Only the last 30 days used to count, so once the
+      // losing Live bets aged out of that window "Put Live" came back, and 30 days on "Put back to Sim" again (Fav Pressure
+      // 2H, 2 Nov 2026). Sim flatters Live, so a strategy that has lost real money over 50+ bets stays in Sim until its rules change.
+      const wholeLive = sinceChange[key]?.live;
+      const wholeAdj = wholeLive ? adjusted(wholeLive.roi, wholeLive.counted) : null;
+      const liveLosing =
+        (!!recentLive && recentLive.counted >= 30 && liveAdj !== null && liveAdj < -0.02) ||
+        (!!wholeLive && wholeLive.counted >= 50 && wholeAdj !== null && wholeAdj < 0);
       const halves = sim.counted >= PROMOTE_FROM ? simHalves(db, rows, key) : null;
       const ok =
         !liveLosing &&
