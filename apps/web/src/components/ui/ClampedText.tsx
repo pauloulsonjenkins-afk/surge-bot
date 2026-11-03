@@ -32,7 +32,7 @@ export function ClampedText({ text, lines = 2, label, className = "" }: { text: 
         {text}
       </span>
       {(clipped || open) && (
-        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="mt-0.5 inline-flex min-h-8 items-center text-accent">
+        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="mt-0.5 inline-flex min-h-8 min-w-11 items-center text-accent [@media(pointer:coarse)]:min-h-11">
           {open ? "less" : "more"}
         </button>
       )}

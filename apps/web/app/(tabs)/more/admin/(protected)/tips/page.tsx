@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
+import { useShowMore } from "@/components/ui/ShowMore";
 import { useChangeTips, useChannelEquity, useTips, type ChannelTip } from "@/queries/use-tips";
 import Link from "next/link";
 import { useAdminStrategies } from "@/queries/use-strategies";
@@ -70,7 +71,7 @@ function ResultsGraph() {
         <p className="text-sm font-medium text-ink">Results by channel</p>
         <div className="inline-flex rounded-md border border-line p-0.5" role="group" aria-label="Show results in">
           {([[true, "Units"], [false, "£"]] as const).map(([u, label]) => (
-            <button key={label} type="button" aria-pressed={inUnits === u} onClick={() => setInUnits(u)} className={`rounded px-3 py-2 text-xs font-medium ${inUnits === u ? "bg-accent text-accent-ink" : "text-ink"}`}>
+            <button key={label} type="button" aria-pressed={inUnits === u} onClick={() => setInUnits(u)} className={`min-h-10 rounded px-4 py-2 text-xs font-medium ${inUnits === u ? "bg-accent text-accent-ink" : "text-ink"}`}>
               {label}
             </button>
           ))}
@@ -121,12 +122,14 @@ export default function TipsPage() {
   const change = useChangeTips();
   const [tab, setTab] = useState<Shown>("tip");
   const [channel, setChannel] = useState("");
+  // Hundreds of messages in a fortnight made this page about ten phone screens long: twenty at a time.
+  const rows = (data?.tips ?? []).filter((t) => effective(t) === tab);
+  const { shown, more } = useShowMore(rows, 20, tab);
   if (error) return <QueryError error={error} next="/more/admin/tips" />;
   if (isLoading || !data) return <Skeleton className="h-40 w-full" />;
 
   const counts: Record<Shown, number> = { tip: 0, maybe: 0, advert: 0, other: 0 };
   for (const t of data.tips) counts[effective(t)]++;
-  const rows = data.tips.filter((t) => effective(t) === tab);
   const hint = TABS.find((x) => x.id === tab)!.hint;
 
   return (
@@ -152,7 +155,7 @@ export default function TipsPage() {
           {data.channels.map((c) => (
             <li key={c} className="flex items-center justify-between gap-3 text-sm text-ink">
               <span className="min-w-0 truncate">{c}</span>
-              <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "remove", channel: c })} className="shrink-0 rounded-md border border-line px-3 py-2 text-xs font-medium text-ink">
+              <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "remove", channel: c })} className="min-h-11 shrink-0 rounded-md border border-line px-3 py-2 text-xs font-medium text-ink">
                 Remove
               </button>
             </li>
@@ -171,9 +174,9 @@ export default function TipsPage() {
             onChange={(e) => setChannel(e.target.value)}
             placeholder="@freetips or t.me/freetips"
             aria-label="Channel to read"
-            className="min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+            className="min-h-11 min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
           />
-          <button type="submit" disabled={change.isPending} className="shrink-0 rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface">
+          <button type="submit" disabled={change.isPending} className="min-h-11 shrink-0 rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface">
             Add
           </button>
         </form>
@@ -236,7 +239,7 @@ export default function TipsPage() {
             role="tab"
             aria-selected={tab === x.id}
             onClick={() => setTab(x.id)}
-            className={`shrink-0 rounded-full border px-3 py-2 text-xs font-medium ${tab === x.id ? "border-ink bg-ink text-surface" : "border-line text-ink"}`}
+            className={`min-h-11 shrink-0 rounded-full border px-4 py-2 text-xs font-medium ${tab === x.id ? "border-ink bg-ink text-surface" : "border-line text-ink"}`}
           >
             {x.label} {counts[x.id]}
           </button>
@@ -248,7 +251,7 @@ export default function TipsPage() {
         <p className="text-sm text-ink-muted">{data.channels.length === 0 ? "Add a channel to start reading." : "Nothing here yet."}</p>
       ) : (
         <ul className="space-y-3">
-          {rows.map((t) => (
+          {shown.map((t) => (
             <li key={`${t.chatKey}:${t.messageId}`} className="rounded-xl border border-line bg-surface p-3.5">
               <div className="flex items-center justify-between gap-2 text-xs text-ink-muted">
                 <span className="min-w-0 truncate">{t.channel}</span>
@@ -275,10 +278,10 @@ export default function TipsPage() {
                 <span className="text-xs text-ink-muted">{t.reasons.slice(0, 3).join(" · ")}</span>
               </div>
               <div className="mt-2 flex gap-2">
-                <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "review", chatKey: t.chatKey, messageId: t.messageId, review: t.review === "tip" ? null : "tip" })} className={`rounded-md border px-3 py-2 text-xs font-medium ${t.review === "tip" ? "border-ink bg-ink text-surface" : "border-line text-ink"}`}>
+                <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "review", chatKey: t.chatKey, messageId: t.messageId, review: t.review === "tip" ? null : "tip" })} className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-xs font-medium ${t.review === "tip" ? "border-ink bg-ink text-surface" : "border-line text-ink"}`}>
                   Tip
                 </button>
-                <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "review", chatKey: t.chatKey, messageId: t.messageId, review: t.review === "not" ? null : "not" })} className={`rounded-md border px-3 py-2 text-xs font-medium ${t.review === "not" ? "border-ink bg-ink text-surface" : "border-line text-ink"}`}>
+                <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "review", chatKey: t.chatKey, messageId: t.messageId, review: t.review === "not" ? null : "not" })} className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-xs font-medium ${t.review === "not" ? "border-ink bg-ink text-surface" : "border-line text-ink"}`}>
                   Not a tip
                 </button>
               </div>
@@ -286,6 +289,7 @@ export default function TipsPage() {
           ))}
         </ul>
       )}
+      {more}
     </div>
   );
 }

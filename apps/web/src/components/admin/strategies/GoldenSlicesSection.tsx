@@ -90,7 +90,7 @@ function SliceRow({ s, settings, strategyName }: { s: GoldenSlice; settings: Sen
               ))}
             </div>
           )}
-          <button type="button" aria-expanded={open} onClick={() => setOpen((x) => !x)} className="flex min-h-8 items-center gap-0.5 text-xs text-ink-muted">
+          <button type="button" aria-expanded={open} onClick={() => setOpen((x) => !x)} className="flex min-h-8 items-center gap-0.5 text-xs text-ink-muted [@media(pointer:coarse)]:min-h-11">
             Stake &amp; details <ChevronDown size={12} aria-hidden className={`transition-transform ${open ? "rotate-180" : ""}`} />
           </button>
         </div>

@@ -136,9 +136,9 @@ export default function StrategiesPage() {
       <PageHeader as="h2" title="Strategies" subtitle="One line each. Tap a strategy for its page: results, settings and what to do next. Figures are the return per £1 on its own bets (Live ones on real bets, Sim ones on simulated)." />
 
       <nav className="flex flex-wrap gap-2 text-xs font-medium" aria-label="Related pages">
-        <Link href="/more/admin/reports" className="rounded-full border border-line px-3 py-2 text-ink">Daily and weekly report</Link>
-        <Link href="/more/admin/strategies/all" className="rounded-full border border-line px-3 py-2 text-ink">Full detail{layCount > 0 ? ` and LAY bets (${layCount})` : ""}</Link>
-        <Link href="/more/admin/archive" className="rounded-full border border-line px-3 py-2 text-ink">Archive</Link>
+        <Link href="/more/admin/reports" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Daily and weekly report</Link>
+        <Link href="/more/admin/strategies/all" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Full detail{layCount > 0 ? ` and LAY bets (${layCount})` : ""}</Link>
+        <Link href="/more/admin/archive" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Archive</Link>
       </nav>
 
       {(advice.length > 0 || warming.length > 0) && (

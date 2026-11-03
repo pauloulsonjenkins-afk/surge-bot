@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
@@ -23,9 +24,24 @@ export default function AdminNav() {
   const isOn = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const daily = ADMIN_GROUPS.filter((g) => g.daily).flatMap((g) => g.items);
   const other = ADMIN_SECTIONS.find((s) => isOn(s.href) && !daily.some((d) => d.href === s.href));
+  const ref = useRef<HTMLElement>(null);
+  // More tabs to the right than fit: a fade at that edge says so (the later ones, Report and More, were easy to miss).
+  const [more, setMore] = useState(false);
+  const check = () => {
+    const el = ref.current;
+    if (el) setMore(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+  };
+  // The page you are on is brought into view, not left off the edge.
+  useEffect(() => {
+    const el = ref.current;
+    const on = el?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (el && on) el.scrollTo({ left: on.offsetLeft - el.clientWidth / 2 + on.offsetWidth / 2, behavior: "auto" });
+    check();
+  }, [pathname]);
 
   return (
-    <nav aria-label="Admin" className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-2 lg:hidden">
+    <div className="relative lg:hidden">
+    <nav ref={ref} onScroll={check} aria-label="Admin" className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-2">
       {daily.map((s) => (
         <Link key={s.href} href={s.href} aria-current={isOn(s.href) ? "page" : undefined} className={chip(isOn(s.href))}>
           {s.label}
@@ -43,5 +59,7 @@ export default function AdminNav() {
         More <ChevronRight size={14} aria-hidden />
       </Link>
     </nav>
+    {more && <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[var(--app)] to-transparent" />}
+    </div>
   );
 }

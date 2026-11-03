@@ -179,7 +179,7 @@ export default function TradeLogPage() {
           admin ? (
             <Link
               href="/more/admin/results"
-              className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
+              className="flex min-h-11 items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
             >
               <PencilLine size={14} />
               Fix a result

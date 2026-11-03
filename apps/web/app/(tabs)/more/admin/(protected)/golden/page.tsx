@@ -352,12 +352,16 @@ export default function GoldenPage() {
           >
             {allMainSlices.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-2">
+                {/* Its own full-width row: squeezed beside the chips it was cut to "Filter by strat…" on a phone. */}
                 <input
-                  type="text"
+                  type="search"
+                  inputMode="search"
+                  enterKeyHint="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Filter by strategy or alert…"
-                  className="min-h-11 min-w-0 flex-1 rounded-md border border-line bg-surface px-3 text-sm text-ink"
+                  aria-label="Filter by strategy or alert"
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line bg-surface px-3 text-base text-ink"
                 />
                 <div className="flex min-h-11 items-center gap-1 rounded-md bg-surface-2 p-1 text-xs">
                   {(["all", "profit", "loss"] as const).map((f) => (

@@ -1247,7 +1247,16 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         if (body.action === "add") void refreshTipChannels();
       }
       const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
-      send(res, 200, { channels: getTipChannels(db), notify: getTipNotify(db), stats: Object.values(getTipStats(db)), tips: db.listChannelTips(since) });
+      // The page shows four lines of each message, so no more than that is sent. A page open on a phone asks every minute:
+      // the same answer is reused until something changes (and a change made here, above, is read fresh).
+      const tipsBody = () => ({
+        channels: getTipChannels(db),
+        notify: getTipNotify(db),
+        stats: Object.values(getTipStats(db)),
+        tips: db.listChannelTips(since).map((t) => ({ ...t, text: t.text.slice(0, 700) })),
+      });
+      if (req.method === "POST") responseMemo.get(db)?.delete("tips");
+      send(res, 200, memoized(db, "tips", tipsBody));
       return;
     }
 
