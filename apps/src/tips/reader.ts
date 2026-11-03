@@ -15,6 +15,7 @@ import { log } from "../server/log";
 import { classifyTip } from "./classify";
 import { applyLearning, type Reviewed } from "./similar";
 import { trackTips } from "./track";
+import { notifyNewTips } from "./notify";
 import { getExchangeReader } from "../betfair/exchange";
 
 const KEY = "tip_channels";
@@ -228,6 +229,7 @@ async function sync(a: Active): Promise<void> {
     if (stored > 0) log.info(`Free tips: stored ${stored} message(s) from ${a.known.size} channel(s).`);
     // Tips that can be placed on Betfair become Sim picks of the "Telegram tips" strategy (tips/track.ts).
     const betfair = getExchangeReader();
+    await notifyNewTips(a.db);
     if (betfair) await trackTips(a.db, betfair);
   } catch (err) {
     log.error(`Free tips read failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -278,7 +280,10 @@ export function startTipReader(client: TelegramClient, db: EngineDb, stopped: ()
         if (!id || !name) return;
         // A message that arrives live is priced straight away, not at the next five-minute read: an in-play tip's price
         // only means something if it is read within minutes.
-        if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: message.message ?? "", channel: name })) void trackSoon(db);
+        if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: message.message ?? "", channel: name })) {
+          void notifyNewTips(db);
+          void trackSoon(db);
+        }
       } catch (err) {
         log.error(`Free tips couldn't store a message: ${err instanceof Error ? err.message : String(err)}`);
       }

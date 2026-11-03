@@ -874,6 +874,11 @@ export class EngineDb {
     // Tracking arrived after the first free-tips table: null = not yet tried, 'done' = recorded as a pick, 'no: why' = set aside.
     const tipCols = this.db.prepare(`PRAGMA table_info(channel_tips)`).all() as Array<{ name: string }>;
     if (!tipCols.some((c) => c.name === "tracked")) this.db.exec(`ALTER TABLE channel_tips ADD COLUMN tracked TEXT`);
+    // Notifications (tips/notify.ts): when a tip's notification was handled. Tips already stored are marked, so none is sent for old ones.
+    if (!tipCols.some((c) => c.name === "notified")) {
+      this.db.exec(`ALTER TABLE channel_tips ADD COLUMN notified TEXT`);
+      this.db.exec(`UPDATE channel_tips SET notified = '1970-01-01T00:00:00.000Z'`);
+    }
 
     // Usernames arrived after the first accounts: those have none and sign in with their email.
     const userCols = this.db.prepare(`PRAGMA table_info(app_users)`).all() as Array<{ name: string }>;
@@ -1246,6 +1251,21 @@ export class EngineDb {
       )
       .all(since) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; selection: string | null; odds: number | null }>;
     return rows.map((r) => ({ chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, selection: r.selection, odds: r.odds }));
+  }
+
+  /** Tips (by the reading, or the owner's 'Tip') posted since `since` whose notification hasn't been handled yet. */
+  listUnnotifiedTips(since: string): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null }> {
+    const rows = this.db
+      .prepare(
+        `SELECT chat_key, message_id, channel, posted_at, text, match_name, selection, odds FROM channel_tips
+         WHERE notified IS NULL AND posted_at >= ? AND (review = 'tip' OR (review IS NULL AND verdict = 'tip')) ORDER BY posted_at`,
+      )
+      .all(since) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; selection: string | null; odds: number | null }>;
+    return rows.map((r) => ({ chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, selection: r.selection, odds: r.odds }));
+  }
+
+  markChannelTipNotified(chatKey: string, messageId: number, at: string): void {
+    this.db.prepare(`UPDATE channel_tips SET notified = ? WHERE chat_key = ? AND message_id = ?`).run(at, chatKey, messageId);
   }
 
   setChannelTipTracked(chatKey: string, messageId: number, tracked: string | null): void {

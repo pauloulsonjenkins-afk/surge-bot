@@ -2139,6 +2139,8 @@ export interface ChannelTip {
 }
 export interface TipsState {
   channels: string[];
+  /** Whether a proper tip sends a phone notification, and whether quiet hours (23:00 to 07:00) apply. */
+  notify: { on: boolean; quiet: boolean };
   /** Photos and words in each channel's latest messages (what reading the bet-slip images would cost depends on it). */
   stats: Array<{ name: string; from: string; to: string; messages: number; photos: number; withText: number }>;
   tips: ChannelTip[];

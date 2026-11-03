@@ -178,6 +178,19 @@ export default function TipsPage() {
           </button>
         </form>
         {change.error && <p className="mt-2 text-sm text-destructive">{change.error.message}</p>}
+        <p className="mt-4 text-sm font-medium text-ink">Notifications</p>
+        <div className="mt-1 space-y-1">
+          <label className="flex min-h-11 items-center justify-between gap-3 text-sm text-ink">
+            <span>Notify me when a proper tip comes in</span>
+            <input type="checkbox" checked={data.notify.on} disabled={change.isPending} onChange={(e) => change.mutate({ action: "notify", on: e.target.checked })} className="h-5 w-5" />
+          </label>
+          <label className="flex min-h-11 items-center justify-between gap-3 text-sm text-ink">
+            <span>Not between 23:00 and 07:00</span>
+            <input type="checkbox" checked={data.notify.quiet} disabled={change.isPending || !data.notify.on} onChange={(e) => change.mutate({ action: "notify", quiet: e.target.checked })} className="h-5 w-5" />
+          </label>
+          <p className="text-xs text-ink-muted">Only tips read as proper ones (or marked Tip) and found within 15 minutes of being posted. Tapping it opens this page.</p>
+        </div>
+
         <p className="mt-4 text-sm font-medium text-ink">Costs</p>
         <p className="mt-1 text-xs text-ink-muted">
           Reading the text posts is free. Today nothing here costs anything: slip images are not read. If they were, each image would cost about 0.2p to read with a small Claude model (an estimate, not a quote), so the monthly figure is what that would add up to.
