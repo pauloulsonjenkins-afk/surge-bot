@@ -427,13 +427,19 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         res,
         200,
         memoized(db, `live:${limit}:${window}`, () => {
+          const t0 = Date.now();
           const picks = db.listLivePicks(limit, range);
+          const t1 = Date.now();
           // Profit per settled pick, for the admin's Trade Log. Worked out exactly as Win/Loss does.
           const oldest = picks.reduce<string | null>((min, p) => (min === null || p.firstSeenAt < min ? p.firstSeenAt : min), null);
           const profits = oldest ? computePickProfits(db, oldest) : {};
+          const t2 = Date.now();
           // Watched slices each pick is in (e.g. Second Pour's Golden), for the Live tab's badge.
           // How alerts like each one did over the last 30 days (similar-alerts.ts): information only, admin only on the site.
-          return { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), similar: similarAlertsFor(db, p) })) };
+          const body = { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), similar: similarAlertsFor(db, p) })) };
+          // The Trade Log was slow to load (3 Nov 2026): say where the time goes when it is, so it can be fixed from the log.
+          if (Date.now() - t0 > 500) log.info(`/internal/live ${picks.length} picks took ${Date.now() - t0} ms: read ${t1 - t0}, profits ${t2 - t1}, rest ${Date.now() - t2}.`);
+          return body;
         }),
       );
       return;

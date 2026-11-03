@@ -66,7 +66,17 @@ test("a live in-play post (CVPICKS 'live free pick alert') is a tip with its mat
   assert.match(r.selection ?? "", /AL NAJMA TO WIN/);
 });
 
-test("a bet with no price is worth a look, not a tip", () => {
-  const r = classifyTip("Tip: Man City to win\nMan City vs Fulham");
-  assert.equal(r.verdict, "maybe");
+test("a bet stated outright with its match needs no price: it is priced from Betfair when tracked", () => {
+  assert.equal(classifyTip("Tip: Man City to win\nMan City vs Fulham").verdict, "tip");
+  // Both Teams to Score channel, 3 Nov 2026: never quotes a price.
+  const r = classifyTip("▶️▶️ FIRST FREEBIE IS LIVE! ▶️▶️\n🇨🇳 Hebei W vs Qingdao West Coast W\n🔣QINGDAO WEST COAST TO WIN\nOur first selection of the day is officially in play! 💥💥\nCOME ON QINGDAO, LET'S GET THAT FIRST GREEN!");
+  assert.equal(r.verdict, "tip");
+  assert.equal(r.match, "Hebei W v Qingdao West Coast W");
+  assert.equal(r.odds, null);
+  assert.match(r.selection ?? "", /QINGDAO WEST COAST TO WIN/);
+});
+
+test("a match and a market with no stated bet, or a stated bet mixed with a link, still isn't a tip", () => {
+  assert.equal(classifyTip("Tip of the day, goals galore\nMan City vs Fulham").verdict, "maybe");
+  assert.notEqual(classifyTip("Man City to win\nMan City vs Fulham\nJoin free: https://t.me/+abc123").verdict, "tip");
 });

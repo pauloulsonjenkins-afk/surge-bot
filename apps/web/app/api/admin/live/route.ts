@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
-import { fetchLivePicks, toAdminPick, type PickWindow } from "@/server/engine-client";
+import { fetchLivePicks, toAdminPick, toTradeLogPick, type PickWindow } from "@/server/engine-client";
 
 // Signed-in only. Used by the Results page, which needs a little more than the public view.
 export const runtime = "nodejs";
@@ -22,7 +22,9 @@ export async function GET(request: Request) {
   const max = window ? 1000 : 200;
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(Math.floor(limitParam), max) : window ? 1000 : 50;
   try {
-    return NextResponse.json({ picks: (await fetchLivePicks(limit, window)).map(toAdminPick) });
+    const picks = await fetchLivePicks(limit, window);
+    // ?lean=1: only what the Trade Log shows.
+    return NextResponse.json({ picks: searchParams.get("lean") === "1" ? picks.map(toTradeLogPick) : picks.map(toAdminPick) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
   }

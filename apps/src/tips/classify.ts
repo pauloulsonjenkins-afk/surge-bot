@@ -66,6 +66,9 @@ function oddsFrom(text: string): number | null {
   return null;
 }
 
+/** A line that states a bet outright. */
+const BARE_BET = /\b(to win|over \d|under \d|btts|both teams to score)\b/i;
+
 /** Reads one message. Pure: the same text always gives the same answer. */
 export function classifyTip(text: string): TipRead {
   const t = text.trim();
@@ -118,7 +121,7 @@ export function classifyTip(text: string): TipRead {
     if (line) selection = line.slice(0, 80);
     else {
       // "GANGWON FC TO WIN" with the price on its own line ("ODDS @1.48"): the line that names the bet.
-      const bare = t.split("\n").map((l) => l.trim()).find((l) => l.length <= 60 && /\b(to win|over \d|under \d|btts|both teams to score)\b/i.test(l));
+      const bare = t.split("\n").map((l) => l.trim()).find((l) => l.length <= 60 && BARE_BET.test(l));
       if (bare) selection = bare;
     }
   }
@@ -134,8 +137,11 @@ export function classifyTip(text: string): TipRead {
     return { verdict: "other", reasons: ["reads as a result, not a tip"], match, selection: null, odds: null, stake: null };
   }
 
-  // A tip needs a match, a way to bet it, and a price. Without all three it is only worth a look.
-  const looksLikeBet = (match !== null || labelled) && (market || labelled) && odds !== null;
+  // A tip needs a match, a way to bet it, and a price. Without all three it is only worth a look. A post that names the
+  // match and states the bet outright ("QINGDAO WEST COAST TO WIN") needs no price: it is priced from Betfair when
+  // tracked, and some channels (Both Teams to Score, 3 Nov 2026) never quote one.
+  const stated = match !== null && selection !== null && BARE_BET.test(selection);
+  const looksLikeBet = (match !== null || labelled) && (market || labelled) && (odds !== null || stated);
   let verdict: TipVerdict;
   if (looksLikeBet && advert === 0) verdict = "tip";
   else if (looksLikeBet && advert <= 2) {

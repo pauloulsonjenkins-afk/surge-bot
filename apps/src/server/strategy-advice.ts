@@ -131,6 +131,8 @@ export interface Advice {
   league?: { key: string; name: string };
   /** stake-down: undoing a raise whose bets since went badly (not held back by the 7 days between automatic steps). */
   fast?: boolean;
+  /** back-to-sim: the early warning (a heavy stake losing fast), which the lock after a Live / Sim change never holds back. */
+  early?: boolean;
   /** A Golden slice's suggestion: key is "strategy#slice", and name is how to show it ("Time to fight · 1 goal apart"). */
   name?: string;
   slice?: { strategyKey: string; id: string };
@@ -240,7 +242,40 @@ export function sliceAdviceFrom(slices: SliceInput[], settings: SendingSettings)
   return out;
 }
 
+/**
+ * After a strategy is switched Live or back to Sim from a suggestion, the opposite suggestion is held back for a week.
+ * Told to put it Live in the afternoon and back to Sim by evening is two opinions about the same few bets, and the
+ * admin acts on both (Fav Pressure 2H, 3 Nov 2026). Only the early warning, a heavy stake losing fast, gets through.
+ */
+const LOCKS_KEY = "strategy_advice_locks";
+export const LOCK_MS = 7 * 86_400_000;
+type Locks = Record<string, { kind: "try-live" | "back-to-sim"; at: string }>;
+
+function readLocks(db: EngineDb): Locks {
+  try {
+    return JSON.parse(db.getSetting(LOCKS_KEY) ?? "{}") as Locks;
+  } catch {
+    return {};
+  }
+}
+
+/** Held-back suggestions removed: the opposite of a Live / Sim change made in the last week. */
+function withoutLocked(db: EngineDb, advice: Advice[], now: Date): Advice[] {
+  const locks = readLocks(db);
+  return advice.filter((a) => {
+    const lock = locks[a.key];
+    if (!lock || now.getTime() - Date.parse(lock.at) >= LOCK_MS) return true;
+    if (a.kind === "try-live" && lock.kind === "back-to-sim") return false;
+    if (a.kind === "back-to-sim" && lock.kind === "try-live" && !a.early) return false;
+    return true;
+  });
+}
+
 export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
+  return withoutLocked(db, computeAdvice(db, now), now);
+}
+
+function computeAdvice(db: EngineDb, now: Date): Advice[] {
   const settings = getSendingSettings(db);
   const stops = getStopLossRules(db);
   // Every settled pick, read once for all four sets of figures below (the same picks each would read for itself).
@@ -314,7 +349,7 @@ export function strategyAdvice(db: EngineDb, now = new Date()): Advice[] {
       const adj = adjusted(l.roi, l.counted);
       // The early warning: a heavy stake on a clearly losing short record, ahead of the slower rule below.
       if (l.counted >= EARLY_BETS && l.counted < 30 && l.roi !== null && l.roi <= EARLY_ROI && (l.units ?? 0) <= EARLY_UNITS && (settings.stakePct[key] ?? 0) >= EARLY_STAKE_PCT) {
-        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `Early warning: ${pct(l.roi)} per £1 (${l.units} units) over its last ${l.counted} Live bets at ${settings.stakePct[key]}% of the balance. Too few bets to be sure, but a stake this size is costly if it is real.` });
+        out.push({ key, kind: "back-to-sim", early: true, action: "Put back to Sim", reason: `Early warning: ${pct(l.roi)} per £1 (${l.units} units) over its last ${l.counted} Live bets at ${settings.stakePct[key]}% of the balance. Too few bets to be sure, but a stake this size is costly if it is real.` });
         continue;
       }
       if (l.counted >= 30 && adj !== null && adj < -0.02) {
@@ -409,6 +444,7 @@ export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = n
     const stake = "pct" in to ? { stakePct: { [k]: to.pct } } : { stakes: { [k]: to.flat } };
     saveSendingSettings(db, { ...stake, ...(a.kind === "try-live" ? { strategies: { [k]: true } } : {}) });
   }
+  if (a.kind === "try-live" || a.kind === "back-to-sim") db.setSetting(LOCKS_KEY, JSON.stringify({ ...readLocks(db), [k]: { kind: a.kind, at: now.toISOString() } }));
   if (a.kind === "stake-up" || a.kind === "stake-down") {
     db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
     // Raises are watched for a quick cut; a cut after one blocks raising for a while; any other cut ends the watch.

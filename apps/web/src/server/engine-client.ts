@@ -237,6 +237,37 @@ export function toAdminPick(p: LivePick): LivePick {
   return rest as LivePick;
 }
 
+/**
+ * What the Trade Log shows of a pick, and no more. A week of full admin picks is about 2 MB (the stats, flags, Betfair
+ * candidates and similar-alert figures each carry), which the page waited for in full before showing anything, again
+ * every minute. These few fields are a fraction of that.
+ */
+export type TradeLogPick = Pick<
+  PublicPick,
+  "id" | "firstSeenAt" | "strategy" | "market" | "selection" | "competition" | "home" | "away" | "ftScore" | "result" | "resultOverridden" | "sentAt"
+> & { excluded?: boolean; chatId?: string; messageId?: number; pnl?: LivePick["pnl"] };
+
+export function toTradeLogPick(p: LivePick): TradeLogPick {
+  return {
+    id: p.id,
+    firstSeenAt: p.firstSeenAt,
+    strategy: p.strategy,
+    market: p.market,
+    selection: p.selection,
+    competition: p.competition,
+    home: p.home,
+    away: p.away,
+    ftScore: p.ftScore,
+    result: p.result,
+    resultOverridden: p.resultOverridden,
+    sentAt: p.sentAt,
+    excluded: p.excluded,
+    chatId: p.chatId,
+    messageId: p.messageId,
+    pnl: p.pnl,
+  };
+}
+
 /** Which picks to fetch: the latest ones, the last N hours, or one UK day (YYYY-MM-DD). */
 export type PickWindow = { hours: number } | { date: string } | null;
 
@@ -2011,6 +2042,10 @@ export interface GoldenSlice {
   notify?: boolean;
   /** How close to its next stage (golden.ts's own thresholds), from its priced picks since it started. Null once "full" (nothing further to reach), or while "not holding up" (it has to re-prove the stage it lost first). */
   nextStage?: { name: string; threshold: number; picksAway: number } | null;
+  /** Why it's tucked into the page's "Shelved" section (empty, same picks as another, lost its stage, losing); null when it isn't. Nothing is deleted. */
+  shelved?: string | null;
+  /** A Live slice that needs a look (no longer holding up, or losing), shown at the top of the page. */
+  watchOut?: string | null;
 }
 export interface GoldenSuggestion {
   strategyKey: string;

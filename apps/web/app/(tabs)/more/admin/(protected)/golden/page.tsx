@@ -136,8 +136,12 @@ export default function GoldenPage() {
     if (ok) act.mutate({ action: "unwatch", strategyKey: s.strategyKey, id: s.id });
   };
   const checked = data ? new Date(data.suggestions.at) : null;
-  const allMainSlices = data?.slices.filter((s) => !s.quiet) ?? [];
+  // Shelved: empty, the same picks as another, lost its stage or clearly losing (golden.ts tidySlices), in their own folded section.
+  const allMainSlices = data?.slices.filter((s) => !s.quiet && !s.shelved) ?? [];
+  const shelvedSlices = data?.slices.filter((s) => !s.quiet && s.shelved) ?? [];
   const quietSlices = data?.slices.filter((s) => s.quiet) ?? [];
+  const watchOut = data?.slices.filter((s) => s.watchOut) ?? [];
+  const liveCount = data?.slices.filter((s) => s.bet?.live).length ?? 0;
   const golden = allMainSlices.filter((s) => s.status === "full").length;
   const term = search.trim().toLowerCase();
   const mainSlices = allMainSlices.filter((s) => {
@@ -156,7 +160,7 @@ export default function GoldenPage() {
    * or notifies) that opens to everything else on a tap. Each used to show it all at once, 500-600 px tall on a phone,
    * 28 of them making a page about 16,800 px long (28 Oct 2026).
    */
-  const renderSlice = (s: GoldenSlice, showStrategy: boolean) => {
+  const renderSlice = (s: GoldenSlice, showStrategy: boolean, warn?: string | null) => {
     const since = new Date(s.since);
     const key = `${s.strategyKey}#${s.id}`;
     const isOpen = openSlices.has(key);
@@ -167,6 +171,8 @@ export default function GoldenPage() {
           <span className="min-w-0 flex-1">
             {showStrategy && <span className="block text-xs text-ink-muted">{s.strategy}</span>}
             <span className="block font-medium text-ink">{sliceName(s.label)}</span>
+            {s.shelved && <span className="block text-xs text-ink-muted">{s.shelved}</span>}
+            {warn && <span className="block text-xs font-medium text-loss">{warn}</span>}
             <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-ink-muted">
               <GoldenBadge
                 status={s.status}
@@ -330,9 +336,19 @@ export default function GoldenPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
+          {/* Live slices that have turned: the first thing to see, with a way straight to their betting switch. */}
+          {watchOut.length > 0 && (
+            <Card title="Needs a look" subtitle="Bet Live, and not earning its place. It goes back to Sim by itself if it stops holding up.">
+              <ul className="divide-y divide-line">{watchOut.map((s) => renderSlice(s, true, s.watchOut))}</ul>
+            </Card>
+          )}
           <Card
             title="Being watched"
-            subtitle={allMainSlices.length > 0 ? `${mainSlices.length} of ${allMainSlices.length} shown · ${golden} proved Golden` : undefined}
+            subtitle={
+              allMainSlices.length > 0
+                ? `${mainSlices.length} of ${allMainSlices.length} shown · ${liveCount} Live · ${golden} proved Golden${shelvedSlices.length > 0 ? ` · ${shelvedSlices.length} shelved below` : ""}`
+                : undefined
+            }
           >
             {allMainSlices.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -412,7 +428,11 @@ export default function GoldenPage() {
                 {byStrategy(mainSlices).map((g) => (
                   <section key={g.strategy}>
                     <h3 className="text-sm font-semibold text-ink">
-                      {g.strategy} <span className="font-normal text-ink-muted">· {g.slices.length}</span>
+                      {g.strategy}{" "}
+                      <span className="font-normal text-ink-muted">
+                        · {g.slices.length}
+                        {g.slices.some((s) => s.bet?.live) && ` · ${g.slices.filter((s) => s.bet?.live).length} Live`}
+                      </span>
                     </h3>
                     <ul className="mt-1 divide-y divide-line">{g.slices.map((s) => renderSlice(s, false))}</ul>
                   </section>
@@ -420,6 +440,19 @@ export default function GoldenPage() {
               </div>
             )}
           </Card>
+
+          {shelvedSlices.length > 0 && (
+            <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm">
+              <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">Shelved ({shelvedSlices.length})</summary>
+              <div className="space-y-1 pb-3">
+                <p className="text-xs text-ink-muted">
+                  Tucked away, not deleted: no picks for two weeks, the same picks as another slice, a stage it lost, or clearly losing. Still counted in its strategy&apos;s
+                  figures, and one comes back to the main list by itself if its record turns.
+                </p>
+                <ul className="divide-y divide-line">{shelvedSlices.map((s) => renderSlice(s, true))}</ul>
+              </div>
+            </details>
+          )}
 
           {quietSlices.length > 0 && (
             <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm">

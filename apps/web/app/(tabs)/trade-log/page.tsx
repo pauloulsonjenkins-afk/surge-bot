@@ -12,14 +12,14 @@ import { ModeBadge, ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import { betText } from "@/lib/markets";
 import { gbp } from "@/lib/format";
 import { useMe } from "@/queries/use-me";
-import { useAdminLivePicks, useLivePicks, type LivePick, type PublicPick } from "@/queries/use-live";
+import { useLivePicks, useTradeLogPicks, type TradeLogPick } from "@/queries/use-live";
 import { strategyKey, useStrategyNames } from "@/queries/use-strategy-names";
 import { useShowMore } from "@/components/ui/ShowMore";
 
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
 
 /** A pick as this page shows it. Money and the Live / Sim tag are only there for the admin. */
-type Row = PublicPick & { pnl?: LivePick["pnl"]; excluded?: boolean; chatId?: string; messageId?: number };
+type Row = TradeLogPick;
 
 /** A LAY GoalBrew made from another pick (lay-groups.ts): its message id is that pick's id. */
 const layOf = (p: Row) => (p.chatId === "lay" && typeof p.messageId === "number" ? p.messageId : null);
@@ -122,7 +122,7 @@ export default function TradeLogPage() {
   // The admin's list carries each pick's stake and profit; everyone else gets the public list.
   const pub = useLivePicks(200, !meLoading && !admin);
   // Whole days: every pick from the last 7 days (Live and Sim together), so a day's total matches the Dashboard's.
-  const adm = useAdminLivePicks(ADMIN_LIMIT, admin, 24 * 7);
+  const adm = useTradeLogPicks(ADMIN_LIMIT, admin, 24 * 7);
   const { data, isLoading, error } = admin ? adm : pub;
 
   const loaded = (data ?? []) as Row[];

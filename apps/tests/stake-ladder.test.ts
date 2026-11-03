@@ -115,3 +115,38 @@ test("back to Sim: the reason also gives the whole Live record, so it doesn't co
   assert.match(a!.reason, /Live bets \(30 days\)/);
   assert.match(a!.reason, /whole Live record is still \+\d/, "names the whole-record figure so it isn't read as a contradiction once the headline shows it");
 });
+
+test("a Live / Sim change from a suggestion holds back the opposite one for a week; the early warning still gets through", async () => {
+  const { buildFeed } = await import("../src/inplayguru/bet-feed");
+  const { parseAlert } = await import("../src/inplayguru/parse-alert");
+  const S = "Favourite pressure level";
+  const KEY = S.toLowerCase();
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 1000 });
+  const now = new Date();
+  let id = 1;
+  const alert = (n: number, result?: "hit" | "miss") =>
+    [`🔔 ${S}`, "", "🇫🇷 France Ligue 1", `Home ${n} vs Away ${n}`, "", "Timer: 60'", "Goals: 0 - 0", "Over/Under 0.50 Odds:", "2.00 1.80", ...(result ? ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", `Full-Time Score: ${result === "hit" ? "1-0" : "0-0"}`, "", result === "hit" ? "✅ Hit" : "❌ Miss"] : [])].join("\n");
+  for (let i = 0; i < 40; i++) {
+    const n = id++;
+    const posted = new Date(now.getTime() - 5 * 86_400_000 - 60_000).toISOString();
+    db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), posted, posted);
+    buildFeed(db, { markSent: true, now: new Date(now.getTime() - 5 * 86_400_000) });
+    db.upsertLivePick("chat", n, alert(n, i % 5 === 0 ? "hit" : "miss"), parseAlert(alert(n, i % 5 === 0 ? "hit" : "miss")), posted);
+  }
+  const back = (at: Date) => strategyAdvice(db, at).find((x) => x.key === KEY && x.kind === "back-to-sim");
+  assert.ok(back(now), "losing Live: suggested");
+  const lock = (kind: string, daysAgo: number) =>
+    db.setSetting("strategy_advice_locks", JSON.stringify({ [KEY]: { kind, at: new Date(now.getTime() - daysAgo * 86_400_000).toISOString() } }));
+  lock("try-live", 1);
+  assert.equal(back(now), undefined, "put Live yesterday: not told to put it back so soon");
+  lock("try-live", 8);
+  assert.ok(back(now), "a week later it can be");
+  lock("back-to-sim", 1);
+  assert.ok(back(now), "a lock on the other way doesn't hide it");
+  // Applying it records the lock.
+  db.setSetting("strategy_advice_locks", "{}");
+  applyAdvice(db, KEY, "back-to-sim", now);
+  assert.equal(getSendingSettings(db).strategies[KEY], false);
+  assert.equal(JSON.parse(db.getSetting("strategy_advice_locks")!)[KEY].kind, "back-to-sim");
+});

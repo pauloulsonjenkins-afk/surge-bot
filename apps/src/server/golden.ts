@@ -305,6 +305,69 @@ export function nextStageOf(status: GoldenStatus, counted: number): { name: stri
   return picksAway > 0 ? { ...next, picksAway } : null;
 }
 
+/** When a slice goes to the page's "Shelved" section (3 Nov 2026: 46 slices, a third of them empty, duplicated or losing). */
+export const SHELVE = { emptyAfterDays: 14, losingFrom: 30, losingRoi: -0.05, longLosingFrom: 60 };
+
+interface TidyInput {
+  strategyKey: string;
+  id: string;
+  label: string;
+  since: string;
+  status: GoldenStatus;
+  why: string | null;
+  notify: boolean;
+  custom: boolean;
+  bet: { live: boolean } | null;
+  ownLive: { n: number; units: number; roi: number | null } | null;
+  slice: { all: { counted: number; roi: number | null; units?: number } };
+}
+
+/**
+ * Tidies the page without deleting anything: a slice with the same picks as another, none at all for two weeks, a
+ * stage it lost, or a clear loss over 30+ picks is `shelved` (with the reason) and shown in its own collapsed section;
+ * the record and its strategy's figures are untouched. A slice bet Live on its own, or with notifications on, is never
+ * shelved for being quiet or losing (the owner is using it), and one that is losing gets `watchOut` instead, for the top of the page.
+ * `signatures` is each slice's pick list as text: equal ones (same strategy) are the same slice worded twice.
+ */
+export function tidySlices<T extends TidyInput>(slices: T[], signatures: Map<string, string>, now = new Date()): Array<T & { shelved: string | null; watchOut: string | null }> {
+  const keyOf = (s: T) => `${s.strategyKey}#${s.id}`;
+  const worth = (s: T) => (s.bet?.live ? 4 : 0) + (s.notify ? 2 : 0) + (s.custom ? 0 : 1);
+  const name = (s: T) => s.label.replace(/^Golden: /, "");
+  // Of slices with identical picks, the one to keep: used or built-in first, then the shortest wording.
+  const keep = new Map<string, T>();
+  for (const s of slices) {
+    const sig = signatures.get(keyOf(s));
+    if (!sig) continue;
+    const k = `${s.strategyKey}|${sig}`;
+    const cur = keep.get(k);
+    if (!cur || worth(s) > worth(cur) || (worth(s) === worth(cur) && name(s).length < name(cur).length)) keep.set(k, s);
+  }
+  return slices.map((s) => {
+    const inn = s.slice.all;
+    const used = s.bet?.live === true || s.notify;
+    const days = (now.getTime() - Date.parse(s.since)) / 86_400_000;
+    const sig = signatures.get(keyOf(s));
+    const twin = sig ? keep.get(`${s.strategyKey}|${sig}`) : undefined;
+    let shelved: string | null = null;
+    if (twin && twin !== s && !used) shelved = `Same picks as “${name(twin)}”`;
+    else if (!used && inn.counted === 0 && days >= SHELVE.emptyAfterDays) shelved = `No picks in ${Math.floor(days)} days`;
+    else if (!used && s.status === "not holding up") shelved = `Not holding up${s.why ? `: ${s.why}` : ""}`;
+    else if (!used && inn.roi !== null && ((inn.counted >= SHELVE.losingFrom && inn.roi < SHELVE.losingRoi) || (inn.counted >= SHELVE.longLosingFrom && inn.roi < 0))) shelved = `Losing over ${inn.counted} picks`;
+    const live = s.bet?.live === true;
+    const own = s.ownLive;
+    const watchOut = !live
+      ? null
+      : s.status === "not holding up"
+        ? `Live, and no longer holding up${s.why ? `: ${s.why}` : ""}`
+        : inn.roi !== null && inn.counted >= SHELVE.losingFrom && inn.roi < 0
+          ? `Live, and losing over ${inn.counted} picks`
+          : own && own.n >= 15 && own.roi !== null && own.roi < 0
+            ? `Live, and its own Live bets are losing over ${own.n}`
+            : null;
+    return { ...s, shelved, watchOut };
+  });
+}
+
 /** The Golden page: each watched slice since its start (Live and Sim together), the rest of its strategy over the same time, its status and its own betting. */
 export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?: boolean } = {}) {
   const settings = getSendingSettings(db);
@@ -428,8 +491,10 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
       });
     }
   }
+  const signatures = new Map<string, string>();
+  for (const [k, list] of picksOf) if (list.length > 0) signatures.set(k, list.map((p) => `${p.at}:${p.profit}`).join("|"));
   return {
-    slices,
+    slices: tidySlices(slices, signatures, now),
     suggestions: opts.skipFinder ? { at: now.toISOString(), list: [] } : goldenSuggestions(db, now),
     candidateFrom: CANDIDATE_FROM,
     trialFrom: TRIAL_FROM,

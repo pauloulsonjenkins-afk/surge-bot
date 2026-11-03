@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { LivePick, PublicPick } from "@/server/engine-client";
+import type { LivePick, PublicPick, TradeLogPick } from "@/server/engine-client";
 import { getJson } from "./fetch-json";
 
-export type { LivePick, PublicPick };
+export type { LivePick, PublicPick, TradeLogPick };
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiFetchError } from "./fetch-json";
@@ -133,6 +133,20 @@ export function useAdminLivePicks(limit = 100, enabled = true, hours?: number) {
     },
     staleTime: 0,
     refetchInterval: every,
+  });
+}
+
+/** The Trade Log's week of picks: only the fields it shows (toTradeLogPick), so it arrives quickly and isn't re-sent whole every minute. */
+export function useTradeLogPicks(limit: number, enabled: boolean, hours: number) {
+  return usePersistedQuery({
+    queryKey: ["admin-live-picks", "trade-log", limit, hours],
+    enabled,
+    queryFn: async (): Promise<TradeLogPick[]> => {
+      const data = await getJson<{ picks: TradeLogPick[] }>(`/api/admin/live?lean=1&limit=${limit}&hours=${hours}`, "picks");
+      return data.picks;
+    },
+    staleTime: 0,
+    refetchInterval: 60_000,
   });
 }
 
