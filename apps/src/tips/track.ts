@@ -28,6 +28,10 @@ export function tipsStrategy(channel: string): string {
 }
 /** A tip is looked at while it is this young; after that, if it still can't be placed, it is set aside. */
 const MAX_AGE_MS = 36 * 3_600_000;
+/** An in-play tip must be read within this long of being posted, so Betfair's price is still the tip's price. */
+const IN_PLAY_FRESH_MS = 10 * 60_000;
+/** A match kicked off longer ago than this is over (with extra time and delays). */
+const IN_PLAY_OVER_MS = 3.5 * 3_600_000;
 
 export interface TipBet {
   marketType: string;
@@ -141,7 +145,13 @@ async function trackOne(
   const events = await reader.searchEvents(searchWord(home), at);
   const open = events.find((e) => e.id === judged.eventId)?.openDate;
   if (!open) return { done: false, retry: true, reason: "Kick-off time not known yet." };
-  if (Date.parse(open) <= now.getTime()) return { done: false, retry: false, reason: "Already kicked off when read." };
+  // In-play tips (posted after kick-off, "4th minute, 0-0") are tracked too, priced at Betfair's live price when read. That
+  // price only means something if it is read soon after the post, and the match must still be on.
+  const inPlay = Date.parse(open) <= now.getTime();
+  if (inPlay) {
+    if (now.getTime() - Date.parse(t.postedAt) > IN_PLAY_FRESH_MS) return { done: false, retry: false, reason: "In-play tip read more than 10 minutes after it was posted: Betfair's price by then isn't the tip's." };
+    if (now.getTime() - Date.parse(open) > IN_PLAY_OVER_MS) return { done: false, retry: false, reason: "The match was already over." };
+  }
 
   const [bfHome = home, bfAway = away] = judged.event.split(/ v /i).map((s) => s.trim());
   const selectionName = bet.selectionName === "home" ? bfHome : bet.selectionName === "away" ? bfAway : bet.selectionName === "draw" ? "The Draw" : bet.selectionName;
@@ -157,7 +167,8 @@ async function trackOne(
   const staked = resolveStake(settings, KEY_NAME, getBank(db), { now, live: false });
   const stake = staked.stake ?? 1;
   const minPrice = settings.minOdds[KEY_NAME] ?? null;
-  const live = settings.enabled && settings.strategies[KEY_NAME] === true;
+  // An in-play tip is Sim only: the bet feed places bets up to kick-off, so it could never be sent for real.
+  const live = !inPlay && settings.enabled && settings.strategies[KEY_NAME] === true;
   const skipped = minPrice !== null && check.price < minPrice ? `Odds ${check.price.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.` : null;
   db.addEdgePick({
     messageId: pickId(t.chatKey, t.messageId),
@@ -167,7 +178,7 @@ async function trackOne(
     country: "",
     home,
     away,
-    text: `${strategy}\n${t.channel}\n${home} vs ${away}\n${bet.words} @ ${check.price.toFixed(2)} (Betfair)${t.odds !== null ? `\nThe channel quoted ${t.odds}.` : ""}\n\n${t.text.slice(0, 400)}`,
+    text: `${strategy}\n${t.channel}\n${home} vs ${away}\n${bet.words} @ ${check.price.toFixed(2)} (Betfair${inPlay ? ", in-play" : ""})${t.odds !== null ? `\nThe channel quoted ${t.odds}.` : ""}\n\n${t.text.slice(0, 400)}`,
     detail: detailFor(strategy, home, away, bet.words, { kickoff: open, marketId: check.marketId, selectionId: check.selectionId, marketType: bet.marketType, selectionName, price: check.price }),
     event: judged.event,
     eventId: judged.eventId,

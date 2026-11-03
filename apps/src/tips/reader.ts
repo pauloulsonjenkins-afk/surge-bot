@@ -234,6 +234,22 @@ async function sync(a: Active): Promise<void> {
   }
 }
 
+let tracking = false;
+
+/** Prices any new tips on Betfair now (one run at a time; the five-minute read also does this). */
+async function trackSoon(db: EngineDb): Promise<void> {
+  if (tracking) return;
+  tracking = true;
+  try {
+    const betfair = getExchangeReader();
+    if (betfair) await trackTips(db, betfair);
+  } catch (err) {
+    log.warn(`Free tips: pricing a new tip failed: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    tracking = false;
+  }
+}
+
 /** Re-reads the channel list now (after one is added), without waiting for the next pass. */
 export async function refreshTipChannels(): Promise<void> {
   if (active) await sync(active);
@@ -260,7 +276,9 @@ export function startTipReader(client: TelegramClient, db: EngineDb, stopped: ()
         const id = message.chatId?.toString();
         const name = id ? active.known.get(id) : undefined;
         if (!id || !name) return;
-        recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: message.message ?? "", channel: name });
+        // A message that arrives live is priced straight away, not at the next five-minute read: an in-play tip's price
+        // only means something if it is read within minutes.
+        if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: message.message ?? "", channel: name })) void trackSoon(db);
       } catch (err) {
         log.error(`Free tips couldn't store a message: ${err instanceof Error ? err.message : String(err)}`);
       }

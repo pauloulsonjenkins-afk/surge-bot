@@ -41,6 +41,26 @@ test("a tip is recorded once as a Sim pick, at Betfair's price, and settles from
   assert.equal(db.listOpenEdgePicks().length, 0);
 });
 
+test("an in-play tip is recorded in Sim at the live price when read at once, but not when read late or after the match", async () => {
+  const live = (openedAgoMin: number) => ({
+    searchEvents: async () => [{ id: "e1", name: "Ajax v PSV", openDate: new Date(Date.now() - openedAgoMin * 60_000).toISOString() }],
+    checkBet: async () => ({ status: "ok" as const, price: 1.6, runners: [], marketId: "1.23", selectionId: 55 }),
+  });
+  const post = (id: number, minutesAgo: number) =>
+    recordTip(db, { chatKey: "-1001", messageId: id, date: Math.floor((Date.now() - minutesAgo * 60_000) / 1000), text: "Tip: Over 2.5 goals\nAjax vs PSV @ 1.80\n4th minute", channel: "Free tips" });
+  const db = new EngineDb(":memory:", () => {});
+  post(1, 1); // posted a minute ago, match 30 minutes in
+  assert.equal(await trackTips(db, live(30)), 1);
+  assert.match(db.listOpenEdgePicks()[0]!.detail.selection ?? "", /Over 2.5/);
+  post(2, 20); // posted 20 minutes ago: Betfair's price by now isn't the tip's
+  await trackTips(db, live(60));
+  const status = (id: number) => db.listChannelTips("1970-01-01T00:00:00.000Z").find((r) => r.messageId === id)!.tracked ?? "";
+  assert.match(status(2), /^no: In-play tip read more than 10 minutes/);
+  post(3, 1); // posted a minute ago, but the match kicked off 5 hours ago: over
+  await trackTips(db, live(300));
+  assert.match(status(3), /^no: The match was already over/);
+});
+
 test("a tip with no price yet is tried again; one that can't be tracked says why", async () => {
   const db = new EngineDb(":memory:", () => {});
   seed(db);

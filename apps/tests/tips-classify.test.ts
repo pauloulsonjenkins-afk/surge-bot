@@ -58,6 +58,14 @@ test("a shouty, all-caps tip that looks ahead (CVPICKS Thursday free bet) is a t
   assert.match(r.selection ?? "", /GANGWON FC TO WIN/);
 });
 
+test("a live in-play post (CVPICKS 'live free pick alert') is a tip with its match and selection", () => {
+  const r = classifyTip("🚨⚽ LIVE FREE PICK ALERT!!! 🔥🔥\n\nWE'VE FOUND ANOTHER LIVE OPPORTUNITY, FAMILY!!! 👀💰\n\n🏆 AL JEEL VS AL NAJMA\n\n⏱️ 4TH MINUTE | 0-0\n🎯 AL NAJMA TO WIN\n💰 ODDS @1.57\n\nWE'RE BACKING AL NAJMA TO TAKE ALL THREE POINTS AWAY FROM HOME!!! 💪⚽\n\nPLENTY OF FOOTBALL STILL TO PLAY!!! 🎯🔥\n\nLET'S GO FOR ANOTHER BIG GREEN!!! 🚀🟢🔥");
+  assert.equal(r.verdict, "tip");
+  assert.equal(r.match, "AL JEEL v AL NAJMA");
+  assert.equal(r.odds, 1.57);
+  assert.match(r.selection ?? "", /AL NAJMA TO WIN/);
+});
+
 test("a bet with no price is worth a look, not a tip", () => {
   const r = classifyTip("Tip: Man City to win\nMan City vs Fulham");
   assert.equal(r.verdict, "maybe");
