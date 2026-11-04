@@ -2171,6 +2171,9 @@ export interface ChannelTip {
   review: "tip" | "not" | null;
   /** null = waiting to be priced on Betfair, "done" = recorded in Sim as Telegram tips, "no: why" = can't be tracked. */
   tracked: string | null;
+  /** The bet in the owner's own words (set on the page), and the odds they gave; null until they say. */
+  myBet?: string | null;
+  myOdds?: number | null;
 }
 export interface TipsState {
   channels: string[];

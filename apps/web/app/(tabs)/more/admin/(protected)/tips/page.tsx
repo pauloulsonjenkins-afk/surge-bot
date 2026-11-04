@@ -113,6 +113,124 @@ function ResultsGraph() {
   );
 }
 
+
+type BetKind = "home" | "away" | "draw" | "over" | "under" | "btts-yes" | "btts-no" | "other";
+const LINES = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5];
+
+/**
+ * Tell GoalBrew what the bet is when it couldn't tell, and how it ended when it can't find out: a bet Betfair lists is priced and
+ * settled from Betfair; with a result given, or for a bet it can't price (a first half, corners), it is recorded by hand at the
+ * odds you give. It counts in the channel's results like any other pick.
+ */
+function BetPanel({ t, change, onDone }: { t: ChannelTip; change: ReturnType<typeof useChangeTips>; onDone: () => void }) {
+  const [home = "", away = ""] = (t.match ?? "").split(" v ");
+  const [kind, setKind] = useState<BetKind | null>(null);
+  const [line, setLine] = useState(2.5);
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<"" | "won" | "lost">("");
+  const [odds, setOdds] = useState(t.myOdds ? String(t.myOdds) : t.odds ? String(t.odds) : "");
+  const kinds: Array<{ id: BetKind; label: string }> = [
+    ...(t.match ? [{ id: "home" as const, label: `${home} to win` }, { id: "away" as const, label: `${away} to win` }] : []),
+    { id: "draw", label: "Draw" },
+    { id: "over", label: "Over goals" },
+    { id: "under", label: "Under goals" },
+    { id: "btts-yes", label: "Both score: Yes" },
+    { id: "btts-no", label: "Both score: No" },
+    { id: "other", label: "Something else" },
+  ];
+  const needsResult = kind === "other";
+  const oddsNum = Number(odds);
+  const oddsOk = odds.trim() !== "" && oddsNum > 1;
+  const ready = kind !== null && (kind !== "other" || text.trim() !== "") && (!needsResult || result !== "") && (result === "" || oddsOk);
+  const save = () => {
+    if (!kind) return;
+    change.mutate(
+      {
+        action: "bet",
+        chatKey: t.chatKey,
+        messageId: t.messageId,
+        bet: kind === "over" || kind === "under" ? { kind, line } : kind === "other" ? { kind, text } : { kind },
+        odds: odds.trim() === "" ? null : oddsNum,
+        result: result || null,
+      },
+      { onSuccess: onDone },
+    );
+  };
+  const chip = (on: boolean) => `min-h-11 rounded-full border px-3 py-2 text-xs font-medium ${on ? "border-ink bg-ink text-surface" : "border-line text-ink"}`;
+  return (
+    <div className="mt-3 space-y-3 rounded-lg bg-surface-2 p-3">
+      <p className="whitespace-pre-line text-sm text-ink">{t.text}</p>
+      {!t.match && <p className="text-xs text-warn-ink">No match was read from this post, so team bets aren&apos;t offered and it can&apos;t be recorded by hand.</p>}
+      <div>
+        <p className="text-xs font-medium text-ink">What is the bet?</p>
+        <div className="mt-1.5 flex flex-wrap gap-2" role="group" aria-label="The bet">
+          {kinds.map((k) => (
+            <button key={k.id} type="button" aria-pressed={kind === k.id} onClick={() => setKind(k.id)} className={chip(kind === k.id)}>
+              {k.label}
+            </button>
+          ))}
+        </div>
+        {(kind === "over" || kind === "under") && (
+          <label className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
+            Goals line
+            <select value={line} onChange={(e) => setLine(Number(e.target.value))} className="min-h-11 rounded-md border border-line bg-surface px-3 text-base text-ink">
+              {LINES.map((l) => (
+                <option key={l} value={l}>
+                  {kind === "over" ? "Over" : "Under"} {l}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {kind === "other" && (
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={80}
+            placeholder="e.g. 1st half over 0.5 goals"
+            aria-label="What the bet is"
+            enterKeyHint="done"
+            className="mt-2 min-h-11 w-full rounded-md border border-line bg-surface px-3 text-base text-ink"
+          />
+        )}
+      </div>
+      {kind !== null && (
+        <div>
+          <p className="text-xs font-medium text-ink">{needsResult ? "How did it end?" : "Already finished? (otherwise GoalBrew prices it and finds the result itself)"}</p>
+          <div className="mt-1.5 flex flex-wrap gap-2" role="group" aria-label="How it ended">
+            {!needsResult && (
+              <button type="button" aria-pressed={result === ""} onClick={() => setResult("")} className={chip(result === "")}>
+                Not yet
+              </button>
+            )}
+            <button type="button" aria-pressed={result === "won"} onClick={() => setResult("won")} className={chip(result === "won")}>
+              Won
+            </button>
+            <button type="button" aria-pressed={result === "lost"} onClick={() => setResult("lost")} className={chip(result === "lost")}>
+              Lost
+            </button>
+          </div>
+          {(result !== "" || needsResult) && (
+            <label className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
+              Odds (decimal)
+              <input value={odds} onChange={(e) => setOdds(e.target.value)} inputMode="decimal" placeholder="1.85" aria-label="Odds" className="min-h-11 w-28 rounded-md border border-line bg-surface px-3 text-base text-ink" />
+            </label>
+          )}
+        </div>
+      )}
+      {change.error && <p className="text-sm text-destructive">{change.error.message}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={!ready || change.isPending} onClick={save} className="min-h-11 flex-1 rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface disabled:opacity-40">
+          {result === "" ? "Save and track it" : "Record the result"}
+        </button>
+        <button type="button" onClick={onDone} className="min-h-11 rounded-md border border-line px-4 py-2 text-sm font-medium text-ink">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Free tips: the Telegram channels you follow, with each message read as a tip, an advert or neither. Read-only: nothing
  * here places a bet. Your Tip / Not a tip buttons override the reading.
@@ -122,6 +240,8 @@ export default function TipsPage() {
   const change = useChangeTips();
   const [tab, setTab] = useState<Shown>("tip");
   const [channel, setChannel] = useState("");
+  // The tip whose bet is being set ("chatKey:messageId").
+  const [setting, setSetting] = useState<string | null>(null);
   // Hundreds of messages in a fortnight made this page about ten phone screens long: twenty at a time.
   const rows = (data?.tips ?? []).filter((t) => effective(t) === tab);
   const { shown, more } = useShowMore(rows, 20, tab);
@@ -277,6 +397,12 @@ export default function TipsPage() {
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${BADGE[effective(t)]}`}>{t.review ? "You decided" : "Read as"}: {effective(t) === "other" && t.review ? "not a tip" : effective(t)}</span>
                 <span className="text-xs text-ink-muted">{t.reasons.slice(0, 3).join(" · ")}</span>
               </div>
+              {t.myBet && (
+                <p className="mt-1 text-xs font-medium text-ink">
+                  Your bet: {t.myBet}
+                  {t.myOdds ? ` @ ${t.myOdds}` : ""}
+                </p>
+              )}
               <div className="mt-2 flex gap-2">
                 <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "review", chatKey: t.chatKey, messageId: t.messageId, review: t.review === "tip" ? null : "tip" })} className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-xs font-medium ${t.review === "tip" ? "border-ink bg-ink text-surface" : "border-line text-ink"}`}>
                   Tip
@@ -285,6 +411,13 @@ export default function TipsPage() {
                   Not a tip
                 </button>
               </div>
+              {setting === `${t.chatKey}:${t.messageId}` ? (
+                <BetPanel t={t} change={change} onDone={() => setSetting(null)} />
+              ) : (
+                <button type="button" onClick={() => setSetting(`${t.chatKey}:${t.messageId}`)} className="mt-2 min-h-11 w-full rounded-md border border-line px-3 py-2 text-xs font-medium text-accent">
+                  {t.tracked === "done" ? "See the whole post" : "Set the bet / record the result"}
+                </button>
+              )}
             </li>
           ))}
         </ul>

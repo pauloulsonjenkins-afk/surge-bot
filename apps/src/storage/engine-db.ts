@@ -880,6 +880,13 @@ export class EngineDb {
       this.db.exec(`UPDATE channel_tips SET notified = '1970-01-01T00:00:00.000Z'`);
     }
 
+    // The owner's own reading of a tip's bet ("Over 2.5 goals", "Both teams to score: Yes", "Ajax to win") and its odds, kept apart from
+    // the classifier's reading so rereading a channel never overwrites them.
+    if (!tipCols.some((c) => c.name === "my_bet")) {
+      this.db.exec(`ALTER TABLE channel_tips ADD COLUMN my_bet TEXT`);
+      this.db.exec(`ALTER TABLE channel_tips ADD COLUMN my_odds REAL`);
+    }
+
     // Usernames arrived after the first accounts: those have none and sign in with their email.
     const userCols = this.db.prepare(`PRAGMA table_info(app_users)`).all() as Array<{ name: string }>;
     if (!userCols.some((c) => c.name === "username")) this.db.exec(`ALTER TABLE app_users ADD COLUMN username TEXT`);
@@ -1221,10 +1228,10 @@ export class EngineDb {
   }
 
   /** Newest first, since `since`. */
-  listChannelTips(since: string, limit = 400): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null }> {
+  listChannelTips(since: string, limit = 400): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null; myBet: string | null; myOdds: number | null }> {
     const rows = this.db
       .prepare(`SELECT * FROM channel_tips WHERE posted_at >= ? ORDER BY posted_at DESC LIMIT ?`)
-      .all(since, limit) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; verdict: string; reasons: string; match_name: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null }>;
+      .all(since, limit) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; verdict: string; reasons: string; match_name: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null; my_bet: string | null; my_odds: number | null }>;
     return rows.map((r) => ({
       chatKey: r.chat_key,
       messageId: r.message_id,
@@ -1239,18 +1246,50 @@ export class EngineDb {
       stake: r.stake,
       review: r.review,
       tracked: r.tracked,
+      myBet: r.my_bet,
+      myOdds: r.my_odds,
     }));
   }
 
   /** Messages taken as tips (by the reading, or the owner's 'Tip') not yet recorded as a pick or set aside, posted since `since`. */
-  listUntrackedTips(since: string): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null }> {
+  listUntrackedTips(since: string): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null; mine?: boolean }> {
     const rows = this.db
       .prepare(
-        `SELECT chat_key, message_id, channel, posted_at, text, match_name, selection, odds FROM channel_tips
+        `SELECT chat_key, message_id, channel, posted_at, text, match_name, selection, odds, my_bet, my_odds FROM channel_tips
          WHERE tracked IS NULL AND posted_at >= ? AND (review = 'tip' OR (review IS NULL AND verdict = 'tip')) ORDER BY posted_at`,
       )
-      .all(since) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; selection: string | null; odds: number | null }>;
-    return rows.map((r) => ({ chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, selection: r.selection, odds: r.odds }));
+      .all(since) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; selection: string | null; odds: number | null; my_bet: string | null; my_odds: number | null }>;
+    // The owner's own reading of the bet (Free tips page) wins over the classifier's, and is read on its own, not with the message's text.
+    return rows.map((r) => ({
+      chatKey: r.chat_key,
+      messageId: r.message_id,
+      channel: r.channel,
+      postedAt: r.posted_at,
+      text: r.text,
+      match: r.match_name,
+      selection: r.my_bet ?? r.selection,
+      odds: r.my_odds ?? r.odds,
+      ...(r.my_bet ? { mine: true } : {}),
+    }));
+  }
+
+  /** The owner's own reading of a tip's bet (null clears it), and the odds they gave. */
+  setChannelTipBet(chatKey: string, messageId: number, bet: string | null, odds: number | null): boolean {
+    return this.db.prepare(`UPDATE channel_tips SET my_bet = ?, my_odds = ? WHERE chat_key = ? AND message_id = ?`).run(bet, odds, chatKey, messageId).changes > 0;
+  }
+
+  /** One tip by its message, or null. */
+  getChannelTip(chatKey: string, messageId: number): { chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; tracked: string | null } | null {
+    const r = this.db.prepare(`SELECT chat_key, message_id, channel, posted_at, text, match_name, tracked FROM channel_tips WHERE chat_key = ? AND message_id = ?`).get(chatKey, messageId) as
+      | { chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; tracked: string | null }
+      | undefined;
+    return r ? { chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, tracked: r.tracked } : null;
+  }
+
+  /** The id of an Edge-style pick (Best Value Cuppa, Telegram tips) by its message id. */
+  findEdgePickId(messageId: number): number | null {
+    const r = this.db.prepare(`SELECT id FROM live_picks WHERE chat_id = ? AND message_id = ?`).get(EDGE_CHAT, messageId) as { id: number } | undefined;
+    return r ? r.id : null;
   }
 
   /** Tips (by the reading, or the owner's 'Tip') posted since `since` whose notification hasn't been handled yet. */

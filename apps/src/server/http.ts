@@ -117,7 +117,8 @@ import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
 import { archiveRows, getArchived, setArchived } from "./archive";
 import { getTipNotify, setTipNotify } from "../tips/notify";
-import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel, rescoreChannel } from "../tips/reader";
+import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel, rescoreChannel, trackSoon } from "../tips/reader";
+import { applyMyBet, type MyBet } from "../tips/track";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
@@ -1236,6 +1237,20 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             db.setChannelTipReview(body.chatKey, body.messageId, r);
             // Messages that read like this one move with it (tips/similar.ts).
             rescoreChannel(db, body.chatKey);
+          } else if (body.action === "bet" && typeof body.chatKey === "string" && typeof body.messageId === "number" && typeof body.bet === "object" && body.bet !== null) {
+            // "This is the bet" (and how it ended, when the system can't tell): tips/track.ts applyMyBet.
+            const problem = applyMyBet(db, {
+              chatKey: body.chatKey,
+              messageId: body.messageId,
+              bet: body.bet as MyBet,
+              odds: typeof body.odds === "number" ? body.odds : null,
+              result: body.result === "won" || body.result === "lost" ? body.result : null,
+            });
+            if (problem) {
+              send(res, 400, { error: problem });
+              return;
+            }
+            void trackSoon(db);
           } else {
             send(res, 400, { error: "unknown_action" });
             return;

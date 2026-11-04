@@ -127,12 +127,13 @@ type Outcome = { done: true } | { done: false; retry: boolean; reason: string };
 async function trackOne(
   db: EngineDb,
   reader: Pick<BetfairReader, "searchEvents" | "checkBet">,
-  t: { chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null },
+  t: { chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null; mine?: boolean },
   now: Date,
 ): Promise<Outcome> {
   if (!t.match) return { done: false, retry: false, reason: "No match named." };
   const [home = "", away = ""] = t.match.split(" v ");
-  const bet = readTipBet(t.selection, t.text, home, away);
+  // The owner's own reading of the bet is read on its own: the message's text may mention "first half" or a card for other reasons.
+  const bet = readTipBet(t.selection, t.mine ? "" : t.text, home, away);
   if ("reason" in bet) return { done: false, retry: false, reason: bet.reason };
 
   const at = new Date(t.postedAt);
@@ -187,6 +188,103 @@ async function trackOne(
     at: now.toISOString(),
   });
   return { done: true };
+}
+
+/** The bets the Free tips page offers for "this is the bet", as words readTipBet reads back (for the ones that can be priced on Betfair). */
+export type MyBet = { kind: "home" | "away" | "draw" | "btts-yes" | "btts-no" } | { kind: "over" | "under"; line: number } | { kind: "other"; text: string };
+
+/** The bet in words, or why it isn't one. Pure. */
+export function myBetWords(match: string | null, bet: MyBet): { words: string; tracked: boolean } | { error: string } {
+  const [home = "", away = ""] = (match ?? "").split(" v ");
+  if (bet.kind === "other") {
+    const text = bet.text.trim().slice(0, 80);
+    return text ? { words: text, tracked: false } : { error: "Say what the bet is." };
+  }
+  if ((bet.kind === "home" || bet.kind === "away") && !match) return { error: "No match was read from this post, so a team can't be picked." };
+  if (bet.kind === "home") return { words: `${home} to win`, tracked: true };
+  if (bet.kind === "away") return { words: `${away} to win`, tracked: true };
+  if (bet.kind === "draw") return { words: "The draw", tracked: true };
+  if (bet.kind === "btts-yes") return { words: "Both teams to score: Yes", tracked: true };
+  if (bet.kind === "btts-no") return { words: "Both teams to score: No", tracked: true };
+  if (bet.kind !== "over" && bet.kind !== "under") return { error: "Pick one of the bets listed." };
+  if (!(bet.line >= 0.5 && bet.line <= 9.5 && bet.line % 1 === 0.5)) return { error: "Goal lines are whole-and-a-half numbers, like 2.5." };
+  return { words: `${bet.kind === "over" ? "Over" : "Under"} ${bet.line} goals`, tracked: true };
+}
+
+/**
+ * A tip the system can't place or settle by itself (a first-half bet, a corner, a match Betfair doesn't list) recorded as a Sim
+ * pick from what the owner says: the bet, its odds, and how it ended. It counts in the channel's strategy like any other pick, at
+ * the strategy's Sim stake. A tip already recorded can't be added twice: amend that pick's result instead (Fix a result).
+ */
+export function recordTipByHand(
+  db: EngineDb,
+  t: { chatKey: string; messageId: number; channel: string; postedAt: string; match: string | null },
+  by: { words: string; odds: number; result: "won" | "lost" },
+  now = new Date(),
+): { ok: true } | { ok: false; error: string } {
+  if (!t.match) return { ok: false, error: "No match was read from this post, so there is nothing to record it against." };
+  if (!(by.odds > 1 && by.odds < 1000)) return { ok: false, error: "Give the odds as a decimal, like 1.85." };
+  const [home = "", away = ""] = t.match.split(" v ");
+  const strategy = tipsStrategy(t.channel);
+  const settings = getSendingSettings(db);
+  const stake = resolveStake(settings, strategy.toLowerCase(), getBank(db), { now, live: false }).stake ?? 1;
+  const added = db.addEdgePick({
+    messageId: pickId(t.chatKey, t.messageId),
+    strategy,
+    selection: by.words,
+    competition: "Unknown",
+    country: "",
+    home,
+    away,
+    text: `${strategy}
+${t.channel}
+${home} vs ${away}
+${by.words} @ ${by.odds.toFixed(2)} (recorded by hand)
+
+${db.getChannelTipText(t.chatKey, t.messageId)?.slice(0, 400) ?? ""}`,
+    detail: detailFor(strategy, home, away, by.words, { kickoff: t.postedAt, marketId: "", selectionId: 0, marketType: "BY_HAND", selectionName: by.words, price: by.odds }),
+    event: t.match.replace(" v ", " v "),
+    eventId: "by-hand",
+    odds: by.odds,
+    simRowJson: JSON.stringify({ stake, minPrice: null, skipped: null }),
+    at: t.postedAt,
+  });
+  if (!added) return { ok: false, error: "This tip is already recorded as a pick. Amend that pick's result with Fix a result." };
+  const id = db.findEdgePickId(pickId(t.chatKey, t.messageId));
+  if (id !== null) db.settleEdgePick(id, by.result === "won" ? "hit" : "miss", now.toISOString());
+  db.setChannelTipTracked(t.chatKey, t.messageId, "done");
+  return { ok: true };
+}
+
+/**
+ * "This is the bet" from the Free tips page. A bet Betfair lists is kept as the tip's own reading and put back in the queue to be
+ * priced and settled from Betfair; with `result` (or a bet that can't be priced) it is recorded by hand instead, from the odds and
+ * result given. Either way the tip counts as one the owner took. Returns an error in words, or null.
+ */
+export function applyMyBet(
+  db: EngineDb,
+  body: { chatKey: string; messageId: number; bet: MyBet; odds?: number | null; result?: "won" | "lost" | null },
+  now = new Date(),
+): string | null {
+  const tip = db.getChannelTip(body.chatKey, body.messageId);
+  if (!tip) return "That message isn't stored any more.";
+  const read = myBetWords(tip.match, body.bet);
+  if ("error" in read) return read.error;
+  const odds = typeof body.odds === "number" && Number.isFinite(body.odds) ? body.odds : null;
+  if (body.result === "won" || body.result === "lost" || !read.tracked) {
+    if (body.result !== "won" && body.result !== "lost") return "For a bet Betfair can't price, say how it ended (won or lost) and its odds.";
+    const r = recordTipByHand(db, tip, { words: read.words, odds: odds ?? 0, result: body.result }, now);
+    if (!r.ok) return r.error;
+    db.setChannelTipBet(body.chatKey, body.messageId, read.words, odds);
+    db.setChannelTipReview(body.chatKey, body.messageId, "tip");
+    return null;
+  }
+  // Already recorded from this tip: the earlier pick stays; a change of bet is made by amending its result.
+  if (tip.tracked === "done") return "This tip is already recorded as a pick. Amend that pick's result with Fix a result.";
+  db.setChannelTipBet(body.chatKey, body.messageId, read.words, odds);
+  db.setChannelTipReview(body.chatKey, body.messageId, "tip");
+  db.setChannelTipTracked(body.chatKey, body.messageId, null);
+  return null;
 }
 
 /** Records the new tips that can be placed. Returns how many were added. Called after each read of the channels. */

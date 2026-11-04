@@ -239,7 +239,7 @@ async function sync(a: Active): Promise<void> {
 let tracking = false;
 
 /** Prices any new tips on Betfair now (one run at a time; the five-minute read also does this). */
-async function trackSoon(db: EngineDb): Promise<void> {
+export async function trackSoon(db: EngineDb): Promise<void> {
   if (tracking) return;
   tracking = true;
   try {
