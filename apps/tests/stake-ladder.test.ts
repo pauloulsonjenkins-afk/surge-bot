@@ -150,3 +150,29 @@ test("a Live / Sim change from a suggestion holds back the opposite one for a we
   assert.equal(getSendingSettings(db).strategies[KEY], false);
   assert.equal(JSON.parse(db.getSetting("strategy_advice_locks")!)[KEY].kind, "back-to-sim");
 });
+
+test("a stake is not raised on fewer than 100 Live bets, however well they went", async () => {
+  const { buildFeed } = await import("../src/inplayguru/bet-feed");
+  const { parseAlert } = await import("../src/inplayguru/parse-alert");
+  const { RAISE_FROM } = await import("../src/server/strategy-advice");
+  assert.equal(RAISE_FROM, 100);
+  const S = "Blistering Momentum";
+  const KEY = S.toLowerCase();
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 1000 });
+  const alert = (n: number, result?: "hit" | "miss") =>
+    [`🔔 ${S}`, "", "🇫🇷 France Ligue 1", `Home ${n} vs Away ${n}`, "", "Timer: 60'", "Goals: 0 - 0", "Over/Under 0.50 Odds:", "2.00 1.80", ...(result ? ["", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", `Full-Time Score: ${result === "hit" ? "1-0" : "0-0"}`, "", result === "hit" ? "✅ Hit" : "❌ Miss"] : [])].join("\n");
+  const add = (from: number, to: number) => {
+    for (let n = from; n <= to; n++) {
+      const posted = new Date(Date.now() - 60_000).toISOString();
+      db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), posted);
+      buildFeed(db, { markSent: true });
+      const r = n % 4 === 0 ? "miss" : "hit";
+      db.upsertLivePick("chat", n, alert(n, r), parseAlert(alert(n, r)), posted);
+    }
+  };
+  add(1, 80);
+  assert.equal(strategyAdvice(db).filter((a) => a.kind === "stake-up").length, 0, "80 winning bets: not yet");
+  add(81, 110);
+  assert.equal(strategyAdvice(db).filter((a) => a.kind === "stake-up").length, 1, "110: now");
+});

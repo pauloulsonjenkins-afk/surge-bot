@@ -60,6 +60,11 @@ import { log } from "./log";
 import { BLOCK_FROM, computeLeagueReturns, getLeagueBlocks, isLeagueBlocked, judge, setLeagueBlock } from "./league-returns";
 
 const SAMPLE = 50;
+/**
+ * Live bets a strategy needs before its stake is raised. 50 was too few: OG 2 SHG was raised to the top stake (2.5%) on a short
+ * run and then lost £21.60 in a week, -29.8% over 32 bets since (6 Nov 2026).
+ */
+export const RAISE_FROM = 100;
 /** Priced Sim picks a strategy needs before "Try Live" is suggested (see the header). */
 export const PROMOTE_FROM = 200;
 /** The stake "Try Live" puts a strategy Live at: a trial, not its full stake. */
@@ -383,7 +388,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
     }
     const cutRecently = !!raise?.cutAt && now.getTime() - Date.parse(raise.cutAt) < NO_RAISE_AFTER_CUT_MS;
     const recentOk = !!rec && rec.live.counted > 0 && rec.live.roi !== null && rec.live.roi > 0;
-    if (l.counted >= SAMPLE && l.roi !== null && l.roi >= 0.05 && beatsBreakeven(l) && recentOk) {
+    if (l.counted >= RAISE_FROM && l.roi !== null && l.roi >= 0.05 && beatsBreakeven(l) && recentOk) {
       if (cutRecently) continue;
       const to = ladderStep(stake, 1);
       if (to) {

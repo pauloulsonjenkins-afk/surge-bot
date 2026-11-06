@@ -11,7 +11,10 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { saveBank } from "../src/inplayguru/stake";
-import { cachedReport, clearReportCache, REPORT_TTL_MS, TODAY_TTL_MS } from "../src/server/report-cache";
+import { cachedReport, clearReportCache, REPORT_TTL_MS, STALE_OK_MS, TODAY_TTL_MS } from "../src/server/report-cache";
+
+/** Lets the background refresh of an out-of-date report run (it goes straight after the stale one is shown). */
+const tick = () => new Promise<void>((r) => setImmediate(r));
 import { warmReportCache } from "../src/server/http";
 import { ALL_TIME, computeStrategyForm, computeStrategyReturns, saveWinLossSettings } from "../src/server/winloss";
 import { computeLeagueReturns } from "../src/server/league-returns";
@@ -56,15 +59,27 @@ function counted(db: EngineDb) {
   return { report, runs: () => runs };
 }
 
-test("a report asked for again within a minute is reused, and worked out again after a minute", () => {
+test("a report asked for again within a minute is reused; after a minute the old one is shown while a new one is worked out", async () => {
   const db = engine();
   const { report, runs } = counted(db);
   const t = Date.now();
   const first = report(t);
   assert.equal(report(t + 30_000), first, "the same answer half a minute later");
   assert.equal(runs(), 1);
-  report(t + REPORT_TTL_MS);
-  assert.equal(runs(), 2, "a minute on: worked out again");
+  assert.equal(report(t + REPORT_TTL_MS), first, "a minute on: the old one is shown at once, nobody waits");
+  assert.equal(runs(), 1, "...nothing worked out in the request");
+  await tick();
+  assert.equal(runs(), 2, "...and it is brought up to date straight after");
+  assert.notEqual(report(), first, "the next view has the new one");
+});
+
+test("one too old to show (past STALE_OK_MS) is worked out before it is shown", () => {
+  const db = engine();
+  const { report, runs } = counted(db);
+  const t = Date.now();
+  report(t);
+  report(t + STALE_OK_MS + 1);
+  assert.equal(runs(), 2);
 });
 
 test("Today keeps its own much shorter reuse window: 10 seconds, not a minute, since it's about risk right now", () => {
@@ -89,11 +104,13 @@ test("the background warmer fills Today and Strategies ahead of a request, and d
   assert.doesNotThrow(() => warmReportCache(undefined as never), "never throws past its own boundary");
 });
 
-test("a result written starts it afresh, and the new result is in the figures", () => {
+test("a result written starts it afresh (the old figures once, then the new), and the new result is in the figures", async () => {
   const db = engine();
   const { report, runs } = counted(db);
   const before = report() as { returns: Record<string, { all: { settled: number } }> };
   settle(db, 100, "hit");
+  assert.equal(report(), before, "shown at once while it is brought up to date");
+  await tick();
   const after = report() as { returns: Record<string, { all: { settled: number } }> };
   assert.equal(runs(), 2);
   assert.equal(after.returns[KEY]!.all.settled, before.returns[KEY]!.all.settled + 1);
@@ -109,24 +126,29 @@ test("a new alert still waiting for its result doesn't start it afresh", () => {
   assert.equal(runs(), 1);
 });
 
-test("a setting the figures use starts it afresh: stakes, Live switches, commission, the balance", () => {
+test("a setting the figures use starts it afresh: stakes, Live switches, commission, the balance", async () => {
   const db = engine();
   const { report, runs } = counted(db);
   report();
   saveSendingSettings(db, { stakes: { [KEY]: 2 } });
   report();
+  await tick();
   assert.equal(runs(), 2, "a stake");
   saveSendingSettings(db, { strategies: { [KEY]: false } });
   report();
+  await tick();
   assert.equal(runs(), 3, "a Live switch");
   saveWinLossSettings(db, { commission: 5 });
   report();
+  await tick();
   assert.equal(runs(), 4, "commission");
   saveBank(db, { available: 100, exposure: 0 });
   report();
+  await tick();
   assert.equal(runs(), 5, "the balance, which a percentage stake is taken from");
   saveBank(db, { available: 100, exposure: 0 }, new Date(Date.now() + 60_000));
   report();
+  await tick();
   assert.equal(runs(), 5, "the same balance read again later: no change");
 });
 
@@ -205,10 +227,10 @@ test("over HTTP: repeat calls give the kept report, and any POST starts it afres
 
 test("Apply and the automatic stakes work on fresh figures, not on the suggestions being shown", () => {
   // Too few picks for a stake raise; the Today page shows (and keeps) that.
-  const db = engine(40);
+  const db = engine(90);
   const now = new Date();
   assert.equal(visibleAdvice(db, now).filter((a) => a.kind === "stake-up").length, 0);
-  for (let i = 41; i <= 60; i++) settle(db, i, i % 4 === 0 ? "miss" : "hit");
+  for (let i = 91; i <= 110; i++) settle(db, i, i % 4 === 0 ? "miss" : "hit");
   assert.equal(visibleAdvice(db, new Date(now.getTime() + 1000)).filter((a) => a.kind === "stake-up").length, 0, "the page still shows its kept suggestions");
   // Apply works it out again: the raise is there.
   assert.equal(applyAdvice(db, KEY, "stake-up", now).action, "Raise to £2");

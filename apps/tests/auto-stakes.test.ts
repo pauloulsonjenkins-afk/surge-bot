@@ -28,7 +28,7 @@ const alert = (n: number, result?: "hit" | "miss") =>
 function winner() {
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 1000 });
-  for (let n = 1; n <= 60; n++) {
+  for (let n = 1; n <= 120; n++) {
     const posted = new Date(Date.now() - 60_000).toISOString();
     db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), posted);
     buildFeed(db, { markSent: true });

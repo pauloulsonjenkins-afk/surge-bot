@@ -25,6 +25,14 @@ import { getBank } from "../inplayguru/stake";
 import { getWinLossSettings } from "./winloss";
 
 export const REPORT_TTL_MS = 60_000;
+/**
+ * How long a report that has gone out of date (a result was written, or its minute is up) may still be shown while a fresh
+ * one is worked out in the background. Without this the first view after every settled pick waited for the whole report
+ * (3 Nov 2026, from the phone: Win/Loss 7.7 s, Golden 4.1 s, Strategies 2.5 s cold, 0.2-0.6 s warm). A change made from the
+ * admin site clears the cache, so a change you make is never shown stale.
+ */
+export const STALE_OK_MS = 90_000;
+const refreshing = new WeakMap<EngineDb, Set<string>>();
 /** Today's own, much shorter reuse window (see above). */
 export const TODAY_TTL_MS = 10_000;
 
@@ -43,6 +51,29 @@ export function cachedReport(db: EngineDb, key: string, compute: () => Record<st
   const hit = byKey.get(key);
   const age = hit ? now - hit.at : -1;
   if (hit && hit.stamp === stamp && age >= 0 && age < ttlMs) return hit.body;
+  // Out of date, but recent: show it now and bring it up to date straight after, so nobody waits for the report.
+  if (hit && age >= 0 && age < STALE_OK_MS && ttlMs === REPORT_TTL_MS) {
+    let busy = refreshing.get(db);
+    if (!busy) refreshing.set(db, (busy = new Set()));
+    if (!busy.has(key)) {
+      busy.add(key);
+      setImmediate(() => {
+        try {
+          const fresh = cache.get(db)?.get(key);
+          // Skipped if a request (or a clear) has dealt with it since.
+          if (fresh === hit) {
+            const again = inputsStamp(db);
+            byKey.set(key, { at: Date.now(), stamp: again, body: compute() });
+          }
+        } catch {
+          // The next request works it out itself.
+        } finally {
+          busy!.delete(key);
+        }
+      });
+    }
+    return hit.body;
+  }
   const body = compute();
   byKey.set(key, { at: now, stamp, body });
   // Oldest first out, so a run of different requests (each "since" date) can't grow it without limit.
