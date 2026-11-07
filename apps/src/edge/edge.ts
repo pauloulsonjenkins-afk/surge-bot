@@ -159,18 +159,48 @@ function run(list: HistoricMatch[], test: (m: HistoricMatch) => boolean): number
 
 const goals = (m: HistoricMatch) => m.fthg + m.ftag;
 
-/** Works out one fixture's card from past results (newest first internally). */
-export function edgeCard(f: UpcomingFixture, history: HistoricMatch[], now = new Date()): EdgeCard {
-  const before = history.filter((m) => m.date < f.kickoff.slice(0, 10)).sort((a, b) => b.date.localeCompare(a.date));
-  const of = (team: string) => before.filter((m) => m.home === team || m.away === team);
+/** Past results by team, newest first: each team's games, so a card reads two short lists, not the whole history. */
+export interface HistoryIndex {
+  byTeam: Map<string, HistoricMatch[]>;
+}
+
+/**
+ * Sorts the history once (newest first; ties keep their order, as each card's own sort did) and lists every team's games.
+ * Each card used to filter and sort the whole history itself, about six passes over 100,000+ results per fixture, so the
+ * 48-hour run held the engine up for 15+ seconds (7 Nov 2026: a request took 15.5 s while it ran).
+ */
+export function indexHistory(history: HistoricMatch[]): HistoryIndex {
+  const sorted = [...history].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const byTeam = new Map<string, HistoricMatch[]>();
+  const add = (team: string, m: HistoricMatch) => {
+    const list = byTeam.get(team);
+    if (list) list.push(m);
+    else byTeam.set(team, [m]);
+  };
+  for (const m of sorted) {
+    add(m.home, m);
+    if (m.away !== m.home) add(m.away, m);
+  }
+  return { byTeam };
+}
+
+/** Works out one fixture's card from past results (newest first internally). Pass `index` when working out many cards. */
+export function edgeCard(f: UpcomingFixture, history: HistoricMatch[], now = new Date(), index: HistoryIndex = indexHistory(history)): EdgeCard {
+  const day = f.kickoff.slice(0, 10);
+  const seen = new Map<string, HistoricMatch[]>();
+  const of = (team: string) => {
+    let list = seen.get(team);
+    if (!list) seen.set(team, (list = (index.byTeam.get(team) ?? []).filter((m) => m.date < day)));
+    return list;
+  };
   const H = f.home;
   const A = f.away;
   const hAll = of(H).slice(0, 10);
   const aAll = of(A).slice(0, 10);
-  const hHome = before.filter((m) => m.home === H).slice(0, 10);
-  const aAway = before.filter((m) => m.away === A).slice(0, 10);
+  const hHome = of(H).filter((m) => m.home === H).slice(0, 10);
+  const aAway = of(A).filter((m) => m.away === A).slice(0, 10);
   const both = [...hAll, ...aAll];
-  const h2h = before.filter((m) => (m.home === H && m.away === A) || (m.home === A && m.away === H)).slice(0, 8);
+  const h2h = of(H).filter((m) => (m.home === H && m.away === A) || (m.home === A && m.away === H)).slice(0, 8);
   const teams = `${H} and ${A}`; // both sides' last 10 games, counted together
   const list: Array<EdgeTrend | null> = [];
 
@@ -260,7 +290,8 @@ async function runEdge(db: EngineDb, now = new Date()): Promise<number> {
     return t >= now.getTime() - AFTER_KICKOFF_MS && t <= now.getTime() + AHEAD_MS;
   });
   const history = historyMatches();
-  const cards = soon.map((f) => edgeCard(f, history, now)).filter((c) => c.homeGames > 0 || c.awayGames > 0);
+  const index = indexHistory(history);
+  const cards = soon.map((f) => edgeCard(f, history, now, index)).filter((c) => c.homeGames > 0 || c.awayGames > 0);
   db.replaceEdgeCards(
     cards.map((c) => ({ key: KEY(c.fixture), kickoff: c.fixture.kickoff, json: JSON.stringify(c) })),
     new Date(now.getTime() - AFTER_KICKOFF_MS).toISOString(),

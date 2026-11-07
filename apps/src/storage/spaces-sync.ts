@@ -163,6 +163,8 @@ export class BackupScheduler {
   private inFlight: Promise<void> | null = null;
   private lastDailyCopy: string | null = null;
   private status: BackupStatus = { lastSuccessAt: null, lastError: null, pendingChanges: false };
+  /** When the last upload started (ms), for MIN_GAP_MS. */
+  private lastStart = 0;
 
   constructor(
     private readonly db: EngineDb,
@@ -178,7 +180,18 @@ export class BackupScheduler {
     private readonly onRegainedOwnership: () => void = () => {},
     /** When this container started: the newest container keeps the lease (shouldHandOver). */
     private readonly born: number = Date.now(),
+    /**
+     * The shortest time between two uploads while changes keep coming. Every upload snapshots, reads and checksums the whole
+     * database (65 MB on 7 Nov 2026) on the engine's thread; with a new alert or result every few seconds on a matchday it
+     * ran up to 8 times in 3 minutes. At most once every 2 minutes now; stopping (flush) still uploads the last changes.
+     */
+    private readonly minGapMs = 120_000,
   ) {}
+
+  /** How long until an upload may start: the debounce, or what's left of the minimum gap since the last one. */
+  private waitMs(): number {
+    return Math.max(this.debounceMs, this.lastStart + this.minGapMs - Date.now());
+  }
 
   /** Checks the lease before an upload. Returns true if this container may upload. */
   private async holdLease(): Promise<boolean> {
@@ -203,7 +216,7 @@ export class BackupScheduler {
   start(): void {
     this.retryTimer = setInterval(() => {
       // Refreshes the lease every tick even with nothing to upload, so it never looks abandoned.
-      if (this.dirty) void this.runUpload();
+      if (this.dirty && this.waitMs() <= this.debounceMs) void this.runUpload();
       else void this.holdLease().catch((err) => log.error(`Could not refresh the backup lease: ${describe(err)}`));
     }, this.retryMs);
   }
@@ -211,7 +224,7 @@ export class BackupScheduler {
   markDirty(): void {
     this.dirty = true;
     if (this.debounce) clearTimeout(this.debounce);
-    this.debounce = setTimeout(() => void this.runUpload(), this.debounceMs);
+    this.debounce = setTimeout(() => void this.runUpload(), this.waitMs());
   }
 
   getStatus(): BackupStatus {
@@ -238,6 +251,7 @@ export class BackupScheduler {
 
   private async uploadOnce(): Promise<void> {
     this.dirty = false;
+    this.lastStart = Date.now();
     try {
       if (!(await this.holdLease())) return;
       mkdirSync(dirname(this.snapshotPath), { recursive: true });
