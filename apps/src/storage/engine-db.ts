@@ -2975,8 +2975,12 @@ export class EngineDb {
     if (links.length > 0) this.resultsChanged();
   }
 
-  /** Every pick ever handed to the bet feed, with the row it was sent as. */
-  listSentPicks(): Array<{
+  /**
+   * Every pick ever handed to the bet feed, with the row it was sent as; with `since`, only those sent (or first seen, for one
+   * placed by hand) from then on. The Today page asked for all of them (several thousand, each with its row read as JSON) to
+   * look at one day's, which held the engine up for half a second every time (7 Nov 2026).
+   */
+  listSentPicks(since?: string): Array<{
     id: number;
     strategy: string;
     sentAt: string;
@@ -2992,9 +2996,9 @@ export class EngineDb {
     const rows = this.db
       .prepare(
         `SELECT id, strategy, sent_at, manual_bet, first_seen_at, home, away, sent_row FROM live_picks
-         WHERE sent_at IS NOT NULL OR manual_bet IS NOT NULL ORDER BY COALESCE(sent_at, first_seen_at), id`,
+         WHERE (sent_at IS NOT NULL OR manual_bet IS NOT NULL) AND COALESCE(sent_at, first_seen_at) >= ? ORDER BY COALESCE(sent_at, first_seen_at), id`,
       )
-      .all() as Array<{ id: number; strategy: string; sent_at: string | null; manual_bet: string | null; first_seen_at: string; home: string | null; away: string | null; sent_row: string | null }>;
+      .all(since ?? "") as Array<{ id: number; strategy: string; sent_at: string | null; manual_bet: string | null; first_seen_at: string; home: string | null; away: string | null; sent_row: string | null }>;
     return rows.map((r) => {
       let sentRow = null;
       try {

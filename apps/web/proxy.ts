@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
+import { ADMIN_COOKIE_NAME, renewedSession } from "@/server/auth";
 import { publicViewOn } from "@/server/access";
 
 /**
@@ -17,16 +17,30 @@ export const config = {
 
 export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  const admin = await verifySessionToken(req.cookies.get(ADMIN_COOKIE_NAME)?.value);
+  const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
+  const renewed = await renewedSession(token);
+  const admin = renewed !== null;
+  // The admin's session is renewed on every page opened, and sent on a link from another app (a notification, Telegram, the
+  // widget): it was "strict" and an 8-hour one, so those links arrived without it and landed on Members (7 Nov 2026).
+  const keep = (res: NextResponse) => {
+    if (renewed) res.cookies.set(ADMIN_COOKIE_NAME, renewed.value, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: renewed.maxAge });
+    return res;
+  };
 
   if (path.startsWith("/more/admin")) {
-    if (admin) return NextResponse.next();
+    if (admin) return keep(NextResponse.next());
     const loginUrl = new URL("/more/admin/login", req.url);
     loginUrl.searchParams.set("next", path);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (admin) return path === "/" ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next();
+  if (admin) return keep(path === "/" ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next());
+  // A session that has run out (or was ended by a password change) is the admin's: back to the admin sign-in, not Members.
+  if (token) {
+    const loginUrl = new URL("/more/admin/login", req.url);
+    loginUrl.searchParams.set("next", path === "/" ? "/more/admin/today" : path);
+    return NextResponse.redirect(loginUrl);
+  }
 
   const open = await publicViewOn();
   if (path === "/") return NextResponse.redirect(new URL(open ? "/dashboard" : "/members", req.url));

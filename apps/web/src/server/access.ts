@@ -14,7 +14,7 @@ export function forgetPublicViewCache(): void {
 }
 
 export async function publicViewOn(): Promise<boolean> {
-  if (cache && Date.now() - cache.at < 3000) return cache.value;
+  if (cache && Date.now() - cache.at < 10_000) return cache.value;
   let value = false; // if the engine can't be asked, stay private
   try {
     value = await fetchPublicView();

@@ -104,6 +104,17 @@ export async function verifySessionToken(token: string | undefined | null): Prom
   }
 }
 
+/**
+ * A fresh token for a session that is still good, with the cookie lifetime to go with it: a session in use doesn't run out
+ * (8 hours, or 30 days when "remember" was ticked, counted from the last page opened). Null when the token isn't valid.
+ */
+export async function renewedSession(token: string | undefined | null): Promise<{ value: string; maxAge: number } | null> {
+  if (!(await verifySessionToken(token))) return null;
+  const left = Number(token!.split(".")[0]) - Math.floor(Date.now() / 1000);
+  const remember = left > SESSION_TTL_SECONDS;
+  return { value: await createSessionToken(remember), maxAge: remember ? REMEMBER_TTL_SECONDS : SESSION_TTL_SECONDS };
+}
+
 /** Constant-time-ish password compare (equal-length HMAC compare avoids short-circuit timing on raw string ===). */
 export async function checkPassword(candidate: string): Promise<boolean> {
   const expected = process.env.ADMIN_PASSWORD;

@@ -23,7 +23,8 @@ const TABS = [
 export function useVisibleTabs() {
   const { data: me } = useMe();
   return TABS.filter((t) => {
-    if (t.href === "/members" && me?.admin) return false;
+    // Hidden until we know who is looking: it showed for a moment (or for good, if the check failed) to the admin.
+    if (t.href === "/members" && (!me || me.admin)) return false;
     const needs = TAB_PAGE[t.href] ?? null;
     if (!needs || !me || me.admin || !me.user) return true;
     return me.pages.includes(needs);

@@ -427,7 +427,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
   }
   // Golden slices: the working parts of a strategy, bet on their own.
   try {
-    out.push(...sliceAdviceFrom(goldenReport(db, now, { skipFinder: true }).slices.filter((sl) => !archived[sl.strategyKey]), settings));
+    out.push(...sliceAdviceFrom(goldenReport(db, now, { skipFinder: true, rows }).slices.filter((sl) => !archived[sl.strategyKey]), settings));
   } catch (err) {
     log.warn(`Slice suggestions failed: ${err instanceof Error ? err.message : String(err)}`);
   }

@@ -369,10 +369,11 @@ export function tidySlices<T extends TidyInput>(slices: T[], signatures: Map<str
 }
 
 /** The Golden page: each watched slice since its start (Live and Sim together), the rest of its strategy over the same time, its status and its own betting. */
-export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?: boolean } = {}) {
+export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?: boolean; rows?: ReturnType<EngineDb["listResultsForWinLoss"]> } = {}) {
   const settings = getSendingSettings(db);
   const notify = getGoldenNotify(db);
-  const returns = computeStrategyReturns(db, null);
+  // `rows` (every settled pick, read once by the caller) saves reading and pricing them all again for each report.
+  const returns = computeStrategyReturns(db, null, opts.rows ? { rows: opts.rows } : undefined);
   const held = badges(db);
   // Each slice's priced picks in time order (Live and Sim, as its record), for the recent-form test.
   const { price } = pricingInputs(db);
@@ -380,12 +381,19 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
   const earliest = segs.reduce((m, x) => (x.seg.since < m ? x.seg.since : m), now.toISOString());
   const picksOf = new Map<string, Array<{ at: string; stake: number; profit: number; won: boolean }>>();
   if (segs.length > 0) {
-    for (const r of db.listResultsForWinLoss(earliest)) {
+    // The slices of each strategy together, and each pick priced once however many slices it is in (it was once per slice, over
+    // every pick of every strategy: Golden took 4 s on the live data).
+    const segsByKey = new Map<string, Array<(typeof segs)[number]["seg"]>>();
+    for (const { key, seg } of segs) (segsByKey.get(key) ?? segsByKey.set(key, []).get(key)!).push(seg);
+    for (const r of opts.rows ? opts.rows.filter((x) => x.firstSeenAt >= earliest) : db.listResultsForWinLoss(earliest)) {
       if (!r.facts) continue;
       const key = strategyLabel(r.strategy).toLowerCase();
-      for (const { seg } of segs.filter((x) => x.key === key)) {
+      const mine = segsByKey.get(key);
+      if (!mine) continue;
+      let priced: ReturnType<typeof price>["priced"] | null = null;
+      for (const seg of mine) {
         if (r.firstSeenAt < seg.since || !seg.test(r.facts)) continue;
-        const { priced } = price(r);
+        priced ??= price(r).priced;
         if (priced.kind !== "priced") continue;
         const k = `${key}#${seg.id}`;
         (picksOf.get(k) ?? picksOf.set(k, []).get(k)!).push({ at: r.firstSeenAt, stake: priced.stake, profit: priced.profit, won: r.result === "hit" });

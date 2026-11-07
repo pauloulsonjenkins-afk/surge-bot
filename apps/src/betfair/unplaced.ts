@@ -46,7 +46,7 @@ export function listUnplaced(db: EngineDb, lastOkAt: string | null, now = new Da
   const alerted = db.unplacedAlertTimes();
   const cleared = db.unplacedClearedIds();
   const out: UnplacedPick[] = [];
-  for (const p of db.listSentPicks()) {
+  for (const p of db.listSentPicks(new Date(since).toISOString())) {
     if (!p.viaFeed || p.manualBet || withBets.has(p.id) || cleared.has(p.id)) continue;
     const sent = Date.parse(p.sentAt);
     if (sent < since || checked < sent + UNPLACED_AFTER_MS) continue;

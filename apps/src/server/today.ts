@@ -67,7 +67,7 @@ export function notPlacedReport(db: EngineDb, days = 30, now = new Date()): NotP
   const withBets = db.pickIdsWithBets();
   const maxAge = getSendingSettings(db).maxAgeMinutes;
   const rows: Array<{ strategy: string; placed: boolean; reason: string | null }> = [];
-  for (const s of db.listSentPicks()) {
+  for (const s of db.listSentPicks(new Date(since).toISOString())) {
     if (s.viaFeed === false || s.manualBet || Date.parse(s.sentAt) < since) continue;
     const d = db.getDirectBet(s.id);
     const pick = db.getLivePick(s.id);
@@ -206,6 +206,22 @@ export function alertVolumeAnomaly(db: EngineDb, now: Date, lastHour: number): A
 
 // --------------------------------------------------------------------------- the Today page
 
+/**
+ * Parts of the Today page that are slow to work out and slow to change: kept for a while (per database), so the page's
+ * refresh every 10-15 seconds doesn't redo them each time on the engine's one thread (Not placed 0.2 s, Speed 0.3 s on the
+ * live data, 7 Nov 2026).
+ */
+const kept = new WeakMap<EngineDb, Map<string, { at: number; value: unknown }>>();
+function reused<T>(db: EngineDb, key: string, ttlMs: number, now: Date, work: () => T): T {
+  let byKey = kept.get(db);
+  if (!byKey) kept.set(db, (byKey = new Map()));
+  const hit = byKey.get(key);
+  if (hit && now.getTime() - hit.at >= 0 && now.getTime() - hit.at < ttlMs) return hit.value as T;
+  const value = work();
+  byKey.set(key, { at: now.getTime(), value });
+  return value;
+}
+
 export function todaySnapshot(db: EngineDb, now = new Date()) {
   // How long each part takes (ms): shown on the page's data as "timings", and logged when the whole takes over a second.
   const { timed, done } = reportTimings("Today page data");
@@ -237,8 +253,8 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
   const openStake = [...onMatch.values()].reduce((t, e) => t + e.stake, 0);
   const stopped = timed("stopLoss", () => [...computeStopLoss(db, now).values()].filter((s) => s.stopped).map((s) => ({ strategy: s.key, reason: s.reason })));
   const open = db.listOpenDirectBets();
-  const notPlacedToday = timed("notPlaced", () => notPlacedReport(db, 1, now));
-  const speed = timed("speed", () => ({ today: speedReport(db, dayFrom), week: speedReport(db, new Date(now.getTime() - 7 * 86_400_000).toISOString()) }));
+  const notPlacedToday = timed("notPlaced", () => reused(db, "notPlaced", 30_000, now, () => notPlacedReport(db, 1, now)));
+  const speed = timed("speed", () => reused(db, `speed:${dayFrom}`, 120_000, now, () => ({ today: speedReport(db, dayFrom), week: speedReport(db, new Date(now.getTime() - 7 * 86_400_000).toISOString()) })));
   const advice = timed("advice", () => visibleAdvice(db, now));
   const autoStakes = timed("autoStakes", () => autoStakeQueue(db, now));
   const timings = done();

@@ -1589,6 +1589,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           throw err;
         }
       }
+      // The page's figures, worked out at most every 10 seconds for a view: the preview of the bet feed reads every open pick, and
+      // each admin page asked for it every 15-60 s (0.7-1 s a time on the live data, 7 Nov 2026). A change (PUT) is read fresh.
+      const sendingBody = (): Record<string, unknown> => {
       const settings = getSendingSettings(db);
       const preview = buildFeed(db, { markSent: false, holdForExchangeMs: getBetfairLinkStatus().configured ? EXCHANGE_HOLD_MS : 0, direct: directIsLive(db) });
       // Every strategy seen so far, so each one gets a switch even before it is turned on.
@@ -1632,7 +1635,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           simStopLoss: simStops.get(key) ?? null,
         });
       }
-      send(res, 200, {
+      return {
         settings,
         strategies: [...seen.values()],
         // The Betfair balance percentage stakes work from (null until it has been read).
@@ -1640,7 +1643,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         preview: { rows: preview.rows, skipped: preview.skipped.slice(-20), blockedReason: preview.blockedReason },
         // Team names learned by themselves (name-learning.ts), newest first, with Undo on Betting -> Limits -> Match names.
         learnedNames: learnedNames(db).slice(0, 20),
-      });
+      };
+      };
+      send(res, 200, req.method === "GET" ? cachedReport(db, "sending", sendingBody, Date.now(), TODAY_TTL_MS) : sendingBody());
       return;
     }
 
