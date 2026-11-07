@@ -271,3 +271,22 @@ test("the UK day of a time, kept per hour, matches working it out each time, acr
     }
   }
 });
+
+test("the settled picks are read once and kept, but a new result, an amended one or a later window is right", () => {
+  const db = engine(4);
+  const read = (since: string = ALL_TIME) => db.listResultsForWinLoss(since);
+  const first = read();
+  assert.equal(first.length, 4);
+  assert.deepEqual(read().map((r) => r.id), first.map((r) => r.id), "asked again: the same picks");
+  settle(db, 100, "hit");
+  assert.equal(read().length, 5, "a new result is in at once");
+  db.setResultOverride(first[0]!.id, "miss");
+  assert.equal(read().find((r) => r.id === first[0]!.id)!.result, "miss", "an amended result too");
+  const middle = first[2]!.firstSeenAt;
+  assert.ok(read(middle).every((r) => r.firstSeenAt >= middle), "a later window is a part of the whole");
+  assert.equal(read(new Date(Date.now() + 86_400_000).toISOString()).length, 0);
+  // Callers get their own array: sorting or emptying it doesn't touch what is kept.
+  read().length = 0;
+  read().sort(() => -1);
+  assert.equal(read().length, 5);
+});

@@ -56,6 +56,7 @@ import { getStopLossRules } from "../inplayguru/stop-loss";
 import { priceCheckReport } from "../betfair/price-check";
 import { displayName } from "../inplayguru/strategy-names";
 import { sendPush } from "./push";
+import { reportTimings } from "./report-timings";
 import { log } from "./log";
 import { BLOCK_FROM, computeLeagueReturns, getLeagueBlocks, isLeagueBlocked, judge, setLeagueBlock } from "./league-returns";
 
@@ -284,12 +285,14 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
   const settings = getSendingSettings(db);
   const stops = getStopLossRules(db);
   // Every settled pick, read once for all four sets of figures below (the same picks each would read for itself).
-  const rows = db.listResultsForWinLoss(ALL_TIME);
-  const all = computeStrategyReturns(db, null, { rows });
+  // Timed, and logged when it takes over a second: it took 4.3 s on the live data (7 Nov 2026) and held the engine up each time.
+  const { timed, done } = reportTimings("Strategy suggestions");
+  const rows = timed("read", () => db.listResultsForWinLoss(ALL_TIME));
+  const all = timed("all", () => computeStrategyReturns(db, null, { rows }));
   // The ladder judges a strategy's current rules only: from its rule change, like its card.
-  const sinceChange = computeStrategyReturns(db, null, { fromRuleChange: true, rows });
-  const recent = computeStrategyReturns(db, new Date(now.getTime() - 30 * 86_400_000).toISOString(), { fromRuleChange: true, rows });
-  const checks = priceCheckReport(db, 30, now);
+  const sinceChange = timed("sinceChange", () => computeStrategyReturns(db, null, { fromRuleChange: true, rows }));
+  const recent = timed("recent", () => computeStrategyReturns(db, new Date(now.getTime() - 30 * 86_400_000).toISOString(), { fromRuleChange: true, rows }));
+  const checks = timed("priceChecks", () => priceCheckReport(db, 30, now));
   const raised = raises(db);
   const out: Advice[] = [];
   const archived = getArchived(db);
@@ -427,10 +430,11 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
   }
   // Golden slices: the working parts of a strategy, bet on their own.
   try {
-    out.push(...sliceAdviceFrom(goldenReport(db, now, { skipFinder: true, rows }).slices.filter((sl) => !archived[sl.strategyKey]), settings));
+    out.push(...timed("golden", () => sliceAdviceFrom(goldenReport(db, now, { skipFinder: true, rows }).slices.filter((sl) => !archived[sl.strategyKey]), settings)));
   } catch (err) {
     log.warn(`Slice suggestions failed: ${err instanceof Error ? err.message : String(err)}`);
   }
+  done();
   return out;
 }
 

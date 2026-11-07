@@ -613,11 +613,15 @@ function mapClaudeVerdict(row: RawClaudeVerdict): ClaudeVerdict {
   };
 }
 
+type ResultRows = ReturnType<EngineDb["readResultsForWinLoss"]>;
+
 export class EngineDb {
   private readonly db: Database.Database;
   private readonly onChange: () => void;
   /** See resultsVersion(). */
   private resultWrites = 0;
+  /** The settled picks as listResultsForWinLoss reads them, kept while nothing they depend on changes. */
+  private readonly winLossRows = new Map<string, { sig: string; at: number; rows: ResultRows }>();
 
   constructor(path: string, onChange: () => void) {
     mkdirSync(dirname(path), { recursive: true });
@@ -2062,12 +2066,19 @@ export class EngineDb {
       .prepare(`UPDATE live_picks SET exchange = ?, exchange_event = ?, exchange_odds = ?, market_check = ?, market_check_detail = ?, exchange_event_id = ? WHERE id = ?`)
       .run(result, event, odds, check?.status ?? null, check?.detail ?? null, eventId, id);
     this.onChange();
+    this.resultsChangedIfSettled(id);
   }
 
   /** A fresh Betfair price for a pick waiting for its price to reach the strategy's minimum odds. */
   setPickExchangeOdds(id: number, odds: number): void {
     this.db.prepare(`UPDATE live_picks SET exchange_odds = ? WHERE id = ?`).run(odds, id);
     this.onChange();
+  }
+
+  /** Betfair details are part of a settled pick's money figures (its price, whether it could have been bet): a change to one counts as a result written. */
+  private resultsChangedIfSettled(id: number): void {
+    const r = this.db.prepare(`SELECT 1 AS x FROM live_picks WHERE id = ? AND COALESCE(result_override, result) IN ('hit', 'miss')`).get(id);
+    if (r) this.resultsChanged();
   }
 
   /**
@@ -2451,7 +2462,26 @@ export class EngineDb {
    * hidden on the Leagues page are left out, as on the Dashboard, except picks with real money on them (a Betfair bet
    * or one placed by hand), which always count. `includeHiddenLeagues` keeps everything (the Excel download).
    */
-  listResultsForWinLoss(sinceIso: string, opts: { ignoreFreshStart?: boolean; includeHiddenLeagues?: boolean } = {}): Array<{
+  listResultsForWinLoss(sinceIso: string, opts: { ignoreFreshStart?: boolean; includeHiddenLeagues?: boolean } = {}): ResultRows {
+    // Reading every settled pick means parsing each one's alert JSON: 1.1 s on the live data (7 Nov 2026), done by each report and
+    // by the suggestions (4.3 s in all) on the engine's one thread. They change only when a result is written (resultsVersion), or
+    // when a setting they read does: so the whole history is read once, kept, and a later window is a filter of it.
+    const flags = `${opts.ignoreFreshStart ? 1 : 0}${opts.includeHiddenLeagues ? 1 : 0}`;
+    const from = (since: string) => ((opts.ignoreFreshStart ? null : this.floorSince(since)) ?? since);
+    const sig = [this.resultWrites, flags, from("1970-01-01T00:00:00.000Z"), JSON.stringify(this.readLeaguePrefs().leagues), (this.db.prepare(`SELECT ${BETFAIR_FROM_SQL} AS t`).get() as { t: string }).t].join("|");
+    const hit = this.winLossRows.get(flags);
+    let rows: ResultRows;
+    if (hit && hit.sig === sig && Date.now() - hit.at < 60_000) rows = hit.rows;
+    else {
+      rows = this.readResultsForWinLoss("1970-01-01T00:00:00.000Z", opts);
+      this.winLossRows.set(flags, { sig, at: Date.now(), rows });
+    }
+    const floor = from(sinceIso);
+    return rows.filter((r) => r.firstSeenAt >= floor);
+  }
+
+  /** listResultsForWinLoss without the kept copy: reads and parses every settled pick from `sinceIso`. */
+  readResultsForWinLoss(sinceIso: string, opts: { ignoreFreshStart?: boolean; includeHiddenLeagues?: boolean } = {}): Array<{
     id: number;
     firstSeenAt: string;
     strategy: string;
