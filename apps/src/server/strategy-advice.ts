@@ -48,7 +48,7 @@
  * and "Back to Sim" are never automatic.
  */
 import type { EngineDb } from "../storage/engine-db";
-import { ALL_TIME, computeStrategyReturns, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
+import { ALL_TIME, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
 import { getSendingSettings, saveSendingSettings, strategyLabel, type SendingSettings } from "../inplayguru/bet-feed";
 import { goldenReport } from "./golden";
 import { getArchived } from "./archive";
@@ -498,22 +498,54 @@ const LABEL: Record<AdviceKind, string> = {
 };
 
 /**
- * How long the suggestions may be reused for showing. Working them out reads every past result three times over (about
- * 2-3 seconds on the live database), and the engine can't read alerts or place bets while it does; the Today page asks
- * every 15 seconds. A change to any setting they depend on (betting, stakes, stop losses, league stops) starts afresh,
- * and Apply always works them out anew.
+ * How the suggestions are reused for showing. Working them out takes 1-1.3 s on the live data (the strategy figures three
+ * times over, Golden slices, price checks: "Strategy suggestions took 1104 ms: read 2, all 239, sinceChange 180, recent
+ * 412, priceChecks 96, golden 175", 7 Nov 2026), and the engine can't read alerts or place bets meanwhile. They used to
+ * be thrown away every 2 minutes, so with the Today page open (it asks every 15 s) the engine froze for over a second
+ * every 2¼ minutes, even at night with nothing settling.
+ *
+ * They are now kept until something they're worked out from changes:
+ *   - any setting they read (betting, stakes, stop losses, league stops, archive, locks, stake-ladder history, Golden
+ *     slices, Win/Loss pricing, merges, the fresh start): worked out afresh at once, so a change you make shows straight away;
+ *   - a result written (EngineDb.resultsVersion): afresh, but at most once every 2 minutes, since on a matchday results
+ *     land every few seconds;
+ *   - the clock (30-day windows, the 7-day locks, new kick-off price checks): afresh after 30 minutes at most.
+ * Apply and the automatic stakes always work them out anew.
  */
-const VIEW_TTL_MS = 2 * 60_000;
-const viewCache = new WeakMap<EngineDb, { at: number; stamp: string; advice: Advice[] }>();
+export const RESULTS_REUSE_MS = 2 * 60_000;
+export const VIEW_MAX_AGE_MS = 30 * 60_000;
+const ADVICE_SETTING_KEYS = [LOCKS_KEY, RAISES_KEY, LAST_STEP_KEY, "archived_strategies", "custom_segments", "golden_badges"];
+const viewCache = new WeakMap<EngineDb, { at: number; stamp: string; results: number; advice: Advice[] }>();
 
-/** strategyAdvice for showing: the same answer for up to two minutes while its settings are unchanged. */
+function settingsStamp(db: EngineDb): string {
+  return JSON.stringify([
+    getSendingSettings(db),
+    getStopLossRules(db),
+    getLeagueBlocks(db),
+    pricingStamp(db),
+    db.getStrategyMerges(),
+    db.getFreshStart(),
+    ADVICE_SETTING_KEYS.map((k) => db.getSetting(k)),
+  ]);
+}
+
+function pricingStamp(db: EngineDb): unknown {
+  try {
+    return getWinLossSettings(db);
+  } catch {
+    return null;
+  }
+}
+
+/** strategyAdvice for showing: kept while what it's worked out from is unchanged (see above). */
 function adviceForView(db: EngineDb, now: Date): Advice[] {
-  const stamp = JSON.stringify([getSendingSettings(db), getStopLossRules(db), getLeagueBlocks(db)]);
+  const stamp = settingsStamp(db);
+  const results = db.resultsVersion();
   const hit = viewCache.get(db);
   const age = hit ? now.getTime() - hit.at : -1;
-  if (hit && hit.stamp === stamp && age >= 0 && age < VIEW_TTL_MS) return hit.advice;
+  if (hit && hit.stamp === stamp && age >= 0 && age < VIEW_MAX_AGE_MS && (hit.results === results || age < RESULTS_REUSE_MS)) return hit.advice;
   const advice = strategyAdvice(db, now);
-  viewCache.set(db, { at: now.getTime(), stamp, advice });
+  viewCache.set(db, { at: now.getTime(), stamp, results, advice });
   return advice;
 }
 
