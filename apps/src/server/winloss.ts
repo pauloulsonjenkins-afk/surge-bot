@@ -708,6 +708,59 @@ export function computeStrategyReturns(
 }
 
 /**
+ * The three sets of figures the strategy suggestions judge (strategy-advice.ts), in one pass over the picks, each pick
+ * priced once. The same as
+ *   all:         computeStrategyReturns(db, null, { rows })
+ *   sinceChange: computeStrategyReturns(db, null, { fromRuleChange: true, rows })
+ *   recent:      computeStrategyReturns(db, recentSince, { fromRuleChange: true, rows })
+ * for their live / sim / all figures (a strategy is listed in each exactly when it is there), without the slices, bet
+ * types and by-hand figures only the Strategies page shows. The three passes took 0.7-1 s together on the live data
+ * (7 Nov 2026), on the engine's one thread.
+ */
+export function computeAdviceReturns(db: EngineDb, rows: ResultRow[], recentSince: string): { all: Record<string, ModeReturns>; sinceChange: Record<string, ModeReturns>; recent: Record<string, ModeReturns> } {
+  const { commission, price } = pricingInputs(db);
+  const fresh = () => ({ live: new ReturnTally(commission), sim: new ReturnTally(commission), all: new ReturnTally(commission) });
+  const all = new Map<string, ReturnType<typeof fresh>>();
+  const since = new Map<string, ReturnType<typeof fresh>>();
+  const recent = new Map<string, ReturnType<typeof fresh>>();
+  const get = (m: Map<string, ReturnType<typeof fresh>>, key: string) => {
+    let t = m.get(key);
+    if (!t) m.set(key, (t = fresh()));
+    return t;
+  };
+  for (const r of rows) {
+    const { key, priced, odds } = price(r);
+    const changed = RECORD_FROM[key];
+    const current = !(changed && r.firstSeenAt < changed);
+    const isRecent = r.firstSeenAt >= recentSince;
+    // Listed as computeStrategyReturns lists them: any pick in its window, though only current-rules picks are counted.
+    const targets = [get(all, key)];
+    const s = get(since, key);
+    if (current) targets.push(s);
+    if (isRecent) {
+      const t = get(recent, key);
+      if (current) targets.push(t);
+    }
+    if (r.byHand) {
+      const shadow = { ...r, placement: "sim" as const, sent: false, sim: r.simShadow, betStake: null, betProfit: null, betOdds: null, takenOdds: null, sentStake: null };
+      const sp = r.simShadow ? price(shadow) : null;
+      for (const x of targets) {
+        if (sp) x.sim.add(shadow, sp.priced, sp.odds);
+        x.all.add(r, priced, odds);
+      }
+      continue;
+    }
+    for (const x of targets) {
+      if (isLivePlacement(r.placement)) x.live.add(r, priced, odds);
+      else if (r.placement === "sim") x.sim.add(r, priced, odds);
+      x.all.add(r, priced, odds);
+    }
+  }
+  const done = (m: Map<string, ReturnType<typeof fresh>>) => Object.fromEntries([...m].map(([k, t]) => [k, { live: t.live.result(), sim: t.sim.result(), all: t.all.result() }]));
+  return { all: done(all), sinceChange: done(since), recent: done(recent) };
+}
+
+/**
  * For each strategy with a recorded mode-switch date (SendingSettings.modeSince, set whenever its Live/Sim switch is
  * flipped), its return in its CURRENT mode only, from that switch on. The Strategies page's "Own mode" headline uses
  * this instead of that mode's whole history: reported 27 Oct 2026 - switching Favourite pressure level to Sim

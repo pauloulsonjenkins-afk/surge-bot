@@ -48,7 +48,7 @@
  * and "Back to Sim" are never automatic.
  */
 import type { EngineDb } from "../storage/engine-db";
-import { ALL_TIME, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
+import { ALL_TIME, computeAdviceReturns, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
 import { getSendingSettings, saveSendingSettings, strategyLabel, type SendingSettings } from "../inplayguru/bet-feed";
 import { goldenReport } from "./golden";
 import { getArchived } from "./archive";
@@ -288,10 +288,9 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
   // Timed, and logged when it takes over a second: it took 4.3 s on the live data (7 Nov 2026) and held the engine up each time.
   const { timed, done } = reportTimings("Strategy suggestions");
   const rows = timed("read", () => db.listResultsForWinLoss(ALL_TIME));
-  const all = timed("all", () => computeStrategyReturns(db, null, { rows }));
-  // The ladder judges a strategy's current rules only: from its rule change, like its card.
-  const sinceChange = timed("sinceChange", () => computeStrategyReturns(db, null, { fromRuleChange: true, rows }));
-  const recent = timed("recent", () => computeStrategyReturns(db, new Date(now.getTime() - 30 * 86_400_000).toISOString(), { fromRuleChange: true, rows }));
+  // All time; from each strategy's rule change (the ladder judges its current rules only, like its card); and the last
+  // 30 days from the rule change: in one pass (computeAdviceReturns), each pick priced once.
+  const { all, sinceChange, recent } = timed("returns", () => computeAdviceReturns(db, rows, new Date(now.getTime() - 30 * 86_400_000).toISOString()));
   const checks = timed("priceChecks", () => priceCheckReport(db, 30, now));
   const raised = raises(db);
   const out: Advice[] = [];
@@ -375,7 +374,8 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
     // A raise that went wrong straight away: back down a step now, rather than waiting for the whole record to turn.
     const raise = raised[key];
     if (raise && !raise.cutAt) {
-      const since = computeStrategyReturns(db, raise.at, { rows })[key]?.live;
+      // Only this strategy's picks: the same figure, without pricing every other strategy's too.
+      const since = computeStrategyReturns(db, raise.at, { rows: rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === key) })[key]?.live;
       const to = ladderStep(stake, -1);
       if (since && since.counted >= FAST_CUT_BETS && since.roi !== null && since.roi <= FAST_CUT_ROI && to) {
         out.push({
