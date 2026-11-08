@@ -12,6 +12,7 @@ import { UpdatedAgo } from "@/components/ui/UpdatedAgo";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { HeroRow } from "@/components/dashboard/SummaryCards";
 import { TIMEFRAMES, TimeframeToggle, type Timeframe } from "@/components/dashboard/TimeframeToggle";
+import { ViewPill } from "@/components/dashboard/ViewPill";
 import { DailyResultsChart } from "@/components/dashboard/DailyResultsChart";
 import { TodayProfitChart } from "@/components/dashboard/TodayProfitChart";
 import { ProfitPeriodChart } from "@/components/dashboard/ProfitPeriodChart";
@@ -104,15 +105,14 @@ export default function DashboardPage() {
               <span className="lg:hidden">
                 <ThemeToggle />
               </span>
-              {/* Signed out: the way into the admin area. Once signed in as admin, phones get it here too; wide screens list the admin pages in the sidebar.
-                  Members don't need it. */}
-              {me && !me.user && (
+              {/* Signed out: the way into the admin area. The admin has the admin bar; members don't need it. */}
+              {me && !me.user && !me.admin && (
                 <Link
-                  href={me.admin ? "/more/admin/today" : "/more/admin/login"}
-                  className={`tap-target flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink ${me.admin ? "lg:hidden" : ""}`}
+                  href="/more/admin/login"
+                  className="tap-target flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
                 >
                   <Lock size={13} />
-                  {me.admin ? "Admin" : "Admin sign in"}
+                  Admin sign in
                 </Link>
               )}
             </>
@@ -120,9 +120,15 @@ export default function DashboardPage() {
         />
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <TimeframeToggle value={timeframe} onChange={setTimeframe} />
-          <ModeToggle />
-          <UnitToggle />
+          {/* Phones: the view as one pill that opens a sheet. Wide screens: the three switches in a row. */}
+          <span className="lg:hidden">
+            <ViewPill timeframe={timeframe} onTimeframe={setTimeframe} />
+          </span>
+          <span className="hidden flex-wrap items-center gap-3 lg:flex">
+            <TimeframeToggle value={timeframe} onChange={setTimeframe} />
+            <ModeToggle />
+            <UnitToggle />
+          </span>
           <UpdatedAgo at={dataUpdatedAt || null} />
           {strategy && (
             <span className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -141,8 +147,10 @@ export default function DashboardPage() {
         <QueryError error={error} next="/dashboard" />
       ) : (
         <>
-          {/* Admin: £ profit and loss over 7 days, 30 days or the year, whatever the timeframe above. */}
-          {me?.admin && <ProfitPeriodChart mode={mode} strategy={strategy} />}
+          {/* The charts side by side on wide screens, one under another on phones. */}
+          <div className="grid gap-8 xl:grid-cols-2 xl:gap-6">
+          {/* Admin: £ profit and loss over the page's period (Today shows the last 7 days: one day is one point). */}
+          {me?.admin && <ProfitPeriodChart mode={mode} strategy={strategy} range={timeframe === "30D" ? "d30" : timeframe === "ALL" ? "ytd" : "d7"} />}
 
           {/* 1D: one day can only ever make one bar and no trend, so the admin gets today's running profit instead. */}
           {timeframe === "1D" ? (
@@ -153,6 +161,7 @@ export default function DashboardPage() {
               <HitRateTrendChart stats={data} isLoading={isLoading} />
             </>
           )}
+          </div>
 
           {performanceCells.length > 0 ? (
             <PerformanceSection

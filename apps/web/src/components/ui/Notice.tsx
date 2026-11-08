@@ -34,3 +34,45 @@ export function Notice({ level, title, children, className = "" }: { level: Noti
 export function AttentionDot({ level = "action", label }: { level?: Exclude<NoticeLevel, "info">; label?: string }) {
   return <span aria-label={label ?? (level === "stop" ? "Stopped" : "Needs a look")} role="img" className={`inline-block h-2 w-2 shrink-0 rounded-full ${level === "stop" ? "bg-loss" : "bg-warn"}`} />;
 }
+
+export interface NoticeItem {
+  key: string;
+  level: NoticeLevel;
+  title: React.ReactNode;
+  body?: React.ReactNode;
+}
+
+const RANK: Record<NoticeLevel, number> = { stop: 0, action: 1, info: 2 };
+
+/**
+ * A page's Notices as one stack: the most severe in full, the rest behind "+N more" (design review: Today showed up to
+ * six warning boxes at once, so none stood out). Nothing when there are none.
+ */
+export function NoticeStack({ items }: { items: NoticeItem[] }) {
+  const sorted = [...items].sort((a, b) => RANK[a.level] - RANK[b.level]);
+  const [first, ...rest] = sorted;
+  if (!first) return null;
+  return (
+    <div className="space-y-2">
+      <Notice level={first.level} title={first.title}>
+        {first.body}
+      </Notice>
+      {rest.length > 0 && (
+        <details className="group">
+          <summary className="min-h-10 cursor-pointer rounded-lg px-1 text-sm font-medium text-ink-muted hover:text-ink">
+            <span className="flex-1">
+              {rest.length} more {rest.length === 1 ? "thing needs" : "things need"} a look
+            </span>
+          </summary>
+          <div className="space-y-2 pt-1">
+            {rest.map((n) => (
+              <Notice key={n.key} level={n.level} title={n.title}>
+                {n.body}
+              </Notice>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}

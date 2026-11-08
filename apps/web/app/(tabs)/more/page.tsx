@@ -2,14 +2,24 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Archive, Bell, ChevronRight, Crown, FileText, Gauge, Layers, Lock, Megaphone, PencilLine, Send, Settings, Sparkles, TrendingUp, Trophy } from "lucide-react";
+import { Archive, Bell, CalendarDays, ChevronRight, LayoutGrid, ListChecks, Crown, FileText, Gauge, Layers, Lock, Megaphone, PencilLine, Send, Settings, Sparkles, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
 import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import { useMe } from "@/queries/use-me";
 
+/** For the admin, the main site's pages the bottom bar no longer carries (it holds the admin's everyday pages). */
+const SITE_PAGES = [
+  { href: "/dashboard", label: "Dashboard", description: "Headline profit, hit rate and the breakdown." },
+  { href: "/trade-log", label: "Trade Log", description: "Every settled pick." },
+  { href: "/schedule", label: "Schedule", description: "Today's fixtures." },
+];
+
 const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
+  "/dashboard": LayoutGrid,
+  "/trade-log": ListChecks,
+  "/schedule": CalendarDays,
   "/more/admin/today": Gauge,
   "/more/admin/sending": Send,
   "/more/admin/strategies": Layers,
@@ -37,7 +47,7 @@ export default function MorePage() {
       <AccountCard />
 
       {me?.admin &&
-        ADMIN_GROUPS.map((g) => (
+        [{ label: "Site", items: SITE_PAGES }, ...ADMIN_GROUPS].map((g) => (
           <section key={g.label} className="space-y-3">
             <h2 className="text-base font-semibold text-ink">{g.label}</h2>
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">

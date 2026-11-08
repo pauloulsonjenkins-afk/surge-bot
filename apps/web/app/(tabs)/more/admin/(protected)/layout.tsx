@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import AdminLogoutButton from "@/components/nav/AdminLogoutButton";
-import AdminNav from "@/components/nav/AdminNav";
 
 export default async function ProtectedAdminLayout({
   children,
@@ -25,8 +24,6 @@ export default async function ProtectedAdminLayout({
         <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Admin</p>
         <AdminLogoutButton />
       </header>
-
-      <AdminNav />
 
       <div className="flex-1 px-4 py-4">{children}</div>
     </div>

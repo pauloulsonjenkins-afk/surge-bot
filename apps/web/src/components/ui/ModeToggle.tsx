@@ -17,7 +17,7 @@ export function usePickMode(): PickMode {
 }
 
 /** All / Live / Sim. Shown to the admin only; the choice is shared by the Dashboard, Win/Loss and Strategies. */
-export function ModeToggle({ className = "" }: { className?: string }) {
+export function ModeToggle({ className = "", fill = false }: { className?: string; fill?: boolean }) {
   const { data: me } = useMe();
   const mode = useUiStore((s) => s.pickMode);
   const setMode = useUiStore((s) => s.setPickMode);
@@ -28,6 +28,7 @@ export function ModeToggle({ className = "" }: { className?: string }) {
       value={mode}
       onChange={setMode}
       className={className}
+      fill={fill}
       options={[
         { value: "live", label: "Live" },
         { value: "sim", label: "Sim" },
@@ -45,7 +46,7 @@ export function useProfitUnit(): "gbp" | "units" {
 }
 
 /** £ / Units. Admin only: units count every bet as the same 1-unit stake, so a stake change can't skew the figure. */
-export function UnitToggle({ className = "" }: { className?: string }) {
+export function UnitToggle({ className = "", fill = false }: { className?: string; fill?: boolean }) {
   const { data: me } = useMe();
   const unit = useUiStore((s) => s.profitUnit);
   const setUnit = useUiStore((s) => s.setProfitUnit);
@@ -56,6 +57,7 @@ export function UnitToggle({ className = "" }: { className?: string }) {
       value={unit}
       onChange={setUnit}
       className={className}
+      fill={fill}
       options={[
         { value: "gbp", label: "£" },
         { value: "units", label: "Units" },

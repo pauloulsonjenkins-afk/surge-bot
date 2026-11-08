@@ -167,7 +167,7 @@ export function PerformanceSection({
         title="Breakdown"
         subtitle={
           tab === "strategy"
-            ? lights ? "Tap a strategy to filter the whole dashboard to it. Won and lost, and the return per £1 staked, are for the period chosen above; the dot: green makes money, red loses it, amber is level, grey has too few picks." : "Tap a strategy to filter the whole dashboard to it"
+            ? "Tap one to filter the dashboard"
             : tab === "minute"
               ? "Hit rate by the match minute the alert fired"
               : "Tap a country, tier or league to filter this section"

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal, Crown } from "lucide-react";
+import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal, Crown, Gauge, Layers, TrendingUp } from "lucide-react";
+import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
 import { TAB_PAGE } from "@/lib/user-pages";
@@ -15,6 +16,19 @@ const TABS = [
   { href: "/schedule", label: "Schedule", icon: CalendarDays, isMore: false },
   // The Members platform (beta): opens its own frame at /members.
   { href: "/members", label: "Members", icon: Crown, isMore: false },
+  { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
+] as const;
+
+/**
+ * The admin's own bar (design review, 8 Nov 2026): the four pages used every day, then More. It replaces the admin
+ * tab strip that sat at the top as well (two menus, ten places, the strip cut off at "M…"). Dashboard, Trade Log and
+ * Schedule are listed on More.
+ */
+const ADMIN_TABS = [
+  { href: "/more/admin/today", label: "Today", icon: Gauge, isMore: false },
+  { href: "/more/admin/strategies", label: "Strategies", icon: Layers, isMore: false },
+  { href: "/live", label: "Live", icon: Radio, isMore: false },
+  { href: "/more/admin/winloss", label: "Profit", icon: TrendingUp, isMore: false },
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
 ] as const;
 
@@ -35,7 +49,11 @@ export function useVisibleTabs() {
 export default function BottomNav() {
   const pathname = usePathname();
   const lastMoreRoute = useUiStore((s) => s.lastMoreRoute);
-  const tabs = useVisibleTabs();
+  const visible = useVisibleTabs();
+  const { data: me } = useMe();
+  const admin = me?.admin === true;
+  const tabs = admin ? ADMIN_TABS : visible;
+  const own = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <nav
@@ -45,21 +63,28 @@ export default function BottomNav() {
     >
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-1">
         {tabs.map(({ href, label, icon: Icon, isMore }) => {
-          const target = isMore ? (isValidMoreRoute(lastMoreRoute) ? lastMoreRoute : "/more") : href;
-          const active = isMore
-            ? pathname.startsWith("/more")
-            : pathname === href || pathname.startsWith(`${href}/`);
+          const target = isMore ? (admin ? "/more" : isValidMoreRoute(lastMoreRoute) ? lastMoreRoute : "/more") : href;
+          // For the admin, More is lit for every page that isn't one of the four tabs (Dashboard, Golden, Settings...).
+          const active = isMore ? (admin ? !ADMIN_TABS.some((t) => !t.isMore && own(t.href)) : pathname.startsWith("/more")) : own(href);
 
           return (
             <li key={href} className="flex-1">
               <Link
                 href={target}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors ${
+                className={`relative flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors ${
                   active ? "text-accent" : "text-ink-muted"
                 }`}
               >
-                <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
+                {/* The current tab's icon sits on a soft pill that eases in, so where you are reads at a glance. */}
+                <span className={`relative rounded-full px-4 py-0.5 transition-colors duration-200 ${active ? "bg-accent/15" : "bg-transparent"}`}>
+                  <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
+                  {admin && href === "/more/admin/strategies" && (
+                    <span className="absolute -right-0.5 -top-1.5 scale-90">
+                      <AdviceBadge href={href} />
+                    </span>
+                  )}
+                </span>
                 <span>{label}</span>
               </Link>
             </li>

@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Fold } from "@/components/ui/Fold";
 import { ByMethodCard } from "@/components/admin/ByMethodCard";
-import { Card, PageHeader } from "@/components/ui/Card";
+import { Card, PageHeader, Segmented } from "@/components/ui/Card";
 import { QueryError } from "@/components/ui/QueryError";
 import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLines";
 import { DailyPnlChart } from "@/components/admin/DailyPnlChart";
@@ -39,28 +39,53 @@ function Money({ value, className = "" }: { value: number; className?: string })
   return <span className={`tabular-nums ${tone} ${className}`}>{value === 0 ? "\u00a30.00" : gbp(value)}</span>;
 }
 
-/** One line of figures: a name, then the 1D / 7D / MTD / YTD amounts in four equal cells. */
-function Figures({ title, values, bold, muted }: { title: string; values: Array<number | null>; bold?: boolean; muted?: boolean }) {
+type FigureRow = { key: string; title: string; values: Array<number | null>; bold?: boolean; muted?: boolean };
+
+/**
+ * Every strategy's 1D / 7D / MTD / YTD as one table (design review, 8 Nov 2026: each strategy used to be its own little
+ * grid repeating the four labels). Names stay in view when the table scrolls sideways on a narrow phone; totals are bold
+ * with a rule above them.
+ */
+/** An amount without the £ (the table's heading carries it), signed, so four columns fit a phone. */
+function amount(v: number): string {
+  return `${v > 0 ? "+" : v < 0 ? "\u2212" : ""}${Math.abs(v).toFixed(2)}`;
+}
+
+function FiguresTable({ rows }: { rows: FigureRow[] }) {
   return (
-    <div className="border-b border-line py-2.5 last:border-b-0">
-      <p className={`text-sm ${bold ? "font-medium text-ink" : muted ? "text-ink-muted" : "text-ink"}`}>{title}</p>
-      <div className="mt-1.5 grid grid-cols-4 gap-2">
-        {PERIODS.map((p, i) => {
-          const v = values[i];
-          return (
-            <div key={p.key}>
-              <p className="text-xs uppercase tracking-wide text-ink-muted">{p.label}</p>
-              {v === null || v === undefined ? (
-                <p className="text-xs text-ink-muted">{"\u2013"}</p>
-              ) : muted ? (
-                <p className="text-xs tabular-nums text-ink-muted">{gbp(v)}</p>
-              ) : (
-                <Money value={v} className={`text-xs ${bold ? "font-medium" : ""}`} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+    <div className="-mx-4 overflow-x-auto px-4">
+      <table className="w-full border-collapse text-[0.8125rem]">
+        <thead>
+          <tr className="text-xs text-ink-muted">
+            <th scope="col" className="sticky left-0 bg-surface py-2 pr-2 text-left font-medium">
+              £
+            </th>
+            {PERIODS.map((p) => (
+              <th key={p.key} scope="col" className="py-2 pl-2 text-right font-medium uppercase tracking-wide">
+                {p.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key} className={`border-t border-line ${r.bold ? "font-semibold" : ""}`}>
+              <th scope="row" className={`sticky left-0 bg-surface py-2.5 pr-2 text-left leading-snug ${r.bold ? "font-semibold" : "font-normal"} ${r.muted ? "text-ink-muted" : "text-ink"}`}>
+                {r.title}
+              </th>
+              {r.values.map((v, i) => (
+                <td key={PERIODS[i]!.key} className="whitespace-nowrap py-2.5 pl-2 text-right tabular-nums">
+                  {v === null || v === undefined ? (
+                    <span className="text-ink-muted">{"\u2013"}</span>
+                  ) : (
+                    <span className={r.muted ? "text-ink-muted" : v > 0 ? "text-hit" : v < 0 ? "text-loss" : "text-ink-muted"}>{amount(v)}</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -202,40 +227,35 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
       )}
 
       {/* ---- figures ---- */}
-      <Card title="Profit and loss" subtitle="Settled picks only. Today, last 7 days, month to date and year to date.">
+      <Card title="Profit and loss" subtitle="Settled picks only.">
         {lines.length === 0 ? (
           <EmptyState
             title={mode === "live" ? "No live picks settled yet" : mode === "sim" ? "No simulation picks settled yet" : "Nothing settled yet"}
             detail="Figures appear once picks have results."
           />
         ) : (
-          <div>
-            {lines.map((s) => (
-              <Figures key={s.key} title={strategyNames.name(s.label)} values={PERIODS.map((p) => state.periods[p.key].strategies[s.key] ?? 0)} />
-            ))}
-            {archivedLines.length > 0 && (
-              <Figures
-                title={`Archived strategies (${archivedLines.length})`}
-                muted
-                values={PERIODS.map((p) => archivedLines.reduce((t, s) => t + (state.periods[p.key].strategies[s.key] ?? 0), 0))}
-              />
-            )}
-            <Figures
-              title={mode === "live" ? "Live total" : mode === "sim" ? "Sim total" : "Total"}
-              bold
-              values={PERIODS.map((p) => state.periods[p.key].total)}
-            />
-            {expenditureRows && (
-              <>
-                <Figures
-                  title="Expenditure"
-                  muted
-                  values={PERIODS.map((p) => (state.periods[p.key].expenditure > 0 ? -state.periods[p.key].expenditure : null))}
-                />
-                <Figures title="Total after expenditure" bold values={PERIODS.map((p) => state.periods[p.key].totalAfter)} />
-              </>
-            )}
-          </div>
+          <FiguresTable
+            rows={[
+              ...lines.map((s) => ({ key: s.key, title: strategyNames.name(s.label), values: PERIODS.map((p) => state.periods[p.key].strategies[s.key] ?? 0) })),
+              ...(archivedLines.length > 0
+                ? [
+                    {
+                      key: "archived",
+                      title: `Archived (${archivedLines.length})`,
+                      muted: true,
+                      values: PERIODS.map((p) => archivedLines.reduce((t, s) => t + (state.periods[p.key].strategies[s.key] ?? 0), 0)),
+                    },
+                  ]
+                : []),
+              { key: "total", title: mode === "live" ? "Live total" : mode === "sim" ? "Sim total" : "Total", bold: true, values: PERIODS.map((p) => state.periods[p.key].total) },
+              ...(expenditureRows
+                ? [
+                    { key: "exp", title: "Expenditure", muted: true, values: PERIODS.map((p) => (state.periods[p.key].expenditure > 0 ? -state.periods[p.key].expenditure : null)) },
+                    { key: "after", title: "After expenditure", bold: true, values: PERIODS.map((p) => state.periods[p.key].totalAfter) },
+                  ]
+                : []),
+            ]}
+          />
         )}
         {lines.length > 0 && !anyMoney && (
           <p className="mt-3 text-xs text-warn">
@@ -259,22 +279,12 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         </Card>
       )}
 
-      {/* ---- graphs ---- */}
-      <div role="group" aria-label="Graph period" className="inline-flex gap-1 rounded-lg border border-line bg-surface p-1">
-        {PERIODS.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            aria-pressed={period === p.key}
-            onClick={() => setPeriod(p.key)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium ${period === p.key ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"}`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      <Card title="Overall" subtitle="All strategies combined, running total.">
+      {/* ---- graphs: the period switch sits on the chart it drives (it also sets "By strategy" below) ---- */}
+      <Card
+        title="Running total"
+        subtitle="All strategies combined."
+        actions={<Segmented label="Graph period" value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.key, label: p.label }))} />}
+      >
         {points.length < 2 ? (
           <EmptyState title="Nothing to draw yet" detail="A line appears once there are results with a stake and odds in this period." />
         ) : (

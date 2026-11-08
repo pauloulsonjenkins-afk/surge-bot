@@ -58,6 +58,23 @@ export function DailyPnlChart({ days }: { days: DailyBar[] }) {
   // About six date labels however many days there are, so they never run into each other.
   const labelEvery = Math.max(0, Math.ceil(data.length / 6) - 1);
   const s = summariseDays(days);
+  // One settled day makes one lonely bar filling the plot (design review, 8 Nov 2026): say it in words until there
+  // are at least two days to compare.
+  if (s.green + s.red < 2) {
+    const only = days.find((d) => d.pnl !== 0);
+    return (
+      <p className="py-6 text-center text-sm text-ink-muted">
+        {only ? (
+          <>
+            One day so far: <span className={`font-semibold tabular-nums ${only.pnl > 0 ? "text-hit" : "text-loss"}`}>{gbp(only.pnl)}</span> on {label(only.date, longFmt)}. The chart
+            starts with a second day.
+          </>
+        ) : (
+          "No settled days yet."
+        )}
+      </p>
+    );
+  }
 
   return (
     <>

@@ -133,7 +133,7 @@ export default function StrategiesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader as="h2" title="Strategies" subtitle="One line each. Tap a strategy for its page: results, settings and what to do next. Figures are the return per £1 on its own bets (Live ones on real bets, Sim ones on simulated)." />
+      <PageHeader as="h2" title="Strategies" subtitle="Return per £1 on each strategy's own bets." />
 
       <nav className="flex flex-wrap gap-2 text-xs font-medium" aria-label="Related pages">
         <Link href="/more/admin/reports" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Daily and weekly report</Link>
@@ -147,7 +147,6 @@ export default function StrategiesPage() {
             Needs a look
             <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs font-bold text-warn">{advice.length + warming.length}</span>
           </h3>
-          <p className="mt-0.5 text-xs text-ink-muted">Nothing changes until you press the button and confirm.</p>
           {advice.length > 0 && (
             <>
               <div className="mt-2">

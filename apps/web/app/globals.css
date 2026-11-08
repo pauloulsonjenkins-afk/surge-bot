@@ -170,9 +170,11 @@ html {
   }
 }
 
+/* The headline figure's card: a plain card (design review, 8 Nov 2026: the tinted glow and border were the only gradient
+   in the product; the figure's size and colour already carry it). --kpi is kept for any page that still sets it. */
 .kpi-glow {
-  background-image: radial-gradient(ellipse 70% 120% at 0% 0%, color-mix(in srgb, var(--kpi, var(--accent)) 14%, transparent), transparent 70%);
-  border: 1px solid color-mix(in srgb, var(--kpi, var(--accent)) 18%, var(--line));
+  background-color: var(--surface);
+  border: 1px solid var(--line);
 }
 .kpi-glow-hit {
   --kpi: var(--hit);
@@ -264,5 +266,129 @@ html {
     box-shadow: inset 0 0 0 1px var(--line);
     opacity: 1;
     cursor: not-allowed;
+  }
+}
+
+/*
+ * The bottom sheet (design review, 8 Nov 2026): a <dialog> that rises from the bottom edge on phones and sits centred
+ * on wide screens, over a dimmed page.
+ */
+@layer components {
+  dialog.sheet {
+    margin: auto auto 0;
+    width: 100%;
+    max-width: 32rem;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 1.25rem 1.25rem 0 0;
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0;
+  }
+  dialog.sheet::backdrop {
+    background: color-mix(in srgb, #000 55%, transparent);
+  }
+  dialog.sheet[open] {
+    animation: sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @media (min-width: 1024px) {
+    dialog.sheet {
+      margin: auto;
+      border-bottom: 1px solid var(--line);
+      border-radius: 1.25rem;
+    }
+  }
+  @keyframes sheet-up {
+    from {
+      transform: translateY(16px);
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    dialog.sheet[open] {
+      animation: none;
+    }
+  }
+}
+
+/* A button or row that gives under the finger (design review polish): a small press, smoothly back. */
+@layer utilities {
+  .press {
+    transition-property: transform, background-color, color, box-shadow, opacity;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .press:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .press:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}
+
+/*
+ * Motion and feel (design review polish, 8 Nov 2026). Small, quick and the same everywhere:
+ *  - every link, button and summary eases its colour, background, border and shadow over 150ms on hover and focus,
+ *    instead of snapping;
+ *  - a button gives under the finger (scale 0.98) and springs back;
+ *  - a card's edge warms on hover (pointer devices only) and an opened section's contents fade up into place;
+ *  - the keyboard focus ring grows in rather than appearing.
+ * All of it is switched off for anyone who has asked their device for reduced motion.
+ */
+@layer base {
+  a,
+  button,
+  summary,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    transition-property: color, background-color, border-color, box-shadow, outline-color, outline-offset, opacity, transform;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  button:not(:disabled):active,
+  [role="button"]:active {
+    transform: scale(0.98);
+  }
+  :focus-visible {
+    outline-offset: 3px;
+  }
+  details[open] > :not(summary) {
+    animation: reveal 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (hover: hover) {
+  .card-hover {
+    transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  }
+  .card-hover:not(.card-open):hover {
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent), 0 6px 18px -10px rgb(0 0 0 / 0.45);
+  }
+  /* A list row you can tap: a soft tint under the pointer. */
+  ul.divide-y > li > a:hover,
+  ul.divide-y > li > button:hover {
+    background-color: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  button:not(:disabled):active,
+  [role="button"]:active {
+    transform: none;
   }
 }

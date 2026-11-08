@@ -12,9 +12,11 @@ export const TIMEFRAMES: Array<{ value: Timeframe; label: string; days: number |
 export function TimeframeToggle({
   value,
   onChange,
+  fill = false,
 }: {
   value: Timeframe;
   onChange: (tf: Timeframe) => void;
+  fill?: boolean;
 }) {
-  return <Segmented label="Timeframe" value={value} onChange={onChange} options={TIMEFRAMES} />;
+  return <Segmented label="Timeframe" value={value} onChange={onChange} options={TIMEFRAMES} fill={fill} />;
 }

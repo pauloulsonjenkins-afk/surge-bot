@@ -78,7 +78,7 @@ export function HeroRow({
 
   return (
     <section aria-label="Summary" className="space-y-4">
-      {admin && <StatusStrip pending={totals.pending} />}
+      {admin && <StatusStrip />}
 
       {money && unit === "units" && typeof c?.units === "number" ? (
         // Units: every bet counted as the same 1-unit stake, so a stake change can't skew the figure.
@@ -214,26 +214,24 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
 }
 
 /**
- * Admin: the things that need a look, before any figures. Whether picks are being sent to bet (the master switch),
- * how many strategies are Live, sent picks Betfair has no bet for, and picks still waiting for a result.
+ * Admin: only what needs a look, before any figures: betting switched off, or sent picks Betfair has no bet for.
+ * When all is well it shows nothing (design review, 8 Nov 2026: "Betting on · 3 Live · 0 waiting" sat above the
+ * headline every time; Today carries the full status).
  */
-function StatusStrip({ pending }: { pending: number }) {
+function StatusStrip() {
   const sending = useSending(60_000);
   const unplaced = useUnplaced();
   const s = sending.data;
   if (!s) return <Skeleton className="h-8 w-72" />;
   const on = s.settings.enabled;
-  const live = s.strategies.filter((x) => x.enabled).length;
   const notPlaced = unplaced.data?.configured ? unplaced.data.picks.length : null;
+  if (on && !(notPlaced !== null && notPlaced > 0)) return null;
   const pill = "tap-target inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium";
   return (
     <nav aria-label="Status" className="flex flex-wrap gap-2">
       <Link href="/more/admin/sending" className={`${pill} ${on ? "border-line text-ink" : "border-transparent bg-warn/10 text-warn"}`}>
         <span aria-hidden className={`h-2 w-2 rounded-full ${on ? "pulse-dot bg-hit" : "bg-warn"}`} />
         Betting {on ? "on" : "off"}
-      </Link>
-      <Link href="/more/admin/sending" className={`${pill} border-line text-ink`} title="Strategies whose picks are sent to bet">
-        {live} Live
       </Link>
       {notPlaced !== null && (
         <Link
@@ -243,9 +241,6 @@ function StatusStrip({ pending }: { pending: number }) {
           {notPlaced} not placed
         </Link>
       )}
-      <Link href="/live" className={`${pill} border-line ${pending > 0 ? "text-ink" : "text-ink-muted"}`} title="Picks still waiting for a result">
-        {pending} waiting
-      </Link>
     </nav>
   );
 }

@@ -296,18 +296,13 @@ export default function GoldenPage() {
   return (
     // The admin layout already gives the page its side margins, so none here (they were doubled before).
     <div className="space-y-5">
-      <PageHeader title="Golden" subtitle="Parts of a strategy that beat the rest. Gold: proved. Outline: still proving." />
-      {/* The colour key: the same rule for every figure on the page. */}
+      <PageHeader title="Golden" subtitle="Parts of a strategy that beat the rest." />
+      {/* The colour key as the colours themselves: one short line, the same rule for every figure on the page. */}
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
-        <span>
-          <span className="font-semibold text-hit">Green</span> making money
-        </span>
-        <span>
-          <span className="font-semibold text-loss">Red</span> losing
-        </span>
-        <span>
-          <span className="font-semibold">Grey</span> fewer than {FEW} priced picks, too few to judge
-        </span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2 w-2 rounded-full bg-hit" />making money</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2 w-2 rounded-full bg-loss" />losing</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2 w-2 rounded-full bg-ink-muted" />under {FEW} picks</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="gold-chip h-2.5 w-4 rounded-sm" />proved</span>
       </p>
 
       <details className="rounded-xl border border-line bg-surface px-4 py-1 text-sm text-ink-muted">
@@ -491,7 +486,7 @@ export default function GoldenPage() {
 
           <Card
             title="Suggested by the Golden finder"
-            subtitle={`Slices that beat the rest in both halves of the record. Some will be luck, so each is proved on new matches from the day you watch it.${
+            subtitle={`Beat the rest in both halves; proved on new matches once watched.${
               checked && !Number.isNaN(checked.getTime()) ? ` Last checked ${dayTime.format(checked)}.` : ""
             }`}
           >

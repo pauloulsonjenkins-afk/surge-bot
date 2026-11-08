@@ -17,7 +17,8 @@ import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
 import { toneOf, gbp, units } from "@/lib/format";
 import { Fold } from "@/components/ui/Fold";
-import { AttentionDot, Notice } from "@/components/ui/Notice";
+import { AttentionDot, NoticeStack, type NoticeItem } from "@/components/ui/Notice";
+import { Power } from "lucide-react";
 import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
 
 
@@ -61,8 +62,8 @@ function KillSwitch({ on }: { on: boolean }) {
   const dialog = useDialog();
   if (!on) {
     return (
-      <Link href="/more/admin/sending" className="rounded-md border border-line px-3 py-2 text-sm font-medium text-ink hover:bg-surface-2">
-        Betting is off · turn on in Sending
+      <Link href="/more/admin/sending" className="inline-flex min-h-10 items-center rounded-md border border-line px-3 text-sm font-medium text-ink transition-colors hover:bg-surface-2">
+        Betting is off · turn on
       </Link>
     );
   }
@@ -79,9 +80,10 @@ function KillSwitch({ on }: { on: boolean }) {
         });
         if (ok) save.mutate({ enabled: false });
       }}
-      className="rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-danger-ink disabled:opacity-50"
+      className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-loss/15 px-3 text-sm font-semibold text-loss transition-colors hover:bg-loss/25 disabled:opacity-50"
     >
-      {save.isPending ? "Stopping…" : "Stop all betting"}
+      <Power size={15} aria-hidden strokeWidth={2.4} />
+      {save.isPending ? "Stopping…" : "Stop betting"}
     </button>
   );
 }
@@ -189,51 +191,54 @@ function Tiles({ d }: { d: TodaySnapshot }) {
     !!volume?.low ||
     notPlacedWarns(d.queue) ||
     !!d.betting.betfair.lastError;
-  return (
-    <>
-      {noDevices && (
-        <Notice level="action" title="No phone gets GoalBrew's notifications">
+  const notices: NoticeItem[] = [];
+  if (d.betting.breaker.open)
+    notices.push({ key: "breaker", level: "stop", title: "New bets paused", body: <>{d.betting.breaker.reason} They resume by themselves once Betfair answers again.</> });
+  if (d.limits.lossStop) notices.push({ key: "loss", level: "stop", title: "Daily loss stop reached", body: d.limits.lossStop.replace(/^Daily loss stop:\s*/i, "") });
+  if (!tg.ok) notices.push({ key: "tg", level: "action", title: "Alerts may not be arriving", body: tg.problems.join(" ") });
+  if (tg.ok && volume?.low)
+    notices.push({
+      key: "quiet",
+      level: "action",
+      title: "Alerts have gone quiet",
+      body: <>Only {volume.lastHour} in the last hour, against a usual {volume.typical} for this time of day. Telegram&apos;s connection looks fine, so this is likely InPlayGuru itself.</>,
+    });
+  if (noDevices)
+    notices.push({
+      key: "push",
+      level: "action",
+      title: "No phone gets GoalBrew's notifications",
+      body: (
+        <>
           Warnings such as &ldquo;Telegram alerts have stopped&rdquo; reach nobody.{" "}
           <Link href="/more/admin/sending" className="font-medium text-accent underline underline-offset-2">
             Turn them on
           </Link>
           , then send a test.
-        </Notice>
-      )}
-      {d.betting.breaker.open && (
-        <Notice level="stop" title="New bets paused">
-          {d.betting.breaker.reason} They resume by themselves once Betfair answers again.
-        </Notice>
-      )}
-      {d.limits.lossStop && <Notice level="stop" title="Daily loss stop reached">{d.limits.lossStop.replace(/^Daily loss stop:\s*/i, "")}</Notice>}
-      {!tg.ok && (
-        <Notice level="action" title="Alerts may not be arriving">
-          {tg.problems.join(" ")}
-        </Notice>
-      )}
-      {tg.ok && volume?.low && (
-        <Notice level="action" title="Alerts have gone quiet">
-          Only {volume.lastHour} in the last hour, against a usual {volume.typical} for this time of day. Telegram&apos;s connection looks fine, so this is likely InPlayGuru itself.
-        </Notice>
-      )}
+        </>
+      ),
+    });
+  return (
+    <>
+      <NoticeStack items={notices} />
 
-      <div className={`grid grid-cols-2 gap-2 ${d.today.liveUnits !== undefined ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
-        <Tile
+      <div className={`grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line ${d.today.liveUnits !== undefined ? "lg:grid-cols-4" : "lg:grid-cols-3 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2"}`}>
+        <Tile flat
           label="Betting"
           value={d.betting.on ? (d.betting.breaker.open ? "Paused" : "On") : "Off"}
           sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
-        <Tile label="Live today" value={<span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
+        <Tile flat label="Live today" value={<span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
         {/* The same day as if every bet were the same 1-unit stake, so a stake change can't make it look better or worse. */}
         {d.today.liveUnits !== undefined && (
-          <Tile
+          <Tile flat
             label="Units today"
             value={<span className={toneOf(d.today.liveUnits)}>{units(d.today.liveUnits)}</span>}
             sub={`Live, ${d.today.liveSettled} settled · Sim ${units(d.today.simUnits ?? 0)} (${d.today.simSettled})`}
           />
         )}
-        <Tile
+        <Tile flat
           label="Daily loss stop"
           value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}
           sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet, false)} of it used today` : "None used: Live isn't down today") : undefined}
@@ -288,7 +293,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Tile
           flat
           label="Alerts"
-          value={`${d.alerts.lastHour} in the last hour`}
+          value={`${d.alerts.lastHour} / hour`}
           sub={`last ${ago(tg.lastAlertAt)} · Telegram ${tg.ok ? "OK" : "problem"}${volume?.low ? ` · usually ${volume.typical} by now` : ""}`}
           warn={!tg.ok || !!volume?.low}
         />
@@ -310,7 +315,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
       </details>
 
       {d.advice && d.advice.length > 0 && (
-        <Card title="Suggestions" subtitle="From results since each strategy's rules last changed. Nothing changes until you press Apply; you get one notification per new suggestion.">
+        <Card title="Suggestions" subtitle="Nothing changes until you apply one.">
           <ApplyAllAdvice advice={d.advice} nameOf={(a) => adviceTitle(a, names.name)} />
           <ul className="mt-3 space-y-3 text-sm">
             {d.advice.map((a) => (
@@ -373,7 +378,7 @@ export default function TodayPage() {
         title="Today"
         subtitle={
           <>
-            Is everything working, and what&apos;s at risk right now. <UpdatedAgo at={dataUpdatedAt || null} staleAfter={60} />
+            <UpdatedAgo at={dataUpdatedAt || null} staleAfter={60} />
           </>
         }
         actions={data ? <KillSwitch on={data.betting.on} /> : undefined}

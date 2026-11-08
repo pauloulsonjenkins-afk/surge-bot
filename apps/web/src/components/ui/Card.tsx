@@ -97,6 +97,7 @@ export function Segmented<T extends string>({
   onChange,
   label,
   className = "",
+  fill = false,
 }: {
   options: ReadonlyArray<{ value: T; label: React.ReactNode }>;
   value: T;
@@ -104,18 +105,20 @@ export function Segmented<T extends string>({
   /** Read out by screen readers. */
   label: string;
   className?: string;
+  /** Stretch to the full width, every choice an equal share (in a sheet). */
+  fill?: boolean;
 }) {
   return (
     // A set of toggle buttons (one pressed), not tabs: they filter what's shown, they don't switch between panels. Too
     // many to fit a phone's width (Horses: six periods), they wrap onto a second line rather than run off the screen.
-    <div role="group" aria-label={label} className={`inline-flex max-w-full flex-wrap gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5 ${className}`}>
+    <div role="group" aria-label={label} className={`${fill ? "flex w-full" : "inline-flex max-w-full flex-wrap"} gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5 ${className}`}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+          className={`rounded-md px-3 text-xs font-medium transition-colors ${fill ? "min-h-10 flex-1 text-sm" : "py-1.5"} ${
             value === o.value ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
           }`}
         >

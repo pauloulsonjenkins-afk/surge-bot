@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import type { PickMode } from "@/server/engine-client";
 import { WinLossLines } from "@/components/admin/WinLossLines";
-import { Segmented } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { gbp, units } from "@/lib/format";
 import { useProfitUnit } from "@/components/ui/ModeToggle";
@@ -11,12 +9,7 @@ import { ChartCard } from "./ChartCard";
 import { EmptyState } from "./EmptyState";
 import { useDashboardWinLoss } from "./WinLossSummary";
 
-type Range = "d7" | "d30" | "ytd";
-const RANGES: Array<{ value: Range; label: string }> = [
-  { value: "d7", label: "7D" },
-  { value: "d30", label: "30D" },
-  { value: "ytd", label: "YTD" },
-];
+export type Range = "d7" | "d30" | "ytd";
 const WORDS: Record<Range, string> = { d7: "the last 7 days", d30: "the last 30 days", ytd: "this year" };
 
 const shortDate = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -25,8 +18,7 @@ const shortDate = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateStri
  * Admin: profit and loss in £, built up day by day over 7 days, 30 days or the year to date (UK days), priced exactly
  * as the Profit page. Follows the Dashboard's Live / Sim / All switch and its strategy filter. Before running costs.
  */
-export function ProfitPeriodChart({ mode, strategy }: { mode: PickMode; strategy: string | null }) {
-  const [range, setRange] = useState<Range>("d7");
+export function ProfitPeriodChart({ mode, strategy, range }: { mode: PickMode; strategy: string | null; range: Range }) {
   const winLoss = useDashboardWinLoss(mode);
   const key = strategy?.toLowerCase() ?? null;
   const points = winLoss.data?.series[range] ?? [];
@@ -40,8 +32,7 @@ export function ProfitPeriodChart({ mode, strategy }: { mode: PickMode; strategy
   return (
     <ChartCard
       title="Profit and loss"
-      subtitle={`Running total in ${inUnits ? "units (every bet as the same 1-unit stake)" : "£"} over ${WORDS[range]}, day by day${data.length > 1 ? `: ${inUnits ? units(last) : gbp(last)}` : ""}`}
-      actions={<Segmented label="Profit period" value={range} onChange={setRange} options={RANGES} />}
+      subtitle={`${inUnits ? "Units" : "£"} over ${WORDS[range]}${data.length > 1 ? `: ${inUnits ? units(last) : gbp(last)}` : ""}`}
     >
       {winLoss.isLoading ? (
         <Skeleton className="h-56 w-full" />
