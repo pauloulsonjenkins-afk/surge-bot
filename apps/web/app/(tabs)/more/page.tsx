@@ -9,9 +9,8 @@ import { ADMIN_GROUPS } from "@/lib/admin-sections";
 import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import { useMe } from "@/queries/use-me";
 
-/** For the admin, the main site's pages the bottom bar no longer carries (it holds the admin's everyday pages). */
+/** For the admin, the main site's pages the bottom bar doesn't carry. */
 const SITE_PAGES = [
-  { href: "/dashboard", label: "Dashboard", description: "Headline profit, hit rate and the breakdown." },
   { href: "/trade-log", label: "Trade Log", description: "Every settled pick." },
   { href: "/schedule", label: "Schedule", description: "Today's fixtures." },
 ];
@@ -47,7 +46,8 @@ export default function MorePage() {
       <AccountCard />
 
       {me?.admin &&
-        [{ label: "Site", items: SITE_PAGES }, ...ADMIN_GROUPS].map((g) => (
+        // The everyday pages first, then the site's other pages, then research and settings.
+        [...ADMIN_GROUPS.slice(0, 1), { label: "Results and fixtures", items: SITE_PAGES }, ...ADMIN_GROUPS.slice(1)].map((g) => (
           <section key={g.label} className="space-y-3">
             <h2 className="text-base font-semibold text-ink">{g.label}</h2>
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">

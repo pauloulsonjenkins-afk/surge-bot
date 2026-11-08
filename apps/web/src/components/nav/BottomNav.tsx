@@ -20,14 +20,16 @@ const TABS = [
 ] as const;
 
 /**
- * The admin's own bar (design review, 8 Nov 2026): the four pages used every day, then More. It replaces the admin
- * tab strip that sat at the top as well (two menus, ten places, the strip cut off at "M…"). Dashboard, Trade Log and
- * Schedule are listed on More.
+ * The admin's own bar (design review, 8 Nov 2026), from the overview to the detail: Dashboard, Today, Live,
+ * Strategies, Profit, then More. It replaced the admin tab strip that sat at the top as well (two menus, ten places, the
+ * strip cut off at "M…"). Dashboard was first left to More, which put the main page a level down (owner, 8 Nov 2026).
+ * Trade Log and Schedule are listed on More.
  */
 const ADMIN_TABS = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, isMore: false },
   { href: "/more/admin/today", label: "Today", icon: Gauge, isMore: false },
-  { href: "/more/admin/strategies", label: "Strategies", icon: Layers, isMore: false },
   { href: "/live", label: "Live", icon: Radio, isMore: false },
+  { href: "/more/admin/strategies", label: "Strategies", icon: Layers, isMore: false },
   { href: "/more/admin/winloss", label: "Profit", icon: TrendingUp, isMore: false },
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
 ] as const;
@@ -61,23 +63,23 @@ export default function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t lg:hidden border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <ul className="mx-auto flex max-w-md items-stretch justify-between px-1">
+      <ul className="mx-auto flex max-w-md items-stretch justify-between px-1 max-[360px]:px-1">
         {tabs.map(({ href, label, icon: Icon, isMore }) => {
           const target = isMore ? (admin ? "/more" : isValidMoreRoute(lastMoreRoute) ? lastMoreRoute : "/more") : href;
           // For the admin, More is lit for every page that isn't one of the four tabs (Dashboard, Golden, Settings...).
           const active = isMore ? (admin ? !ADMIN_TABS.some((t) => !t.isMore && own(t.href)) : pathname.startsWith("/more")) : own(href);
 
           return (
-            <li key={href} className="flex-1">
+            <li key={href} className="min-w-0 flex-1">
               <Link
                 href={target}
                 aria-current={active ? "page" : undefined}
-                className={`relative flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors ${
+                className={`relative flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors max-[360px]:text-[0.65rem] max-[360px]:tracking-tight ${
                   active ? "text-accent" : "text-ink-muted"
                 }`}
               >
                 {/* The current tab's icon sits on a soft pill that eases in, so where you are reads at a glance. */}
-                <span className={`relative rounded-full px-4 py-0.5 transition-colors duration-200 ${active ? "bg-accent/15" : "bg-transparent"}`}>
+                <span className={`relative rounded-full px-4 py-0.5 transition-colors duration-200 max-[360px]:px-2.5 ${active ? "bg-accent/15" : "bg-transparent"}`}>
                   <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
                   {admin && href === "/more/admin/strategies" && (
                     <span className="absolute -right-0.5 -top-1.5 scale-90">
