@@ -10,6 +10,7 @@ Data (GET only; the session's network proxy adds the agent key, never handle it 
 - /api/agent/winloss?mode=live (all periods: d1, d7, d30, mtd, ytd are in the response)
 - /api/agent/strategies
 - /api/agent/live?limit=200 (latest 200 picks)
+- /api/agent/leagues: each strategy's verdict per league (proven / green / grey / red, with picks, return per £1 and likely range) and a walk-forward backtest of the league filters (off / notRed / greenOnly). Treat green leagues with caution: with dozens of leagues per strategy some look green by luck; propose a filter only where the backtest beats "off".
 - /api/agent/dates: each strategy's Live/Sim switch and when it last flipped (modeSince), its rule-change date (ruleChangedAt; null = rules never changed, so count all its Live bets), stake and stake-ladder history, any 7-day lock (lock.until, lock.active), each slice bet on its own with liveSince, and the automatic stake steps waiting (autoStakeQueue)
 Save every raw response to the scratchpad as JSON; the Skeptic checks your work from those files.
 Running costs (fixed; change them only when the owner tells you): DigitalOcean $24/month; other spend £45/month. Use the GBP/USD rate given in the run prompt. If none is given, state the rate you used.

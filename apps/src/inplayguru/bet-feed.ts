@@ -45,6 +45,7 @@ import { accountToday, computeStopLoss } from "./stop-loss";
 import { alertOddsOf } from "../server/pricing";
 import { cleanPct, getBank, resolveStake } from "./stake";
 import { getLeagueBlocks, isLeagueBlocked } from "./league-blocks";
+import { getStoredLeagueForm, leagueLevel, passesLeagueFilter, type LeagueFilter, type StoredLeagueForm } from "./league-form";
 import { extraFacts, segmentsOf, type AlertFacts } from "../server/segments";
 import { clashOf, exposureOf, type Exposure } from "./clash";
 
@@ -61,6 +62,12 @@ export interface SendingSettings {
    * latest change (strategy-advice.ts SETTLE_BETS); a stake changed by hand wasn't recorded before 8 Nov 2026.
    */
   stakeSince: Record<string, string>;
+  /**
+   * Which leagues a strategy (or a slice, "strategy#slice") may bet in, by its record there (league-form.ts): "notRed"
+   * skips leagues where it's losing, "greenOnly" bets only where it's making money. Missing = every league. A pick
+   * outside its filter is recorded in Sim, like a league stop. A slice without its own follows its strategy's.
+   */
+  leagueFilter: Record<string, LeagueFilter>;
   /**
    * A watched slice bet on its own (server/segments.ts), keyed "strategy key#slice id", e.g. Second Pour's Golden
    * alerts: Live or Sim regardless of the strategy's own switch, at its own stake (else the strategy's).
@@ -140,6 +147,7 @@ const DEFAULT_SENDING: SendingSettings = {
   strategies: {},
   modeSince: {},
   stakeSince: {},
+  leagueFilter: {},
   segmentBets: {},
   stakes: {},
   stakePct: {},
@@ -228,6 +236,11 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   if (raw.modeSince && typeof raw.modeSince === "object") {
     for (const [k, v] of Object.entries(raw.modeSince)) if (typeof v === "string") modeSince[k.toLowerCase()] = v;
   }
+  const leagueFilter: Record<string, LeagueFilter> = {};
+  if (raw.leagueFilter && typeof raw.leagueFilter === "object") {
+    // "off" is kept only for a slice: it bets every league even when its strategy has a filter.
+    for (const [k, v] of Object.entries(raw.leagueFilter)) if (v === "notRed" || v === "greenOnly" || (v === "off" && k.includes("#"))) leagueFilter[k.toLowerCase()] = v;
+  }
   const stakeSince: Record<string, string> = {};
   if (raw.stakeSince && typeof raw.stakeSince === "object") {
     for (const [k, v] of Object.entries(raw.stakeSince)) if (typeof v === "string") stakeSince[k.toLowerCase()] = v;
@@ -273,6 +286,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     strategies,
     modeSince,
     stakeSince,
+    leagueFilter,
     segmentBets,
     stakes,
     stakePct,
@@ -337,6 +351,17 @@ export function segmentBetFor(settings: SendingSettings, p: LivePick): { key: st
   return null;
 }
 
+/**
+ * Whether a pick may be bet under its league filter (SendingSettings.leagueFilter): the slice's own, else its
+ * strategy's. With no stored form yet, nothing is held back (the filter starts working once the form is worked out).
+ */
+export function leagueFilterAllows(settings: SendingSettings, form: StoredLeagueForm | null, p: LivePick, seg: { key: string; id: string } | null): { ok: boolean; filter: LeagueFilter } {
+  const key = strategyLabel(p.strategy).toLowerCase();
+  const filter = (seg ? settings.leagueFilter[`${key}#${seg.id}`] : undefined) ?? settings.leagueFilter[key] ?? "off";
+  if (filter === "off" || !form) return { ok: true, filter };
+  return { ok: passesLeagueFilter(filter, leagueLevel(form, key, p.leagueKey)?.level ?? "grey"), filter };
+}
+
 /** Settings with a slice's own stake in place of its strategy's, for resolveStake. */
 function withSegmentStake(settings: SendingSettings, key: string, cfg: SegmentBet): SendingSettings {
   if (cfg.stakePct !== null) {
@@ -355,7 +380,7 @@ function withSegmentStake(settings: SendingSettings, key: string, cfg: SegmentBe
 /** Applies a partial update from the admin page and saves the merged, validated result. */
 export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>): SendingSettings {
   const current = getSendingSettings(db);
-  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, modeSince: { ...current.modeSince }, stakeSince: { ...current.stakeSince }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds }, segmentBets: { ...current.segmentBets } };
+  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, modeSince: { ...current.modeSince }, stakeSince: { ...current.stakeSince }, leagueFilter: { ...current.leagueFilter }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds }, segmentBets: { ...current.segmentBets } };
   // A watched slice's own betting: { "strategy#slice": { live, stakePct, stake } }, or null to go back to the strategy's.
   if (patch.segmentBets && typeof patch.segmentBets === "object") {
     for (const [k, v] of Object.entries(patch.segmentBets as Record<string, unknown>)) {
@@ -372,6 +397,14 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
     }
   }
 
+  // { leagueFilter: { "strategy" or "strategy#slice": "off" | "notRed" | "greenOnly" | null } }
+  if (patch.leagueFilter && typeof patch.leagueFilter === "object") {
+    for (const [k, v] of Object.entries(patch.leagueFilter as Record<string, unknown>)) {
+      const key = k.toLowerCase();
+      if (v === "notRed" || v === "greenOnly" || (v === "off" && key.includes("#"))) next.leagueFilter[key] = v;
+      else if (v === null || v === "off") delete next.leagueFilter[key];
+    }
+  }
   if (typeof patch.enabled === "boolean") next.enabled = patch.enabled;
   if (typeof patch.ladderAuto === "boolean") next.ladderAuto = patch.ladderAuto;
   if (patch.latestMinute !== undefined) next.latestMinute = clampInt(patch.latestMinute, 0, 130, current.latestMinute);
@@ -678,6 +711,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
   const stops = computeStopLoss(db, now);
   const noSend = db.noSendLeagues();
   const blocks = getLeagueBlocks(db);
+  const leagueForm = getStoredLeagueForm(db);
   let sentToday = db.recentSentTimes().filter((t) => ukDay.format(new Date(t)) === today).length;
 
   const rows: FeedRow[] = [];
@@ -738,6 +772,14 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     if (isLeagueBlocked(blocks, label, p.leagueKey)) {
       skipped.push(skip(p, "This strategy is stopped in this league (Leagues → Profit): recorded in Sim."));
       continue;
+    }
+    // Outside its league filter (a red league, or not a green one): recorded in Sim too.
+    {
+      const lf = leagueFilterAllows(settings, leagueForm, p, seg);
+      if (!lf.ok) {
+        skipped.push(skip(p, lf.filter === "greenOnly" ? "Not a green league for this strategy (league filter): recorded in Sim." : "A red league for this strategy (league filter): recorded in Sim."));
+        continue;
+      }
     }
     if (!p.sendable) {
       skipped.push(skip(p, p.flags[0] ?? "Not sendable."));
@@ -1022,6 +1064,7 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
   const stops = computeStopLoss(db, now, "sim");
   const noSend = db.noSendLeagues();
   const blocks = getLeagueBlocks(db);
+  const leagueForm = getStoredLeagueForm(db);
   let betsToday = [...db.recentSentTimes(), ...db.recentSimBetTimes()].filter((t) => ukDay.format(new Date(t)) === today).length;
 
   const items: Array<{ id: number; rowJson: string }> = [];
@@ -1030,7 +1073,8 @@ export function recordSimBets(db: EngineDb, now = new Date()): number {
     const fresh = now.getTime() <= betableUntil(p, settings.maxAgeMinutes);
     // Stopped in this league: never bet there, so it's simulated like a Sim strategy's pick.
     const seg = segmentBetFor(settings, p);
-    const liveNow = settings.enabled && (seg ? seg.cfg.live : settings.strategies[key] === true) && !isLeagueBlocked(blocks, key, p.leagueKey);
+    const liveNow =
+      settings.enabled && (seg ? seg.cfg.live : settings.strategies[key] === true) && !isLeagueBlocked(blocks, key, p.leagueKey) && leagueFilterAllows(settings, leagueForm, p, seg).ok;
     if (liveNow && fresh) continue; // the bet feed decides this one
 
     const staked = resolveStake(seg ? withSegmentStake(settings, key, seg.cfg) : settings, key, bank, { now, live: false });

@@ -512,6 +512,8 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
     notifyQuiet: notify.quiet,
     notifyAllSlices: notify.allSlices,
     notifyHotToday: notify.hotToday,
+    notifyLeagues: notify.leagues,
+    notifyHoldingOnly: notify.holdingOnly,
   };
 }
 

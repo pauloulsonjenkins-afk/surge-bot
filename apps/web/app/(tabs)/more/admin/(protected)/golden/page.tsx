@@ -396,7 +396,9 @@ export default function GoldenPage() {
               <details className="mb-3 rounded-md bg-surface-2 px-3 text-xs text-ink-muted">
                 <summary className="flex min-h-11 cursor-pointer items-center gap-1 font-medium text-ink">
                   <BellRing size={14} aria-hidden className="shrink-0" /> Alert notifications ·{" "}
-                  {[data.notifyAllSlices ? "every slice" : `${allMainSlices.filter((s) => s.notify).length} slices`, data.notifyHotToday ? "doing well today" : null].filter(Boolean).join(" + ")} · quiet{" "}
+                  {[data.notifyAllSlices ? "every slice" : `${allMainSlices.filter((s) => s.notify).length} slices`, data.notifyHotToday ? "doing well today" : null].filter(Boolean).join(" + ")}
+                  {data.notifyLeagues === "greenOnly" ? " · green leagues" : data.notifyLeagues === "notRed" ? " · no red leagues" : ""}
+                  {data.notifyHoldingOnly ? " · holding only" : ""} · quiet{" "}
                   {data.notifyQuiet === false ? "off" : "on"}
                 </summary>
                 <div className="pb-3">
@@ -427,6 +429,48 @@ export default function GoldenPage() {
                         <span className="block font-normal text-ink-muted">3+ settled today, in profit and at or above break-even. A same-day run is a weak guide on its own.</span>
                       </span>
                       <span className="shrink-0 font-semibold">{data.notifyHotToday ? "On" : "Off"}</span>
+                    </button>
+                    {/* League and holding filters (owner, 8 Nov 2026: "alerts only on performing Golden slices in green leagues"). */}
+                    <div className="rounded-md bg-surface px-3 py-2.5">
+                      <p className="font-semibold text-ink">Which leagues</p>
+                      <p className="mb-2 text-ink-muted">Judged per strategy on its priced picks in each league. Grey means too few to judge.</p>
+                      <div role="radiogroup" aria-label="Which leagues" className="grid grid-cols-3 gap-1.5">
+                        {(
+                          [
+                            ["off", "Any league"],
+                            ["notRed", "Skip red"],
+                            ["greenOnly", "Green only"],
+                          ] as const
+                        ).map(([value, label]) => {
+                          const on = (data.notifyLeagues ?? "off") === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              role="radio"
+                              aria-checked={on}
+                              disabled={act.isPending}
+                              onClick={() => !on && act.mutate({ action: "alerts", leagues: value })}
+                              className={`press min-h-10 rounded-md px-2 text-center font-semibold transition-colors ${on ? "bg-accent/15 text-ink" : "bg-surface-2 text-ink-muted hover:text-ink"}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-pressed={data.notifyHoldingOnly === true}
+                      disabled={act.isPending}
+                      onClick={() => act.mutate({ action: "alerts", holdingOnly: data.notifyHoldingOnly !== true })}
+                      className={`${action} justify-between gap-3 text-left ${data.notifyHoldingOnly ? "bg-accent/15 text-ink" : "text-ink"}`}
+                    >
+                      <span>
+                        <span className="block font-semibold">Only slices holding up</span>
+                        <span className="block font-normal text-ink-muted">Skip Golden alerts from slices that have slipped from their stage.</span>
+                      </span>
+                      <span className="shrink-0 font-semibold">{data.notifyHoldingOnly ? "On" : "Off"}</span>
                     </button>
                   </div>
                   <p>

@@ -28,6 +28,7 @@ import { startHistoryRefresh } from "../history/football-data";
 import { startDailyTips } from "./daily-tips";
 import { notifyAdvice } from "./strategy-advice";
 import { notifyLeagueMilestones } from "./league-returns";
+import { refreshLeagueForm } from "./league-form";
 import { startEdge } from "../edge/edge";
 import { priceEdgeNow, startEdgePrices } from "../edge/edge-prices";
 import { startValueSettling } from "../edge/value-strategy";
@@ -188,10 +189,14 @@ async function main(): Promise<void> {
     }
     // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.
     void notifyLeagueMilestones(db).catch((err) => log.warn(`League milestones failed: ${err instanceof Error ? err.message : String(err)}`));
+    // How each strategy does in each league, for the league filters and alerts (league-form.ts): every hour.
+    refreshLeagueForm(db);
     // LAY badges: the same idea as Golden, for LAY groups (one notification each way).
     void monitorLayBadges(db).catch((err) => log.warn(`LAY badges failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3_600_000);
   adviceCheck.unref();
+  // And once soon after start, so a new deploy doesn't wait an hour for it (a stored copy is used meanwhile).
+  setTimeout(() => refreshLeagueForm(db), 90_000).unref();
 
   // Reads your bets from Betfair (read only) so the site knows within a minute whether a sent pick was placed.
   startBetfairPoller(db);

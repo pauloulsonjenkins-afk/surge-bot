@@ -20,6 +20,7 @@ import { displayName } from "../inplayguru/strategy-names";
 import { marketName } from "../members/catalogue";
 import { computeStrategyReturns } from "./winloss";
 import { ukDateOf, ukDayBounds } from "./uk-time";
+import { getStoredLeagueForm, leagueLevel, passesLeagueFilter, type LeagueFilter, type LeagueForm } from "../inplayguru/league-form";
 import { sendPush, type PushMessage } from "./push";
 import { log } from "./log";
 
@@ -36,6 +37,10 @@ export interface GoldenNotifySettings {
   allSlices: boolean;
   /** Alerts from a strategy doing well today (hotToday). */
   hotToday: boolean;
+  /** Only alerts in leagues where the strategy isn't red ("notRed") or is green ("greenOnly"); "off" = any league. */
+  leagues: LeagueFilter;
+  /** Golden alerts only for slices still holding their stage (not ones that have slipped). */
+  holdingOnly: boolean;
 }
 
 /** "Doing well today" needs at least this many settled, priced picks today. */
@@ -51,16 +56,17 @@ export function getGoldenNotify(db: EngineDb): GoldenNotifySettings {
       const at = k.indexOf("#");
       slices[at < 0 ? k : `${k.slice(0, at).toLowerCase()}${k.slice(at)}`] = true;
     }
-    return { slices, quiet: raw.quiet !== false, allSlices: raw.allSlices === true, hotToday: raw.hotToday === true };
+    const leagues: LeagueFilter = raw.leagues === "notRed" || raw.leagues === "greenOnly" ? raw.leagues : "off";
+    return { slices, quiet: raw.quiet !== false, allSlices: raw.allSlices === true, hotToday: raw.hotToday === true, leagues, holdingOnly: raw.holdingOnly === true };
   } catch {
-    return { slices: {}, quiet: true, allSlices: false, hotToday: false };
+    return { slices: {}, quiet: true, allSlices: false, hotToday: false, leagues: "off", holdingOnly: false };
   }
 }
 
 /** Switches one slice's notifications on or off, and/or quiet hours. Returns the settings now in force. */
 export function setGoldenNotify(
   db: EngineDb,
-  patch: { slice?: { strategyKey: string; id: string; on: boolean }; quiet?: boolean; allSlices?: boolean; hotToday?: boolean },
+  patch: { slice?: { strategyKey: string; id: string; on: boolean }; quiet?: boolean; allSlices?: boolean; hotToday?: boolean; leagues?: LeagueFilter; holdingOnly?: boolean },
 ): GoldenNotifySettings {
   const s = getGoldenNotify(db);
   if (patch.slice) {
@@ -71,8 +77,29 @@ export function setGoldenNotify(
   if (typeof patch.quiet === "boolean") s.quiet = patch.quiet;
   if (typeof patch.allSlices === "boolean") s.allSlices = patch.allSlices;
   if (typeof patch.hotToday === "boolean") s.hotToday = patch.hotToday;
+  if (patch.leagues === "off" || patch.leagues === "notRed" || patch.leagues === "greenOnly") s.leagues = patch.leagues;
+  if (typeof patch.holdingOnly === "boolean") s.holdingOnly = patch.holdingOnly;
   db.setSetting(KEY, JSON.stringify(s));
   return s;
+}
+
+/** The slices holding their Golden stage now (golden.ts keeps them, hourly, in "golden_badges"). */
+function holdingSlices(db: EngineDb): Set<string> {
+  try {
+    const held = JSON.parse(db.getSetting("golden_badges") ?? "{}") as Record<string, { stage: string | null; lostAt?: string }>;
+    return new Set(Object.entries(held).filter(([, b]) => b.stage && !b.lostAt).map(([k]) => k));
+  } catch {
+    return new Set();
+  }
+}
+
+const LEVEL_WORDS: Record<LeagueForm["level"], string> = { proven: "proven", green: "green", grey: "too few to judge", red: "red" };
+
+/** "Bundesliga: green for this strategy, +12% per £1 over 41" for a notification. */
+function leagueLine(name: string, f: LeagueForm | null): string {
+  if (!f || f.roi === null) return `${name}: no record for this strategy yet`;
+  const pct = `${f.roi > 0 ? "+" : f.roi < 0 ? "\u2212" : ""}${Math.abs(Math.round(f.roi * 1000) / 10)}%`;
+  return `${name}: ${LEVEL_WORDS[f.level]} for this strategy, ${pct} per £1 over ${f.n}`;
 }
 
 /** 23:00 to 07:00 UK time. */
@@ -109,19 +136,25 @@ export function goldenNotification(
 ): PushMessage | null {
   const notify = getGoldenNotify(db);
   const key = strategyLabel(p.strategy).toLowerCase();
-  const on = segments.filter((s) => notify.allSlices || notify.slices[`${key}#${s.id}`]);
+  const holding = notify.holdingOnly ? holdingSlices(db) : null;
+  const on = segments.filter((s) => (notify.allSlices || notify.slices[`${key}#${s.id}`]) && (!holding || holding.has(`${key}#${s.id}`)));
   if (on.length === 0 && !notify.hotToday) return null;
   if (notify.quiet && isQuietHour(now)) return null;
   const posted = Date.parse(p.messageAt ?? p.firstSeenAt);
   if (Number.isFinite(posted) && now.getTime() - posted > FRESH_MS) return null;
+  // The league: only where the strategy isn't red / is green, if asked (league-form.ts).
+  const form = getStoredLeagueForm(db);
+  const inLeague = leagueLevel(form, key, p.leagueKey);
+  if (notify.leagues !== "off" && form && !passesLeagueFilter(notify.leagues, inLeague?.level ?? "grey")) return null;
   // Worked out only when the switch is on and a notification could still go (it reads today's settled picks).
-  const form = notify.hotToday ? todayForm(db, key, now) : null;
-  const hot = form?.hot === true;
+  const today = notify.hotToday ? todayForm(db, key, now) : null;
+  const hot = today?.hot === true;
   if (on.length === 0 && !hot) return null;
 
   const first = on[0];
   const sliceNames = on.map((s) => s.label.replace(/^Golden: /, "")).join(" · ");
-  const formLine = form && hot ? `Today: ${form.won} of ${form.settled} won · ${form.units > 0 ? "+" : ""}${form.units}u · ${form.hitRate}% vs ${form.breakeven}% needed` : null;
+  const formLine = today && hot ? `Today: ${today.won} of ${today.settled} won · ${today.units > 0 ? "+" : ""}${today.units}u · ${today.hitRate}% vs ${today.breakeven}% needed` : null;
+  const leagueName = form?.names[p.leagueKey]?.league ?? p.competition ?? "This league";
   const match = [p.home && p.away ? `${p.home} v ${p.away}` : null, p.minute !== null ? `${p.minute}'` : "pre-match"].filter(Boolean).join(", ");
   const odds = alertOddsOfPick(p);
   const bet = [marketName(p.market) ?? p.selection ?? p.market, odds ? `@ ${odds.toFixed(2)}` : null].filter(Boolean).join(" ");
@@ -140,7 +173,7 @@ export function goldenNotification(
 
   return {
     title: `${first ? "Golden alert" : "Doing well today"} · ${displayName(db, key)}`,
-    body: [first ? sliceNames : null, formLine, match, `${bet} · ${what}`].filter(Boolean).join("\n"),
+    body: [first ? sliceNames : null, formLine, match, form ? leagueLine(leagueName, inLeague) : null, `${bet} · ${what}`].filter(Boolean).join("\n"),
     url: "/live",
     tag: `golden-${p.id}`,
     ...(first ? { muteSlice: { strategyKey: key, id: first.id, name: first.label.replace(/^Golden: /, "") } } : {}),

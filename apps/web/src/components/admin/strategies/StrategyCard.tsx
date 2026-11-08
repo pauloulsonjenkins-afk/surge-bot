@@ -4,6 +4,7 @@ import { useState } from "react";
 import { type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
 import { trendOf } from "@/components/admin/StrategyWeekly";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
+import { LeaguesCard } from "@/components/admin/strategies/LeaguesCard";
 import type { WeekTally } from "@/server/engine-client";
 import { marketName } from "@/lib/markets";
 import { gbp, units as formatUnits, tidyText } from "@/lib/format";
@@ -268,6 +269,7 @@ export function StrategyCard({
             <ReadyForLive row={row} check={check} hasStop={!!bet?.stopLoss && (bet.stopLoss.dailyLoss !== null || bet.stopLoss.lossRun !== null)} />
           )}
           {bet && settings && <BetSettings s={bet} settings={settings} bank={bank} />}
+          <LeaguesCard strategyKey={row.label.toLowerCase()} name={names.name(row.label)} settings={settings} />
           {settings && (row.returns?.segments ?? []).map((s) => (
             <SegmentBetting key={s.id} strategyKey={row.label.toLowerCase()} strategyName={names.name(row.label)} segment={s} settings={settings} strategyLive={modeOf(row) === "live"} />
           ))}

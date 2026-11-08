@@ -410,6 +410,8 @@ export interface SendingSettings {
   stakePct: Record<string, number | null>;
   /** Minimum back odds per strategy (lower-case name), sent to the betting software as MinPrice. Send null to clear one. */
   minOdds: Record<string, number | null>;
+  /** Which leagues a strategy (lower-case name) or slice ("strategy#slice") is bet Live in; the rest go to Sim. "off" or null clears one. Missing on an older engine. */
+  leagueFilter?: Record<string, LeagueFilter | null>;
   /** Lay strategies: the highest price to lay at, per strategy (lower-case name). Send null to clear one. */
   maxLayOdds?: Record<string, number | null>;
   maxStake: number;
@@ -489,6 +491,35 @@ export interface LearnedName {
 }
 
 export type SendingPatch = Partial<SendingSettings> & { stopLoss?: Record<string, StopLossPatch> };
+
+/** A strategy's verdict in one league (engine inplayguru/league-form.ts). */
+export interface LeagueFormRow {
+  key: string;
+  league: string;
+  country: string | null;
+  level: "proven" | "green" | "grey" | "red";
+  n: number;
+  roi: number | null;
+  low: number | null;
+  high: number | null;
+}
+export interface FilterBacktest {
+  n: number;
+  staked: number;
+  profit: number;
+  roi: number | null;
+}
+export interface LeagueFormReport {
+  /** When it was last worked out (hourly); null before the first time. */
+  at: string | null;
+  greenFrom: number;
+  provenFrom: number;
+  /** Strategy key (lower-case) -> its leagues, best first, and what each filter would have returned. */
+  strategies: Record<string, { leagues: LeagueFormRow[]; backtest: Record<LeagueFilter, FilterBacktest> | null }>;
+}
+export function fetchLeagueForm(): Promise<LeagueFormReport> {
+  return engineCall<LeagueFormReport>("/internal/leagues/form", "league form", { timeoutMs: 20000 });
+}
 
 async function sendingRequest(method: "GET" | "PUT", body?: SendingPatch): Promise<SendingState> {
   const baseUrl = process.env.ENGINE_BASE_URL;
@@ -2095,7 +2126,14 @@ export interface GoldenReport {
   notifyAllSlices?: boolean;
   /** Alerts from a strategy doing well today notify (missing on an older engine). */
   notifyHotToday?: boolean;
+  /** Alerts only in leagues where the strategy isn't red / is green (missing on an older engine = any league). */
+  notifyLeagues?: LeagueFilter;
+  /** Golden alerts only for slices still holding their stage. */
+  notifyHoldingOnly?: boolean;
 }
+
+/** What a strategy or slice may bet in, or which alerts notify: any league, not red ones, or green (and proven) only. */
+export type LeagueFilter = "off" | "notRed" | "greenOnly";
 
 export function fetchGolden(): Promise<GoldenReport> {
   return engineCall<GoldenReport>("/internal/golden", "Golden", { timeoutMs: 30000 });
@@ -2107,7 +2145,7 @@ export type GoldenActionBody =
   | { action: "unwatch"; strategyKey: string; id: string }
   | { action: "notify"; strategyKey: string; id: string; on: boolean }
   | { action: "quiet"; quiet: boolean }
-  | { action: "alerts"; allSlices?: boolean; hotToday?: boolean };
+  | { action: "alerts"; allSlices?: boolean; hotToday?: boolean; leagues?: LeagueFilter; holdingOnly?: boolean };
 
 export function goldenAction(body: GoldenActionBody): Promise<GoldenReport> {
   const path = { watch: "/internal/golden/watch", unwatch: "/internal/golden/unwatch", notify: "/internal/golden/notify", quiet: "/internal/golden/notify", alerts: "/internal/golden/notify" }[body.action];

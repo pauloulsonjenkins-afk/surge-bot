@@ -6,6 +6,7 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { SegmentLabel } from "@/components/ui/SegmentLabel";
 import { useSaveSending, type SendingSettings } from "@/queries/use-sending";
 import { useGolden } from "@/queries/use-golden";
+import { LeagueFilterControl } from "@/components/admin/strategies/LeaguesCard";
 
 /** The stake range this box accepts, % of the balance (the engine allows up to 25%; nothing here is meant to go near that). */
 const MIN_PCT = 0.1;
@@ -202,6 +203,14 @@ export function SegmentBetting({
           Safety: goes back to Sim by itself if it stops being Golden, or its own Live bets lose more than {Math.abs((safety?.worstRoi ?? -0.05) * 100)}% per £1 over{" "}
           {safety?.minBets ?? 30}+ bets.
         </p>
+      )}
+      {settings.leagueFilter !== undefined && (
+        <div className="mt-2">
+          <p className="mb-1 text-ink-muted">
+            Leagues{settings.leagueFilter[key] ? "" : " (as the strategy)"}: judged on the strategy&apos;s record in each league
+          </p>
+          <LeagueFilterControl filterKey={key} name={`${strategyName}'s ${name}`} settings={settings} inherited={settings.leagueFilter[strategyKey] ?? "off"} />
+        </div>
       )}
       {save.error && <p className="mt-1 text-destructive">{save.error.message}</p>}
     </div>

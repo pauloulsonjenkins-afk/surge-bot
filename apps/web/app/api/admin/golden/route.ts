@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
-import { fetchGolden, goldenAction } from "@/server/engine-client";
+import { fetchGolden, goldenAction, type LeagueFilter } from "@/server/engine-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,11 +29,18 @@ export async function POST(request: Request) {
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   try {
     if (b.action === "quiet" && typeof b.quiet === "boolean") return NextResponse.json(await goldenAction({ action: "quiet", quiet: b.quiet }));
-    // { action: "alerts", allSlices?, hotToday? }: every Golden slice, and strategies doing well today (golden-notify.ts).
-    if (b.action === "alerts" && (typeof b.allSlices === "boolean" || typeof b.hotToday === "boolean"))
-      return NextResponse.json(
-        await goldenAction({ action: "alerts", ...(typeof b.allSlices === "boolean" ? { allSlices: b.allSlices } : {}), ...(typeof b.hotToday === "boolean" ? { hotToday: b.hotToday } : {}) }),
-      );
+    // { action: "alerts", allSlices?, hotToday?, leagues?, holdingOnly? }: every Golden slice, strategies doing well today,
+    // only in green / not-red leagues, only slices holding their stage (golden-notify.ts).
+    if (b.action === "alerts") {
+      const leagues: LeagueFilter | undefined = b.leagues === "off" || b.leagues === "notRed" || b.leagues === "greenOnly" ? b.leagues : undefined;
+      const patch = {
+        ...(typeof b.allSlices === "boolean" ? { allSlices: b.allSlices } : {}),
+        ...(typeof b.hotToday === "boolean" ? { hotToday: b.hotToday } : {}),
+        ...(leagues ? { leagues } : {}),
+        ...(typeof b.holdingOnly === "boolean" ? { holdingOnly: b.holdingOnly } : {}),
+      };
+      if (Object.keys(patch).length > 0) return NextResponse.json(await goldenAction({ action: "alerts", ...patch }));
+    }
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't change that." }, { status: 400 });
   }

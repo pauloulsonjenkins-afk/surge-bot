@@ -21,6 +21,7 @@
  *   GET  /internal/strategies/weeks             each strategy's £ by week, last 7 days and the 28 before (admin only)
  *   GET  /internal/leagues/returns?since=       money by league and strategy within it, and stopped strategies (admin only)
  *   POST /internal/picks/bet-now {pickId, stake?}     bet a Sim pick for real now, with the usual safety checks (admin only)
+ *   GET  /internal/leagues/form                 each strategy's verdict in each league and the league-filter backtest (admin only)
  *   POST /internal/leagues/block                stop or restart a strategy in a league {strategy, leagueKey, league, blocked}
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N|since=ISO  totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
@@ -122,6 +123,7 @@ import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeT
 import { applyMyBet, type MyBet } from "../tips/track";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
+import { leagueFormReport } from "./league-form";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { pickDetail } from "./pick-detail";
@@ -689,6 +691,12 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
+    if (req.method === "GET" && path === "/internal/leagues/form") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, leagueFormReport(db));
+      return;
+    }
+
     if (req.method === "GET" && path === "/internal/leagues") {
       if (!requireAdmin(req, res)) return;
       send(res, 200, { leagues: db.listLeaguesForAdmin() });
@@ -708,8 +716,11 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             // { allSlices } every watched slice counts; { hotToday } alerts from a strategy doing well today.
             const allSlices = typeof body.allSlices === "boolean" ? body.allSlices : undefined;
             const hotToday = typeof body.hotToday === "boolean" ? body.hotToday : undefined;
-            if (!slice && quiet === undefined && allSlices === undefined && hotToday === undefined) throw new Error("What should change?");
-            setGoldenNotify(db, { slice, quiet, allSlices, hotToday });
+            // { leagues: "off" | "notRed" | "greenOnly" } and { holdingOnly } (golden-notify.ts).
+            const leagues = body.leagues === "off" || body.leagues === "notRed" || body.leagues === "greenOnly" ? body.leagues : undefined;
+            const holdingOnly = typeof body.holdingOnly === "boolean" ? body.holdingOnly : undefined;
+            if (!slice && quiet === undefined && allSlices === undefined && hotToday === undefined && leagues === undefined && holdingOnly === undefined) throw new Error("What should change?");
+            setGoldenNotify(db, { slice, quiet, allSlices, hotToday, leagues, holdingOnly });
           } else if (typeof body.strategyKey !== "string") throw new Error("Which strategy?");
           else if (path === "/internal/golden/watch") watchSegment(db, body.strategyKey, body.rule as Feature[]);
           else if (path === "/internal/golden/unwatch") unwatchSegment(db, body.strategyKey, String(body.id ?? ""));
