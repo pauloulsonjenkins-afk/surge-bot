@@ -16,6 +16,7 @@ import { QueryError } from "@/components/ui/QueryError";
 import { betText } from "@/lib/markets";
 import { useLivePicks, type PublicPick as LivePick } from "@/queries/use-live";
 import { UpdatedAgo } from "@/components/ui/UpdatedAgo";
+import { TodayMatches } from "@/components/live/TodayMatches";
 import { useMe } from "@/queries/use-me";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { Chip, WarnIcon, type ChipTone } from "@/components/ui/Chip";
@@ -573,7 +574,7 @@ export default function LivePage() {
       title="Live"
       subtitle={
         <>
-          Matches in play with their alerts, most recent first. <UpdatedAgo at={dataUpdatedAt || null} />
+          Matches in play with their alerts. <UpdatedAgo at={dataUpdatedAt || null} />
         </>
       }
     />
@@ -607,6 +608,7 @@ export default function LivePage() {
   return (
     <div className="space-y-6 px-4 py-4">
       {header}
+      <TodayMatches now={now} withAlerts={matches.size} />
 
       {admin && (
         <Segmented

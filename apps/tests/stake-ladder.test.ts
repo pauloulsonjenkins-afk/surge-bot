@@ -92,6 +92,11 @@ test("back to Sim: the reason also gives the whole Live record, so it doesn't co
   const KEY = S.toLowerCase();
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 1000 });
+  // Switched Live well before these bets (a switch "now" with bets dated earlier can't happen for real).
+  {
+    const raw = JSON.parse(db.getSetting("sending")!) as { modeSince?: Record<string, string> };
+    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: new Date(Date.now() - 60 * 86_400_000).toISOString() } }));
+  }
   const now = new Date();
   let id = 1;
   const alert = (n: number, result?: "hit" | "miss") =>
@@ -123,6 +128,11 @@ test("a Live / Sim change from a suggestion holds back the opposite one for a we
   const KEY = S.toLowerCase();
   const db = new EngineDb(":memory:", () => {});
   saveSendingSettings(db, { enabled: true, stakes: { [KEY]: 1 }, strategies: { [KEY]: true }, dailyCap: 1000 });
+  // Switched Live well before these bets (a switch "now" with bets dated earlier can't happen for real).
+  {
+    const raw = JSON.parse(db.getSetting("sending")!) as { modeSince?: Record<string, string> };
+    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: new Date(Date.now() - 60 * 86_400_000).toISOString() } }));
+  }
   const now = new Date();
   let id = 1;
   const alert = (n: number, result?: "hit" | "miss") =>

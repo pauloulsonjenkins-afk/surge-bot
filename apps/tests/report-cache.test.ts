@@ -235,7 +235,9 @@ test("Apply and the automatic stakes work on fresh figures, not on the suggestio
   // Apply works it out again: the raise is there.
   assert.equal(applyAdvice(db, KEY, "stake-up", now).action, "Raise to £2");
   assert.equal(getSendingSettings(db).stakes[KEY], 2);
-  // And so do the automatic stakes, on the same fresh figures (the step a week later).
+  // And so do the automatic stakes, on the same fresh figures (the step a week later, once the new stake has run
+  // SETTLE_BETS bets).
+  for (let i = 111; i <= 140; i++) settle(db, i, i % 4 === 0 ? "miss" : "hit");
   saveSendingSettings(db, { ladderAuto: true });
   assert.equal(autoApplyStakes(db, new Date(now.getTime() + 8 * 86_400_000)).length, 1);
   assert.equal(getSendingSettings(db).stakes[KEY], 3);

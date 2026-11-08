@@ -50,7 +50,7 @@
 import { RECORD_FROM, type EngineDb } from "../storage/engine-db";
 import { ALL_TIME, computeAdviceReturns, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
 import { getSendingSettings, saveSendingSettings, strategyLabel, type SendingSettings } from "../inplayguru/bet-feed";
-import { goldenReport } from "./golden";
+import { goldenReport, liveSinceRecord } from "./golden";
 import { getArchived } from "./archive";
 import { getStopLossRules } from "../inplayguru/stop-loss";
 import { priceCheckReport } from "../betfair/price-check";
@@ -157,6 +157,16 @@ const SLICE_UP_PICKS = 20;
 const SLICE_UP_ROI = 0.1;
 const SLICE_UP_UNITS = 3;
 /** Early warning for a Live strategy (see the header). */
+/**
+ * A change needs time to show (owner, 8 Nov 2026: "it keeps telling me to change a strategy before it has had a chance
+ * to run"). A Live strategy is judged only on its Live bets since its latest change (switched Live, stake raised, cut or
+ * stepped), and nothing is suggested for it until it has this many of them, apart from the early warning on a heavy
+ * stake and the fast cut after a raise. Before this, bets from an earlier Live spell counted: Away Super Fav 2 Goals was
+ * told "back to Sim, -100% over its last 31 Live bets" two bets after going Live again.
+ */
+export const SETTLE_BETS = 30;
+/** A Live slice's stake moves only after this many of its own Live bets since it went Live or its stake last moved. */
+export const SLICE_SETTLE_BETS = 20;
 const EARLY_BETS = 12;
 const EARLY_ROI = -0.08;
 const EARLY_UNITS = -1;
@@ -350,22 +360,31 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
       }
       continue;
     }
-    // Live: back to Sim first (losing clearly over the last 30 days), else the stake ladder.
-    if (rec) {
-      const l = rec.live;
+    // Live: judged on its bets since its latest change only (SETTLE_BETS), and only the last 30 days of those.
+    const steps = lastSteps(db);
+    const changeAt = [settings.modeSince[key], steps[key], raised[key]?.at, raised[key]?.cutAt].filter((x): x is string => typeof x === "string").sort().at(-1) ?? null;
+    const keyRows = rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === key);
+    const recentFrom = new Date(now.getTime() - 30 * 86_400_000).toISOString();
+    const sinceLatest = changeAt ? computeStrategyReturns(db, changeAt, { fromRuleChange: true, rows: keyRows })[key]?.live : sinceChange[key]?.live;
+    const windowFrom = changeAt && changeAt > recentFrom ? changeAt : recentFrom;
+    const win = changeAt ? computeStrategyReturns(db, windowFrom, { fromRuleChange: true, rows: keyRows })[key]?.live : rec?.live;
+    const settled = (sinceLatest?.counted ?? 0) >= SETTLE_BETS;
+    // Back to Sim first (losing clearly since the change, last 30 days), else the stake ladder.
+    if (win) {
+      const l = win;
       const adj = adjusted(l.roi, l.counted);
       // The early warning: a heavy stake on a clearly losing short record, ahead of the slower rule below.
       if (l.counted >= EARLY_BETS && l.counted < 30 && l.roi !== null && l.roi <= EARLY_ROI && (l.units ?? 0) <= EARLY_UNITS && (settings.stakePct[key] ?? 0) >= EARLY_STAKE_PCT) {
         out.push({ key, kind: "back-to-sim", early: true, action: "Put back to Sim", reason: `Early warning: ${pct(l.roi)} per £1 (${l.units} units) over its last ${l.counted} Live bets at ${settings.stakePct[key]}% of the balance. Too few bets to be sure, but a stake this size is costly if it is real.` });
         continue;
       }
-      if (l.counted >= 30 && adj !== null && adj < -0.02) {
+      if (settled && l.counted >= 30 && adj !== null && adj < -0.02) {
         // The strategy's whole Live record since its rules last changed, for comparison: it's often still green even
         // when the last 30 days have turned, which otherwise reads as a contradiction once the admin switches to Sim
         // and the headline figure (a different window) looks fine. Said here so the two numbers are never seen apart.
         const whole = sinceChange[key]?.live;
         const wholeNote = whole && whole.counted >= 30 && whole.roi !== null ? ` Its whole Live record is still ${pct(whole.roi)} over ${whole.counted} bets — this is about its LAST 30 days only, not a change to that overall figure.` : "";
-        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} Live bets (30 days), ${pct(adj)} adjusted for luck.${wholeNote}` });
+        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} Live bets${changeAt && changeAt > recentFrom ? ` since ${new Date(changeAt).toISOString().slice(0, 10)}` : " (30 days)"}, ${pct(adj)} adjusted for luck.${wholeNote}` });
         continue;
       }
     }
@@ -389,8 +408,10 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
         continue;
       }
     }
+    // Not settled since its latest change: nothing more to suggest yet.
+    if (!settled) continue;
     const cutRecently = !!raise?.cutAt && now.getTime() - Date.parse(raise.cutAt) < NO_RAISE_AFTER_CUT_MS;
-    const recentOk = !!rec && rec.live.counted > 0 && rec.live.roi !== null && rec.live.roi > 0;
+    const recentOk = !!win && win.counted > 0 && win.roi !== null && win.roi > 0;
     if (l.counted >= RAISE_FROM && l.roi !== null && l.roi >= 0.05 && beatsBreakeven(l) && recentOk) {
       if (cutRecently) continue;
       const to = ladderStep(stake, 1);
@@ -430,7 +451,17 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
   }
   // Golden slices: the working parts of a strategy, bet on their own.
   try {
-    out.push(...timed("golden", () => sliceAdviceFrom(goldenReport(db, now, { skipFinder: true, rows }).slices.filter((sl) => !archived[sl.strategyKey]), settings)));
+    const sliceSteps = lastSteps(db);
+    out.push(
+      ...timed("golden", () =>
+        sliceAdviceFrom(goldenReport(db, now, { skipFinder: true, rows }).slices.filter((sl) => !archived[sl.strategyKey]), settings).filter((a) => {
+          if ((a.kind !== "slice-stake-up" && a.kind !== "slice-stake-down") || !a.slice) return true;
+          const cfg = settings.segmentBets[a.key];
+          const from = [cfg?.liveSince, sliceSteps[a.key]].filter((x): x is string => typeof x === "string").sort().at(-1);
+          return !!from && liveSinceRecord(db, a.slice.strategyKey, a.slice.id, from).n >= SLICE_SETTLE_BETS;
+        }),
+      ),
+    );
   } catch (err) {
     log.warn(`Slice suggestions failed: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -454,6 +485,7 @@ export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = n
     saveSendingSettings(db, { ...stake, ...(a.kind === "try-live" ? { strategies: { [k]: true } } : {}) });
   }
   if (a.kind === "try-live" || a.kind === "back-to-sim") db.setSetting(LOCKS_KEY, JSON.stringify({ ...readLocks(db), [k]: { kind: a.kind, at: now.toISOString() } }));
+  if (a.kind === "slice-stake-up" || a.kind === "slice-stake-down") db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
   if (a.kind === "stake-up" || a.kind === "stake-down") {
     db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
     // Raises are watched for a quick cut; a cut after one blocks raising for a while; any other cut ends the watch.

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { autoApplyStakes, autoStakeQueue, AUTO_GAP_MS, strategyAdvice, visibleAdvice } from "../src/server/strategy-advice";
+import { autoApplyStakes, autoStakeQueue, strategyAdvice, visibleAdvice } from "../src/server/strategy-advice";
 
 const S = "Blistering Momentum";
 const KEY = S.toLowerCase();
@@ -64,10 +64,9 @@ test("with automatic stakes, the raise happens, and the next step waits a week a
   const now = new Date();
   assert.equal(autoApplyStakes(db, now).length, 1);
   assert.equal(getSendingSettings(db).stakes[KEY], 2);
-  assert.ok(strategyAdvice(db, now).some((a) => a.kind === "stake-up"), "the ladder still sees the next step");
-  assert.equal(visibleAdvice(db, now).filter((a) => a.kind === "stake-up" || a.kind === "stake-down").length, 0, "but it isn't suggested");
-  const q = autoStakeQueue(db, now);
-  assert.equal(q.length, 1);
-  assert.equal(Date.parse(q[0]!.due), now.getTime() + AUTO_GAP_MS);
-  assert.equal(autoApplyStakes(db, new Date(now.getTime() + 3_600_000)).length, 0, "nothing more within the week");
+  // The new stake has to run first (SETTLE_BETS new Live bets since the raise): no next step, queued or suggested.
+  assert.equal(strategyAdvice(db, now).some((a) => a.kind === "stake-up"), false, "the next step waits for bets at the new stake");
+  assert.equal(visibleAdvice(db, now).filter((a) => a.kind === "stake-up" || a.kind === "stake-down").length, 0);
+  assert.equal(autoStakeQueue(db, now).length, 0);
+  assert.equal(autoApplyStakes(db, new Date(now.getTime() + 8 * 86_400_000)).length, 0, "not even a week on, with no new bets");
 });
