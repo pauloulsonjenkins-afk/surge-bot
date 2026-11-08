@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { GoldenBadge, sliceName } from "@/components/ui/SegmentLabel";
+import { bestSlicesFirst, GoldenBadge, sliceName } from "@/components/ui/SegmentLabel";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SegmentBetting, useSliceLive } from "@/components/admin/SegmentBetting";
 import { useGolden, type GoldenSlice } from "@/queries/use-golden";
@@ -114,11 +114,12 @@ export function groupSlices(slices: GoldenSlice[], segmentBets: SendingSettings[
   const cfgOf = (s: GoldenSlice) => segmentBets?.[`${s.strategyKey}#${s.id}`] ?? null;
   const own = (s: GoldenSlice) => cfgOf(s)?.live === true;
   const withStrategy = (s: GoldenSlice) => cfgOf(s) === null && s.strategyLive;
-  const best = (s: GoldenSlice) => s.slice.all.units ?? s.slice.all.roi ?? -Infinity;
+  // Best first in every list (bestSlicesFirst): Golden stage, then return after allowing for luck.
+  const ordered = bestSlicesFirst(slices, (s) => s.status, (s) => s.slice.all);
   return {
-    liveOwn: slices.filter(own),
-    proving: slices.filter((s) => !own(s) && !withStrategy(s) && (s.status === "full" || s.status === "trial")).sort((a, b) => best(b) - best(a)),
-    others: slices.filter((s) => !own(s) && !withStrategy(s) && s.status !== "full" && s.status !== "trial"),
+    liveOwn: ordered.filter(own),
+    proving: ordered.filter((s) => !own(s) && !withStrategy(s) && (s.status === "full" || s.status === "trial")),
+    others: ordered.filter((s) => !own(s) && !withStrategy(s) && s.status !== "full" && s.status !== "trial"),
   };
 }
 

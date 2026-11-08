@@ -30,6 +30,21 @@ export function bestStatus(statuses: Array<SliceStatus | null>): SliceStatus | n
   return (["full", "trial", "candidate", "not holding up", "quiet"] as const).find((s) => statuses.includes(s)) ?? null;
 }
 
+const STAGE_RANK: Record<SliceStatus, number> = { full: 0, trial: 1, candidate: 2, quiet: 3, "not holding up": 4 };
+
+/**
+ * Slices best first (owner, 8 Nov 2026: "where a strategy has a slice performing well, put the performing ones at the
+ * top"): by Golden stage (full stake, Live trial, candidate, watched, not holding up), then by return per £1 after
+ * allowing for luck (roi x n / (n + 50), as the suggestions judge it), so a lucky few picks don't jump the queue.
+ */
+export function bestSlicesFirst<T>(items: T[], statusOf: (t: T) => SliceStatus | null, ret: (t: T) => { roi: number | null; counted: number } | null): T[] {
+  const adjusted = (t: T) => {
+    const r = ret(t);
+    return r && r.roi !== null && r.counted > 0 ? (r.roi * r.counted) / (r.counted + 50) : -Infinity;
+  };
+  return [...items].sort((a, b) => STAGE_RANK[statusOf(a) ?? "quiet"] - STAGE_RANK[statusOf(b) ?? "quiet"] || adjusted(b) - adjusted(a));
+}
+
 /** A slice's name without the engine's "Golden: " in front, for places that show its status separately. */
 export function sliceName(label: string): string {
   return label.replace(/^Golden: /, "");

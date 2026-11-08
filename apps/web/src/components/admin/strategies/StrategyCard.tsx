@@ -5,6 +5,8 @@ import { type AdminStrategy, type StrategyReturn } from "@/queries/use-strategie
 import { trendOf } from "@/components/admin/StrategyWeekly";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import { LeaguesCard } from "@/components/admin/strategies/LeaguesCard";
+import { bestSlicesFirst } from "@/components/ui/SegmentLabel";
+import { useSliceStatus } from "@/queries/use-golden";
 import type { WeekTally } from "@/server/engine-client";
 import { marketName } from "@/lib/markets";
 import { gbp, units as formatUnits, tidyText } from "@/lib/format";
@@ -78,6 +80,7 @@ export function StrategyCard({
   onDelete: () => void;
 }) {
   const [merging, setMerging] = useState(false);
+  const sliceStatus = useSliceStatus();
   const [showCurve, setShowCurve] = useState(false);
   const [target, setTarget] = useState("");
   const live = record(row.liveHits ?? 0, row.liveMisses ?? 0);
@@ -270,7 +273,7 @@ export function StrategyCard({
           )}
           {bet && settings && <BetSettings s={bet} settings={settings} bank={bank} />}
           <LeaguesCard strategyKey={row.label.toLowerCase()} name={names.name(row.label)} settings={settings} />
-          {settings && (row.returns?.segments ?? []).map((s) => (
+          {settings && bestSlicesFirst(row.returns?.segments ?? [], (s) => sliceStatus(row.label, s.id), (s) => s.in.all).map((s) => (
             <SegmentBetting key={s.id} strategyKey={row.label.toLowerCase()} strategyName={names.name(row.label)} segment={s} settings={settings} strategyLive={modeOf(row) === "live"} />
           ))}
           <p className="text-xs text-ink-muted">

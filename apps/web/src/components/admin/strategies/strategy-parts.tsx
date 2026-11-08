@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { type AdminStrategy, type StrategyReturn } from "@/queries/use-strategies";
-import { SegmentLabel } from "@/components/ui/SegmentLabel";
+import { bestSlicesFirst, SegmentLabel } from "@/components/ui/SegmentLabel";
 import { useSliceStatus } from "@/queries/use-golden";
 import { gbp, signedPct } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -269,8 +269,9 @@ export function ByBetLine({ row, mode }: { row: AdminStrategy; mode: "all" | "li
  */
 export function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | "live" | "sim" }) {
   const sliceStatus = useSliceStatus();
-  const segs = row.returns?.segments;
-  if (!segs?.length) return null;
+  const raw = row.returns?.segments;
+  if (!raw?.length) return null;
+  const segs = bestSlicesFirst(raw, (s) => sliceStatus(row.label, s.id), (s) => s.in.all);
   const part = (m: StrategyReturn) => {
     const hits = m.hits ?? 0;
     return (
