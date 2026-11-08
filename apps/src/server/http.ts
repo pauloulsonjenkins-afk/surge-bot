@@ -705,8 +705,11 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             // { strategyKey, id, on } for one slice's notifications, and/or { quiet } for quiet hours (golden-notify.ts).
             const slice = typeof body.strategyKey === "string" && typeof body.id === "string" && typeof body.on === "boolean" ? { strategyKey: body.strategyKey, id: body.id, on: body.on } : undefined;
             const quiet = typeof body.quiet === "boolean" ? body.quiet : undefined;
-            if (!slice && quiet === undefined) throw new Error("What should change?");
-            setGoldenNotify(db, { slice, quiet });
+            // { allSlices } every watched slice counts; { hotToday } alerts from a strategy doing well today.
+            const allSlices = typeof body.allSlices === "boolean" ? body.allSlices : undefined;
+            const hotToday = typeof body.hotToday === "boolean" ? body.hotToday : undefined;
+            if (!slice && quiet === undefined && allSlices === undefined && hotToday === undefined) throw new Error("What should change?");
+            setGoldenNotify(db, { slice, quiet, allSlices, hotToday });
           } else if (typeof body.strategyKey !== "string") throw new Error("Which strategy?");
           else if (path === "/internal/golden/watch") watchSegment(db, body.strategyKey, body.rule as Feature[]);
           else if (path === "/internal/golden/unwatch") unwatchSegment(db, body.strategyKey, String(body.id ?? ""));

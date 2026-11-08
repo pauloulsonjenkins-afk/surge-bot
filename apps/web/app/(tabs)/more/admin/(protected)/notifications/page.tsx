@@ -16,7 +16,7 @@ const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour:
 const KINDS: Array<{ value: string; label: string; test: (n: SentNotification) => boolean }> = [
   { value: "all", label: "All", test: () => true },
   { value: "suggest", label: "Suggestions", test: (n) => /suggestion|stake (raised|lowered)|golden finder|proved golden|golden again|badge lost|switched to sim/i.test(n.title) },
-  { value: "golden", label: "Golden alerts", test: (n) => /^golden alert/i.test(n.title) },
+  { value: "golden", label: "Game alerts", test: (n) => /^(golden alert|doing well today)/i.test(n.title) },
   { value: "betting", label: "Betting", test: (n) => /not placed|picks not placed|betting (paused|resumed)|loss stop/i.test(n.title) },
   { value: "results", label: "Results", test: (n) => /result|summary|today/i.test(n.title) },
 ];

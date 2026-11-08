@@ -2091,6 +2091,10 @@ export interface GoldenReport {
   safety?: { minBets: number; worstRoi: number };
   /** Golden alert notifications: none between 23:00 and 07:00 UK while on. */
   notifyQuiet?: boolean;
+  /** Every watched slice's alerts notify, without each slice's own switch (missing on an older engine). */
+  notifyAllSlices?: boolean;
+  /** Alerts from a strategy doing well today notify (missing on an older engine). */
+  notifyHotToday?: boolean;
 }
 
 export function fetchGolden(): Promise<GoldenReport> {
@@ -2102,10 +2106,11 @@ export type GoldenActionBody =
   | { action: "watch"; strategyKey: string; rule: string[] }
   | { action: "unwatch"; strategyKey: string; id: string }
   | { action: "notify"; strategyKey: string; id: string; on: boolean }
-  | { action: "quiet"; quiet: boolean };
+  | { action: "quiet"; quiet: boolean }
+  | { action: "alerts"; allSlices?: boolean; hotToday?: boolean };
 
 export function goldenAction(body: GoldenActionBody): Promise<GoldenReport> {
-  const path = { watch: "/internal/golden/watch", unwatch: "/internal/golden/unwatch", notify: "/internal/golden/notify", quiet: "/internal/golden/notify" }[body.action];
+  const path = { watch: "/internal/golden/watch", unwatch: "/internal/golden/unwatch", notify: "/internal/golden/notify", quiet: "/internal/golden/notify", alerts: "/internal/golden/notify" }[body.action];
   return engineCall<GoldenReport>(path, "Golden", { method: "POST", body, timeoutMs: 30000 });
 }
 

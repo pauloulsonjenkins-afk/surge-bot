@@ -393,12 +393,43 @@ export default function GoldenPage() {
               </div>
             )}
             {/* Folded to one line: it's set once and rarely changed, and it pushed every slice down a phone screen. */}
-            {allMainSlices.length > 0 && (
+            {/* Shown even with nothing watched: "doing well today" doesn't need a slice. */}
               <details className="mb-3 rounded-md bg-surface-2 px-3 text-xs text-ink-muted">
                 <summary className="flex min-h-11 cursor-pointer items-center gap-1 font-medium text-ink">
-                  <BellRing size={14} aria-hidden className="shrink-0" /> Alert notifications · {allMainSlices.filter((s) => s.notify).length} on · quiet 23:00–07:00 {data.notifyQuiet === false ? "off" : "on"}
+                  <BellRing size={14} aria-hidden className="shrink-0" /> Alert notifications ·{" "}
+                  {[data.notifyAllSlices ? "every slice" : `${allMainSlices.filter((s) => s.notify).length} slices`, data.notifyHotToday ? "doing well today" : null].filter(Boolean).join(" + ")} · quiet{" "}
+                  {data.notifyQuiet === false ? "off" : "on"}
                 </summary>
                 <div className="pb-3">
+                  {/* The two switches that cover everything at once (owner, 8 Nov 2026). */}
+                  <div className="mb-3 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      aria-pressed={data.notifyAllSlices === true}
+                      disabled={act.isPending}
+                      onClick={() => act.mutate({ action: "alerts", allSlices: data.notifyAllSlices !== true })}
+                      className={`${action} justify-between gap-3 text-left ${data.notifyAllSlices ? "bg-accent/15 text-ink" : "text-ink"}`}
+                    >
+                      <span>
+                        <span className="block font-semibold">Every Golden slice</span>
+                        <span className="block font-normal text-ink-muted">An alert in any watched slice, no need to switch each one on.</span>
+                      </span>
+                      <span className="shrink-0 font-semibold">{data.notifyAllSlices ? "On" : "Off"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={data.notifyHotToday === true}
+                      disabled={act.isPending}
+                      onClick={() => act.mutate({ action: "alerts", hotToday: data.notifyHotToday !== true })}
+                      className={`${action} justify-between gap-3 text-left ${data.notifyHotToday ? "bg-accent/15 text-ink" : "text-ink"}`}
+                    >
+                      <span>
+                        <span className="block font-semibold">Strategies doing well today</span>
+                        <span className="block font-normal text-ink-muted">3+ settled today, in profit and at or above break-even. A same-day run is a weak guide on its own.</span>
+                      </span>
+                      <span className="shrink-0 font-semibold">{data.notifyHotToday ? "On" : "Off"}</span>
+                    </button>
+                  </div>
                   <p>
                     Switch &ldquo;Notify me&rdquo; on for a slice (open it below) to get a notification the moment one of its alerts arrives: the match, the
                     bet, the price and whether GoalBrew bets it. One per alert, even if it&apos;s in several slices. Each has a &ldquo;Mute these&rdquo; button.
@@ -419,7 +450,6 @@ export default function GoldenPage() {
                   </button>
                 </div>
               </details>
-            )}
             {/* A switch that couldn't be saved says so here, near the switches, not only at the foot of the page. */}
             {act.error && <p className="mb-3 text-xs text-destructive">Couldn&apos;t save that: {act.error.message}</p>}
             {mainSlices.length === 0 ? (

@@ -29,6 +29,11 @@ export async function POST(request: Request) {
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   try {
     if (b.action === "quiet" && typeof b.quiet === "boolean") return NextResponse.json(await goldenAction({ action: "quiet", quiet: b.quiet }));
+    // { action: "alerts", allSlices?, hotToday? }: every Golden slice, and strategies doing well today (golden-notify.ts).
+    if (b.action === "alerts" && (typeof b.allSlices === "boolean" || typeof b.hotToday === "boolean"))
+      return NextResponse.json(
+        await goldenAction({ action: "alerts", ...(typeof b.allSlices === "boolean" ? { allSlices: b.allSlices } : {}), ...(typeof b.hotToday === "boolean" ? { hotToday: b.hotToday } : {}) }),
+      );
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't change that." }, { status: 400 });
   }

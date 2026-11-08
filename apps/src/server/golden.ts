@@ -510,6 +510,8 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
     safety: SAFETY,
     // Golden alert notifications: quiet hours on or off (each slice's own switch is on the slice).
     notifyQuiet: notify.quiet,
+    notifyAllSlices: notify.allSlices,
+    notifyHotToday: notify.hotToday,
   };
 }
 
