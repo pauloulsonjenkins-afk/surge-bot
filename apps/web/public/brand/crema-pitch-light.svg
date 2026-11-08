@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" width="100%" height="100%" role="img" aria-label="A football pitch traced in crema on espresso">
+<defs>
+  <radialGradient id="base" cx="50%" cy="46%" r="75%"><stop offset="0" stop-color="#f8f2e9"/><stop offset="1" stop-color="#ece2d3"/></radialGradient>
+  <radialGradient id="crema" cx="50%" cy="50%" r="34%"><stop offset="0" stop-color="#d9a05b" stop-opacity="0.18"/><stop offset=".45" stop-color="#d9a05b" stop-opacity="0.063"/><stop offset="1" stop-color="#d9a05b" stop-opacity="0"/></radialGradient>
+  <radialGradient id="steam" cx="50%" cy="38%" r="22%"><stop offset="0" stop-color="#ffffff" stop-opacity=".05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  <radialGradient id="vig" cx="50%" cy="50%" r="72%"><stop offset=".55" stop-color="#d9cbb6" stop-opacity="0"/><stop offset="1" stop-color="#d9cbb6" stop-opacity=".75"/></radialGradient>
+  <radialGradient id="fade" cx="50%" cy="50%" r="62%"><stop offset=".25" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".15"/></radialGradient>
+  <mask id="m"><rect width="1600" height="1000" fill="url(#fade)"/></mask>
+  <filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5  0 0 0 0 .4  0 0 0 0 .3  0 0 0 0.05 0"/></filter>
+</defs>
+<rect width="1600" height="1000" fill="url(#base)"/>
+<rect width="1600" height="1000" fill="url(#crema)"/>
+<g fill="none" stroke="#8a5320" stroke-width="1" vector-effect="non-scaling-stroke">
+<circle cx="800" cy="500" r="200" stroke-opacity="0.045"/>
+<circle cx="800" cy="500" r="272" stroke-opacity="0.041"/>
+<circle cx="800" cy="500" r="344" stroke-opacity="0.037"/>
+<circle cx="800" cy="500" r="416" stroke-opacity="0.033"/>
+<circle cx="800" cy="500" r="488" stroke-opacity="0.029"/>
+<circle cx="800" cy="500" r="560" stroke-opacity="0.025"/>
+<circle cx="800" cy="500" r="632" stroke-opacity="0.02"/>
+<circle cx="800" cy="500" r="704" stroke-opacity="0.016"/>
+<circle cx="800" cy="500" r="776" stroke-opacity="0.012"/>
+<circle cx="800" cy="500" r="848" stroke-opacity="0.008"/>
+<circle cx="800" cy="500" r="920" stroke-opacity="0.004"/>
+</g>
+<g mask="url(#m)" fill="none" stroke="#8a5320" stroke-opacity="0.22" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+<style>.dot{fill:#8a5320;stroke:none} .goal{stroke-dasharray:3 4}</style>
+<rect x="65" y="24" width="1470" height="952" rx="2"/>
+<line x1="800" y1="24" x2="800" y2="976"/>
+<circle cx="800" cy="500" r="128.1"/>
+<rect x="65" y="217.8" width="231" height="564.5"/>
+<rect x="65" y="371.8" width="77" height="256.5"/>
+<circle cx="219" cy="500" r="2.6" class="dot"/>
+<path d="M296 397.6 A128.1 128.1 0 0 1 296 602.4"/>
+<rect x="37" y="448.8" width="28" height="102.5" class="goal"/>
+<path d="M65 38 A14 14 0 0 0 79 24"/>
+<path d="M65 962 A14 14 0 0 1 79 976"/>
+<rect x="1304" y="217.8" width="231" height="564.5"/>
+<rect x="1458" y="371.8" width="77" height="256.5"/>
+<circle cx="1381" cy="500" r="2.6" class="dot"/>
+<path d="M1304 397.6 A128.1 128.1 0 0 0 1304 602.4"/>
+<rect x="1535" y="448.8" width="28" height="102.5" class="goal"/>
+<path d="M1535 38 A14 14 0 0 1 1521 24"/>
+<path d="M1535 962 A14 14 0 0 0 1521 976"/>
+<circle cx="800" cy="500" r="3.2" class="dot"/>
+</g>
+<rect width="1600" height="1000" fill="url(#steam)"/>
+<rect width="1600" height="1000" fill="url(#vig)"/>
+<rect width="1600" height="1000" filter="url(#grain)"/>
+</svg>

@@ -58,7 +58,8 @@ export default function MembersShell({ children }: { children: React.ReactNode }
   const nav = MEMBERS_NAV.filter((n) => selling || !("sales" in n));
 
   return (
-    <div className="flex min-h-dvh flex-col bg-app text-ink">
+    // The sign-in and sign-up pages stand on the "Crema Pitch" background (globals.css); every other page on plain.
+    <div className={`flex min-h-dvh flex-col text-ink ${pathname === "/members/login" || pathname === "/members/join" ? "crema-bg" : "bg-app"}`}>
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
           <Link href="/members" className="flex min-h-11 min-w-0 items-center gap-2">

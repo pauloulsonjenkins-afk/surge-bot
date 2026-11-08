@@ -392,3 +392,15 @@ html {
     transform: none;
   }
 }
+
+/*
+ * "Crema Pitch" (8 Nov 2026): the sign-in pages' background, a pitch to scale traced in crema on espresso
+ * (public/brand/crema-pitch-*.svg, ~4 KB each). Centred and cropped to fill any screen; the light version in light mode.
+ * Only behind sign-in: inside the app, figures need a plain ground.
+ */
+.crema-bg {
+  background: var(--app) url("/brand/crema-pitch-dark.svg") center / cover no-repeat;
+}
+:root[data-theme="light"] .crema-bg {
+  background-image: url("/brand/crema-pitch-light.svg");
+}

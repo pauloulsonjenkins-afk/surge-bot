@@ -29,7 +29,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
   // The admin sign-in stands on its own: the site's tabs mean nothing until you're in.
   if (pathname === "/more/admin/login") {
     return (
-      <div className="flex min-h-dvh flex-col bg-app text-ink">
+      <div className="crema-bg flex min-h-dvh flex-col text-ink">
         <header className="px-5 pt-5">
           <Link href="/members" aria-label="GoalBrew">
             <Image unoptimized priority src="/brand/goalbrew-logo-dark.svg" alt="GoalBrew" width={168} height={28} className="h-7 w-auto [[data-theme=light]_&]:hidden" />
