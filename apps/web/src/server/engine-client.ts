@@ -1777,6 +1777,11 @@ export function fetchToday(): Promise<TodaySnapshot> {
   return engineCall("/internal/today", "today's summary", { timeoutMs: 15_000 });
 }
 
+/** Live/Sim, rule-change, stake-ladder and lock dates for the agents (the engine's agentDates). Read-only. */
+export function fetchAgentDates(): Promise<Record<string, unknown>> {
+  return engineCall("/internal/agent-dates", "the agent dates", { timeoutMs: 15_000 });
+}
+
 export function fetchNotPlaced(days: number): Promise<NotPlacedReport> {
   return engineCall(`/internal/not-placed?days=${days}`, "the not-placed report", { timeoutMs: 15_000 });
 }

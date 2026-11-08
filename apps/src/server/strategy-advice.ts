@@ -47,7 +47,7 @@
  * wait), each with its own notification. "Try Live"
  * and "Back to Sim" are never automatic.
  */
-import type { EngineDb } from "../storage/engine-db";
+import { RECORD_FROM, type EngineDb } from "../storage/engine-db";
 import { ALL_TIME, computeAdviceReturns, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
 import { getSendingSettings, saveSendingSettings, strategyLabel, type SendingSettings } from "../inplayguru/bet-feed";
 import { goldenReport } from "./golden";
@@ -619,4 +619,48 @@ export async function notifyAdvice(db: EngineDb, now = new Date()): Promise<numb
   log.info(`Strategy suggestions: ${fresh.map(line).join("; ")}`);
   await sendPush(db, { title: fresh.length === 1 ? "Strategy suggestion" : `${fresh.length} strategy suggestions`, body, url: "/more/admin/today", tag: "strategy-advice" });
   return fresh.length;
+}
+
+/**
+ * The dates the agents' weekly review needs (read-only, GET /internal/agent-dates, shown to agents as /api/agent/dates):
+ * each strategy's Live/Sim switch and when it was last flipped, its rule-change date (null = rules never changed since
+ * records began), its stake and stake-ladder history, and any 7-day lock on its Live/Sim suggestions; each slice bet on
+ * its own, with when it went Live; and the automatic stake steps waiting. Nothing here changes anything.
+ */
+export function agentDates(db: EngineDb, now = new Date()) {
+  const settings = getSendingSettings(db);
+  const locks = readLocks(db);
+  const raised = raises(db);
+  const steps = lastSteps(db);
+  const keys = new Set([...Object.keys(settings.strategies), ...Object.keys(settings.modeSince), ...Object.keys(settings.stakes), ...Object.keys(settings.stakePct), ...Object.keys(raised), ...Object.keys(steps), ...Object.keys(locks)]);
+  const lockOf = (key: string) => {
+    const l = locks[key];
+    if (!l) return null;
+    const until = Date.parse(l.at) + LOCK_MS;
+    return { kind: l.kind, at: l.at, until: new Date(until).toISOString(), active: until > now.getTime() };
+  };
+  return {
+    at: now.toISOString(),
+    bettingOn: settings.enabled,
+    ladderAuto: settings.ladderAuto === true,
+    strategies: [...keys].sort().map((key) => ({
+      key,
+      mode: settings.strategies[key] === true ? "live" : "sim",
+      modeSince: settings.modeSince[key] ?? null,
+      ruleChangedAt: RECORD_FROM[key] ?? null,
+      stake: settings.stakePct[key] !== undefined ? { pct: settings.stakePct[key] } : settings.stakes[key] !== undefined ? { flat: settings.stakes[key] } : null,
+      lastStakeStepAt: steps[key] ?? null,
+      raisedAt: raised[key]?.at ?? null,
+      cutAt: raised[key]?.cutAt ?? null,
+      lock: lockOf(key),
+    })),
+    slices: Object.entries(settings.segmentBets).map(([key, b]) => ({
+      key,
+      mode: b.live ? "live" : "sim",
+      liveSince: b.liveSince,
+      stake: b.stakePct !== null ? { pct: b.stakePct } : b.stake !== null ? { flat: b.stake } : null,
+      lock: lockOf(key),
+    })),
+    autoStakeQueue: autoStakeQueue(db, now),
+  };
 }

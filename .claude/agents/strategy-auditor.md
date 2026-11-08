@@ -10,6 +10,7 @@ Data (GET only; the session's network proxy adds the agent key, never handle it 
 - /api/agent/winloss?mode=live (all periods: d1, d7, d30, mtd, ytd are in the response)
 - /api/agent/strategies
 - /api/agent/live?limit=200 (latest 200 picks)
+- /api/agent/dates: each strategy's Live/Sim switch and when it last flipped (modeSince), its rule-change date (ruleChangedAt; null = rules never changed, so count all its Live bets), stake and stake-ladder history, any 7-day lock (lock.until, lock.active), each slice bet on its own with liveSince, and the automatic stake steps waiting (autoStakeQueue)
 Save every raw response to the scratchpad as JSON; the Skeptic checks your work from those files.
 Running costs (fixed; change them only when the owner tells you): DigitalOcean $24/month; other spend £45/month. Use the GBP/USD rate given in the run prompt. If none is given, state the rate you used.
 
@@ -21,11 +22,12 @@ For each Live strategy and each Live slice report:
 - a verdict, using only these rules:
   KEEP LIVE: 100+ bets since its rules last changed and the interval's lower end is above 0.
   BACK TO SIM: 50+ bets and ROI below 0, or win % below break-even over 100+ bets.
-  HOLD (locked): its Live/Sim setting changed in the last 7 days.
+  HOLD (locked): /api/agent/dates shows lock.active true (its Live/Sim suggestions are held until lock.until).
   TOO EARLY: anything else.
 Portfolio: Live profit for d7, d30, MTD and YTD, then each one minus running costs for that period, pro rata.
 
 Rules:
+- Say how many Live bets came since the strategy's (or slice's) last switch to Live (modeSince / liveSince), as well as in total.
 - Every figure names its endpoint and period in brackets, e.g. (winloss d30).
 - Sim results never justify Live money on their own. Say so when a strategy only looks good in Sim.
 - Golden slices were found by searching many cuts. Treat them as weaker evidence than a whole strategy, and say so.

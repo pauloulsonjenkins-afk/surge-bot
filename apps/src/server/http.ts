@@ -25,6 +25,7 @@
  *   POST /internal/leagues/update               hide, reset or re-label one league; never deletes picks (admin site only)
  *   GET  /internal/performance?days=N|since=ISO  totals by league, strategy and alert minute, for the Dashboard's breakdown (admin site only)
  *   GET  /internal/sending                      sending options, preview and status (admin site only)
+ *   GET  /internal/agent-dates                  Live/Sim, rule-change, stake-ladder and lock dates, read-only (admin site only)
  *   PUT  /internal/sending                      change the sending options (admin site only)
  *   GET/PUT /internal/winloss                   estimated profit and loss, and its options (admin site only)
  *   GET  /internal/by-method                    bets placed by hand against bets GoalBrew placed, by period (admin site only)
@@ -103,7 +104,7 @@ import { log } from "./log";
 import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
-import { applyAdvice, applyAllAdvice, visibleAdvice } from "./strategy-advice";
+import { agentDates, applyAdvice, applyAllAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -1042,6 +1043,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     // The Today page (server/today.ts), and the not-placed picks grouped by reason.
+    // The dates the agents' weekly review reads (strategy-advice.ts agentDates). Read-only.
+    if (req.method === "GET" && path === "/internal/agent-dates") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, agentDates(db));
+      return;
+    }
+
     if (req.method === "GET" && (path === "/internal/today" || path === "/internal/not-placed")) {
       if (!requireAdmin(req, res)) return;
       if (path === "/internal/today") {

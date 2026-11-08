@@ -11,7 +11,7 @@ Every report goes as a comment on the **Agent log** issue in this repo. Each run
 The owner's decisions go there too, one line each.
 
 ## What the agents can and can't touch
-- Read: `GET /api/agent/{today,winloss,strategies,live}` with the `X-Agent-Key` header, and DigitalOcean deploys and run logs (read-only token).
+- Read: `GET /api/agent/{today,winloss,strategies,live,dates}` with the `X-Agent-Key` header, and DigitalOcean deploys and run logs (read-only token).
 - Never: PUT/POST/DELETE, `advice/apply`, Live/Sim, stakes, limits, redeploy, roll back, sign in. `/api/agent` exports GET only, so other methods get 405.
 
 ## One-time setup (owner)

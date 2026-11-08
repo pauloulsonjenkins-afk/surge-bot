@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AGENT_KEY_HEADER, agentKeyValid } from "@/server/agent-key";
-import { fetchAdminStrategies, fetchLivePicks, fetchToday, fetchWinLoss, parsePickMode, toTradeLogPick } from "@/server/engine-client";
+import { fetchAdminStrategies, fetchAgentDates, fetchLivePicks, fetchToday, fetchWinLoss, parsePickMode, toTradeLogPick } from "@/server/engine-client";
 
 /**
  * Read-only figures for the AI agents (see src/server/agent-key.ts). GET only: Next answers 405 to any other method,
@@ -10,11 +10,12 @@ import { fetchAdminStrategies, fetchLivePicks, fetchToday, fetchWinLoss, parsePi
  *   /api/agent/winloss?mode=live|sim|all  Win/Loss
  *   /api/agent/strategies[?since=ISO]    Strategies
  *   /api/agent/live[?limit=1..200]       the latest picks, as the Trade Log shows them
+ *   /api/agent/dates                     Live/Sim and slice switch dates, rule changes, stake-ladder history, locks
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const VIEWS = ["today", "winloss", "strategies", "live"] as const;
+const VIEWS = ["today", "winloss", "strategies", "live", "dates"] as const;
 type View = (typeof VIEWS)[number];
 
 async function read(view: View, params: URLSearchParams): Promise<unknown> {
@@ -27,6 +28,8 @@ async function read(view: View, params: URLSearchParams): Promise<unknown> {
       const raw = params.get("since");
       return fetchAdminStrategies(raw && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : null);
     }
+    case "dates":
+      return fetchAgentDates();
     case "live": {
       const n = Number(params.get("limit"));
       const limit = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 200) : 200;
