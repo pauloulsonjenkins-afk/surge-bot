@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { gbp, units } from "@/lib/format";
+import { LOSS, ProfitGradients, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
 
 export interface LineSeries {
   key: string;
@@ -52,15 +53,12 @@ function LinesTooltip({
   );
 }
 
-const LINE = "var(--chart)";
-const DOWN = "var(--loss)";
-
 /**
  * Straight-line cumulative profit/loss chart, with a zero line.
  *
- * One line (design review, 8 Nov 2026) is drawn in the calm chart blue, as the colour roles say, with a faint blue fade
- * above £0 and a red tint only where it is below £0, so a spell in loss still shows. Its latest value is labelled at the
- * end of the line, the figure you look for first. Several lines keep their own colours, no fade, and a key underneath.
+ * One line is green with a green gradient while in profit and red with a red gradient while in loss, changing exactly
+ * at £0 (charts/ProfitColours.tsx), and its latest value is labelled at the end of the line, the figure you look for
+ * first. Several lines keep their own colours, no fill, and a key underneath.
  */
 export function WinLossLines({
   data,
@@ -91,15 +89,9 @@ export function WinLossLines({
   const fmt = (v: number) => (inUnits ? units(v) : gbp(v));
   const filled = series.length === 1;
   const values = filled ? data.map((d) => d[series[0]!.key]).filter((v): v is number => typeof v === "number") : [];
-  const hi = values.length ? Math.max(...values) : 0;
-  const lo = values.length ? Math.min(...values) : 0;
-  // Where £0 falls, from the top (0) to the bottom (1), in the range down to or up to £0 (the fade is drawn between the
-  // line and £0).
-  const fillTop = Math.max(hi, 0);
-  const fillBottom = Math.min(lo, 0);
-  const fillSplit = fillTop - fillBottom > 0 ? fillTop / (fillTop - fillBottom) : 1;
-  const stroke = filled ? LINE : null;
-  const keyColour = filled ? LINE : null;
+  const split = profitSplit(values);
+  const stroke = filled ? profitStroke(id, split) : null;
+  const keyColour = filled ? split.whole : null;
   const lastIndex = data.length - 1;
   const lastValue = values.at(-1) ?? 0;
   return (
@@ -109,13 +101,7 @@ export function WinLossLines({
           <ComposedChart data={data} margin={{ top: filled ? 22 : 8, right: 12, bottom: 0, left: -8 }}>
             {filled && (
               <defs>
-                {/* The fade: faint blue above £0, a red tint below it, nothing at £0 itself. */}
-                <linearGradient id={`${id}-fade`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset={0} stopColor={LINE} stopOpacity={fillSplit > 0 ? 0.16 : 0} />
-                  <stop offset={fillSplit} stopColor={LINE} stopOpacity={0.01} />
-                  <stop offset={fillSplit} stopColor={DOWN} stopOpacity={0.03} />
-                  <stop offset={1} stopColor={DOWN} stopOpacity={fillSplit < 1 ? 0.3 : 0} />
-                </linearGradient>
+                <ProfitGradients id={id} split={split} />
               </defs>
             )}
             <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" vertical={false} />
@@ -137,7 +123,7 @@ export function WinLossLines({
             <ReferenceLine y={0} stroke="var(--ink-muted)" strokeOpacity={0.5} />
             <Tooltip cursor={{ stroke: "var(--line)" }} content={(p) => <LinesTooltip active={p.active} label={p.label} payload={p.payload} series={series} inUnits={inUnits} picked={selectable ? picked : null} />} />
             {filled && (
-              <Area type="linear" dataKey={series[0]!.key} baseValue={0} stroke="none" fill={`url(#${id}-fade)`} isAnimationActive={false} activeDot={false} legendType="none" tooltipType="none" />
+              <Area type="linear" dataKey={series[0]!.key} baseValue={0} stroke="none" fill={`url(#${id}-fill)`} isAnimationActive={false} activeDot={false} legendType="none" tooltipType="none" />
             )}
             {series.map((s) => (
               <Line
@@ -156,8 +142,8 @@ export function WinLossLines({
                           // Only the latest point: a dot ringed in the card colour, and its value above it.
                           props.index === lastIndex && props.cx !== undefined && props.cy !== undefined ? (
                             <g key="last">
-                              <circle cx={props.cx} cy={props.cy} r={4.5} fill={LINE} stroke="var(--surface)" strokeWidth={2} />
-                              <text x={props.cx - 2} y={props.cy - 10} textAnchor="end" fontSize={12} fontWeight={600} fill={lastValue < 0 ? DOWN : "var(--ink)"} className="tabular-nums">
+                              <circle cx={props.cx} cy={props.cy} r={4.5} fill={lastValue < 0 ? LOSS : "var(--hit)"} stroke="var(--surface)" strokeWidth={2} />
+                              <text x={props.cx - 2} y={props.cy - 10} textAnchor="end" fontSize={12} fontWeight={600} fill={lastValue < 0 ? LOSS : "var(--ink)"} className="tabular-nums">
                                 {fmt(lastValue)}
                               </text>
                             </g>

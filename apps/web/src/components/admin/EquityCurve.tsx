@@ -1,6 +1,8 @@
 "use client";
 
-import { Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useId } from "react";
+import { Area, ComposedChart, Line, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ProfitGradients, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
 import { useStrategyEquity, type StrategyEquity } from "@/queries/use-strategies";
 import type { PickMode } from "@/server/engine-client";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -71,6 +73,7 @@ export function RiskFigures({ summary }: { summary: StrategyEquity["summary"] })
  */
 export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) {
   const { data, isLoading, error } = useStrategyEquity(label, mode, true);
+  const id = useId().replace(/:/g, "");
 
   if (error) return <p className="text-xs text-destructive">{error.message}</p>;
   if (isLoading || !data) return <Skeleton className="h-48 w-full" />;
@@ -80,12 +83,16 @@ export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) 
   const span = drawdownSpan(rows);
   const peak = span ? rows[span.peak] : undefined;
   const trough = span ? rows[span.trough] : undefined;
+  const split = profitSplit(rows.map((r) => r.total));
 
   return (
     <figure className="space-y-2">
       <div className="h-48 w-full" role="img" aria-label={`Running profit for ${label} over ${data.points.length} priced picks, ending at ${gbp(data.summary.profit)}`}>
         <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: 192 }}>
-          <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+          <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+            <defs>
+              <ProfitGradients id={id} split={split} />
+            </defs>
             <XAxis dataKey="n" tick={{ fill: "var(--ink-muted)", fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis
               tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
@@ -96,10 +103,11 @@ export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) 
             />
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<PointTooltip />} cursor={{ stroke: "var(--ink-muted)", strokeDasharray: "3 3" }} />
-            <Line type="linear" dataKey="total" stroke="var(--chart)" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
+            <Area type="linear" dataKey="total" baseValue={0} stroke="none" fill={`url(#${id}-fill)`} isAnimationActive={false} activeDot={false} tooltipType="none" />
+            <Line type="linear" dataKey="total" stroke={profitStroke(id, split)} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
             {peak && <ReferenceDot x={peak.n} y={peak.total} r={4} fill="var(--surface)" stroke="var(--ink-muted)" strokeWidth={2} />}
             {trough && <ReferenceDot x={trough.n} y={trough.total} r={4} fill="var(--loss)" stroke="var(--surface)" strokeWidth={2} />}
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <figcaption className="text-xs text-ink-muted">

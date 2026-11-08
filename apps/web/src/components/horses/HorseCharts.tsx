@@ -1,6 +1,8 @@
 "use client";
 
-import { Bar, BarChart, Cell, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useId } from "react";
+import { Area, Bar, BarChart, Cell, ComposedChart, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ProfitGradients, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
 import { gbp } from "@/lib/format";
 import { RANK_COLOUR, RANK_LABEL, RANKS, type Point, type Summary } from "@/lib/horses";
 
@@ -28,10 +30,15 @@ function Tip({ active, payload, rows }: { active?: boolean; payload?: ReadonlyAr
 /** Running profit across the period: one line, so the card's title names it and there is no legend. */
 export function RunningProfitChart({ points }: { points: Point[] }) {
   const last = points[points.length - 1];
+  const id = useId().replace(/:/g, "");
+  const split = profitSplit(points.map((p) => p.total));
   return (
     <div className="h-56 w-full" role="img" aria-label={`Running profit, ending at ${last ? gbp(last.total) : "£0"}`}>
       <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 340, height: 224 }}>
-        <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
+        <ComposedChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
+          <defs>
+            <ProfitGradients id={id} split={split} />
+          </defs>
           <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={false} interval={every(points.length)} />
           <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={money} width={52} />
           <ReferenceLine y={0} stroke="var(--line)" />
@@ -49,8 +56,17 @@ export function RunningProfitChart({ points }: { points: Point[] }) {
               />
             )}
           />
-          <Line type="linear" dataKey="total" stroke="var(--chart)" strokeWidth={2} dot={points.length <= 20 ? { r: 3, fill: "var(--chart)" } : false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
-        </LineChart>
+          <Area type="linear" dataKey="total" baseValue={0} stroke="none" fill={`url(#${id}-fill)`} isAnimationActive={false} activeDot={false} tooltipType="none" />
+          <Line
+            type="linear"
+            dataKey="total"
+            stroke={profitStroke(id, split)}
+            strokeWidth={2}
+            dot={points.length <= 20 ? (p: { cx?: number; cy?: number; value?: unknown; index?: number }) => <circle key={p.index} cx={p.cx} cy={p.cy} r={3} fill={typeof p.value === "number" && p.value < 0 ? "var(--loss)" : "var(--hit)"} /> : false}
+            activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );
