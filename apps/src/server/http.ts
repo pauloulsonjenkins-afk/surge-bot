@@ -104,7 +104,7 @@ import { log } from "./log";
 import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
-import { agentDates, applyAdvice, applyAllAdvice, visibleAdvice } from "./strategy-advice";
+import { agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -640,7 +640,24 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     // The suggestions on their own: a light call the menus poll for their count badge (Today's summary is much heavier).
     if (req.method === "GET" && path === "/internal/strategy-advice") {
       if (!requireAdmin(req, res)) return;
-      send(res, 200, { advice: visibleAdvice(db) });
+      send(res, 200, { advice: visibleAdvice(db), snoozed: snoozedAdvice(db) });
+      return;
+    }
+
+    // "Ignore for 24 hours" on a suggestion, or { hours: 0 } to bring it back (strategy-advice.ts). Changes no setting.
+    if (req.method === "POST" && path === "/internal/strategy-advice/snooze") {
+      if (!requireAdmin(req, res)) return;
+      const body = await readJsonBody(req);
+      const kinds = ["try-live", "back-to-sim", "stake-up", "stake-down", "league-block", "slice-live", "slice-sim", "slice-stake-up", "slice-stake-down"] as const;
+      const kind = kinds.find((k) => k === body.kind);
+      if (typeof body.key !== "string" || !kind) {
+        send(res, 400, { error: "Which suggestion?" });
+        return;
+      }
+      const hours = typeof body.hours === "number" && body.hours >= 0 && body.hours <= 168 ? body.hours : 24;
+      const until = snoozeAdvice(db, { key: body.key, kind, leagueKey: typeof body.league === "string" ? body.league : undefined }, hours);
+      log.info(until ? `Suggestion ${kind} for ${body.key} ignored until ${until}.` : `Suggestion ${kind} for ${body.key} brought back.`);
+      send(res, 200, { until, advice: visibleAdvice(db), snoozed: snoozedAdvice(db) });
       return;
     }
 

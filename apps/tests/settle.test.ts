@@ -26,8 +26,8 @@ function setup() {
     db.upsertLivePick("chat", n, alert(n, result), parseAlert(alert(n, result)), posted);
   };
   const switchedLive = (at: Date) => {
-    const raw = JSON.parse(db.getSetting("sending")!) as { modeSince?: Record<string, string> };
-    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: at.toISOString() } }));
+    const raw = JSON.parse(db.getSetting("sending")!) as { modeSince?: Record<string, string>; stakeSince?: Record<string, string> };
+    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: at.toISOString() }, stakeSince: { ...raw.stakeSince, [KEY]: at.toISOString() } }));
   };
   return { db, bet, switchedLive };
 }

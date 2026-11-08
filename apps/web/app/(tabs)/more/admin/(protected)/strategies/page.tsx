@@ -10,7 +10,7 @@ import { useAdminStrategies, useStrategyWeeks, type AdminStrategy } from "@/quer
 import { useIsArchived } from "@/queries/use-archive";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useToday } from "@/queries/use-today";
-import { AdviceRow, ApplyAllAdvice, adviceTitle, ADVICE_LABEL, isGoodAdvice } from "@/components/admin/Advice";
+import { AdviceRow, ApplyAllAdvice, adviceTitle, ADVICE_LABEL, isGoodAdvice, IgnoredAdvice } from "@/components/admin/Advice";
 import { trendOf } from "@/components/admin/StrategyWeekly";
 import { isLayRow } from "@/components/admin/LaySection";
 import { GoldenSlicesSection } from "@/components/admin/strategies/GoldenSlicesSection";
@@ -169,6 +169,7 @@ export default function StrategiesPage() {
           )}
         </section>
       )}
+      <IgnoredAdvice nameOf={(a) => adviceTitle(a, names.name)} />
 
       {strategies.length === 0 ? (
         <p className="text-sm text-ink-muted">Strategies appear here once alerts arrive.</p>

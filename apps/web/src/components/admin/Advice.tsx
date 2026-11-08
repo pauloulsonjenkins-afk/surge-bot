@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getJson } from "@/queries/fetch-json";
 import { useDialog } from "@/components/ui/ConfirmDialog";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { ClashSummary } from "@/components/admin/ClashSummary";
@@ -77,8 +78,9 @@ export function ApplyAdvice({ a, name, size = "sm" }: { a: StrategyAdvice; name:
 export function AdviceRow({ a, name, link = true }: { a: StrategyAdvice; name: string; link?: boolean }) {
   const good = isGoodAdvice(a);
   return (
-    <li className="flex flex-wrap items-start justify-between gap-2">
-      <span className="min-w-0 flex-1">
+    <li className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+      {/* On a phone the text gets the full width and the two buttons sit on their own row under it. */}
+      <span className="min-w-0 flex-1 basis-full sm:basis-0">
         {link ? (
           <Link href={a.league ? "/more/admin/leagues?tab=profit" : "/more/admin/strategies"} className="font-medium text-ink underline decoration-line">
             {name}
@@ -90,8 +92,80 @@ export function AdviceRow({ a, name, link = true }: { a: StrategyAdvice; name: s
         {/* Two lines, the rest a tap away: on a phone a long reason pushed everything else down a screen. */}
         <ClampedText text={a.reason} lines={2} className="block text-xs text-ink-muted" />
       </span>
-      <ApplyAdvice a={a} name={name} />
+      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+        <IgnoreAdvice a={a} />
+        <ApplyAdvice a={a} name={name} />
+      </span>
     </li>
+  );
+}
+
+const snoozeBody = (a: StrategyAdvice, hours: number) => JSON.stringify({ key: a.key, kind: a.kind, hours, ...(a.league ? { league: a.league.key } : {}) });
+
+/**
+ * "Ignore for 24 hours" (owner, 8 Nov 2026): sets this suggestion aside, changing nothing. It comes back by itself after a
+ * day, or from the "ignored" line under the list.
+ */
+export function IgnoreAdvice({ a }: { a: StrategyAdvice }) {
+  const qc = useQueryClient();
+  const run = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/advice/snooze", { method: "POST", headers: { "Content-Type": "application/json" }, body: snoozeBody(a, 24) });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Couldn't ignore it.");
+    },
+    onSuccess: () => void qc.invalidateQueries(),
+  });
+  return (
+    <button
+      type="button"
+      onClick={() => run.mutate()}
+      disabled={run.isPending}
+      title="Hide this suggestion for 24 hours. Nothing changes."
+      className="inline-flex min-h-9 items-center rounded-md border border-line px-2.5 text-xs font-medium text-ink-muted hover:bg-surface-2 hover:text-ink disabled:opacity-50"
+    >
+      {run.isPending ? "…" : "Ignore 24h"}
+    </button>
+  );
+}
+
+const untilFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", hour: "2-digit", minute: "2-digit" });
+
+/** The suggestions set aside for now, folded to one line, each with "Show again". Nothing when there are none. */
+export function IgnoredAdvice({ nameOf }: { nameOf: (a: StrategyAdvice) => string }) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["advice-snoozed"],
+    queryFn: ({ signal }) => getJson<{ snoozed?: Array<StrategyAdvice & { until: string }> }>("/api/admin/advice", "ignored suggestions", signal),
+    staleTime: 30_000,
+  });
+  const back = useMutation({
+    mutationFn: async (a: StrategyAdvice) => {
+      await fetch("/api/admin/advice/snooze", { method: "POST", headers: { "Content-Type": "application/json" }, body: snoozeBody(a, 0) });
+    },
+    onSuccess: () => void qc.invalidateQueries(),
+  });
+  const list = q.data?.snoozed ?? [];
+  if (list.length === 0) return null;
+  return (
+    <details className="text-xs">
+      <summary className="min-h-9 cursor-pointer text-ink-muted hover:text-ink">
+        <span className="flex-1">
+          {list.length} ignored for now
+        </span>
+      </summary>
+      <ul className="space-y-1.5 pb-1">
+        {list.map((a) => (
+          <li key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} className="flex items-center justify-between gap-2">
+            <span className="min-w-0 text-ink-muted">
+              <span className="text-ink">{nameOf(a)}</span> · {ADVICE_LABEL[a.kind]} · back {untilFmt.format(new Date(a.until))}
+            </span>
+            <button type="button" onClick={() => back.mutate(a)} className="shrink-0 rounded-md px-2 py-1 font-medium text-accent hover:bg-surface-2">
+              Show again
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

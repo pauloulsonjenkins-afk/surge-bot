@@ -12,7 +12,7 @@ import { useSaveSending } from "@/queries/use-sending";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useQuery } from "@tanstack/react-query";
 import { getJson } from "@/queries/fetch-json";
-import { AdviceRow, ApplyAllAdvice, adviceTitle } from "@/components/admin/Advice";
+import { AdviceRow, ApplyAllAdvice, adviceTitle, IgnoredAdvice } from "@/components/admin/Advice";
 import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
 import { toneOf, gbp, units } from "@/lib/format";
@@ -324,6 +324,8 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           </ul>
         </Card>
       )}
+      {/* Outside the card: when every suggestion is ignored the card is gone, and this is the way to bring one back. */}
+      <IgnoredAdvice nameOf={(a) => adviceTitle(a, names.name)} />
 
       <ClaudeReviewCard />
 

@@ -50,12 +50,11 @@ test("the suggestions shown are reused for two minutes, and worked out again whe
   const first = visibleAdvice(db, now);
   assert.ok(first.some((a) => a.kind === "stake-up"));
   assert.equal(visibleAdvice(db, new Date(now.getTime() + 60_000)).length, first.length, "same answer a minute later");
-  // A setting it depends on: the stake. The raise from £1 now goes to the step after £2.
+  // A setting it depends on: the stake, changed by hand. Worked out again at once, and the new stake has to run first
+  // (SETTLE_BETS bets), so no further raise is suggested yet.
   saveSendingSettings(db, { stakes: { [KEY]: 2 } });
-  const after = visibleAdvice(db, new Date(now.getTime() + 61_000)).find((a) => a.kind === "stake-up");
-  assert.equal(after?.action, "Raise to £3", "worked out again after the stake changed");
-  // Two minutes on with nothing changed: worked out again (the same here, as no results changed).
-  assert.ok(visibleAdvice(db, new Date(now.getTime() + 3 * 60_000)).some((a) => a.kind === "stake-up"));
+  assert.equal(visibleAdvice(db, new Date(now.getTime() + 61_000)).some((a) => a.kind === "stake-up"), false, "worked out again after the stake changed: waiting");
+  assert.equal(visibleAdvice(db, new Date(now.getTime() + 3 * 60_000)).some((a) => a.kind === "stake-up"), false);
 });
 
 test("with automatic stakes, the raise happens, and the next step waits a week as a note, not a suggestion", () => {

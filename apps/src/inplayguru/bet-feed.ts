@@ -56,6 +56,12 @@ export interface SendingSettings {
   /** When each strategy's Live/Sim switch was last flipped (either way), keyed the same way. Missing = never recorded (added 27 Oct 2026; older switches have no date). What the Strategies page's "Own mode" headline counts its figures from, instead of that mode's whole history. */
   modeSince: Record<string, string>;
   /**
+   * When each strategy's or slice's stake last changed, however it was changed (by hand in settings, Apply, or the
+   * automatic stakes), keyed by strategy key or "strategy key#slice id". The suggestions count a strategy's bets from its
+   * latest change (strategy-advice.ts SETTLE_BETS); a stake changed by hand wasn't recorded before 8 Nov 2026.
+   */
+  stakeSince: Record<string, string>;
+  /**
    * A watched slice bet on its own (server/segments.ts), keyed "strategy key#slice id", e.g. Second Pour's Golden
    * alerts: Live or Sim regardless of the strategy's own switch, at its own stake (else the strategy's).
    */
@@ -133,6 +139,7 @@ const DEFAULT_SENDING: SendingSettings = {
   enabled: false,
   strategies: {},
   modeSince: {},
+  stakeSince: {},
   segmentBets: {},
   stakes: {},
   stakePct: {},
@@ -221,6 +228,10 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
   if (raw.modeSince && typeof raw.modeSince === "object") {
     for (const [k, v] of Object.entries(raw.modeSince)) if (typeof v === "string") modeSince[k.toLowerCase()] = v;
   }
+  const stakeSince: Record<string, string> = {};
+  if (raw.stakeSince && typeof raw.stakeSince === "object") {
+    for (const [k, v] of Object.entries(raw.stakeSince)) if (typeof v === "string") stakeSince[k.toLowerCase()] = v;
+  }
   const segmentBets: Record<string, SegmentBet> = {};
   if (raw.segmentBets && typeof raw.segmentBets === "object") {
     for (const [k, v] of Object.entries(raw.segmentBets)) {
@@ -261,6 +272,7 @@ export function getSendingSettings(db: EngineDb): SendingSettings {
     enabled: raw.enabled === true,
     strategies,
     modeSince,
+    stakeSince,
     segmentBets,
     stakes,
     stakePct,
@@ -343,7 +355,7 @@ function withSegmentStake(settings: SendingSettings, key: string, cfg: SegmentBe
 /** Applies a partial update from the admin page and saves the merged, validated result. */
 export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>): SendingSettings {
   const current = getSendingSettings(db);
-  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, modeSince: { ...current.modeSince }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds }, segmentBets: { ...current.segmentBets } };
+  const next: SendingSettings = { ...current, strategies: { ...current.strategies }, modeSince: { ...current.modeSince }, stakeSince: { ...current.stakeSince }, stakes: { ...current.stakes }, stakePct: { ...current.stakePct }, minOdds: { ...current.minOdds }, segmentBets: { ...current.segmentBets } };
   // A watched slice's own betting: { "strategy#slice": { live, stakePct, stake } }, or null to go back to the strategy's.
   if (patch.segmentBets && typeof patch.segmentBets === "object") {
     for (const [k, v] of Object.entries(patch.segmentBets as Record<string, unknown>)) {
@@ -448,6 +460,18 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
     if (next.strategies[k] && next.stakes[k] === undefined && next.stakePct[k] === undefined) next.strategies[k] = false;
   }
 
+  // A stake that changed in this save, by any route, is dated (stakeSince).
+  {
+    const stamp = new Date().toISOString();
+    for (const k of new Set([...Object.keys(current.stakes), ...Object.keys(current.stakePct), ...Object.keys(next.stakes), ...Object.keys(next.stakePct)])) {
+      if (current.stakes[k] !== next.stakes[k] || current.stakePct[k] !== next.stakePct[k]) next.stakeSince[k] = stamp;
+    }
+    for (const k of new Set([...Object.keys(current.segmentBets), ...Object.keys(next.segmentBets)])) {
+      const a = current.segmentBets[k];
+      const b = next.segmentBets[k];
+      if ((a?.stakePct ?? null) !== (b?.stakePct ?? null) || (a?.stake ?? null) !== (b?.stake ?? null)) next.stakeSince[k] = stamp;
+    }
+  }
   db.setSetting(SETTINGS_KEY, JSON.stringify(next));
   return next;
 }

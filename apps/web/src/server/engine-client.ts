@@ -1901,6 +1901,23 @@ export function getStrategyAdvice(): Promise<{ advice: StrategyAdvice[] }> {
   return engineCall<{ advice: StrategyAdvice[] }>("/internal/strategy-advice", "suggestions", { timeoutMs: 15000 });
 }
 
+/** Sets a suggestion aside for `hours` (24 by default; 0 brings it back). Changes no setting. */
+export async function snoozeStrategyAdvice(key: string, kind: StrategyAdvice["kind"], hours: number, league?: string): Promise<{ until: string | null }> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  const res = await fetch(`${baseUrl}/internal/strategy-advice/snooze`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ key, kind, hours, ...(league ? { league } : {}) }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as { until?: string | null; error?: string };
+  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  return { until: data.until ?? null };
+}
+
 export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"], league?: string): Promise<{ advice: StrategyAdvice[] }> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;

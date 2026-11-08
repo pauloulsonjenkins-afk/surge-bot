@@ -95,7 +95,8 @@ test("back to Sim: the reason also gives the whole Live record, so it doesn't co
   // Switched Live well before these bets (a switch "now" with bets dated earlier can't happen for real).
   {
     const raw = JSON.parse(db.getSetting("sending")!) as { modeSince?: Record<string, string> };
-    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: new Date(Date.now() - 60 * 86_400_000).toISOString() } }));
+    const long = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: long }, stakeSince: { ...((raw as { stakeSince?: Record<string, string> }).stakeSince ?? {}), [KEY]: long } }));
   }
   const now = new Date();
   let id = 1;
@@ -131,7 +132,8 @@ test("a Live / Sim change from a suggestion holds back the opposite one for a we
   // Switched Live well before these bets (a switch "now" with bets dated earlier can't happen for real).
   {
     const raw = JSON.parse(db.getSetting("sending")!) as { modeSince?: Record<string, string> };
-    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: new Date(Date.now() - 60 * 86_400_000).toISOString() } }));
+    const long = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    db.setSetting("sending", JSON.stringify({ ...raw, modeSince: { ...raw.modeSince, [KEY]: long }, stakeSince: { ...((raw as { stakeSince?: Record<string, string> }).stakeSince ?? {}), [KEY]: long } }));
   }
   const now = new Date();
   let id = 1;

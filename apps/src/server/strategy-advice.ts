@@ -362,7 +362,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
     }
     // Live: judged on its bets since its latest change only (SETTLE_BETS), and only the last 30 days of those.
     const steps = lastSteps(db);
-    const changeAt = [settings.modeSince[key], steps[key], raised[key]?.at, raised[key]?.cutAt].filter((x): x is string => typeof x === "string").sort().at(-1) ?? null;
+    const changeAt = [settings.modeSince[key], settings.stakeSince[key], steps[key], raised[key]?.at, raised[key]?.cutAt].filter((x): x is string => typeof x === "string").sort().at(-1) ?? null;
     const keyRows = rows.filter((r) => strategyLabel(r.strategy).toLowerCase() === key);
     const recentFrom = new Date(now.getTime() - 30 * 86_400_000).toISOString();
     const sinceLatest = changeAt ? computeStrategyReturns(db, changeAt, { fromRuleChange: true, rows: keyRows })[key]?.live : sinceChange[key]?.live;
@@ -455,10 +455,17 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
     out.push(
       ...timed("golden", () =>
         sliceAdviceFrom(goldenReport(db, now, { skipFinder: true, rows }).slices.filter((sl) => !archived[sl.strategyKey]), settings).filter((a) => {
-          if ((a.kind !== "slice-stake-up" && a.kind !== "slice-stake-down") || !a.slice) return true;
+          // A Live slice is judged on its own bets since its latest change too: going Live, or its stake changing by any
+          // route. Back to Sim needs SLICE_SIM_BETS of them, a stake move SLICE_SETTLE_BETS.
+          if ((a.kind !== "slice-stake-up" && a.kind !== "slice-stake-down" && a.kind !== "slice-sim") || !a.slice) return true;
           const cfg = settings.segmentBets[a.key];
-          const from = [cfg?.liveSince, sliceSteps[a.key]].filter((x): x is string => typeof x === "string").sort().at(-1);
-          return !!from && liveSinceRecord(db, a.slice.strategyKey, a.slice.id, from).n >= SLICE_SETTLE_BETS;
+          const from = [cfg?.liveSince, settings.stakeSince[a.key], sliceSteps[a.key]].filter((x): x is string => typeof x === "string").sort().at(-1);
+          if (!from) return false;
+          const since = liveSinceRecord(db, a.slice.strategyKey, a.slice.id, from);
+          // And the verdict holds on those bets alone, not only on bets from before the change.
+          if (a.kind === "slice-sim") return since.n >= SLICE_SIM_BETS && since.roi !== null && since.roi <= SLICE_SIM_ROI;
+          if (a.kind === "slice-stake-down") return since.n >= SLICE_SETTLE_BETS && since.roi !== null && since.roi < 0;
+          return since.n >= SLICE_SETTLE_BETS && since.roi !== null && since.roi >= 0;
         }),
       ),
     );
@@ -587,7 +594,50 @@ function adviceForView(db: EngineDb, now: Date): Advice[] {
  */
 export function visibleAdvice(db: EngineDb, now = new Date()): Advice[] {
   const all = adviceForView(db, now);
-  return getSendingSettings(db).ladderAuto ? all.filter((a) => a.kind !== "stake-up" && a.kind !== "stake-down") : all;
+  const snoozed = activeSnoozes(db, now);
+  // Nothing set aside: the kept list itself, so it is reused as it is (see adviceForView).
+  const shown = Object.keys(snoozed).length === 0 ? all : all.filter((a) => !snoozed[snoozeId(a)]);
+  return getSendingSettings(db).ladderAuto ? shown.filter((a) => a.kind !== "stake-up" && a.kind !== "stake-down") : shown;
+}
+
+/**
+ * "Ignore for 24 hours" (owner, 8 Nov 2026): a suggestion set aside is hidden from Today, Strategies, the count badge,
+ * notifications and Apply all until it runs out; a different suggestion for the same strategy still shows. Nothing is
+ * changed by ignoring one, and it can be brought back at once.
+ */
+const SNOOZE_KEY = "strategy_advice_snoozed";
+export const SNOOZE_HOURS = 24;
+const snoozeId = (a: Pick<Advice, "key" | "kind" | "league">) => `${adviceId(a)}:${a.kind}`;
+
+function readSnoozes(db: EngineDb): Record<string, string> {
+  try {
+    return JSON.parse(db.getSetting(SNOOZE_KEY) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function activeSnoozes(db: EngineDb, now: Date): Record<string, string> {
+  return Object.fromEntries(Object.entries(readSnoozes(db)).filter(([, until]) => Date.parse(until) > now.getTime()));
+}
+
+/** Sets a suggestion aside for `hours` (0 brings it back). Returns when it shows again, or null. */
+export function snoozeAdvice(db: EngineDb, ref: { key: string; kind: AdviceKind; leagueKey?: string }, hours = SNOOZE_HOURS, now = new Date()): string | null {
+  const id = snoozeId({ key: ref.key.toLowerCase(), kind: ref.kind, ...(ref.leagueKey ? { league: { key: ref.leagueKey, name: "" } } : {}) });
+  const next = activeSnoozes(db, now);
+  const until = hours > 0 ? new Date(now.getTime() + hours * 3_600_000).toISOString() : null;
+  if (until) next[id] = until;
+  else delete next[id];
+  db.setSetting(SNOOZE_KEY, JSON.stringify(next));
+  return until;
+}
+
+/** The suggestions currently set aside, with when each shows again (for "N ignored · Show"). */
+export function snoozedAdvice(db: EngineDb, now = new Date()): Array<Advice & { until: string }> {
+  const snoozed = activeSnoozes(db, now);
+  return adviceForView(db, now)
+    .filter((a) => snoozed[snoozeId(a)])
+    .map((a) => ({ ...a, until: snoozed[snoozeId(a)]! }));
 }
 
 /** With automatic stakes on: the stake steps waiting for their week to pass, and when each is due. */
@@ -680,6 +730,7 @@ export function agentDates(db: EngineDb, now = new Date()) {
       mode: settings.strategies[key] === true ? "live" : "sim",
       modeSince: settings.modeSince[key] ?? null,
       ruleChangedAt: RECORD_FROM[key] ?? null,
+      stakeChangedAt: settings.stakeSince[key] ?? null,
       stake: settings.stakePct[key] !== undefined ? { pct: settings.stakePct[key] } : settings.stakes[key] !== undefined ? { flat: settings.stakes[key] } : null,
       lastStakeStepAt: steps[key] ?? null,
       raisedAt: raised[key]?.at ?? null,
@@ -690,6 +741,7 @@ export function agentDates(db: EngineDb, now = new Date()) {
       key,
       mode: b.live ? "live" : "sim",
       liveSince: b.liveSince,
+      stakeChangedAt: settings.stakeSince[key] ?? null,
       stake: b.stakePct !== null ? { pct: b.stakePct } : b.stake !== null ? { flat: b.stake } : null,
       lock: lockOf(key),
     })),
