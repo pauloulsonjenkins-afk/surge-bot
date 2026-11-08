@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { getJson } from "@/queries/fetch-json";
 import type { SentNotification } from "@/server/engine-client";
+import { tidyText } from "@/lib/format";
 
 const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" });
 const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
@@ -76,7 +77,7 @@ export default function NotificationsPage() {
                       <span className="text-sm font-medium text-ink">{n.title}</span>
                       <span className="shrink-0 text-xs tabular-nums text-ink-muted">{time.format(new Date(n.at))}</span>
                     </span>
-                    <span className="mt-0.5 block whitespace-pre-line text-xs text-ink-muted">{n.body}</span>
+                    <span className="mt-0.5 block whitespace-pre-line text-xs text-ink-muted">{tidyText(n.body)}</span>
                     {n.reached === 0 && <span className="mt-0.5 block text-xs text-warn">Not delivered to any device.</span>}
                   </>
                 );

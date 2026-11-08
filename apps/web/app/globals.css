@@ -404,3 +404,21 @@ html {
 :root[data-theme="light"] .crema-bg {
   background-image: url("/brand/crema-pitch-light.svg");
 }
+
+/* A figure that just changed (ui/Flash.tsx): a soft caramel glow that fades over a second. */
+@keyframes flash-figure {
+  0% {
+    background-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.flash {
+  animation: flash-figure 1200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    animation: none;
+  }
+}

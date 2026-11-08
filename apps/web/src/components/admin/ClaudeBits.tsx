@@ -6,6 +6,7 @@ import { useStrategyNames } from "@/queries/use-strategy-names";
 import { ADVICE_LABEL, ApplyAdvice, adviceTitle, isGoodAdvice } from "@/components/admin/Advice";
 import { ClampedText } from "@/components/ui/ClampedText";
 import type { ClaudeReviews } from "@/server/engine-client";
+import { tidyText } from "@/lib/format";
 
 const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" });
 const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -59,7 +60,7 @@ function Recommendations({ list }: { list: NonNullable<NonNullable<ClaudeReviews
               <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-ink">{a.confidence}% sure</span>
             </div>
             {a.why && <p className="mt-1 text-sm text-ink">{a.why}</p>}
-            <ClampedText text={a.reason} lines={2} className="mt-1 block text-xs text-ink-muted" />
+            <ClampedText text={tidyText(a.reason)} lines={2} className="mt-1 block text-xs text-ink-muted" />
             <div className="mt-2 flex items-center justify-end gap-2">
               <button type="button" disabled={reject.isPending} onClick={() => reject.mutate(a)} className="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink">
                 Reject

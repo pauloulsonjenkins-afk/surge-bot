@@ -401,7 +401,7 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
     }
     for (const list of picksOf.values()) list.sort((a, b) => a.at.localeCompare(b.at));
   }
-  const pctOf = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
+  const pctOf = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`);
   /** The stage its picks alone would earn, ignoring the last-30 and re-proving rules (stage(), below, applies those). */
   function rawStage(inn: StrategyReturn, picks: Array<{ at: string; stake: number; profit: number; won: boolean }>, ownLive: ReturnType<typeof liveSinceRecord> | null): GoldenStatus {
     if (inn.counted < CANDIDATE_FROM) return "quiet";
@@ -554,7 +554,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
     const [strategyKey, id] = k.split("#") as [string, string];
     const slice = report.slices.find((s) => s.strategyKey === strategyKey && s.id === id);
     const rec = cfg.liveSince ? liveSinceRecord(db, strategyKey, id, cfg.liveSince) : null;
-    const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
+    const pct = (n: number) => `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`;
     let why: string | null = null;
     if (slice?.status === "not holding up") why = `it's no longer holding up: ${slice.why ?? `${pct(slice.slice.all.roi ?? 0)} per £1 over ${slice.slice.all.counted} picks`}`;
     else if (rec && rec.n >= SAFETY.minBets && rec.roi !== null && rec.roi < SAFETY.worstRoi) why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;

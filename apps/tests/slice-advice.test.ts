@@ -43,7 +43,7 @@ test("a candidate slice that is in profit is suggested for a Live trial at 1%, w
   assert.equal(a[0]!.kind, "slice-live");
   assert.deepEqual(a[0]!.to, { pct: 1 });
   assert.equal(a[0]!.key, "dominant momentum 0-0#f-fav");
-  assert.match(a[0]!.reason, /over 65 priced picks, against -1\.8% over 154 for the rest/);
+  assert.match(a[0]!.reason, /over 65 priced picks, against −1\.8% over 154 for the rest/);
 });
 
 test("no trial for a slice that is quiet, not holding up, thin, losing, already Live on its own, or following a Live strategy", () => {

@@ -6,7 +6,7 @@ import { trendOf } from "@/components/admin/StrategyWeekly";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import type { WeekTally } from "@/server/engine-client";
 import { marketName } from "@/lib/markets";
-import { gbp, units as formatUnits } from "@/lib/format";
+import { gbp, units as formatUnits, tidyText } from "@/lib/format";
 import { ModeBadge } from "@/components/ui/ModeToggle";
 import { roiText } from "@/lib/hit-rate";
 import { useStrategyNames } from "@/queries/use-strategy-names";
@@ -225,7 +225,7 @@ export function StrategyCard({
         <div className={`mx-3.5 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ${good ? "bg-hit/10" : "bg-warn/10"}`}>
           <span className="min-w-0 flex-1 text-xs">
             <span className={`font-semibold ${good ? "text-hit" : "text-warn"}`}>Suggested: {ADVICE_LABEL[advice.kind]}</span>
-            <span className="block text-ink-muted">{advice.reason}</span>
+            <span className="block text-ink-muted">{tidyText(advice.reason)}</span>
           </span>
           <ApplyAdvice a={advice} name={shownName} />
         </div>

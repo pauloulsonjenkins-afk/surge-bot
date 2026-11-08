@@ -176,7 +176,9 @@ const EARLY_STAKE_PCT = 3;
 const adviceId = (a: Pick<Advice, "key" | "kind" | "league">) => (a.league ? `${a.key}@${a.league.key}` : a.key);
 
 const adjusted = (roi: number | null, counted: number) => (roi === null ? null : (roi * counted) / (counted + SAMPLE));
-const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
+/** "8 Nov" for a date in a suggestion's reason (UK day), not "2026-11-08". */
+const dayWords = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
+const pct = (n: number) => `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`;
 const stakeWords = (to: { pct: number } | { flat: number }) => ("pct" in to ? `${to.pct}% of the balance` : `£${to.flat}`);
 
 /** The next step up or down the ladder from the current stake, or null at the end of it. */
@@ -384,7 +386,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
         // and the headline figure (a different window) looks fine. Said here so the two numbers are never seen apart.
         const whole = sinceChange[key]?.live;
         const wholeNote = whole && whole.counted >= 30 && whole.roi !== null ? ` Its whole Live record is still ${pct(whole.roi)} over ${whole.counted} bets — this is about its LAST 30 days only, not a change to that overall figure.` : "";
-        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} Live bets${changeAt && changeAt > recentFrom ? ` since ${new Date(changeAt).toISOString().slice(0, 10)}` : " (30 days)"}, ${pct(adj)} adjusted for luck.${wholeNote}` });
+        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} Live bets${changeAt && changeAt > recentFrom ? ` since ${dayWords(changeAt)}` : " (30 days)"}, ${pct(adj)} adjusted for luck.${wholeNote}` });
         continue;
       }
     }
@@ -403,7 +405,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
           fast: true,
           action: `Lower to ${stakeWords(to)}`,
           to,
-          reason: `${pct(since.roi)} per £1 over ${since.counted} Live bets since it was raised on ${new Date(raise.at).toISOString().slice(0, 10)}.`,
+          reason: `${pct(since.roi)} per £1 over ${since.counted} Live bets since it was raised on ${dayWords(raise.at)}.`,
         });
         continue;
       }

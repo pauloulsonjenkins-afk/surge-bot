@@ -11,7 +11,24 @@ const gbpSigned = new Intl.NumberFormat("en-GB", {
 });
 
 export function formatCurrency(value: number, signed = false): string {
-  return (signed ? gbpSigned : gbpFmt).format(value);
+  // A true minus sign, like gbp(): the browser's own formatter gives a hyphen.
+  return (signed ? gbpSigned : gbpFmt).format(value).replace("-", "\u2212");
+}
+
+const shortDay = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short" });
+
+/**
+ * Text written by the engine (a suggestion's reason, a notification), tidied for showing: a hyphen used as a minus before
+ * a figure becomes a true minus ("-38.3%" -> "−38.3%", "(-3 units)" -> "(−3 units)"), and a bare ISO date becomes words
+ * ("since 2026-11-08" -> "since 8 Nov"). Hyphens inside words ("break-even", "0-0") are left alone.
+ */
+export function tidyText(s: string): string {
+  return s
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y: string, mo: string, d: string) => {
+      const t = Date.UTC(Number(y), Number(mo) - 1, Number(d));
+      return Number.isFinite(t) ? shortDay.format(new Date(t)) : m;
+    })
+    .replace(/(^|[\s(\[,;:])-(?=[£\d])/g, "$1\u2212");
 }
 
 export function formatNumber(value: number): string {

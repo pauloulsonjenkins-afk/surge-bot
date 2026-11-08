@@ -40,7 +40,8 @@ export const ADMIN_SHORT_NAMES: Record<string, string> = {
   "favourite pressure level": "Fav Pressure Level",
   "underdog taking charge": "Underdog Charge",
   "losing team pushing hard": "Losing Team Push",
-  "blistering momentum": "Blistering Mom",
+  // "Blistering Mom" read as a name cut off (design polish, 8 Nov 2026); the whole name is over the 18-character limit.
+  "blistering momentum": "Blistering",
   "over 1.5 goals / early goal": "Early Goal O1.5",
   "pass master 1st half": "Pass Master 1H",
   "dominant momentum 0-0": "Dominant 0-0",
@@ -48,6 +49,10 @@ export const ADMIN_SHORT_NAMES: Record<string, string> = {
   "both teams to score": "BTTS",
   "first half goal": "1st Half Goal",
   "lay next goal · japan and brazil": "LAY · Japan/Brazil",
+  // Live strategies that had no short form showed in different casing on different pages.
+  "away super fav 2 goals": "Away Super Fav",
+  "time to fight": "Time to Fight",
+  "og 2 shg": "OG 2 SHG",
 };
 
 function remembered(): Names | undefined {

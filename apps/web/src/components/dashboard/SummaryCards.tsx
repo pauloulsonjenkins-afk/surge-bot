@@ -15,6 +15,7 @@ import { useSending } from "@/queries/use-sending";
 import { useUnplaced } from "@/queries/use-unplaced";
 import { BreakevenBar } from "@/components/ui/BreakevenBar";
 import { OddsBands } from "./OddsBands";
+import { Flash } from "@/components/ui/Flash";
 
 const TONE = { hit: "text-hit", loss: "text-loss", muted: "text-ink", ink: "text-ink" } as const;
 
@@ -56,11 +57,13 @@ export function HeroRow({
   // Judged on what the winners actually paid, not the average price of every pick (older engines only send the latter).
   const breakeven = c?.breakevenEffective ?? c?.breakeven ?? null;
 
+  // "91 won · 140 lost": "91–140" read like a subtraction (design polish, 8 Nov 2026).
   const record = (
     <>
       <span className="text-hit">{totals.hits}</span>
-      <span className="text-ink-muted">–</span>
+      <span className="text-[0.55em] font-medium text-ink-muted"> won · </span>
       <span className="text-loss">{totals.misses}</span>
+      <span className="text-[0.55em] font-medium text-ink-muted"> lost</span>
     </>
   );
 
@@ -122,7 +125,7 @@ export function HeroRow({
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         {money && c?.roi != null && <Figure label="Return per £1" value={roiText(c.roi)} tone={moneyTone(c.roi)} />}
-        <Figure label="Hits – Misses" value={record} />
+        <Figure label="Won and lost" value={record} />
         {money ? (
           <Figure
             label="Hit rate"
@@ -156,7 +159,9 @@ function Hero({ label, value, tone, sub }: { label: string; value: React.ReactNo
   return (
     <div className={`min-w-0 rounded-xl p-4 ${tone === "hit" ? "kpi-glow kpi-glow-hit" : tone === "loss" ? "kpi-glow kpi-glow-loss" : "border border-line bg-surface"}`}>
       <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className={`mt-1 font-display text-hero font-bold tabular-nums [font-stretch:112%] ${TONE[tone]}`}>{value}</p>
+      <p className={`mt-1 font-display text-hero font-bold tabular-nums [font-stretch:112%] ${TONE[tone]}`}>
+        <Flash value={String(value)}>{value}</Flash>
+      </p>
       {sub && <p className="mt-1.5 text-sm text-ink-muted">{sub}</p>}
     </div>
   );

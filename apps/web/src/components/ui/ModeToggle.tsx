@@ -78,7 +78,10 @@ export function ModeBadge({ mode }: { mode: "live" | "sim" | "notPlaced" }) {
       Live
     </span>
   ) : (
-    <span className="inline-flex shrink-0 items-center rounded-full border border-dashed border-line px-2 py-0.5 text-xs font-medium text-ink-muted">
+    // The same shape as Live, told apart by a hollow dot and muted text (it was a dashed outline on some rows, solid on
+    // others: design polish, 8 Nov 2026).
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-muted">
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full ring-1 ring-inset ring-ink-muted" />
       Sim
     </span>
   );

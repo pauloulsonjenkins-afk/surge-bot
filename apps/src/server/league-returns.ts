@@ -107,7 +107,7 @@ export function judge(t: Tally): { roi: number | null; low: number | null; high:
   return { roi, low, high, verdict };
 }
 
-const pct = (n: number) => `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`;
+const pct = (n: number) => `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`;
 
 function verdictWords(v: Verdict): string {
   return v === "losing" ? "clearly losing" : v === "winning" ? "clearly making money" : "too early to call";

@@ -56,5 +56,5 @@ test("once it has run SETTLE_BETS bets since the change, a clear loss is suggest
   bet(new Date(now.getTime() - 3 * 86_400_000), "miss");
   const a = back(db, now);
   assert.ok(a, `${SETTLE_BETS} bets: judged`);
-  assert.match(a!.reason, /since \d{4}-\d{2}-\d{2}/, "the reason says it counts from the change");
+  assert.match(a!.reason, /since \d{1,2} [A-Z][a-z]{2}\b/, "the reason says it counts from the change");
 });

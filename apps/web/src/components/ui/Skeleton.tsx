@@ -23,3 +23,21 @@ export function ListSkeleton({ items = 6 }: { items?: number }) {
     </div>
   );
 }
+
+/**
+ * A grid of figures loading, shaped like the divided strips on Today and Live (a label, a figure, a line under it), so
+ * the page doesn't jump when the real ones arrive (design polish, 8 Nov 2026).
+ */
+export function StripSkeleton({ cells = 4, columns = 2 }: { cells?: number; columns?: number }) {
+  return (
+    <div className="grid gap-px overflow-hidden rounded-xl border border-line bg-line" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }} aria-hidden="true">
+      {Array.from({ length: cells }).map((_, i) => (
+        <div key={i} className="space-y-2 bg-surface p-3">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+      ))}
+    </div>
+  );
+}

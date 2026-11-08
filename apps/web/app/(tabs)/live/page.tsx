@@ -321,7 +321,7 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
         <span className="min-w-0 flex-1">
           {/* On a phone the chip wraps under the name rather than squeezing it out of sight. */}
           <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <span className="min-w-0 max-w-full truncate text-sm font-medium text-ink">{strategyNames.name(pick.strategy)}</span>
+            <span className="line-clamp-2 min-w-0 max-w-full text-sm font-medium text-ink">{strategyNames.name(pick.strategy)}</span>
             <span className="flex flex-wrap items-center gap-1.5">
               {/* One warning sign per row: a chip that is itself a warning already carries it (the reason is in the opened row). */}
               {admin && issue && !statusChipWarns(pick, admin, placement) && <WarnIcon label={issue.label} detail={issue.detail} />}
@@ -329,7 +329,7 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
               {golden && <GoldenBadge status={status} />}
             </span>
           </span>
-          <span className="mt-1 block truncate text-xs text-ink-muted">
+          <span className="mt-1 line-clamp-2 text-xs text-ink-muted">
             {[
               betText(pick.market, pick.selection) ?? "No market set",
               admin && pick.exchange === "on" && pick.exchangeOdds != null ? `Betfair ${pick.exchangeOdds.toFixed(2)}` : null,
@@ -527,11 +527,12 @@ function MatchGroup({
           <h2 className="break-words text-sm font-semibold text-ink">
             {latest.home ?? "Unknown"} <span className="font-normal text-ink-muted">v</span> {latest.away ?? "Unknown"}
           </h2>
-          <p className="truncate text-xs text-ink-muted">
+          {/* The parts that change first (the clock, the latest alert), then the league; two lines before anything is cut. */}
+          <p className="line-clamp-2 text-xs text-ink-muted">
             {[
-              latest.competition,
               clock && (clock === "FT?" ? "should be over, result due" : clock.startsWith("KO") ? `kick-off about ${clock.slice(3)}` : `about ${clock.replace("~", "")} now`),
               minute && `latest alert ${minute}`,
+              latest.competition,
               `${picks.length} alert${picks.length === 1 ? "" : "s"}`,
               sent > 0 && `${sent} sent`,
             ]

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useMembersAction, useMembersNotifications } from "@/queries/use-members";
 import { when } from "@/components/members/ui";
 import { AppAlertsCard } from "@/components/members/AppAlertsCard";
+import { tidyText } from "@/lib/format";
 
 export default function NotificationsPage() {
   const { data, isLoading } = useMembersNotifications();
@@ -30,7 +31,7 @@ export default function NotificationsPage() {
             {data.notifications.map((n) => (
               <li key={n.id} className="py-2">
                 <p className={`text-sm ${n.readAt ? "text-ink" : "font-semibold text-ink"}`}>{n.title}</p>
-                <p className="text-sm text-ink-muted">{n.body}</p>
+                <p className="text-sm text-ink-muted">{tidyText(n.body)}</p>
                 <p className="text-xs text-ink-muted">
                   {when(n.at)}
                   {n.link?.startsWith("/members") && (

@@ -377,19 +377,18 @@ export default function GoldenPage() {
                     </button>
                   ))}
                 </div>
-                <div className="flex min-h-11 items-center gap-1 rounded-md bg-surface-2 p-1 text-xs">
-                  {(["strategy", "nextStage"] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      aria-pressed={sortBy === s}
-                      onClick={() => setSortBy(s)}
-                      className={`min-h-9 rounded px-2.5 font-medium ${sortBy === s ? "bg-surface text-ink shadow-sm" : "text-ink-muted"}`}
-                    >
-                      {s === "strategy" ? "By strategy" : "Closest to next stage"}
-                    </button>
-                  ))}
-                </div>
+                {/* The sort as one small control beside the filter, not a second row of buttons (design polish, 8 Nov 2026). */}
+                <label className="flex min-h-11 items-center gap-1.5 text-xs text-ink-muted">
+                  Sort
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as "strategy" | "nextStage")}
+                    className="min-h-9 rounded-md border border-line bg-surface px-2 text-xs font-medium text-ink"
+                  >
+                    <option value="strategy">By strategy</option>
+                    <option value="nextStage">Closest to next stage</option>
+                  </select>
+                </label>
               </div>
             )}
             {/* Folded to one line: it's set once and rarely changed, and it pushed every slice down a phone screen. */}

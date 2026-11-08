@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Card, PageHeader, Segmented } from "@/components/ui/Card";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { Skeleton, StripSkeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { UpdatedAgo } from "@/components/ui/UpdatedAgo";
 import { useDialog } from "@/components/ui/ConfirmDialog";
@@ -20,6 +20,7 @@ import { Fold } from "@/components/ui/Fold";
 import { AttentionDot, NoticeStack, type NoticeItem } from "@/components/ui/Notice";
 import { Power } from "lucide-react";
 import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
+import { Flash } from "@/components/ui/Flash";
 
 
 function ago(iso: string | null): string {
@@ -229,24 +230,24 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
-        <Tile flat label="Live today" value={<span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
+        <Tile flat label="Live today" value={<Flash value={d.today.liveNet}><span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span></Flash>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
         {/* The same day as if every bet were the same 1-unit stake, so a stake change can't make it look better or worse. */}
         {d.today.liveUnits !== undefined && (
           <Tile flat
             label="Units today"
-            value={<span className={toneOf(d.today.liveUnits)}>{units(d.today.liveUnits)}</span>}
+            value={<Flash value={d.today.liveUnits}><span className={toneOf(d.today.liveUnits)}>{units(d.today.liveUnits)}</span></Flash>}
             sub={`Live, ${d.today.liveSettled} settled · Sim ${units(d.today.simUnits ?? 0)} (${d.today.simSettled})`}
           />
         )}
         <Tile flat
           label="Daily loss stop"
           value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}
-          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet, false)} of it used today` : "None used: Live isn't down today") : undefined}
+          sub={d.limits.dailyLossLimit > 0 ? (d.limits.lossStop ? "Reached today" : d.today.liveNet < 0 ? `${gbp(-d.today.liveNet, false)} of it used today` : "None used today") : undefined}
           warn={d.limits.dailyLossLimit === 0 || d.limits.lossStop !== null}
         >
           {d.limits.dailyLossLimit === 0 && (
-            <Link href="/more/admin/sending?tab=limits" className="mt-1 block text-xs text-warn underline">
-              Set one on Betting
+            <Link href="/more/admin/sending?tab=limits" className="mt-1 inline-block text-xs font-medium text-accent hover:underline">
+              Set limit ›
             </Link>
           )}
         </Tile>
@@ -270,7 +271,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           flat
           label="Betfair balance"
           value={d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`}
-          sub={d.bank.at ? `exposure £${Math.abs(d.bank.exposure ?? 0).toFixed(2)} · read ${ago(d.bank.at)}` : "Not read yet (needs the Betfair link set up on the engine)"}
+          sub={d.bank.at ? `exposure £${Math.abs(d.bank.exposure ?? 0).toFixed(2)} · read ${ago(d.bank.at)}` : "Not connected"}
           warn={bankAge !== null && bankAge > 30 * 60_000}
         />
         <Tile
@@ -280,13 +281,13 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           sub={
             d.exposure.biggestMatch
               ? `most on one match £${d.exposure.biggestMatch.stake.toFixed(2)}${d.limits.matchCap > 0 ? ` (limit £${d.limits.matchCap})` : ""}`
-              : "nothing on unsettled matches"
+              : "no open bets"
           }
           warn={d.limits.matchCap === 0}
         >
           {d.limits.matchCap === 0 && (
-            <Link href="/more/admin/sending" className="mt-1 block text-xs text-warn underline">
-              No per-match limit set
+            <Link href="/more/admin/sending?tab=limits" className="mt-1 inline-block text-xs font-medium text-accent hover:underline">
+              No match limit · Set ›
             </Link>
           )}
         </Tile>
@@ -388,11 +389,7 @@ export default function TodayPage() {
       {error ? (
         <QueryError error={error} next="/more/admin/today" />
       ) : isLoading || !data ? (
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }, (_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
-        </div>
+        <StripSkeleton cells={4} columns={2} />
       ) : (
         <Tiles d={data} />
       )}

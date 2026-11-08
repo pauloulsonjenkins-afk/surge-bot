@@ -8,6 +8,7 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { ClashSummary } from "@/components/admin/ClashSummary";
 import { ClampedText } from "@/components/ui/ClampedText";
+import { tidyText } from "@/lib/format";
 
 /**
  * Strategy suggestions (strategy-advice.ts in the engine): shown on Today and on Strategies, each with its own Apply.
@@ -58,7 +59,7 @@ export function ApplyAdvice({ a, name, size = "sm" }: { a: StrategyAdvice; name:
           e.stopPropagation();
           const body = (
             <>
-              <p>{a.reason}</p>
+              <p>{tidyText(a.reason)}</p>
               {a.kind === "try-live" && <ClashSummary strategyKey={a.key} />}
               {a.kind === "slice-live" && a.slice && <ClashSummary strategyKey={a.slice.strategyKey} compact />}
             </>
@@ -90,7 +91,7 @@ export function AdviceRow({ a, name, link = true }: { a: StrategyAdvice; name: s
         )}{" "}
         <span className={good ? "text-hit" : "text-warn"}>{ADVICE_LABEL[a.kind]}</span>
         {/* Two lines, the rest a tap away: on a phone a long reason pushed everything else down a screen. */}
-        <ClampedText text={a.reason} lines={2} className="block text-xs text-ink-muted" />
+        <ClampedText text={tidyText(a.reason)} lines={2} className="block text-xs text-ink-muted" />
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         <IgnoreAdvice a={a} />
@@ -208,7 +209,7 @@ export function ApplyAllAdvice({ advice, nameOf }: { advice: StrategyAdvice[]; n
           });
           if (ok) run.mutate();
         }}
-        className="rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-ink disabled:opacity-50"
+        className="inline-flex min-h-9 items-center rounded-md border border-line px-3 text-xs font-semibold text-ink hover:bg-surface-2 disabled:opacity-50"
       >
         {run.isPending ? "Applying…" : `Apply all ${list.length}`}
       </button>
