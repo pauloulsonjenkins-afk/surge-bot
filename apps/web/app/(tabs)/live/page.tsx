@@ -23,6 +23,8 @@ import { Chip, WarnIcon, type ChipTone } from "@/components/ui/Chip";
 import { usePlacements, type Placement } from "@/queries/use-reconcile";
 import { useChooseBetfairMatch, useClearWaiting, useSetManualBet, useSetPickResult } from "@/queries/use-live";
 import { strategyKey, useStrategyNames } from "@/queries/use-strategy-names";
+import { LeagueDot } from "@/components/admin/strategies/LeaguesCard";
+import { roiText } from "@/lib/hit-rate";
 
 // An alert that has had no result edited in after this long is treated as
 // finished rather than still in play. Finished picks live on the Trade Log.
@@ -338,6 +340,16 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
               .filter(Boolean)
               .join(" · ")}
           </span>
+          {/* The strategy's colour in this league (owner, 8 Nov 2026): information only. */}
+          {admin && pick.leagueForm && pick.leagueForm.level !== "grey" && (
+            <span className="mt-0.5 flex items-center gap-1.5 text-xs tabular-nums text-ink-muted" title="How this strategy has done in this league, on its priced picks since its last rule change. Worked out hourly. Information only, unless you set a league filter on the strategy.">
+              <LeagueDot level={pick.leagueForm.level} />
+              <span className="truncate">
+                {pick.leagueForm.level === "proven" ? "Proven" : pick.leagueForm.level === "green" ? "Green" : "Red"} league ·{" "}
+                <span className={(pick.leagueForm.roi ?? 0) > 0 ? "text-hit" : (pick.leagueForm.roi ?? 0) < 0 ? "text-loss" : ""}>{roiText(pick.leagueForm.roi)} per £1</span> over {pick.leagueForm.n}
+              </span>
+            </span>
+          )}
           {/* How alerts like this one did over the last 30 days: information only, nothing here changes a bet. */}
           {admin && pick.similar && (
             <span

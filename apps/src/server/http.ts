@@ -97,7 +97,7 @@ import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { telegramHealth } from "./telegram-watchdog";
 import { computeStopLoss, forgetStopLoss, saveStopLossRule } from "../inplayguru/stop-loss";
 import { currentStake, getBank } from "../inplayguru/stake";
-import { addMatchName, betPickNow, pickSegments, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
+import { addMatchName, betPickNow, pickSegments, strategyLabel, buildFeed, EXCHANGE_HOLD_MS, getSendingSettings, recordSimBets, saveSendingSettings } from "../inplayguru/bet-feed";
 import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { ALL_TIME, computeHitRateContext, computePickProfits, computeSinceModeReturns, computeSparks, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
@@ -124,6 +124,7 @@ import { applyMyBet, type MyBet } from "../tips/track";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { leagueFormReport } from "./league-form";
+import { getStoredLeagueForm, leagueLevel } from "../inplayguru/league-form";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
 import { notPlacedReport, todaySnapshot } from "./today";
 import { pickDetail } from "./pick-detail";
@@ -440,7 +441,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           const t2 = Date.now();
           // Watched slices each pick is in (e.g. Second Pour's Golden), for the Live tab's badge.
           // How alerts like each one did over the last 30 days (similar-alerts.ts): information only, admin only on the site.
-          const body = { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), similar: similarAlertsFor(db, p) })) };
+          // The strategy's colour in the pick's league (league-form.ts), for the Live tab's dot: admin only on the site.
+          const leagueForm = getStoredLeagueForm(db);
+          const leagueOf = (p: (typeof picks)[number]) => {
+            const f = leagueForm ? leagueLevel(leagueForm, strategyLabel(p.strategy), p.leagueKey) : null;
+            return leagueForm ? { level: f?.level ?? "grey", n: f?.n ?? 0, roi: f?.roi ?? null } : null;
+          };
+          const body = { picks: picks.map((p) => ({ ...p, pnl: profits[p.id] ?? null, segments: pickSegments(p), similar: similarAlertsFor(db, p), leagueForm: leagueOf(p) })) };
           // The Trade Log was slow to load (3 Nov 2026): say where the time goes when it is, so it can be fixed from the log.
           if (Date.now() - t0 > 500) log.info(`/internal/live ${picks.length} picks took ${Date.now() - t0} ms: read ${t1 - t0}, profits ${t2 - t1}, rest ${Date.now() - t2}.`);
           return body;

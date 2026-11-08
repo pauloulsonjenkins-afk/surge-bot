@@ -73,6 +73,8 @@ export interface LivePick {
    * similar-alerts.ts). Information only, admin only; n under 10 comes with no figures ("too few"). Missing on an older engine.
    */
   similar?: { n: number; wonPct: number | null; roiPct: number | null; days: number } | null;
+  /** The strategy's colour in this league (engine league-form.ts): admin only; null before the first hourly work-out, missing on an older engine. */
+  leagueForm?: { level: "proven" | "green" | "grey" | "red"; n: number; roi: number | null } | null;
   /** Not found on Betfair: the nearest events its search returned, to choose from (missing on an older engine). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   exchange?: "on" | "nameDiffers" | "off" | null;
@@ -169,6 +171,8 @@ export interface PublicPick {
    * similar-alerts.ts). Information only, admin only; n under 10 comes with no figures ("too few"). Missing on an older engine.
    */
   similar?: { n: number; wonPct: number | null; roiPct: number | null; days: number } | null;
+  /** The strategy's colour in this league (engine league-form.ts): admin only; null before the first hourly work-out, missing on an older engine. */
+  leagueForm?: { level: "proven" | "green" | "grey" | "red"; n: number; roi: number | null } | null;
   /** Not found on Betfair: the nearest events its search returned (admin only). */
   exchangeCandidates?: Array<{ name: string; id: string }> | null;
   flags: string[];
@@ -213,6 +217,7 @@ export function toPublicPick(p: LivePick): PublicPick {
     waitingClearedAt: p.waitingClearedAt ?? null,
     segments: p.segments ?? [],
     similar: p.similar ?? null,
+    leagueForm: p.leagueForm ?? null,
     exchangeCandidates: p.exchangeCandidates ?? null,
     flags: p.flags,
     detail: p.detail
