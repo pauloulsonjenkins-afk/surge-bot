@@ -148,7 +148,7 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
           {/* 29 Oct 2026: strategies switched Live after a short good Sim run lost real money (Fav Pressure Level +£18.53 in
               Sim, -£11.08 Live). The suggestion's own Apply goes Live at a trial stake; a manual switch skips that. */}
           {ready === false && !isLay(s) && (
-            <p className="rounded-md border border-warn/60 bg-warn/10 p-2 text-sm">
+            <p className="rounded-lg bg-warn/10 p-3 text-sm">
               <strong>Not ready by GoalBrew&apos;s rule</strong>, which needs 200+ priced Sim bets making money in both the older and newer half. A good Sim run on
               fewer is often luck. If you go Live anyway, use a small trial stake (1% of the balance) and let the stake ladder raise it.
             </p>

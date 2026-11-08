@@ -147,7 +147,7 @@ export function StrategyCard({
 
   return (
     <li
-      className={`card-hover overflow-hidden rounded-xl border transition-colors ${open ? "card-open" : "bg-surface"} ${selected ? "border-accent" : "border-line"} ${advice ? (good ? "ring-2 ring-hit/70" : "ring-2 ring-warn/70") : ""}`}
+      className={`card-hover overflow-hidden rounded-xl border transition-colors ${open ? "card-open" : "bg-surface"} ${selected ? "border-accent" : "border-line"}`}
     >
       {/* The row to compare by: name, record and hit rate against break-even on the left, the headline figure on the right. */}
       {/* Wraps on a narrow screen: the Live / Sim switch drops to its own line instead of squeezing the name to one letter wide. */}
@@ -222,7 +222,7 @@ export function StrategyCard({
       </div>
       {/* A suggestion for this strategy (the same as at the top of the page and on Today), with its own Apply. */}
       {advice && (
-        <div className={`mx-3.5 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${good ? "border-hit/40 bg-hit/10" : "border-warn/40 bg-warn/10"}`}>
+        <div className={`mx-3.5 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ${good ? "bg-hit/10" : "bg-warn/10"}`}>
           <span className="min-w-0 flex-1 text-xs">
             <span className={`font-semibold ${good ? "text-hit" : "text-warn"}`}>Suggested: {ADVICE_LABEL[advice.kind]}</span>
             <span className="block text-ink-muted">{advice.reason}</span>

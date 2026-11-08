@@ -45,7 +45,7 @@ export function ModeBanner({ mode }: { mode: "sim" | "live" }) {
       <ModeBadge mode="sim" /> No real money is placed. Bets are simulated on the house alerts.
     </p>
   ) : (
-    <p className="flex items-center gap-2 rounded-lg border border-loss/40 bg-loss/5 px-3 py-2 text-xs text-ink">
+    <p className="flex items-center gap-2 rounded-lg bg-loss/10 px-3 py-2 text-xs text-ink">
       <ModeBadge mode="live" /> Real bets may be placed on the connected Betfair account.
     </p>
   );
@@ -73,7 +73,7 @@ export function TrialCountdown({ me }: { me: MembersMe }) {
   const urgent = (me.trial.hoursLeft ?? 99) <= 48;
   const left = (me.trial.hoursLeft ?? 0) <= 24 ? `${me.trial.hoursLeft} hour${me.trial.hoursLeft === 1 ? "" : "s"} left` : `${days} day${days === 1 ? "" : "s"} left`;
   return (
-    <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 ${urgent ? "border-warn bg-warn/10" : "border-accent/40 bg-accent/5"}`}>
+    <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-3 ${urgent ? "bg-warn/10" : "border border-line bg-surface"}`}>
       <p className="flex items-center gap-2 text-sm text-ink">
         <Clock size={16} aria-hidden className={urgent ? "text-warn" : "text-accent"} />
         <span>
@@ -188,7 +188,7 @@ export function Tile({ label, value, sub, tone = "ink" }: { label: string; value
 
 export const btn = "rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50";
 export const btnPrimary = "rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50";
-export const input = "w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent";
+export const input = "min-h-11 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30";
 
 /** Responsible-gambling line for anything to do with real money. */
 export function SaferGambling() {

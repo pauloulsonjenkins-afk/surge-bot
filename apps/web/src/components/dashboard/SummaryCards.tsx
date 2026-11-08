@@ -228,7 +228,7 @@ function StatusStrip({ pending }: { pending: number }) {
   const pill = "tap-target inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium";
   return (
     <nav aria-label="Status" className="flex flex-wrap gap-2">
-      <Link href="/more/admin/sending" className={`${pill} ${on ? "border-line text-ink" : "border-warn/40 bg-warn/10 text-warn"}`}>
+      <Link href="/more/admin/sending" className={`${pill} ${on ? "border-line text-ink" : "border-transparent bg-warn/10 text-warn"}`}>
         <span aria-hidden className={`h-2 w-2 rounded-full ${on ? "pulse-dot bg-hit" : "bg-warn"}`} />
         Betting {on ? "on" : "off"}
       </Link>
@@ -238,7 +238,7 @@ function StatusStrip({ pending }: { pending: number }) {
       {notPlaced !== null && (
         <Link
           href="/more/admin/sending"
-          className={`${pill} ${notPlaced > 0 ? "border-warn/40 bg-warn/10 text-warn" : "border-line text-ink-muted"}`}
+          className={`${pill} ${notPlaced > 0 ? "border-transparent bg-warn/10 text-warn" : "border-line text-ink-muted"}`}
         >
           {notPlaced} not placed
         </Link>

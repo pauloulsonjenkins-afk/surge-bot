@@ -3,8 +3,9 @@ import { persist } from "zustand/middleware";
 import type { PickMode } from "@/server/engine-client";
 
 interface UiState {
-  theme: "dark" | "light";
-  setTheme: (t: "dark" | "light") => void;
+  /** "system" (the default for anyone who hasn't chosen) follows the phone or computer's light / dark setting. */
+  theme: "dark" | "light" | "system";
+  setTheme: (t: "dark" | "light" | "system") => void;
 
   /** Last non-admin sub-route visited under /more, so re-opening the tab returns there. */
   lastMoreRoute: string;
@@ -30,7 +31,7 @@ interface UiState {
 export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
-      theme: "dark",
+      theme: "system",
       setTheme: (theme) => set({ theme }),
 
       lastMoreRoute: "/more",

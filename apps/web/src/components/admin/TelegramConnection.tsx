@@ -157,7 +157,7 @@ export default function TelegramConnection() {
       </p>
 
       {error && (
-        <p className="mt-4 rounded-md border border-destructive bg-surface-2 px-3 py-2 text-sm text-destructive">{error}</p>
+        <p className="mt-4 rounded-lg bg-loss/15 px-3 py-2 text-sm text-ink">{error}</p>
       )}
 
       {watching ? (

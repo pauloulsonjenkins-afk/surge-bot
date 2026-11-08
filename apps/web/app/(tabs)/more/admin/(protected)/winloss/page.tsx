@@ -18,6 +18,7 @@ import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import type { PickMode } from "@/server/engine-client";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useIsArchived } from "@/queries/use-archive";
+import { ChevronRight } from "lucide-react";
 
 type PeriodKey = "d1" | "d7" | "mtd" | "ytd";
 const PERIODS: Array<{ key: PeriodKey; label: string }> = [
@@ -316,9 +317,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
               return (
                 <li key={s.key} className="py-2.5">
                   <button type="button" onClick={() => toggleRow(s.key)} aria-expanded={isOpen} className="flex w-full items-center gap-2 text-left">
-                    <span className={`shrink-0 text-xs text-ink-muted transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden>
-                      ▸
-                    </span>
+                    <ChevronRight size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-90" : ""}`} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm text-ink"><StrategyName label={s.label} /></span>
                       <span className="block truncate text-xs text-ink-muted">

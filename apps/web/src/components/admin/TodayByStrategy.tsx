@@ -7,6 +7,7 @@ import { useAdminStrategies, type AdminStrategy, type StrategyReturn } from "@/q
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useIsArchived } from "@/queries/use-archive";
 import { gbp, signedPct, toneOf } from "@/lib/format";
+import { ChevronDown } from "lucide-react";
 
 type Mode = "live" | "sim";
 
@@ -62,8 +63,9 @@ export function TodayByStrategy() {
       title={
         <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 text-left">
           <span>By strategy today</span>
-          <span className="text-xs font-normal text-ink-muted">
-            {total.n > 0 ? `${total.won}–${total.n - total.won} · ${gbp(total.profit)}` : "nothing settled yet"} {open ? "▲" : "▼"}
+          <span className="flex items-center gap-2 text-xs font-normal text-ink-muted">
+            {total.n > 0 ? `${total.won}–${total.n - total.won} · ${gbp(total.profit)}` : "nothing settled yet"}
+            <ChevronDown size={16} aria-hidden className={`transition-transform ${open ? "rotate-180" : ""}`} />
           </span>
         </button>
       }
@@ -92,7 +94,7 @@ export function TodayByStrategy() {
           </div>
 
           {mode === "sim" && looks.length > 0 && (
-            <div className="rounded-xl border-2 border-accent bg-accent/5 p-3 text-xs">
+            <div className="rounded-xl border border-line bg-surface-2 p-3 text-xs">
               <p className="text-sm font-semibold text-ink">Worth a look for Live</p>
               <p className="mt-0.5 text-ink-muted">A good day alone is mostly luck; these also have a longer Sim record that makes money. Switch one on Strategies (it asks first, with its clash check).</p>
               <ul className="mt-2 space-y-1">

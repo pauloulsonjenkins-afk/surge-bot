@@ -156,9 +156,9 @@ function NeedsReview({ onChange, onToggleExcluded, busyResult, busyExcluded }: {
   const review = useReviewResult();
   if (!data || data.length === 0) return null;
   return (
-    <section className="space-y-2 rounded-xl border border-warn/40 bg-warn/5 p-3" aria-label="Needs review">
+    <section className="space-y-2 rounded-xl border border-line bg-surface p-3" aria-label="Needs review">
       <div>
-        <h3 className="text-sm font-semibold text-ink">Needs review ({data.length})</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink"><span aria-hidden className="h-2 w-2 rounded-full bg-warn" />Needs review ({data.length})</h3>
         <p className="text-xs text-ink-muted">
           The alert&rsquo;s own tick and the final score disagree on these. They stay here, whatever date they&rsquo;re from, until you amend,
           remove or keep each one.

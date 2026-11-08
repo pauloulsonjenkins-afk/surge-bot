@@ -116,7 +116,7 @@ export default function AdminMembersPage() {
       />
 
       {me.data?.publicView && (
-        <p className="rounded-lg border border-warn bg-warn/10 px-3 py-2 text-sm text-ink">
+        <p className="rounded-lg bg-warn/10 px-3 py-2 text-sm text-ink">
           Public view is ON (Settings). While it is on, anyone can open Live, Trade Log and the Dashboard with every alert in full, which gives away what Members pay for. Switch it off.
         </p>
       )}

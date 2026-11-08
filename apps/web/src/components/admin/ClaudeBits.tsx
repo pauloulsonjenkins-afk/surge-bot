@@ -51,7 +51,7 @@ function Recommendations({ list }: { list: NonNullable<NonNullable<ClaudeReviews
       {list.map((a) => {
         const name = adviceTitle(a, names.name);
         return (
-          <div key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} className="rounded-lg border-2 border-accent bg-accent/5 p-3">
+          <div key={`${a.key}:${a.kind}:${a.league?.key ?? ""}`} className="rounded-lg border border-line bg-surface-2 p-3">
             <div className="flex items-start justify-between gap-2">
               <p className="min-w-0 text-sm font-medium text-ink">
                 {name} <span className={isGoodAdvice(a) ? "text-hit" : "text-warn"}>{ADVICE_LABEL[a.kind]}</span>

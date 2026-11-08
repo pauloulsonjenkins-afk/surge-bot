@@ -78,11 +78,6 @@ export default function Landing() {
       )}
 
       <SaferGambling />
-      <p className="pb-2 text-center text-xs">
-        <Link href="/more/admin/login" className="text-ink-muted hover:text-ink">
-          Admin sign in
-        </Link>
-      </p>
     </div>
   );
 }

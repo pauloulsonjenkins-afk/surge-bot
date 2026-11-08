@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { BellRing, ChevronDown } from "lucide-react";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { SegmentBetting } from "@/components/admin/SegmentBetting";
 import { useSending } from "@/queries/use-sending";
@@ -189,7 +189,7 @@ export default function GoldenPage() {
                 )}
               </span>
               {s.bet?.live && <span className="rounded-full bg-accent/15 px-1.5 font-medium text-accent">Live</span>}
-              {s.notify && <span aria-label="Notifies you">🔔</span>}
+              {s.notify && <BellRing size={14} aria-label="Notifies you" className="text-accent" />}
             </span>
           </span>
           <ChevronDown size={16} aria-hidden className={`mt-1 shrink-0 text-ink-muted transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -250,7 +250,13 @@ export default function GoldenPage() {
                 }
                 className={`${action} ${s.notify ? "gold-chip-outline font-semibold" : "text-ink"}`}
               >
-                {s.notify ? "🔔 Notify me: on" : "Notify me: off"}
+                {s.notify ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <BellRing size={14} aria-hidden /> Notify me: on
+                  </span>
+                ) : (
+                  "Notify me: off"
+                )}
               </button>
               <button
                 type="button"
@@ -395,7 +401,7 @@ export default function GoldenPage() {
             {allMainSlices.length > 0 && (
               <details className="mb-3 rounded-md bg-surface-2 px-3 text-xs text-ink-muted">
                 <summary className="flex min-h-11 cursor-pointer items-center gap-1 font-medium text-ink">
-                  🔔 Alert notifications · {allMainSlices.filter((s) => s.notify).length} on · quiet 23:00–07:00 {data.notifyQuiet === false ? "off" : "on"}
+                  <BellRing size={14} aria-hidden className="shrink-0" /> Alert notifications · {allMainSlices.filter((s) => s.notify).length} on · quiet 23:00–07:00 {data.notifyQuiet === false ? "off" : "on"}
                 </summary>
                 <div className="pb-3">
                   <p>

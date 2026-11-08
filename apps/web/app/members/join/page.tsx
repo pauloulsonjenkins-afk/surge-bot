@@ -9,6 +9,19 @@ import { useMembersOffer } from "@/queries/use-members";
 
 const USERNAME_OK = /^[A-Za-z0-9_]{3,20}$/;
 
+/** A field with its label always shown above it (a placeholder vanishes as you type). */
+function Field({ id, label, hint, children }: { id: string; label: string; hint?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm font-medium text-ink">
+        {label}
+      </label>
+      {children}
+      {hint}
+    </div>
+  );
+}
+
 /** Free membership sign-up: makes the account, then signs straight in. */
 export default function JoinPage() {
   const router = useRouter();
@@ -23,6 +36,20 @@ export default function JoinPage() {
   const offer = useMembersOffer().data;
   const days = offer?.trialDays ?? 7;
   const picks = offer?.trialStrategyLimit ?? 3;
+
+  // What still stops the button, said under it, so a greyed-out button never leaves you guessing.
+  const missing =
+    name.trim().length < 2
+      ? "Add your name"
+      : !USERNAME_OK.test(username)
+        ? "Choose a username"
+        : !email
+          ? "Add your email"
+          : password.length < 10
+            ? "Choose a password of 10+ characters"
+            : !agree
+              ? "Tick the 18+ box"
+              : null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -59,34 +86,47 @@ export default function JoinPage() {
           ? `Free forever: house results and a simulation bank. Start a ${days}-day Premium Trial whenever you're ready.`
           : `Free. Choose ${picks} strategies and get ${days} days of full access to them: how they work, every qualifying game and upcoming opportunities. No card needed.`}
       </p>
-      <form onSubmit={submit} className="space-y-3">
-        <input className={input} autoComplete="name" placeholder="Your name" aria-label="Your name" required value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
-        <div>
+      <form onSubmit={submit} className="space-y-4">
+        <Field id="join-name" label="Your name">
+          <input id="join-name" className={input} autoComplete="name" required value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field
+          id="join-username"
+          label="Username"
+          hint={
+            <p className={`text-xs ${username && !USERNAME_OK.test(username) ? "text-destructive" : "text-ink-muted"}`}>
+              3 to 20 letters, numbers or underscores. You can sign in with it instead of your email.
+            </p>
+          }
+        >
           <input
+            id="join-username"
             className={input}
             autoComplete="username"
             autoCapitalize="none"
             spellCheck={false}
-            placeholder="Choose a username"
-            aria-label="Username"
             required
             value={username}
             maxLength={20}
             onChange={(e) => setUsername(e.target.value.replace(/\s/g, ""))}
           />
-          <p className={`mt-1 text-xs ${username && !USERNAME_OK.test(username) ? "text-destructive" : "text-ink-muted"}`}>
-            3 to 20 letters, numbers or underscores. You can sign in with it instead of your email.
-          </p>
-        </div>
-        <input className={input} type="email" autoComplete="email" placeholder="Email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input className={input} type="password" autoComplete="new-password" placeholder="Password (10+ characters)" aria-label="Password, 10 or more characters" value={password} onChange={(e) => setPassword(e.target.value)} />
-        <label className="flex items-start gap-2 text-xs text-ink-muted">
-          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5" />I am 18 or over and understand GoalBrew shows betting information, not advice.
+        </Field>
+        <Field id="join-email" label="Email">
+          <input id="join-email" className={input} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field id="join-password" label="Password" hint={<p className="text-xs text-ink-muted">At least 10 characters.</p>}>
+          <input id="join-password" className={input} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+        <label className="flex items-start gap-2.5 text-sm text-ink-muted">
+          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />I am 18 or over and understand GoalBrew shows betting information, not advice.
         </label>
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <button type="submit" disabled={pending || !agree || name.trim().length < 2 || !USERNAME_OK.test(username) || !email || password.length < 10} className="w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink disabled:opacity-50">
-          {pending ? "Creating…" : "Create free account"}
-        </button>
+        <div className="space-y-1.5 pt-1">
+          <button type="submit" disabled={pending || missing !== null} className="min-h-11 w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink">
+            {pending ? "Creating…" : "Create free account"}
+          </button>
+          {missing && !pending && <p className="text-center text-xs text-ink-muted">{missing} to continue.</p>}
+        </div>
       </form>
       <p className="text-sm text-ink-muted">
         Already a member?{" "}

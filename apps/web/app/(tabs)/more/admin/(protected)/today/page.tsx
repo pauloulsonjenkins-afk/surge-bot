@@ -17,6 +17,7 @@ import { ClaudeReviewCard } from "@/components/admin/ClaudeBits";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
 import { toneOf, gbp, units } from "@/lib/format";
 import { Fold } from "@/components/ui/Fold";
+import { AttentionDot, Notice } from "@/components/ui/Notice";
 import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
 
 
@@ -26,10 +27,13 @@ function ago(iso: string | null): string {
   return s < 60 ? `${s} s ago` : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 86_400 ? `${Math.floor(s / 3600)} h ago` : `${Math.floor(s / 86_400)} days ago`;
 }
 
-function Tile({ label, value, sub, warn, children }: { label: string; value: React.ReactNode; sub?: React.ReactNode; warn?: boolean; children?: React.ReactNode }) {
+function Tile({ label, value, sub, warn, flat, children }: { label: string; value: React.ReactNode; sub?: React.ReactNode; warn?: boolean; flat?: boolean; children?: React.ReactNode }) {
   return (
-    <div className={`rounded-xl border p-3 ${warn ? "border-warn/60 bg-warn/5" : "border-line bg-surface"}`}>
-      <p className="text-xs text-ink-muted">{label}</p>
+    <div className={flat ? "bg-surface p-3" : "rounded-xl border border-line bg-surface p-3"}>
+      <p className="flex items-center gap-1.5 text-xs text-ink-muted">
+        {warn && <AttentionDot />}
+        {label}
+      </p>
       <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-ink-muted">{sub}</p>}
       {children}
@@ -188,30 +192,29 @@ function Tiles({ d }: { d: TodaySnapshot }) {
   return (
     <>
       {noDevices && (
-        <p className="rounded-xl border border-warn/60 bg-warn/10 p-3 text-sm text-ink">
-          <strong>No phone gets GoalBrew&apos;s notifications.</strong> Warnings such as &ldquo;Telegram alerts have stopped&rdquo; reach nobody. Turn them on
-          on your phone:{" "}
-          <Link href="/more/admin/sending" className="font-medium text-accent underline">
-            Betting → Limits and switches → Notifications
+        <Notice level="action" title="No phone gets GoalBrew's notifications">
+          Warnings such as &ldquo;Telegram alerts have stopped&rdquo; reach nobody.{" "}
+          <Link href="/more/admin/sending" className="font-medium text-accent underline underline-offset-2">
+            Turn them on
           </Link>
-          , then &ldquo;Send a test&rdquo;.
-        </p>
+          , then send a test.
+        </Notice>
       )}
       {d.betting.breaker.open && (
-        <p className="rounded-xl border border-loss/60 bg-loss/10 p-3 text-sm text-ink">
-          <strong>New bets paused.</strong> {d.betting.breaker.reason} They resume by themselves once Betfair answers again.
-        </p>
+        <Notice level="stop" title="New bets paused">
+          {d.betting.breaker.reason} They resume by themselves once Betfair answers again.
+        </Notice>
       )}
-      {d.limits.lossStop && <p className="rounded-xl border border-loss/60 bg-loss/10 p-3 text-sm text-ink">{d.limits.lossStop}</p>}
+      {d.limits.lossStop && <Notice level="stop" title="Daily loss stop reached">{d.limits.lossStop.replace(/^Daily loss stop:\s*/i, "")}</Notice>}
       {!tg.ok && (
-        <p className="rounded-xl border border-warn/60 bg-warn/10 p-3 text-sm text-ink">
-          <strong>Alerts may not be arriving.</strong> {tg.problems.join(" ")}
-        </p>
+        <Notice level="action" title="Alerts may not be arriving">
+          {tg.problems.join(" ")}
+        </Notice>
       )}
       {tg.ok && volume?.low && (
-        <p className="rounded-xl border border-warn/60 bg-warn/10 p-3 text-sm text-ink">
-          <strong>Alerts have gone quiet.</strong> Only {volume.lastHour} in the last hour, against a usual {volume.typical} for this time of day. Telegram&apos;s connection looks fine, so this is likely InPlayGuru itself, not GoalBrew.
-        </p>
+        <Notice level="action" title="Alerts have gone quiet">
+          Only {volume.lastHour} in the last hour, against a usual {volume.typical} for this time of day. Telegram&apos;s connection looks fine, so this is likely InPlayGuru itself.
+        </Notice>
       )}
 
       <div className={`grid grid-cols-2 gap-2 ${d.today.liveUnits !== undefined ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
@@ -245,21 +248,28 @@ function Tiles({ d }: { d: TodaySnapshot }) {
       </div>
 
       {/* The rest of the health checks fold into one line while all is well, and open by themselves the moment one needs a look. */}
-      <details key={systemsWarn ? "warn" : "ok"} open={systemsWarn} className={`rounded-xl border px-3 ${systemsWarn ? "border-warn/60 bg-warn/5" : "border-line bg-surface"}`}>
-        <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-2 text-sm text-ink">
-          <span className="font-medium">{systemsWarn ? "Systems: needs a look" : "Systems: all OK"}</span>
-          <span className="text-xs text-ink-muted">
+      <details key={systemsWarn ? "warn" : "ok"} open={systemsWarn} className="group rounded-xl border border-line bg-surface px-3">
+        <summary className="min-h-11 cursor-pointer py-2.5 text-sm text-ink">
+          <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 font-medium">
+            {systemsWarn && <AttentionDot />}
+            {systemsWarn ? "Systems: needs a look" : "Systems: all OK"}
+          </span>
+          <span className="mt-0.5 block text-xs text-ink-muted">
             balance {d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`} · £{d.exposure.openStake.toFixed(2)} out · {d.alerts.lastHour} alerts in the last hour · {d.queue.waiting + d.queue.placing} waiting
           </span>
+          </span>
         </summary>
-        <div className="grid grid-cols-2 gap-2 pb-3 lg:grid-cols-4">
+        <div className="mb-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-5 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2">
         <Tile
+          flat
           label="Betfair balance"
           value={d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`}
           sub={d.bank.at ? `exposure £${Math.abs(d.bank.exposure ?? 0).toFixed(2)} · read ${ago(d.bank.at)}` : "Not read yet (needs the Betfair link set up on the engine)"}
           warn={bankAge !== null && bankAge > 30 * 60_000}
         />
         <Tile
+          flat
           label="Money out now"
           value={`£${d.exposure.openStake.toFixed(2)}`}
           sub={
@@ -276,18 +286,21 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           )}
         </Tile>
         <Tile
+          flat
           label="Alerts"
           value={`${d.alerts.lastHour} in the last hour`}
           sub={`last ${ago(tg.lastAlertAt)} · Telegram ${tg.ok ? "OK" : "problem"}${volume?.low ? ` · usually ${volume.typical} by now` : ""}`}
           warn={!tg.ok || !!volume?.low}
         />
         <Tile
+          flat
           label="Bets in progress"
           value={`${d.queue.waiting + d.queue.placing} waiting`}
           sub={notPlacedText(d.queue)}
           warn={notPlacedWarns(d.queue)}
         />
         <Tile
+          flat
           label="Betfair link"
           value={d.betting.betfair.configured ? (d.betting.betfair.lastError ? "Problem" : "OK") : "Not set up"}
           sub={d.betting.betfair.configured ? `last answered ${ago(d.betting.betfair.lastOkAt)}` : undefined}

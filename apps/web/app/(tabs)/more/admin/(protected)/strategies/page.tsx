@@ -142,10 +142,10 @@ export default function StrategiesPage() {
       </nav>
 
       {(advice.length > 0 || warming.length > 0) && (
-        <section aria-label="Needs a look" className="rounded-xl border-2 border-accent bg-accent/5 p-3.5">
+        <section aria-label="Needs a look" className="rounded-xl border border-line bg-surface p-3.5">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
             Needs a look
-            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-ink">{advice.length + warming.length}</span>
+            <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs font-bold text-warn">{advice.length + warming.length}</span>
           </h3>
           <p className="mt-0.5 text-xs text-ink-muted">Nothing changes until you press the button and confirm.</p>
           {advice.length > 0 && (

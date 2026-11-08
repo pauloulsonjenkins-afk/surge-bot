@@ -202,7 +202,7 @@ export function WinLossLines({
             </li>
           )}
         </ul>
-      ) : (
+      ) : series.length > 1 ? (
         <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
           {series.map((s) => (
             <li key={s.key} className="flex items-center gap-1.5 text-xs text-ink-muted">
@@ -211,7 +211,7 @@ export function WinLossLines({
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </>
   );
 }

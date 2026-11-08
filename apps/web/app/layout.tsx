@@ -6,7 +6,7 @@ import ThemeSync from "@/components/ui/ThemeSync";
 import TouchTips from "@/components/ui/TouchTips";
 
 // Runs before the page is painted, so a saved light theme never flashes dark first.
-const THEME_BOOT = `try{var s=JSON.parse(localStorage.getItem("surge-ui")||"{}");var t=s&&s.state&&s.state.theme;document.documentElement.setAttribute("data-theme",t==="light"?"light":"dark");}catch(e){}`;
+const THEME_BOOT = `try{var s=JSON.parse(localStorage.getItem("surge-ui")||"{}");var t=s&&s.state&&s.state.theme;document.documentElement.setAttribute("data-theme",t==="light"||t==="dark"?t:(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"));}catch(e){}`;
 
 // One typeface on every device, served with the app rather than falling back to each system's own font.
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-sans" });

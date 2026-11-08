@@ -65,7 +65,7 @@ function Dashboard({ upgraded }: { upgraded: boolean }) {
       </section>
       {sim.bank && sim.bank.start > 0 && sim.bank.now < sim.bank.start * 0.05 && (
         // Below 5% of where it started, almost no bet fits, so the simulation has in effect stopped: say so.
-        <p className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm text-ink">
+        <p className="rounded-xl bg-warn/10 p-3 text-sm text-ink">
           <strong>Your practice bank has run out</strong>, so new bets can&apos;t be simulated. Start a new simulation in{" "}
           <Link href="/members/settings" className="font-medium text-accent underline">
             Settings

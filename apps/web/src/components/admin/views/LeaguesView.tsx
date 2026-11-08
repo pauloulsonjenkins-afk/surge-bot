@@ -10,6 +10,7 @@ import { QueryError } from "@/components/ui/QueryError";
 import { BetfairCoverage } from "@/components/admin/BetfairCoverage";
 import { LeagueReview } from "@/components/admin/LeagueReview";
 import { useShowMore } from "@/components/ui/ShowMore";
+import { ChevronRight } from "lucide-react";
 
 type Filter = "all" | "shown" | "hidden";
 
@@ -49,9 +50,7 @@ function LeagueCard({
     <li className={`card-hover rounded-xl border border-line p-3 transition-colors ${open ? "card-open" : "bg-surface"} ${row.hidden ? "opacity-70" : ""}`}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-start justify-between gap-3 text-left">
         <div className="flex min-w-0 items-start gap-2">
-          <span className={`mt-0.5 shrink-0 text-xs text-ink-muted transition-transform ${open ? "rotate-90" : ""}`} aria-hidden>
-            ▸
-          </span>
+          <ChevronRight size={16} aria-hidden className={`mt-0.5 shrink-0 text-ink-muted transition-transform ${open ? "rotate-90" : ""}`} />
           <div className="min-w-0">
           <p className="truncate text-sm font-medium text-ink">{row.league}</p>
           <p className="text-xs text-ink-muted">

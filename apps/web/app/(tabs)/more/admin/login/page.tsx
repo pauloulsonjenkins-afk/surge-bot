@@ -45,22 +45,23 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col items-center justify-center px-6">
-      <div className="w-full max-w-xs">
-        <h1 className="mb-1 text-lg font-medium tracking-tight text-ink">Admin access</h1>
-        <p className="mb-6 text-sm text-ink-muted">
-          This section controls the alert connection. Sign in to continue.
-        </p>
+    <div className="flex min-h-[calc(100dvh-12rem)] flex-col items-center justify-center px-4 py-10">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6">
+        <h1 className="font-display text-title font-bold text-ink [font-stretch:115%]">Admin</h1>
+        <p className="mb-6 mt-1 text-sm text-ink-muted">Sign in to manage betting and alerts.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label htmlFor="admin-password" className="-mb-2.5 block text-sm font-medium text-ink">
+            Password
+          </label>
           <input
+            id="admin-password"
             type="password"
             autoFocus
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            className="min-h-11 w-full rounded-md border border-line bg-app px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
 
           <label className="flex items-center gap-2 text-sm text-ink-muted">
@@ -79,7 +80,7 @@ export default function AdminLoginPage() {
           <button
             type="submit"
             disabled={pending || password.length === 0}
-            className="w-full rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
+            className="min-h-11 w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink"
           >
             {pending ? "Checking…" : "Sign in"}
           </button>

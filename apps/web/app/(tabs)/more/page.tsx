@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Bell, Bot, ChevronRight, Crown, Gauge, Lock, PencilLine, Send, Settings, TrendingUp, Trophy } from "lucide-react";
+import { Archive, Bell, ChevronRight, Crown, FileText, Gauge, Layers, Lock, Megaphone, PencilLine, Send, Settings, Sparkles, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_GROUPS } from "@/lib/admin-sections";
@@ -12,7 +12,11 @@ import { useMe } from "@/queries/use-me";
 const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
   "/more/admin/today": Gauge,
   "/more/admin/sending": Send,
-  "/more/admin/strategies": Bot,
+  "/more/admin/strategies": Layers,
+  "/more/admin/golden": Sparkles,
+  "/more/admin/reports": FileText,
+  "/more/admin/tips": Megaphone,
+  "/more/admin/archive": Archive,
   "/more/admin/leagues": Trophy,
   "/more/admin/winloss": TrendingUp,
   "/more/admin/results": PencilLine,
@@ -38,7 +42,7 @@ export default function MorePage() {
             <h2 className="text-base font-semibold text-ink">{g.label}</h2>
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
               {g.items.map(({ href, label, description }) => {
-                const Icon = ICONS[href] ?? Bot;
+                const Icon = ICONS[href] ?? ChevronRight;
                 return (
                   <li key={href}>
                     <Link href={href} className="flex items-center gap-3 px-3 py-3 active:bg-surface-2">

@@ -43,12 +43,16 @@ function LoginForm() {
 
   return (
     <div className="flex min-h-full flex-col items-center justify-center px-6 py-10">
-      <div className="w-full max-w-xs">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6">
         <h1 className="mb-1 font-display text-2xl font-bold text-ink [font-stretch:115%]">Sign in</h1>
         <p className="mb-6 text-sm text-ink-muted">Use your email or username, and your password.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label htmlFor="member-id" className="-mb-2.5 block text-sm font-medium text-ink">
+            Email or username
+          </label>
           <input
+            id="member-id"
             type="text"
             autoFocus
             autoCapitalize="none"
@@ -56,18 +60,18 @@ function LoginForm() {
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email or username"
-            aria-label="Email or username"
-            className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            className="min-h-11 w-full rounded-md border border-line bg-app px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
+          <label htmlFor="member-password" className="-mb-2.5 block text-sm font-medium text-ink">
+            Password
+          </label>
           <input
+            id="member-password"
             type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            aria-label="Password"
-            className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            className="min-h-11 w-full rounded-md border border-line bg-app px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -75,7 +79,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={pending || email.length === 0 || password.length === 0}
-            className="w-full rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
+            className="min-h-11 w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink"
           >
             {pending ? "Checking…" : "Sign in"}
           </button>

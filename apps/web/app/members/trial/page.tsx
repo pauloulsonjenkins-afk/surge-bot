@@ -34,7 +34,7 @@ export default function TrialPage() {
   return (
     <div className="space-y-5">
       <PageHeader title={`Choose your ${limit} trial strategies`} subtitle={`For ${t.days} days you get full access to these ${limit}: how they work, every qualifying game, and upcoming opportunities. Simulation only, no real money.`} />
-      <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-ink">
+      <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-ink">
         Choose carefully: the strategies are fixed for the whole trial and can&apos;t be swapped. The trial starts as soon as you press Start.
       </p>
       <ul className="grid gap-2 sm:grid-cols-2">
