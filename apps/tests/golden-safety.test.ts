@@ -1,6 +1,6 @@
 /**
  * The Golden safety check: a slice bet Live on its own goes back to Sim when its own Live bets lose more than 5% per
- * £1 over 30+ bets (or it stops holding up). Turning it back on is the admin's.
+ * £1 over 30+ bets since its latest change (switched Live, or its stake changed). Turning it back on is the admin's.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -75,4 +75,29 @@ test("a watched slice has to keep earning its stage: a bad last 30 loses it at o
   // 30 good picks after the loss: a candidate again.
   add(Array.from({ length: 10 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 100);
   assert.equal(status().status, "candidate");
+});
+
+test("switched Live just now: its older record slipping below its stage doesn't switch it off (8 Nov 2026)", async () => {
+  const { goldenReport } = await import("../src/server/golden");
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "time to fight": 1 }, strategies: { "time to fight": false }, dailyCap: 1000, maxAgeMinutes: 60 });
+  const T = Date.now();
+  let n = 0;
+  const add = (results: Array<"hit" | "miss">, fromSecsAgo: number) =>
+    results.forEach((r, i) => {
+      n++;
+      const at = new Date(T - (fromSecsAgo - i) * 1000).toISOString();
+      db.upsertLivePick("chat", n, alert(n), parseAlert(alert(n)), at, at);
+      buildFeed(db, { markSent: true });
+      db.upsertLivePick("chat", n, alert(n, r), parseAlert(alert(n, r)), at, at);
+    });
+  // A good run, then a bad last 30: the slice is "not holding up" on its record as watched.
+  add(Array.from({ length: 60 }, (_, i) => (i % 3 === 2 ? "miss" : "hit")), 900);
+  await monitorGoldenBets(db, new Date(T - 700_000));
+  add(Array.from({ length: 30 }, (_, i) => (i % 3 === 0 ? "hit" : "miss")), 600);
+  assert.equal(goldenReport(db, new Date(), { skipFinder: true }).slices.find((s) => s.id === "two-apart")!.status, "not holding up");
+  // The owner switches it Live now: with none of its own Live bets yet, the safety check leaves it alone.
+  saveSendingSettings(db, { segmentBets: { "time to fight#two-apart": { live: true } } });
+  assert.deepEqual(await monitorGoldenBets(db, new Date(T + 3_600_000)), []);
+  assert.equal(getSendingSettings(db).segmentBets["time to fight#two-apart"]!.live, true);
 });

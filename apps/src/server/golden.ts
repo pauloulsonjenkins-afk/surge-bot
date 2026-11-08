@@ -515,7 +515,13 @@ export function goldenReport(db: EngineDb, now = new Date(), opts: { skipFinder?
   };
 }
 
-/** The Golden safety check: a slice bet Live on its own is switched back to Sim when it stops earning its place. */
+/**
+ * The Golden safety check: a slice bet Live on its own is switched back to Sim when its OWN Live bets since its latest
+ * change (switched Live, or its stake changed) lose more than worstRoi over minBets or more. Until 8 Nov 2026 it also
+ * switched a slice off the moment its whole record since it was watched (mostly Sim picks) dipped below its stage, even
+ * by 0.4%: four Dominant Momentum slices switched Live by the owner at 18:00 were back in Sim at 19:11, on almost no
+ * Live bets of their own.
+ */
 const SAFETY = { minBets: 30, worstRoi: -0.05 };
 
 /** A slice's own Live bets since it was switched Live (its strategy's Live bets in that slice). */
@@ -550,21 +556,30 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
   await updateBadges(db, report.slices, now);
   if (live.length === 0) return [];
   const off: string[] = [];
+  const lines: string[] = [];
   for (const [k, cfg] of live) {
     const [strategyKey, id] = k.split("#") as [string, string];
     const slice = report.slices.find((s) => s.strategyKey === strategyKey && s.id === id);
-    const rec = cfg.liveSince ? liveSinceRecord(db, strategyKey, id, cfg.liveSince) : null;
+    // Counted from its latest change: going Live, or its stake changing by any route.
+    const from = [cfg.liveSince, settings.stakeSince[k]].filter((x): x is string => typeof x === "string").sort().at(-1);
+    const rec = from ? liveSinceRecord(db, strategyKey, id, from) : null;
     const pct = (n: number) => `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`;
-    let why: string | null = null;
-    if (slice?.status === "not holding up") why = `it's no longer holding up: ${slice.why ?? `${pct(slice.slice.all.roi ?? 0)} per £1 over ${slice.slice.all.counted} picks`}`;
-    else if (rec && rec.n >= SAFETY.minBets && rec.roi !== null && rec.roi < SAFETY.worstRoi) why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
-    if (!why) continue;
+    if (!rec || rec.n < SAFETY.minBets || rec.roi === null || rec.roi >= SAFETY.worstRoi) continue;
+    const why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
     saveSendingSettings(db, { segmentBets: { [k]: { live: false } } });
     const name = `${displayName(db, strategyKey)}, ${(slice?.label ?? "Golden").replace(/^Golden: /, "")}`;
     off.push(name);
+    lines.push(`${name}: ${why}`);
     log.info(`Golden safety: ${name} switched to Sim because ${why}.`);
-    await sendPush(db, { title: "Golden switched to Sim", body: `${name}: switched to Sim because ${why}. Its alerts aren't bet until you turn it back on.`, url: "/more/admin/golden", tag: `golden-off-${k}` });
   }
+  // One notification for the check, however many slices it switched (they used to arrive one each, all at once).
+  if (lines.length > 0)
+    await sendPush(db, {
+      title: lines.length === 1 ? "Golden switched to Sim" : `${lines.length} Golden slices switched to Sim`,
+      body: `${lines.join("\n")}\nTheir alerts aren't bet until you turn them back on.`,
+      url: "/more/admin/golden",
+      tag: "golden-off",
+    });
   return off;
 }
 
@@ -611,8 +626,12 @@ async function updateBadges(db: EngineDb, slices: Array<{ strategyKey: string; i
     }
   }
   db.setSetting(BADGES_KEY, JSON.stringify(held));
-  for (const t of tell) {
-    log.info(`Golden: ${t.body}`);
-    await sendPush(db, { title: t.title, body: t.body, url: "/more/admin/golden", tag: t.tag });
+  for (const t of tell) log.info(`Golden: ${t.body}`);
+  // One notification per kind of news in a check (several "stage lost" at once used to arrive one each).
+  const byTitle = new Map<string, typeof tell>();
+  for (const t of tell) byTitle.set(t.title, [...(byTitle.get(t.title) ?? []), t]);
+  for (const [title, group] of byTitle) {
+    if (group.length === 1) await sendPush(db, { title, body: group[0]!.body, url: "/more/admin/golden", tag: group[0]!.tag });
+    else await sendPush(db, { title: `${title} · ${group.length} slices`, body: group.map((t) => t.body).join("\n"), url: "/more/admin/golden", tag: `golden-stage-batch-${title}` });
   }
 }
