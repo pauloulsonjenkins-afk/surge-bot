@@ -75,6 +75,27 @@ export interface TipChannelStats {
   photos: number;
   /** Messages with words in them, which the reader classifies for free. */
   withText: number;
+  /**
+   * What the messages are, by Telegram type and media type ("Message/MessageMediaPhoto": 12). Both Teams to Score's
+   * freebies were never read (9 Nov 2026): only 13 of its 400 latest messages had words, so this shows what the rest are.
+   */
+  kinds?: Record<string, number>;
+  /** The latest messages without words: what each is, so a format the reader misses can be found. */
+  wordless?: Array<{ id: number; at: string; kind: string; album: boolean; buttons: boolean; fields: string[] }>;
+}
+
+type StatMessage = { id?: number; date: number; message?: string; photo?: unknown; className?: string; media?: { className?: string } | null; groupedId?: unknown; replyMarkup?: unknown };
+
+function kindOf(m: StatMessage): string {
+  return `${m.className ?? "?"}/${m.media?.className ?? "text"}`;
+}
+
+/** The message's own fields that hold something: a field the reader doesn't look at may be where the words went. */
+function filledFields(m: StatMessage): string[] {
+  return Object.entries(m as Record<string, unknown>)
+    .filter(([k, v]) => !k.startsWith("_") && v !== undefined && v !== null && v !== false && typeof v !== "function" && !(Array.isArray(v) && v.length === 0) && !["CONSTRUCTOR_ID", "SUBCLASS_OF_ID", "classType", "originalArgs"].includes(k))
+    .map(([k]) => k)
+    .slice(0, 30);
 }
 
 export function getTipStats(db: EngineDb): Record<string, TipChannelStats> {
@@ -86,7 +107,7 @@ export function getTipStats(db: EngineDb): Record<string, TipChannelStats> {
 }
 
 /** How many photos a channel posts, from its latest messages: what reading the images would cost depends on it. */
-function saveTipStats(db: EngineDb, id: string, name: string, messages: Array<{ date: number; message?: string; photo?: unknown }>): void {
+function saveTipStats(db: EngineDb, id: string, name: string, messages: StatMessage[]): void {
   if (messages.length === 0) return;
   const dates = messages.map((m) => m.date);
   const all = getTipStats(db);
@@ -97,6 +118,11 @@ function saveTipStats(db: EngineDb, id: string, name: string, messages: Array<{ 
     messages: messages.length,
     photos: messages.filter((m) => !!m.photo).length,
     withText: messages.filter((m) => (m.message ?? "").trim().length > 0).length,
+    kinds: messages.reduce<Record<string, number>>((acc, m) => ((acc[kindOf(m)] = (acc[kindOf(m)] ?? 0) + 1), acc), {}),
+    wordless: messages
+      .filter((m) => !(m.message ?? "").trim())
+      .slice(0, 12)
+      .map((m) => ({ id: m.id ?? 0, at: new Date(m.date * 1000).toISOString(), kind: kindOf(m), album: m.groupedId != null, buttons: m.replyMarkup != null, fields: filledFields(m) })),
   };
   db.setSetting(STATS_KEY, JSON.stringify(all));
 }
@@ -220,7 +246,7 @@ async function sync(a: Active): Promise<void> {
       const first = !a.firstDone.has(id);
       const messages = (await a.client.getMessages(Number(id), { limit: first ? FIRST_READ : LATER_READ })) as Api.Message[];
       a.firstDone.add(id);
-      if (first) saveTipStats(a.db, id, name, messages);
+      if (first) saveTipStats(a.db, id, name, messages as unknown as StatMessage[]);
       const reviewed = reviewedIn(a.db, id);
       for (const m of [...messages].reverse()) {
         if (recordTip(a.db, { chatKey: id, messageId: m.id, date: m.date, text: m.message ?? "", channel: name }, reviewed)) stored++;
