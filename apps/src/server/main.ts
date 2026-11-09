@@ -2,6 +2,8 @@
  * Entry point for the engine's DigitalOcean web service.
  * package.json "start" runs the compiled copy: node dist/src/server/main.js
  */
+// First: GramJS must load with the newer Telegram schema (use-new-layer.ts).
+import "../telegram/use-new-layer";
 import { getExchangeReader, requestExchangeCheck, startBetfairPoller, whenPicksReady } from "../betfair/exchange";
 import { syncLayPicks } from "../inplayguru/lay-groups";
 import { parseAlert } from "../inplayguru/parse-alert";

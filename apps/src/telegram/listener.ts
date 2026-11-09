@@ -25,6 +25,8 @@
  *
  * Nothing here places a bet. Parsing only describes the pick.
  */
+// First: GramJS must load with the newer Telegram schema (use-new-layer.ts).
+import "./use-new-layer";
 import type { TelegramClient } from "telegram";
 import { NewMessage, type NewMessageEvent } from "telegram/events";
 import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMessage";

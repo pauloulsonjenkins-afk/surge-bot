@@ -7,6 +7,8 @@
  * can be added without a restart. Live messages and edits are stored as they arrive; every few minutes the last
  * messages of each channel are read back too, so anything missed while the engine was down is caught.
  */
+// First: GramJS must load with the newer Telegram schema (use-new-layer.ts).
+import "../telegram/use-new-layer";
 import type { TelegramClient, Api } from "telegram";
 import { NewMessage, type NewMessageEvent } from "telegram/events";
 import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMessage";

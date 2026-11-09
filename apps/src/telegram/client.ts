@@ -8,6 +8,8 @@
  * in and can't be added to receive InPlayGuru's alerts the way your account
  * already does.
  */
+// First: GramJS must load with the newer Telegram schema (use-new-layer.ts).
+import "./use-new-layer";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 
