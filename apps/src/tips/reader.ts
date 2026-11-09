@@ -19,6 +19,7 @@ import { applyLearning, type Reviewed } from "./similar";
 import { trackTips } from "./track";
 import { notifyNewTips } from "./notify";
 import { getExchangeReader } from "../betfair/exchange";
+import { messageWords, richMessageIsPart, richMessageText } from "./rich-text";
 
 const KEY = "tip_channels";
 const SYNC_EVERY_MS = 5 * 60 * 1000;
@@ -86,10 +87,10 @@ export interface TipChannelStats {
   wordless?: Array<{ id: number; at: string; kind: string; album: boolean; buttons: boolean; fields: string[] }>;
 }
 
-type StatMessage = { id?: number; date: number; message?: string; photo?: unknown; className?: string; media?: { className?: string } | null; groupedId?: unknown; replyMarkup?: unknown };
+type StatMessage = { id?: number; date: number; message?: string; photo?: unknown; className?: string; media?: { className?: string } | null; groupedId?: unknown; replyMarkup?: unknown; richMessage?: unknown };
 
 function kindOf(m: StatMessage): string {
-  return `${m.className ?? "?"}/${m.media?.className ?? "text"}`;
+  return `${m.className ?? "?"}/${m.media?.className ?? "text"}${m.richMessage ? "+rich" : ""}`;
 }
 
 /** The message's own fields that hold something: a field the reader doesn't look at may be where the words went. */
@@ -119,10 +120,10 @@ function saveTipStats(db: EngineDb, id: string, name: string, messages: StatMess
     to: new Date(Math.max(...dates) * 1000).toISOString(),
     messages: messages.length,
     photos: messages.filter((m) => !!m.photo).length,
-    withText: messages.filter((m) => (m.message ?? "").trim().length > 0).length,
+    withText: messages.filter((m) => messageWords(m).trim().length > 0).length,
     kinds: messages.reduce<Record<string, number>>((acc, m) => ((acc[kindOf(m)] = (acc[kindOf(m)] ?? 0) + 1), acc), {}),
     wordless: messages
-      .filter((m) => !(m.message ?? "").trim())
+      .filter((m) => !messageWords(m).trim())
       .slice(0, 12)
       .map((m) => ({ id: m.id ?? 0, at: new Date(m.date * 1000).toISOString(), kind: kindOf(m), album: m.groupedId != null, buttons: m.replyMarkup != null, fields: filledFields(m) })),
   };
@@ -200,6 +201,31 @@ export function recordTip(db: EngineDb, m: { chatKey: string; messageId: number;
   return true;
 }
 
+type WordsMessage = { id: number; message?: string; richMessage?: unknown };
+
+/**
+ * A message's words: its text, else its rich part's (rich-text.ts). Telegram sends only the start of a long rich post
+ * ("part"); the whole post is then asked for once (messages.getRichMessage), falling back to the start if that fails.
+ */
+async function wordsOf(client: TelegramClient, chatId: string, m: unknown): Promise<string> {
+  const msg = m as WordsMessage;
+  const words = messageWords(msg);
+  if (!richMessageIsPart(msg.richMessage) || (msg.message ?? "").trim()) return words;
+  try {
+    // The request is newer than GramJS's typings (layer 233, use-new-layer.ts), so it is reached by name.
+    const api = (await import("telegram")).Api as unknown as { messages: Record<string, new (args: Record<string, unknown>) => unknown> };
+    const Req = api.messages.GetRichMessage;
+    if (!Req) return words;
+    const res = (await client.invoke(new Req({ peer: await client.getInputEntity(Number(chatId)), id: msg.id }) as never)) as { messages?: WordsMessage[] };
+    const full = res.messages?.find((x) => x.id === msg.id) ?? res.messages?.[0];
+    const fullWords = full ? richMessageText(full.richMessage) : "";
+    return fullWords.length > words.length ? fullWords : words;
+  } catch (err) {
+    log.warn(`Free tips: couldn't fetch the whole of rich post ${msg.id}: ${err instanceof Error ? err.message : String(err)}`);
+    return words;
+  }
+}
+
 interface Active {
   client: TelegramClient;
   db: EngineDb;
@@ -244,6 +270,7 @@ async function sync(a: Active): Promise<void> {
   try {
     await resolve(a);
     let stored = 0;
+    let fetches = 0;
     for (const [id, name] of a.known) {
       const first = !a.firstDone.has(id);
       const messages = (await a.client.getMessages(Number(id), { limit: first ? FIRST_READ : LATER_READ })) as Api.Message[];
@@ -251,7 +278,11 @@ async function sync(a: Active): Promise<void> {
       if (first) saveTipStats(a.db, id, name, messages as unknown as StatMessage[]);
       const reviewed = reviewedIn(a.db, id);
       for (const m of [...messages].reverse()) {
-        if (recordTip(a.db, { chatKey: id, messageId: m.id, date: m.date, text: m.message ?? "", channel: name }, reviewed)) stored++;
+        // Whole rich posts are asked for only for the last two days' posts, at most 10 a pass: Telegram limits requests.
+        const recent = Date.now() / 1000 - m.date < 2 * 86_400 && fetches < 10;
+        if (recent && richMessageIsPart((m as { richMessage?: unknown }).richMessage) && !(m.message ?? "").trim()) fetches++;
+        const text = recent ? await wordsOf(a.client, id, m) : messageWords(m as WordsMessage);
+        if (recordTip(a.db, { chatKey: id, messageId: m.id, date: m.date, text, channel: name }, reviewed)) stored++;
       }
     }
     if (stored > 0) log.info(`Free tips: stored ${stored} message(s) from ${a.known.size} channel(s).`);
@@ -308,10 +339,15 @@ export function startTipReader(client: TelegramClient, db: EngineDb, stopped: ()
         if (!id || !name) return;
         // A message that arrives live is priced straight away, not at the next five-minute read: an in-play tip's price
         // only means something if it is read within minutes.
-        if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: message.message ?? "", channel: name })) {
-          void notifyNewTips(db);
-          void trackSoon(db);
-        }
+        const store = (text: string) => {
+          if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text, channel: name })) {
+            void notifyNewTips(db);
+            void trackSoon(db);
+          }
+        };
+        const rich = (message as { richMessage?: unknown }).richMessage;
+        if (richMessageIsPart(rich)) void wordsOf(client, id, message).then(store, () => store(messageWords(message as WordsMessage)));
+        else store(messageWords(message as WordsMessage));
       } catch (err) {
         log.error(`Free tips couldn't store a message: ${err instanceof Error ? err.message : String(err)}`);
       }

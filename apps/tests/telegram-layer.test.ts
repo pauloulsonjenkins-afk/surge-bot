@@ -7,6 +7,8 @@ import { telegramLayer } from "../src/telegram/use-new-layer";
 import { TELEGRAM_API_LAYER } from "../src/telegram/api-layer";
 import { Api } from "telegram";
 import { BinaryReader } from "telegram/extensions";
+import { messageWords } from "../src/tips/rich-text";
+import { classifyTip } from "../src/tips/classify";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const all = require("telegram/tl/AllTLObjects") as { LAYER: number };
 
@@ -25,6 +27,41 @@ test("a channel post with a bet-slip card (a widget) is read with its words, not
   assert.equal(back.className, "Message");
   assert.equal(back.media.className, "MessageMediaWidget");
   assert.equal(back.message, text);
+});
+
+test("a rich post (words in page blocks, not in message) is read as the freebie it is", () => {
+  const A = Api as unknown as Record<string, new (args: Record<string, unknown>) => { getBytes(): Buffer }>;
+  const plain = (text: string) => new A.TextPlain!({ text });
+  const para = (...parts: unknown[]) => new A.PageBlockParagraph!({ text: parts.length === 1 ? parts[0] : new A.TextConcat!({ texts: parts }) });
+  const rich = new A.RichMessage!({
+    blocks: [
+      new A.PageBlockHeader!({ text: new A.TextBold!({ text: plain("🔥 FIRST FREEBIE OF THE DAY!!") }) }),
+      para(plain("⚽ GOG FCC vs Clube de Salgaocar")),
+      para(plain("🎯 "), new A.TextBold!({ text: plain("OVER 2.5 TOTAL GOALS") })),
+      para(plain("@ ODDS: 4/7 (1.57)")),
+      para(plain("⏰ 10:30 AM UK 🇬🇧 11:30 AM EU 🇪🇺")),
+      para(plain("💷 STAKE: £500 🔷 RETURN: £785.71")),
+      para(plain("📈 PROFIT: £285.71")),
+      new A.PageBlockList!({ items: [new A.PageListItemText!({ text: plain("2/3 matches finished with 3+ goals") })] }),
+    ],
+    photos: [],
+    documents: [],
+  });
+  const post = new A.Message!({ id: 5380, peerId: new Api.PeerChannel({ channelId: 1401746016 as never }), date: 1794040000, message: "", post: true, richMessage: rich });
+  const back = new BinaryReader(post.getBytes()).tgReadObject() as { message: string; richMessage: unknown };
+  assert.equal(back.message, "");
+  const words = messageWords(back);
+  assert.match(words, /^🔥 FIRST FREEBIE OF THE DAY!!\n⚽ GOG FCC vs Clube de Salgaocar\n🎯 OVER 2\.5 TOTAL GOALS\n@ ODDS: 4\/7 \(1\.57\)/);
+  const read = classifyTip(words);
+  assert.equal(read.verdict, "tip");
+  assert.equal(read.match, "GOG FCC v Clube de Salgaocar");
+  assert.equal(read.odds, 1.57);
+});
+
+test("plain text wins over a rich part, and a message with neither has no words", () => {
+  assert.equal(messageWords({ message: "Tip: Arsenal to win @ 1.80" }), "Tip: Arsenal to win @ 1.80");
+  assert.equal(messageWords({ message: "" }), "");
+  assert.equal(messageWords({ message: "", richMessage: { blocks: [] } }), "");
 });
 
 test("buttons the newer layer dropped have stand-ins, so GramJS's own checks don't throw", () => {
