@@ -80,3 +80,58 @@ test("a match and a market with no stated bet, or a stated bet mixed with a link
   assert.equal(classifyTip("Tip of the day, goals galore\nMan City vs Fulham").verdict, "maybe");
   assert.notEqual(classifyTip("Man City to win\nMan City vs Fulham\nJoin free: https://t.me/+abc123").verdict, "tip");
 });
+
+
+// Both Teams to Score, 9 Nov 2026: all three free tips were missed. The first has "10:30 AM UK" and a "PROFIT:" stake line
+// (read as a boast); the second's teams carry digits ("Tai Po U22").
+const freebies = [
+  `🔥 FIRST FREEBIE OF THE DAY!!
+⚽ GOG FCC vs Clube de Salgaocar
+🎯 OVER 2.5 TOTAL GOALS
+@ ODDS: 4/7 (1.57)
+⏰ 10:30 AM UK 🇬🇧 11:30 AM EU 🇪🇺
+💷 STAKE: £500 🔷 RETURN: £785.71
+📈 PROFIT: £285.71
+📊 THE ANALYSIS
+🏠 GOG FCC
+- 2/3 matches finished with 3+ goals
+✈️ CLUBE DE SALGAOCAR`,
+  `📢 SECOND FREEBIE OF THE DAY!
+Here we go again, family! Another selection I've been looking into this morning 🧐
+⚽ Tai Po U22 vs Hong Kong FC U22
+🎯 Hong Kong FC U22 TO WIN
+@ ODDS: 1/2 (1.50)
+⏰ 12:30 UK 🇬🇧 13:30 EU 🇪🇺
+💷 STAKE: £500 ➡️ RETURN: £750
+💵 PROFIT: £250
+📊 QUICK ANALYSIS
+Hong Kong FC U22 have won 4 of their first 5 matches, scoring 10 goals and conceding just 4
+Tai Po U22 have lost their last 2 games, conceding 8 goals, while Hong Kong FC have won 2 of their last 3 H2H meetings
+LET'S GO FOR THAT SECOND GREEN, FAMILY! 🍀🔥`,
+  `📢 THIRD FREEBIE OF THE DAY!
+We've been working on this one since early morning, family! Another BTTS selection to finish our FREEBIES today!
+⚽ Plymouth Parkway vs Berkhamsted
+🎯 BOTH TEAMS TO SCORE - YES
+@ ODDS: 8/13 (1.62)
+⏰ 19:30 UK 🇬🇧 20:30 EU 🇪🇺
+💷 STAKE: £500 ➡️ RETURN: £807.69
+💵 PROFIT: £307.69
+📊 THE ANALYSIS
+Plymouth Parkway have scored 9 goals in their last 5 matches, while Berkhamsted have scored 7, finding the net in 4/5
+Both teams scored in 3/5 recent matches for each side, giving us a decent statistical basis for BTTS
+We've already landed our first green today, let's see if we can add another! 🟢
+COME ONNN FAMILY!!! 🔥`,
+];
+
+test("the Both Teams to Score freebies are tips, with their match, bet and price", () => {
+  const reads = freebies.map(classifyTip);
+  assert.deepEqual(reads.map((r) => r.verdict), ["tip", "tip", "tip"]);
+  assert.deepEqual(reads.map((r) => r.match), ["GOG FCC v Clube de Salgaocar", "Tai Po U22 v Hong Kong FC U22", "Plymouth Parkway v Berkhamsted"]);
+  assert.deepEqual(reads.map((r) => r.odds), [1.57, 1.5, 1.62]);
+  assert.match(reads[0]!.selection ?? "", /OVER 2\.5/);
+  assert.match(reads[1]!.selection ?? "", /Hong Kong FC U22 TO WIN/);
+});
+
+test("a boast with a time but no forward wording is still not a tip", () => {
+  assert.notEqual(classifyTip("CASHED!!! Kups wins the first half\nKups vs Inter 1.80\nSee you at 7pm").verdict, "tip");
+});

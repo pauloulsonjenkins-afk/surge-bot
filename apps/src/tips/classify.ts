@@ -42,7 +42,8 @@ const ADVERT_PATTERNS: Array<[RegExp, string]> = [
 /** Words that appear in real tips. */
 const MARKET_WORDS =
   /\b(over|under|btts|both teams to score|to win|win|draw|double chance|1x|x2|12|handicap|ah|asian|corners?|cards?|goals?|clean sheet|first half|1st half|second half|2nd half|dnb|draw no bet|anytime|scorer|acca|accumulator|lay|back)\b/i;
-const FIXTURE = /([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})[ \t]+(?:vs\.?|VS\.?|v\.?|V\.?|-|–|—|x)[ \t]+([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}.'&-]+){0,3})/u;
+// Later words may carry digits: "Tai Po U22 vs Hong Kong FC U22" (Both Teams to Score, 9 Nov 2026).
+const FIXTURE = /([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}\p{N}.'&-]+){0,3})[ \t]+(?:vs\.?|VS\.?|v\.?|V\.?|-|–|—|x)[ \t]+([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}\p{N}.'&-]+){0,3})/u;
 const DECIMAL_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bprice\b[:\s]*|\bat\b\s*)(\d{1,2}\.\d{1,3})\b|\b(\d{1,2}\.\d{2})\b/i;
 const FRACTION_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bat\b\s*)(\d{1,3})\s?\/\s?(\d{1,3})\b/i;
 const STAKE = /\b(\d+(?:\.\d+)?)\s?(units?|u|pts?|points?|stars?)\b|\bstake[:\s]+(\d[^\n]{0,15})/i;
@@ -50,7 +51,9 @@ const TIP_LABEL = /\b(tip|bet|pick|selection|prediction|our (?:bet|pick)|today'?
 const BRAG =
   /\b(cashe+d|cash(ed)? out|delivered|secured|smashed|landed|collected|compensation|bo+m+|another (big )?(green|win|winner)|(wins|won|has won|did it|banked|profit(s)?|winner)\b(?! at))\b|\b(wins|won) the\b|\bwinner\b/i;
 /** Wording that looks ahead to a match not yet played: a kick-off time, "is here", "we're backing". It outweighs boasting words in the same post. */
-const FORWARD = /\bis here\b|we'?re backing|we back\b|\d{1,2}[:.]\d{2}\s*(uk|eu|gmt|bst|cet)\b|kick[- ]?off (time|at)|\bstarts? (at|in)\b|today'?s (bet|tip|pick)|(free )?bet of the day/i;
+// "10:30 AM UK" and "FIRST FREEBIE OF THE DAY" are both forward-looking: a "PROFIT: £285.71" line in the same post is the
+// stake maths, not a boast (Both Teams to Score, 9 Nov 2026).
+const FORWARD = /\bis here\b|we'?re backing|we back\b|\d{1,2}[:.]\d{2}\s*(?:[ap]\.?m\.?\s*)?(uk|eu|gmt|bst|cet)\b|kick[- ]?off (time|at)|\bstarts? (at|in)\b|today'?s (bet|tip|pick)|(free )?bet of the day|freebie of the day/i;
 const RESULT_ONLY = /^\s*(?:[✅❌✔️❎🟢🔴]|won|lost|win|loss|void)\b|\bresult[s]?\b[:\s]/i;
 
 function oddsFrom(text: string): number | null {
