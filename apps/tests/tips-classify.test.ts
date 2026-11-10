@@ -135,3 +135,49 @@ test("the Both Teams to Score freebies are tips, with their match, bet and price
 test("a boast with a time but no forward wording is still not a tip", () => {
   assert.notEqual(classifyTip("CASHED!!! Kups wins the first half\nKups vs Inter 1.80\nSee you at 7pm").verdict, "tip");
 });
+
+
+// Both Teams to Score, 8-9 Nov 2026: an analysis line taken as the bet, and lead-in words taken as a team.
+const misreads = {
+  result: `🟢 THIRD FREEBIE CASHED!!! 3/3!!!
+COME ONNN FAMILY!!! WHAT A MONDAY!!! 🚀💰
+Our third FREEBIE lands! BTTS YES in Plymouth Parkway vs Berkhamsted, 1-1!
+💷 £500 STAKE 💰 £807.69 RETURN
+✅ +£307.69 PROFIT
+🏆 3/3 FREEBIES TODAY
+💰 +£843.40 TOTAL NET PROFIT
+There you have it, family! REAL BETS, REAL RESULTS! 📊
+WHAT A WAY TO START THE WEEK!!! 🟢🔥`,
+  soon: `🚨 THIRD FREEBIE STARTING SOON!
+Here we go again, family! Our THIRD FREEBIE is almost underway! 🔥
+We're going with BTTS YES in Plymouth Parkway vs Berkhamsted at 8/13 odds
+COME ONNN FAMILY!!! 😠`,
+  brighton: `SECOND FREEBIE OF THE DAY!!!
+BACK TO OUR SPECIALITY, FAMILY!!! 💥
+⚽️ Premier League
+⚽ Brighton vs Brentford
+✅ BOTH TEAMS TO SCORE – YES
+📊 ODDS: 4/7 (1.57)
+⏰ 2:00 PM UK 🇬🇧 3:00 PM EU 🇪🇺
+💷 STAKE: £500 ➡️ RETURN: £785.71
+📈 PROFIT: £285.71
+📊 THE ANALYSIS
+🔵 BRIGHTON
+- 24 goals in 9 league games. The Premier League's highest-scoring side
+- Averaging 3.25 goals scored at home
+🐝 BRENTFORD
+- 16 goals in 9 league games`,
+};
+
+test("the stated bet line wins over an analysis line with a number in it", () => {
+  const r = classifyTip(misreads.brighton);
+  assert.equal(r.verdict, "tip");
+  assert.equal(r.selection, "✅ BOTH TEAMS TO SCORE – YES");
+});
+
+test("a match named mid-sentence loses its lead-in words and the price after it", () => {
+  assert.equal(classifyTip(misreads.result).match, "Plymouth Parkway v Berkhamsted");
+  assert.equal(classifyTip(misreads.soon).match, "Plymouth Parkway v Berkhamsted");
+  assert.notEqual(classifyTip(misreads.result).verdict, "tip");
+  assert.equal(classifyTip("Tip: Arsenal v Spurs, Arsenal to win @ 1.90").match, "Arsenal v Spurs");
+});

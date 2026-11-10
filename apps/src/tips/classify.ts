@@ -72,6 +72,19 @@ function oddsFrom(text: string): number | null {
 /** A line that states a bet outright. */
 const BARE_BET = /\b(to win|over \d|under \d|btts|both teams to score)\b/i;
 
+/**
+ * The home team without the words that led into it: "BTTS YES in Plymouth Parkway vs …" and "backing Arsenal v …" name
+ * Plymouth Parkway and Arsenal (Both Teams to Score, 9 Nov 2026). The connecting words are lower case; team names aren't.
+ */
+function homeTeam(raw: string): string {
+  return raw.replace(/^.*\s(?:in|on|for|with|backing)\s+(?=\S)/, "").trim();
+}
+
+/** The away team without a price or score after it: "Berkhamsted at 8/13 odds" is Berkhamsted. */
+function awayTeam(raw: string): string {
+  return raw.replace(/\s+(?:at|@)\s*\d.*$/i, "").replace(/[,.!]+$/, "").trim();
+}
+
 /** Reads one message. Pure: the same text always gives the same answer. */
 export function classifyTip(text: string): TipRead {
   const t = text.trim();
@@ -90,7 +103,7 @@ export function classifyTip(text: string): TipRead {
 
   // The bet itself
   const fx = FIXTURE.exec(t);
-  const match = fx ? `${fx[1]!.trim()} v ${fx[2]!.trim()}` : null;
+  const match = fx ? `${homeTeam(fx[1]!)} v ${awayTeam(fx[2]!)}` : null;
   const odds = oddsFrom(t);
   const market = MARKET_WORDS.test(t);
   const labelled = TIP_LABEL.test(t);
@@ -120,13 +133,15 @@ export function classifyTip(text: string): TipRead {
   const lab = /(?:tip|bet|pick|selection|prediction)\s*[:\-–]\s*([^\n]{2,80})/i.exec(t);
   if (lab) selection = lab[1]!.trim();
   else {
-    const line = t.split("\n").map((l) => l.trim()).find((l) => l && MARKET_WORDS.test(l) && oddsFrom(l) !== null);
+    const lines = t.split("\n").map((l) => l.trim());
+    // A short line stating the bet comes first ("✅ BOTH TEAMS TO SCORE – YES", "GANGWON FC TO WIN" with the price on its
+    // own line). Only then a line with a market word and a number: in an analysis that can be "Averaging 3.25 goals
+    // scored at home" (Brighton v Brentford, 8 Nov 2026), so it is the fallback.
+    const bare = lines.find((l) => l.length <= 60 && BARE_BET.test(l) && !/^[-•]/.test(l));
+    const priced = lines.find((l) => l && MARKET_WORDS.test(l) && oddsFrom(l) !== null);
+    const both = lines.find((l) => l && BARE_BET.test(l) && oddsFrom(l) !== null);
+    const line = both ?? bare ?? priced;
     if (line) selection = line.slice(0, 80);
-    else {
-      // "GANGWON FC TO WIN" with the price on its own line ("ODDS @1.48"): the line that names the bet.
-      const bare = t.split("\n").map((l) => l.trim()).find((l) => l.length <= 60 && BARE_BET.test(l));
-      if (bare) selection = bare;
-    }
   }
 
   // A celebration of a bet already won ("CASHED!!!", "KUPS WINS THE FIRST HALF", "compensation delivered") is advertising,

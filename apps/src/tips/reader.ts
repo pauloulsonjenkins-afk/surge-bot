@@ -161,7 +161,7 @@ export function rescoreChannel(db: EngineDb, chatKey: string, days = 14): number
 }
 
 /** Bumped whenever the wording rules (classify.ts) improve: every stored message is then read again, once. */
-const CLASSIFIER_VERSION = "6";
+const CLASSIFIER_VERSION = "7";
 const VERSION_KEY = "tips_classifier_version";
 
 /** Reads every stored message again with today's rules if they have changed since it last did. */
