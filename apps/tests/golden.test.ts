@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, recordSimBets, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { autoWatchGoldenFinds, CANDIDATE_FROM, findGolden, FULL_FROM, goldenReport, loadCustomSegments, TRIAL_FROM, unwatchSegment, watchSegment } from "../src/server/golden";
+import { autoWatchGoldenFinds, CANDIDATE_FROM, findGolden, FULL_FROM, goldenReport, loadCustomSegments, QUIET_LIMITS, shrunkRoi, TRIAL_FROM, unwatchSegment, watchSegment } from "../src/server/golden";
 import { segmentsOf, setCustomSegments } from "../src/server/segments";
 
 const alert = (n: number, goals: string, result: "hit" | "miss") =>
@@ -114,4 +114,33 @@ test("a watched slice's stages: quiet, then candidate at 50, trial at 150 (both 
   assert.equal(status().status, "trial");
   add(FULL_FROM - TRIAL_FROM);
   assert.equal(status().status, "full");
+});
+
+test("a slice's return is pulled towards its strategy's, more so the fewer picks it has", () => {
+  assert.equal(shrunkRoi(0.3, 40, -0.02), 0.033, "40 picks at +30% in a strategy at -2%");
+  assert.equal(shrunkRoi(0.3, 400, -0.02), 0.193, "the same figures over 400 picks");
+  assert.equal(shrunkRoi(0.3, 0, -0.02), -0.02, "no picks: the strategy's own return");
+  assert.ok(shrunkRoi(0.1, 200, 0.1) === 0.1, "a slice no different from its strategy stays put");
+});
+
+test("the finder watches at most three new slices in any week", () => {
+  assert.equal(QUIET_LIMITS.perWeek, 3);
+  setCustomSegments([]);
+  const db = new EngineDb(":memory:", () => {});
+  loadCustomSegments(db);
+  const now = new Date();
+  // Three already added by the finder this week: no room, whatever it has found.
+  watchSegment(db, "Blistering Momentum", ["score00"], new Date(now.getTime() - 86_400_000), true);
+  watchSegment(db, "Blistering Momentum", ["apart1"], new Date(now.getTime() - 2 * 86_400_000), true);
+  watchSegment(db, "Time to fight", ["score00"], new Date(now.getTime() - 3 * 86_400_000), true);
+  db.setSetting(
+    "golden_suggestions",
+    JSON.stringify({ at: now.toISOString(), list: [{ strategyKey: "time to fight", strategy: "Time to fight", rule: ["apart1"], label: "1 goal apart", slice: { n: 60, hits: 40, roi: 0.2, low: 0.01 }, rest: { n: 200, roi: -0.02 }, halves: [] }] }),
+  );
+  assert.deepEqual(autoWatchGoldenFinds(db, now), []);
+  // Eight days on, those three are no longer "this week": the find is taken.
+  const later = new Date(now.getTime() + 8 * 86_400_000);
+  db.setSetting("golden_suggestions", JSON.stringify({ at: later.toISOString(), list: JSON.parse(db.getSetting("golden_suggestions")!).list }));
+  assert.equal(autoWatchGoldenFinds(db, later).length, 1);
+  setCustomSegments([]);
 });

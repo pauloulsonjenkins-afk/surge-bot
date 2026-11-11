@@ -140,7 +140,20 @@ function stats(rows: Row[]): { n: number; hits: number; roi: number | null; low:
   return { n, hits: rows.filter((r) => r.hit).length, roi, low: roi === null ? null : roi - (1.96 * sd) / Math.sqrt(n) };
 }
 
+/**
+ * A slice's return pulled towards its strategy's, by how few picks it has: weight n / (n + SHRINK_PICKS) on its own
+ * figure. A slice is the best-looking part of a strategy out of ~200 tried, so its raw return flatters it; 40 picks at
+ * +30% in a strategy at -2% is worth about +3%, and 400 picks at +30% about +19% (site review S2, 11 Nov 2026).
+ */
+export const SHRINK_PICKS = 200;
+export function shrunkRoi(sliceRoi: number, slicePicks: number, parentRoi: number): number {
+  const w = slicePicks / (slicePicks + SHRINK_PICKS);
+  return Math.round((w * sliceRoi + (1 - w) * parentRoi) * 1000) / 1000;
+}
+
 export interface GoldenSuggestion {
+  /** The slice's return shrunk towards its strategy's (shrunkRoi): what the finder ranks by. Missing on one saved before 11 Nov 2026. */
+  shrunk?: number;
   strategyKey: string;
   strategy: string;
   rule: Feature[];
@@ -150,6 +163,8 @@ export interface GoldenSuggestion {
   rest: { n: number; roi: number };
   halves: Array<{ slice: number; rest: number }>;
 }
+
+const byShrunk = (a: GoldenSuggestion, b: GoldenSuggestion) => (b.shrunk ?? b.slice.low) - (a.shrunk ?? a.slice.low) || b.slice.low - a.slice.low;
 
 /** The finder: new slices worth watching, best first. */
 export function findGolden(db: EngineDb): GoldenSuggestion[] {
@@ -173,6 +188,7 @@ export function findGolden(db: EngineDb): GoldenSuggestion[] {
     all.sort((a, b) => a.at.localeCompare(b.at));
     const mid = all[Math.floor(all.length / 2)]!.at;
     const watched = new Set(segmentsOf(key).filter((s) => s.rule).map((s) => ruleId(s.rule!)));
+    const parent = stats(all);
     const found: GoldenSuggestion[] = [];
     for (const rule of rules) {
       if (watched.has(ruleId(rule))) continue;
@@ -183,9 +199,13 @@ export function findGolden(db: EngineDb): GoldenSuggestion[] {
       const s = stats(inn);
       const o = stats(rest);
       if (s.roi === null || o.roi === null || s.roi < 0.04) continue;
+      // Ranked by this, not filtered: a slice of a losing strategy can still be the part that works (what Golden is
+      // for), but it starts further back than the same figures in a strategy that is level.
+      const shrunk = shrunkRoi(s.roi, s.n, parent.roi ?? 0);
       const halves = [(r: Row) => r.at < mid, (r: Row) => r.at >= mid].map((h) => ({ slice: stats(inn.filter(h)), rest: stats(rest.filter(h)) }));
       if (!halves.every((h) => h.slice.roi !== null && h.rest.roi !== null && h.slice.n >= 10 && h.slice.roi > 0 && h.slice.roi - h.rest.roi >= 0.05)) continue;
       found.push({
+        shrunk,
         strategyKey: key,
         strategy: displayName(db, key),
         rule,
@@ -195,11 +215,11 @@ export function findGolden(db: EngineDb): GoldenSuggestion[] {
         halves: halves.map((h) => ({ slice: h.slice.roi!, rest: h.rest.roi! })),
       });
     }
-    // Best two per strategy, ranked by the lower end of the likely range; a pair must beat its single parts.
-    found.sort((a, b) => b.slice.low - a.slice.low);
+    // Best two per strategy, ranked by the return shrunk towards the strategy's (then the lower end of the likely range).
+    found.sort(byShrunk);
     out.push(...found.slice(0, 2));
   }
-  return out.sort((a, b) => b.slice.low - a.slice.low).slice(0, 10);
+  return out.sort(byShrunk).slice(0, 10);
 }
 
 /** The finder's suggestions, worked out again when 6+ hours old. */
@@ -222,7 +242,7 @@ function goldenSuggestions(db: EngineDb, now = new Date(), force = false): { at:
  * Limits on what the finder watches by itself (29 Oct 2026: it had 30 quiet slices on top of 32 chosen ones, with nothing
  * ever retired). Testing that many slices makes some look good by luck alone, and they buried the page.
  */
-export const QUIET_LIMITS = { perStrategy: 2, total: 12, retireAfterDays: 14, fewPicks: 10, losingFrom: 30 };
+export const QUIET_LIMITS = { perStrategy: 2, total: 12, perWeek: 3, retireAfterDays: 14, fewPicks: 10, losingFrom: 30 };
 
 /**
  * Retires the finder's own slices (auto, never one the admin chose or bets on its own) that aren't going anywhere: after
@@ -270,7 +290,11 @@ export function autoWatchGoldenFinds(db: EngineDb, now = new Date()): CustomSegm
   const quiet = loadCustomSegments(db).filter((c) => c.auto);
   const per = new Map<string, number>();
   for (const c of quiet) per.set(c.strategyKey, (per.get(c.strategyKey) ?? 0) + 1);
-  let room = QUIET_LIMITS.total - quiet.length;
+  // At most perWeek new ones in any 7 days (11 Nov 2026): every slice watched is another chance for luck to look like
+  // skill, so the finder's best few are taken and the rest wait. One added this week can't have been retired yet
+  // (retireAfterDays is longer), so the list itself is the count.
+  const thisWeek = quiet.filter((c) => now.getTime() - Date.parse(c.since) < 7 * 86_400_000).length;
+  let room = Math.min(QUIET_LIMITS.total - quiet.length, QUIET_LIMITS.perWeek - thisWeek);
   const fresh: GoldenSuggestion[] = [];
   for (const g of list) {
     if (room <= 0) break;
