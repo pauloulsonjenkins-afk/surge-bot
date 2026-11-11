@@ -48,6 +48,8 @@
  * wait), each with its own notification. "Try Live"
  * and "Back to Sim" are never automatic.
  */
+import { ukDateOf } from "./uk-time";
+import { ukWeekStart } from "../members/time";
 import { stakeCapFor } from "./money-guard";
 import { RECORD_FROM, type EngineDb } from "../storage/engine-db";
 import { ALL_TIME, computeAdviceReturns, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
@@ -523,6 +525,7 @@ export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = n
     saveSendingSettings(db, { ...stake, ...(a.kind === "try-live" ? { strategies: { [k]: true } } : {}) });
   }
   if (a.kind === "try-live" || a.kind === "back-to-sim") db.setSetting(LOCKS_KEY, JSON.stringify({ ...readLocks(db), [k]: { kind: a.kind, at: now.toISOString() } }));
+  spendGrowth(db, a);
   if (a.kind === "slice-stake-up" || a.kind === "slice-stake-down") db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
   if (a.kind === "stake-up" || a.kind === "stake-down") {
     db.setSetting(LAST_STEP_KEY, JSON.stringify({ ...lastSteps(db), [k]: now.toISOString() }));
@@ -614,9 +617,53 @@ function adviceForView(db: EngineDb, now: Date): Advice[] {
   const hit = viewCache.get(db);
   const age = hit ? now.getTime() - hit.at : -1;
   if (hit && hit.stamp === stamp && age >= 0 && age < VIEW_MAX_AGE_MS && (hit.results === results || age < RESULTS_REUSE_MS)) return hit.advice;
-  const advice = strategyAdvice(db, now);
-  viewCache.set(db, { at: now.getTime(), stamp, results, advice });
+  // Held to the week's pass here, so the kept list is the one shown. Taking the pass writes a setting, so the stamp is
+  // read again after it: otherwise the first look of each week would throw its own work away.
+  const advice = weeklyGrowth(db, strategyAdvice(db, now), now);
+  viewCache.set(db, { at: now.getTime(), stamp: settingsStamp(db), results, advice });
   return advice;
+}
+
+/**
+ * THE WEEKLY PASS (site review S4, 11 Nov 2026). A suggestion that RAISES risk (go Live, raise a stake, for a strategy
+ * or a slice) is taken up once a week: the first look at the suggestions in each UK week (Monday to Sunday) records the
+ * ones standing then, and only those show, notify or are applied automatically until the next week. Looking at a
+ * record every hour and acting the first time it crosses a line finds "winners" that are only having a good day; one
+ * look a week at a fixed time doesn't. A suggestion that LOWERS risk (cut a stake, back to Sim, stop a league) is never
+ * held: it shows the moment it applies. Applying one takes it off the week's list, so its next step waits for the next.
+ */
+const GROWTH_KINDS: AdviceKind[] = ["try-live", "stake-up", "slice-live", "slice-stake-up"];
+export const isGrowthAdvice = (a: Pick<Advice, "kind">) => GROWTH_KINDS.includes(a.kind);
+const GROWTH_KEY = "strategy_advice_growth_pass";
+const growthId = (a: Pick<Advice, "key" | "kind">) => `${a.key}:${a.kind}`;
+
+function readGrowthPass(db: EngineDb): { week: string; ids: string[] } | null {
+  try {
+    const v = JSON.parse(db.getSetting(GROWTH_KEY) ?? "null") as { week?: unknown; ids?: unknown } | null;
+    return v && typeof v.week === "string" && Array.isArray(v.ids) ? { week: v.week, ids: v.ids.filter((x): x is string => typeof x === "string") } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `all` with the growth suggestions held to this week's pass (taking the pass if this is the week's first look). */
+export function weeklyGrowth(db: EngineDb, all: Advice[], now = new Date()): Advice[] {
+  const week = ukWeekStart(ukDateOf(now));
+  let pass = readGrowthPass(db);
+  if (!pass || pass.week !== week) {
+    pass = { week, ids: all.filter(isGrowthAdvice).map(growthId) };
+    db.setSetting(GROWTH_KEY, JSON.stringify(pass));
+  }
+  const ids = new Set(pass.ids);
+  const held = all.filter((a) => !isGrowthAdvice(a) || ids.has(growthId(a)));
+  return held.length === all.length ? all : held;
+}
+
+/** Takes an applied growth suggestion off the week's list: its next step waits for next week's pass. */
+function spendGrowth(db: EngineDb, a: Advice): void {
+  const pass = readGrowthPass(db);
+  if (!pass || !isGrowthAdvice(a) || !pass.ids.includes(growthId(a))) return;
+  db.setSetting(GROWTH_KEY, JSON.stringify({ week: pass.week, ids: pass.ids.filter((x) => x !== growthId(a)) }));
 }
 
 /**
@@ -689,7 +736,8 @@ export function autoApplyStakes(db: EngineDb, now = new Date()): Advice[] {
   if (!getSendingSettings(db).ladderAuto) return [];
   const last = lastSteps(db);
   const done: Advice[] = [];
-  for (const a of strategyAdvice(db, now)) {
+  // A raise is applied only from the week's pass; a cut is applied whenever it is due.
+  for (const a of weeklyGrowth(db, strategyAdvice(db, now), now)) {
     if (a.kind !== "stake-up" && a.kind !== "stake-down") continue;
     const prev = last[a.key];
     if (!a.fast && prev && now.getTime() - Date.parse(prev) < AUTO_GAP_MS) continue;
