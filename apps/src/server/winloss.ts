@@ -26,6 +26,7 @@
  * it applies to the Month and Year figures only, charged on the 1st of each
  * month from the start month onwards.
  */
+import { roiRange, verdictOf, type Verdict } from "./verdict";
 import { inPickMode, isLivePlacement, RECORD_FROM, type EngineDb, type PickMode, type Placement } from "../storage/engine-db";
 import { getSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { segmentsOf } from "./segments";
@@ -439,6 +440,10 @@ export interface StrategyReturn {
   breakevenEffective: number | null;
   /** Where the true hit rate probably is (95% range), percents. */
   range: { low: number; high: number } | null;
+  /** What these bets can and can't say (verdict.ts): the same verdict the pages show and the rules act on. */
+  verdict: Verdict;
+  /** The likely range of the return per £1 (fractions), from pricedRange against break-even. Null when it can't be worked out. */
+  roiRange: { low: number; high: number } | null;
   /** Biggest fall in £ from a high point of the running profit to a later low. Positive number, 0 when it never fell. */
   maxDrawdown: number;
   /** Most losing picks in a row, ever. */
@@ -561,20 +566,28 @@ class ReturnTally {
     const avgOdds = this.oddsN > 0 ? Math.round((this.oddsSum / this.oddsN) * 100) / 100 : null;
     let worstDay: StrategyReturn["worstDay"] = null;
     for (const [day, p] of this.days) if (worstDay === null || p < worstDay.profit) worstDay = { day, profit: r2(p) };
+    const judged = {
+      counted: this.counted,
+      pricedRange: hitRateRange(this.winN, this.counted),
+      breakeven: breakevenHitRate(avgOdds, this.commission),
+      breakevenEffective: this.winN > 0 && this.lossN > 0 ? effectiveBreakeven(this.winSum / this.winN, this.lossSum / this.lossN) : null,
+    };
     return {
       settled: this.settled,
       hits: this.hits,
       counted: this.counted,
       pricedHits: this.winN,
-      pricedRange: hitRateRange(this.winN, this.counted),
+      pricedRange: judged.pricedRange,
       staked,
       profit,
       units: r2(this.units),
       roi: staked > 0 ? Math.round((profit / staked) * 1000) / 1000 : null,
       avgOdds,
-      breakeven: breakevenHitRate(avgOdds, this.commission),
-      breakevenEffective: this.winN > 0 && this.lossN > 0 ? effectiveBreakeven(this.winSum / this.winN, this.lossSum / this.lossN) : null,
+      breakeven: judged.breakeven,
+      breakevenEffective: judged.breakevenEffective,
       range: hitRateRange(this.hits, this.settled),
+      verdict: verdictOf(judged),
+      roiRange: roiRange(judged),
       maxDrawdown: r2(this.maxDrawdown),
       longestLosingRun: this.longestRun,
       worstDay,

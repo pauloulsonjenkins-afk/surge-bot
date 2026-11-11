@@ -21,7 +21,7 @@ import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/
 import type { StrategyAdvice } from "@/server/engine-client";
 import { ADVICE_LABEL, ApplyAdvice, isGoodAdvice } from "@/components/admin/Advice";
 import { Sparkline } from "@/components/ui/Sparkline";
-import { EquityCurve, lastSeen, ChangeCompare, FormParagraph, record, modeOf, OWN_FROM, CheckResult, ReadyForLive, judged, PriceCheckLine, ByBetLine, SegmentLines, SAMPLE, roiTone, returnsFor, SortBy, shortDay, adjustedRoi, OddsContext, AboutStrategy, LiveSimToday } from "@/components/admin/strategies/strategy-parts";
+import { EquityCurve, lastSeen, ChangeCompare, FormParagraph, record, modeOf, OWN_FROM, CheckResult, ReadyForLive, judged, PriceCheckLine, ByBetLine, SegmentLines, SAMPLE, VerdictLine, roiTone, returnsFor, SortBy, shortDay, adjustedRoi, OddsContext, AboutStrategy, LiveSimToday } from "@/components/admin/strategies/strategy-parts";
 
 export function StrategyCard({
   row,
@@ -148,6 +148,8 @@ export function StrategyCard({
         };
   // Too few priced picks to act on: the figures still show, but faded.
   const thin = (money?.counted ?? 0) < SAMPLE;
+  // With the engine's verdict: a figure on under 100 bets is not coloured as a win or a loss, since it is neither yet.
+  const tooEarly = money?.verdict === "too early";
 
   return (
     <li
@@ -207,8 +209,9 @@ export function StrategyCard({
             </span>
           )}
           <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
-            <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${headline.tone}`}>{headline.value}</span>
+            <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${tooEarly ? "text-ink-muted" : headline.tone}`}>{headline.value}</span>
             <span className="block text-xs text-ink-muted">{headline.sub}</span>
+            <VerdictLine m={money} />
             {otherNote && (
               <span className="block text-xs text-warn" title="A different pool of money, over a different time span: this isn't the same figure the big one above is.">
                 but {otherNote}

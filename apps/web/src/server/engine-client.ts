@@ -530,6 +530,9 @@ export function fetchLeagueForm(): Promise<LeagueFormReport> {
   return engineCall<LeagueFormReport>("/internal/leagues/form", "league form", { timeoutMs: 20000 });
 }
 
+/** Mirrors the engine's verdict.ts. */
+export type Verdict = "too early" | "probably losing" | "no clear edge" | "probably winning";
+
 /** The engine wants a risky figure typed again before it saves (engine money-guard.ts); nothing was changed. */
 export interface ConfirmNeededItem {
   what: string;
@@ -1047,6 +1050,10 @@ export interface StrategyReturn {
   /** Hits among the priced picks (the same picks as the money), and their likely range. */
   pricedHits?: number;
   pricedRange?: { low: number; high: number } | null;
+  /** What these bets can and can't say (engine verdict.ts): the verdict the engine's own rules act on. Missing on an older engine. */
+  verdict?: Verdict;
+  /** The likely range of the return per £1 (fractions). */
+  roiRange?: { low: number; high: number } | null;
   /** Biggest fall in £ from a high point of running profit. */
   maxDrawdown?: number;
   longestLosingRun?: number;

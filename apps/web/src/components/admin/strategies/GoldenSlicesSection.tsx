@@ -10,6 +10,7 @@ import { useGolden, type GoldenSlice } from "@/queries/use-golden";
 import { useSending, type SendingSettings } from "@/queries/use-sending";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { signedPct, toneOf, units as formatUnits } from "@/lib/format";
+import { VERDICT_LABEL, VERDICT_TONE, type Verdict } from "@/lib/hit-rate";
 
 /** Below this many priced picks a return is noise: shown, but not in green or red (the same rule as the Golden page). */
 const FEW = 10;
@@ -17,6 +18,13 @@ const FEW = 10;
 const TRIAL_PCT = 1;
 
 const judged = (roi: number | null | undefined, n: number) => (n < FEW ? "text-ink-muted" : toneOf(roi));
+/** Bets before a slice's own Live record is coloured: the engine's "too early" line (verdict.ts). */
+const VERDICT_FROM = 100;
+/**
+ * The colour for a return that carries the engine's verdict: green or red only once it has 100 bets. Ten picks at +30%
+ * used to show in green here, which is how a 19-bet slice came to look like a winner (site review S3, 11 Nov 2026).
+ */
+const judgedReturn = (r: { roi: number | null; counted: number; verdict?: Verdict }) => (r.verdict ? (r.verdict === "too early" ? "text-ink-muted" : toneOf(r.roi)) : judged(r.roi, r.counted));
 const unitsText = (r: { units?: number; roi: number | null }) => (r.units !== undefined ? formatUnits(r.units) : signedPct(r.roi));
 const shortName = (label: string) => sliceName(label).replace(/ since .*$/, "");
 
@@ -45,11 +53,12 @@ function SliceRow({ s, settings, strategyName }: { s: GoldenSlice; settings: Sen
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-ink-muted">
             <GoldenBadge status={s.status} candidate="Candidate" trial="Live trial suggested" />
             <span>
-              <span className={`font-semibold ${judged(mine.roi, mine.counted)}`}>{mine.counted > 0 ? unitsText(mine) : "–"}</span> on {mine.counted}
+              <span className={`font-semibold ${judgedReturn(mine)}`}>{mine.counted > 0 ? unitsText(mine) : "–"}</span> on {mine.counted}
+              {mine.verdict && mine.counted > 0 && <span className={VERDICT_TONE[mine.verdict]}> · {VERDICT_LABEL[mine.verdict].toLowerCase()}</span>}
               {rest.counted > 0 && (
                 <>
                   {" "}
-                  · rest <span className={judged(rest.roi, rest.counted)}>{unitsText(rest)}</span>
+                  · rest <span className={judgedReturn(rest)}>{unitsText(rest)}</span>
                 </>
               )}
             </span>
@@ -60,7 +69,7 @@ function SliceRow({ s, settings, strategyName }: { s: GoldenSlice; settings: Sen
               {s.ownLive && s.ownLive.n > 0 ? (
                 <span className="tabular-nums">
                   {s.ownLive.won}–{s.ownLive.n - s.ownLive.won}{" "}
-                  <span className={judged(s.ownLive.roi, s.ownLive.n)}>{s.ownLive.units !== undefined ? formatUnits(s.ownLive.units) : signedPct(s.ownLive.roi)}</span> on{" "}
+                  <span className={s.ownLive.n < VERDICT_FROM ? "text-ink-muted" : toneOf(s.ownLive.roi)}>{s.ownLive.units !== undefined ? formatUnits(s.ownLive.units) : signedPct(s.ownLive.roi)}</span> on{" "}
                   {s.ownLive.n}
                 </span>
               ) : (

@@ -10,6 +10,29 @@ export function roiText(roi: number | null | undefined): string {
   return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct)}%`;
 }
 
+/**
+ * The engine's verdict on a set of bets (engine verdict.ts), in the words and colour the pages use. The engine works it
+ * out, and its own rules act on the same one, so a page can never say "winning" about bets a rule calls unproven.
+ */
+export type Verdict = "too early" | "probably losing" | "no clear edge" | "probably winning";
+export const VERDICT_LABEL: Record<Verdict, string> = {
+  "too early": "Too early to say",
+  "probably losing": "Probably losing",
+  "no clear edge": "No clear edge",
+  "probably winning": "Probably winning",
+};
+export const VERDICT_TONE: Record<Verdict, string> = {
+  "too early": "text-ink-muted",
+  "probably losing": "text-loss",
+  "no clear edge": "text-ink-muted",
+  "probably winning": "text-hit",
+};
+
+/** "likely −8% to +20%": the range the true return per £1 is probably in. Null when it isn't known. */
+export function roiRangeText(range: { low: number; high: number } | null | undefined): string | null {
+  return range ? `likely ${roiText(range.low)} to ${roiText(range.high)}` : null;
+}
+
 export function rangeText(range: { low: number; high: number } | null | undefined): string | null {
   return range ? `${Math.round(range.low)}–${Math.round(range.high)}%` : null;
 }

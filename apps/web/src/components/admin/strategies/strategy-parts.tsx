@@ -6,7 +6,7 @@ import { bestSlicesFirst, SegmentLabel } from "@/components/ui/SegmentLabel";
 import { useSliceStatus } from "@/queries/use-golden";
 import { gbp, signedPct } from "@/lib/format";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
+import { againstBreakeven, rangeText, roiRangeText, roiText, VERDICT_LABEL, VERDICT_TONE } from "@/lib/hit-rate";
 import { strategyKey, useSaveStrategyName, useStrategyNames } from "@/queries/use-strategy-names";
 import { ukMidnightIso } from "@/lib/uk-time";
 import dynamic from "next/dynamic";
@@ -202,6 +202,23 @@ export function judged(m: StrategyReturn | null, hitRate: number | null, settled
     };
   }
   return { hitRate, breakeven: m?.breakeven ?? null, range: m?.range ?? null, settled };
+}
+
+/**
+ * The verdict under a return figure: what the bets can and can't say, how many there are, and the range the true return
+ * is probably in. A return never shows without its bet count; under 100 bets it reads "Too early to say" and the figure
+ * above it is muted (StrategyCard). Nothing with an older engine that sends no verdict.
+ */
+export function VerdictLine({ m }: { m: Pick<StrategyReturn, "verdict" | "counted" | "roiRange"> | null | undefined }) {
+  if (!m?.verdict || m.counted === 0) return null;
+  const range = m.verdict === "too early" ? null : roiRangeText(m.roiRange);
+  return (
+    <span className="block text-xs text-ink-muted">
+      <span className={`font-medium ${VERDICT_TONE[m.verdict]}`}>{VERDICT_LABEL[m.verdict]}</span> · {m.counted} bet{m.counted === 1 ? "" : "s"}
+      {m.verdict === "too early" && " of 100"}
+      {range && <span className="block">{range}</span>}
+    </span>
+  );
 }
 
 /** Checks before a price-check figure is coloured as a verdict (it settles much sooner than a hit rate). */

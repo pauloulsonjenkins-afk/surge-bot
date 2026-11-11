@@ -5,7 +5,8 @@ import { EngineDb } from "../src/storage/engine-db";
 import { getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { applyAllAdvice, BEST_SLICE_PCT, sliceAdviceFrom, sliceStakeCap, visibleAdvice } from "../src/server/strategy-advice";
 
-const ret = (counted: number, roi: number, units: number) => ({ settled: counted, counted, staked: counted, profit: roi * counted, units, roi });
+// The verdict is given, not worked out: these tests are about the slice rules, and verdict.test.ts covers the verdict.
+const ret = (counted: number, roi: number, units: number, verdict = "probably winning") => ({ settled: counted, counted, staked: counted, profit: roi * counted, units, roi, verdict });
 interface Opt {
   status?: string;
   strategyLive?: boolean;
@@ -126,4 +127,12 @@ test("applying every suggestion on a database with nothing to suggest does nothi
   const db = new EngineDb(":memory:", () => {});
   assert.deepEqual(visibleAdvice(db), []);
   assert.deepEqual(applyAllAdvice(db), { applied: [], failed: [] });
+});
+
+test("a slice with enough of its own Live bets is still not raised unless its record is probably winning", () => {
+  const s = settingsWith({ "ttf#top": { live: true, stakePct: 1 } });
+  for (const verdict of ["too early", "no clear edge", "probably losing"]) {
+    const ups = sliceAdviceFrom([slice("ttf", "top", { status: "full", all: ret(60, 0.3, 18, verdict), own: { n: 320, roi: 0.3, units: 5 } })], s).filter((x) => x.kind === "slice-stake-up");
+    assert.deepEqual(ups, [], verdict);
+  }
 });

@@ -252,7 +252,7 @@ export function sliceAdviceFrom(slices: SliceInput[], settings: SendingSettings)
       }
     }
     const recentOk = !s.recent || s.recent.n < 10 || (s.recent.roi !== null && s.recent.roi >= 0);
-    if (stakeNow !== null && stakeNow < BEST_SLICE_PCT && s.status !== "not holding up" && own && own.n >= SLICE_RAISE_FROM && mine.roi !== null && mine.roi >= SLICE_UP_ROI && (mine.units ?? 0) >= SLICE_UP_UNITS && recentOk) upCandidates.push({ s, now: stakeNow });
+    if (stakeNow !== null && stakeNow < BEST_SLICE_PCT && s.status !== "not holding up" && own && own.n >= SLICE_RAISE_FROM && mine.verdict === "probably winning" && mine.roi !== null && mine.roi >= SLICE_UP_ROI && (mine.units ?? 0) >= SLICE_UP_UNITS && recentOk) upCandidates.push({ s, now: stakeNow });
   }
   // The best of the ones earning a raise goes straight to the owner's target; the rest go up one step.
   upCandidates.sort((a, b) => per(b.s.slice.all) - per(a.s.slice.all));
@@ -353,6 +353,8 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
       const ok =
         !liveLosing &&
         sim.counted >= PROMOTE_FROM &&
+        // Real money only follows a Sim record that is probably winning, not one that merely looks up (verdict.ts).
+        sim.verdict === "probably winning" &&
         adj !== null &&
         adj > 0 &&
         !!halves &&
@@ -429,7 +431,8 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
     if (!settled) continue;
     const cutRecently = !!raise?.cutAt && now.getTime() - Date.parse(raise.cutAt) < NO_RAISE_AFTER_CUT_MS;
     const recentOk = !!win && win.counted > 0 && win.roi !== null && win.roi > 0;
-    if (l.counted >= RAISE_FROM && l.roi !== null && l.roi >= 0.05 && beatsBreakeven(l) && recentOk) {
+    // A raise needs the verdict the pages show (verdict.ts): the whole likely range of its hit rate above break-even.
+    if (l.counted >= RAISE_FROM && l.roi !== null && l.roi >= 0.05 && beatsBreakeven(l) && l.verdict === "probably winning" && recentOk) {
       if (cutRecently) continue;
       const to = ladderStep(stake, 1);
       // The evidence cap (money-guard.ts): nothing is raised past 2% of the balance on fewer than 150 Live bets, or past
