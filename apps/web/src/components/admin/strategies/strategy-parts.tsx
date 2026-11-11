@@ -392,6 +392,21 @@ export function sortValue(row: AdminStrategy, m: "live" | "sim", by: SortBy): nu
   return r.roi;
 }
 
+/**
+ * The return over only the picks priced at a real Betfair price, when that leaves some out: an alert's quoted price is
+ * often gone before a bet could be placed, so this is the figure nearer to what could really have been had.
+ */
+export function OnBetfair({ m }: { m: Pick<StrategyReturn, "onBetfair" | "counted" | "roi"> }) {
+  const b = m.onBetfair;
+  if (!b || b.roi === null || b.counted >= m.counted) return null;
+  return (
+    <span className="block">
+      At real Betfair prices only: <span className={b.counted >= 100 ? roiTone(b.roi) : ""}>{roiText(b.roi)}</span> on {b.counted} of {m.counted} priced picks
+      {m.roi !== null && b.counted >= SAMPLE && m.roi - b.roi >= 0.03 ? <span className="text-warn"> · the headline is flattered by quoted prices</span> : null}
+    </span>
+  );
+}
+
 /** A nudge once there are enough picks to go on: a Sim strategy that makes money, or a Live one that loses it. */
 /**
  * What the hit rate needs beside it: the odds it was won at, the hit rate those odds need to break even after
@@ -410,6 +425,7 @@ export function OddsContext({ hitRate, settled, money }: { hitRate: number | nul
         : `Avg odds ${m.avgOdds.toFixed(2)} · priced picks hit ${j.hitRate}% · break-even ${j.breakeven}% (from what winners paid)`}
       {range && ` · likely ${range}`}
       {verdict && <span className={verdict.tone === "hit" ? "text-hit" : verdict.tone === "loss" ? "text-loss" : ""}> · {verdict.text}</span>}
+      <OnBetfair m={m} />
       {m.assumed ? (
         <span className="text-warn">
           {" "}

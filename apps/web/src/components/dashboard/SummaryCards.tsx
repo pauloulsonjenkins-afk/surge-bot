@@ -9,7 +9,7 @@ import { gbp, units as formatUnits } from "@/lib/format";
 import { useProfitUnit } from "@/components/ui/ModeToggle";
 import type { Timeframe } from "./TimeframeToggle";
 import type { PickMode } from "@/server/engine-client";
-import { againstBreakeven, rangeText, roiText } from "@/lib/hit-rate";
+import { againstBreakeven, rangeText, roiRangeText, roiText, VERDICT_LABEL, VERDICT_TONE } from "@/lib/hit-rate";
 import { useMe } from "@/queries/use-me";
 import { useSending } from "@/queries/use-sending";
 import { useUnplaced } from "@/queries/use-unplaced";
@@ -192,6 +192,25 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
     const over = `over ${formatNumber(c.counted)} priced pick${c.counted === 1 ? "" : "s"}`;
     const lead = c.roi > 0 ? `Making ${pence}p per £1 staked ${over}` : c.roi < 0 ? `Losing ${pence}p per £1 staked ${over}` : `Breaking even ${over}`;
     const breakeven = c.breakevenEffective ?? c.breakeven;
+    // The engine's own verdict, when it sends one: the same call its stake rules act on (verdict.ts).
+    if (c.verdict) {
+      const likely = roiRangeText(c.roiRange);
+      const tail =
+        c.verdict === "too early"
+          ? "Too early to say: under 100 priced picks."
+          : `${VERDICT_LABEL[c.verdict]}${likely ? `: the true return is ${likely}` : ""}.`;
+      return (
+        <p className="text-sm">
+          {/* The money is only coloured once the bets can back it: a profit on a handful of picks is not a result. */}
+          <span className={c.verdict === "probably winning" || c.verdict === "probably losing" ? TONE[moneyTone(c.roi)] : "text-ink"}>{lead}.</span>{" "}
+          <span className={VERDICT_TONE[c.verdict]}>{tail}</span>
+          {c.oddsKnown < c.settled && c.oddsKnown > 0 && (
+            <span className="text-ink-muted"> Odds known for {formatNumber(c.oddsKnown)} of {formatNumber(c.settled)} picks.</span>
+          )}
+          {c.assumed ? <span className="text-warn"> {formatNumber(c.assumed)} priced at an assumed price set on Profit, so the return is partly a guess.</span> : null}
+        </p>
+      );
+    }
     const clearlyAbove = c.range != null && breakeven !== null && c.range.low > breakeven;
     const clearlyBelow = c.range != null && breakeven !== null && c.range.high < breakeven;
     if (c.roi < 0 && clearlyAbove) text = `${lead}, though the hit rate is clearly above break-even: look at the stakes on the losing strategies.`;

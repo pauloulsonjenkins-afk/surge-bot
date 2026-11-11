@@ -350,6 +350,9 @@ interface HitRateContext {
   breakeven: number | null;
   /** Hit rate needed to break even given what the winners actually paid and the losers cost, percent; the Dashboard judges against this (missing on an older engine). */
   breakevenEffective?: number | null;
+  /** What the priced picks can and can't say (engine verdict.ts), and the likely range of their return (missing on an older engine). */
+  verdict?: Verdict;
+  roiRange?: { low: number; high: number } | null;
   /** The same picks split by price (missing on an older engine). */
   bands?: OddsBand[];
   counted: number;
@@ -1054,6 +1057,8 @@ export interface StrategyReturn {
   verdict?: Verdict;
   /** The likely range of the return per £1 (fractions). */
   roiRange?: { low: number; high: number } | null;
+  /** The same over only the picks priced at a real Betfair price (not the alert's quote or an assumed one). Null when none. */
+  onBetfair?: { counted: number; staked: number; profit: number; units: number; roi: number | null } | null;
   /** Biggest fall in £ from a high point of running profit. */
   maxDrawdown?: number;
   longestLosingRun?: number;

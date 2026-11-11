@@ -444,6 +444,13 @@ export interface StrategyReturn {
   verdict: Verdict;
   /** The likely range of the return per £1 (fractions), from pricedRange against break-even. Null when it can't be worked out. */
   roiRange: { low: number; high: number } | null;
+  /**
+   * The same figures over only the priced picks whose price was a real Betfair one (read from the exchange, or the price
+   * a bet was matched at), leaving out prices quoted in the alert and assumed ones. For Sim this is the nearest thing to
+   * "what could really have been had": an alert's price is often gone by the time a bet could be placed (site review S6,
+   * 11 Nov 2026). Null when no pick has one.
+   */
+  onBetfair: { counted: number; staked: number; profit: number; units: number; roi: number | null } | null;
   /** Biggest fall in £ from a high point of the running profit to a later low. Positive number, 0 when it never fell. */
   maxDrawdown: number;
   /** Most losing picks in a row, ever. */
@@ -496,6 +503,10 @@ class ReturnTally {
   private hits = 0;
   private counted = 0;
   private assumed = 0;
+  private bfN = 0;
+  private bfStaked = 0;
+  private bfProfit = 0;
+  private bfUnits = 0;
   private staked = 0;
   private profit = 0;
   private units = 0;
@@ -544,6 +555,12 @@ class ReturnTally {
     if (priced.kind !== "priced") return;
     this.counted++;
     if (priced.oddsSource === "assumed") this.assumed++;
+    if (priced.oddsSource === "exchange" || priced.oddsSource === "taken" || priced.oddsSource === "bet") {
+      this.bfN++;
+      this.bfStaked += priced.stake;
+      this.bfProfit += priced.profit;
+      if (priced.stake > 0) this.bfUnits += priced.profit / priced.stake;
+    }
     this.staked += priced.stake;
     this.profit += priced.profit;
     if (priced.stake > 0) this.units += priced.profit / priced.stake;
@@ -588,6 +605,7 @@ class ReturnTally {
       range: hitRateRange(this.hits, this.settled),
       verdict: verdictOf(judged),
       roiRange: roiRange(judged),
+      onBetfair: this.bfN > 0 ? { counted: this.bfN, staked: r2(this.bfStaked), profit: r2(this.bfProfit), units: r2(this.bfUnits), roi: this.bfStaked > 0 ? Math.round((this.bfProfit / this.bfStaked) * 1000) / 1000 : null } : null,
       maxDrawdown: r2(this.maxDrawdown),
       longestLosingRun: this.longestRun,
       worstDay,
@@ -833,6 +851,9 @@ export interface HitRateContext {
   breakeven: number | null;
   /** From what the winners actually paid and the losers cost; this is the one the Dashboard judges against. */
   breakevenEffective: number | null;
+  /** What the priced picks can and can't say (verdict.ts), and the likely range of their return per £1. */
+  verdict: Verdict;
+  roiRange: { low: number; high: number } | null;
   /** The same picks split by price, so it shows which price ranges make money. */
   bands: OddsBand[];
   /** Picks that could be priced in £, and the return on each £1 staked on them. */
@@ -907,6 +928,8 @@ export function computeHitRateContext(db: EngineDb, ids: Set<number>, sinceIso: 
     avgOdds: s.avgOdds,
     breakeven: s.breakeven,
     breakevenEffective: s.breakevenEffective,
+    verdict: s.verdict,
+    roiRange: s.roiRange,
     bands,
     counted: s.counted,
     roi: s.roi,
