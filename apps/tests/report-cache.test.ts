@@ -18,7 +18,7 @@ const tick = () => new Promise<void>((r) => setImmediate(r));
 import { warmReportCache } from "../src/server/http";
 import { ALL_TIME, computeStrategyForm, computeStrategyReturns, saveWinLossSettings } from "../src/server/winloss";
 import { computeLeagueReturns } from "../src/server/league-returns";
-import { applyAdvice, autoApplyStakes, visibleAdvice } from "../src/server/strategy-advice";
+import { AdviceChanged, applyAdvice, autoApplyStakes, strategyAdvice, visibleAdvice } from "../src/server/strategy-advice";
 import { ukDateOf, ukDateOfIso } from "../src/server/uk-time";
 import { createEngineHttpServer } from "../src/server/http";
 
@@ -291,4 +291,19 @@ test("the settled picks are read once and kept, but a new result, an amended one
   read().length = 0;
   read().sort(() => -1);
   assert.equal(read().length, 5);
+});
+
+test("Apply with what the page showed changes the setting once; a repeat or a stale request changes nothing", () => {
+  const db = engine(90);
+  const now = new Date();
+  for (let i = 91; i <= 110; i++) settle(db, i, i % 4 === 0 ? "miss" : "hit");
+  const shown = strategyAdvice(db, now).find((a) => a.key === KEY && a.kind === "stake-up");
+  assert.ok(shown);
+  assert.throws(() => applyAdvice(db, KEY, "stake-up", now, undefined, { to: { flat: 99 } }), AdviceChanged);
+  assert.equal(getSendingSettings(db).stakes[KEY], 1, "a stale request changed nothing");
+  assert.equal(applyAdvice(db, KEY, "stake-up", now, undefined, { to: shown.to ?? null }).action, "Raise to £2");
+  assert.equal(getSendingSettings(db).stakes[KEY], 2);
+  // The same request again: the suggestion has moved on (or gone), so it is refused and the stake stays.
+  assert.throws(() => applyAdvice(db, KEY, "stake-up", now, undefined, { to: shown.to ?? null }), /no longer applies|has changed since/);
+  assert.equal(getSendingSettings(db).stakes[KEY], 2, "the second request did not apply the next step");
 });

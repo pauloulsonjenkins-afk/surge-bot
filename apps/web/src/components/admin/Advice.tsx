@@ -39,7 +39,7 @@ export function ApplyAdvice({ a, name, size = "sm" }: { a: StrategyAdvice; name:
   const [done, setDone] = useState<string | null>(null);
   const apply = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/admin/advice/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: a.key, kind: a.kind, ...(a.league ? { league: a.league.key } : {}) }) });
+      const res = await fetch("/api/admin/advice/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: a.key, kind: a.kind, expect: { to: (a as { to?: unknown }).to ?? null }, ...(a.league ? { league: a.league.key } : {}) }) });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(body.error ?? "Couldn't apply that.");
     },

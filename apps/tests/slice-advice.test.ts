@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { applyAllAdvice, BEST_SLICE_PCT, sliceAdviceFrom, visibleAdvice } from "../src/server/strategy-advice";
+import { applyAllAdvice, BEST_SLICE_PCT, sliceAdviceFrom, sliceStakeCap, visibleAdvice } from "../src/server/strategy-advice";
 
 const ret = (counted: number, roi: number, units: number) => ({ settled: counted, counted, staked: counted, profit: roi * counted, units, roi });
 interface Opt {
@@ -68,19 +68,20 @@ test("a Live slice whose own Live bets are losing 10% over 15+ bets is suggested
   assert.equal((mild[0]!.to as { pct: number }).pct, 1.5);
 });
 
-test("the best earning Live slice goes straight to 4%, the next one a step up, and ones that are not earning stay put", () => {
+test("the best earning Live slice goes straight to 4% only once it has 300 of its own Live bets; ones that are not earning stay put", () => {
   const s = settingsWith({
     "ttf#top": { live: true, stakePct: 1 },
     "ttf#second": { live: true, stakePct: 1 },
     "ttf#flat": { live: true, stakePct: 2 },
     "ttf#recentbad": { live: true, stakePct: 1 },
   });
+  const own = (n: number) => ({ n, roi: 0.1, units: 3 });
   const a = sliceAdviceFrom(
     [
-      slice("ttf", "second", { status: "full", all: ret(26, 0.149, 3.27) }),
-      slice("ttf", "top", { status: "full", all: ret(23, 0.275, 6.27) }),
-      slice("ttf", "flat", { status: "full", all: ret(25, 0.04, 1) }),
-      slice("ttf", "recentbad", { status: "full", all: ret(30, 0.2, 6), recent: { n: 30, won: 12, roi: -0.04 } }),
+      slice("ttf", "second", { status: "full", all: ret(26, 0.149, 3.27), own: own(320) }),
+      slice("ttf", "top", { status: "full", all: ret(23, 0.275, 6.27), own: own(320) }),
+      slice("ttf", "flat", { status: "full", all: ret(25, 0.04, 1), own: own(320) }),
+      slice("ttf", "recentbad", { status: "full", all: ret(30, 0.2, 6), recent: { n: 30, won: 12, roi: -0.04 }, own: own(320) }),
     ],
     s,
   );
@@ -90,6 +91,30 @@ test("the best earning Live slice goes straight to 4%, the next one a step up, a
     ["ttf#second", 1.5],
   ]);
   assert.match(ups[0]!.action, /your best performer/);
+});
+
+test("no slice is raised on fewer than 100 of its own Live bets, however good its watched history looks", () => {
+  const s = settingsWith({ "ttf#top": { live: true, stakePct: 1 }, "ttf#none": { live: true, stakePct: 1 } });
+  for (const n of [0, 19, 99]) {
+    const ups = sliceAdviceFrom([slice("ttf", "top", { status: "full", all: ret(60, 0.3, 18), own: { n, roi: 0.3, units: 5 } })], s).filter((x) => x.kind === "slice-stake-up");
+    assert.deepEqual(ups, [], `own bets ${n}`);
+  }
+  assert.deepEqual(sliceAdviceFrom([slice("ttf", "none", { status: "full", all: ret(60, 0.3, 18) })], s).filter((x) => x.kind === "slice-stake-up"), []);
+});
+
+test("a slice is capped at 2% under 150 own bets, 3% under 300, and never above its strategy's stake before 150", () => {
+  assert.equal(sliceStakeCap(100, null), 2);
+  assert.equal(sliceStakeCap(149, null), 2);
+  assert.equal(sliceStakeCap(150, null), 3);
+  assert.equal(sliceStakeCap(299, 5), 3);
+  assert.equal(sliceStakeCap(300, null), BEST_SLICE_PCT);
+  assert.equal(sliceStakeCap(120, 1.5), 1.5);
+  const s = settingsWith({ "ttf#top": { live: true, stakePct: 1.5 } });
+  s.stakePct["ttf"] = 1.5;
+  const ups = sliceAdviceFrom([slice("ttf", "top", { status: "full", all: ret(60, 0.3, 18), own: { n: 120, roi: 0.3, units: 5 } })], s).filter((x) => x.kind === "slice-stake-up");
+  assert.deepEqual(ups, [], "already at the strategy's 1.5% stake");
+  const s2 = settingsWith({ "ttf#top": { live: true, stakePct: 2 } });
+  assert.deepEqual(sliceAdviceFrom([slice("ttf", "top", { status: "full", all: ret(60, 0.3, 18), own: { n: 120, roi: 0.3, units: 5 } })], s2).filter((x) => x.kind === "slice-stake-up"), [], "already at the 2% cap");
 });
 
 test("a slice already at the best-performer stake is not raised again", () => {

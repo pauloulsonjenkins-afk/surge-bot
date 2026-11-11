@@ -1954,14 +1954,14 @@ export async function snoozeStrategyAdvice(key: string, kind: StrategyAdvice["ki
   return { until: data.until ?? null };
 }
 
-export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"], league?: string): Promise<{ advice: StrategyAdvice[] }> {
+export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"], league: string | undefined, expect: { to: unknown }): Promise<{ advice: StrategyAdvice[] }> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
   if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
   const res = await fetch(`${baseUrl}/internal/strategy-advice/apply`, {
     method: "POST",
     headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ key, kind, ...(league ? { league } : {}) }),
+    body: JSON.stringify({ key, kind, expect, ...(league ? { league } : {}) }),
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });

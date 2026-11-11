@@ -105,7 +105,8 @@ import { log } from "./log";
 import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
-import { agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
+import { moneyProblems, unconfirmed } from "./money-guard";
+import { AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -690,9 +691,19 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       try {
-        const done = applyAdvice(db, body.key, kind, new Date(), typeof body.league === "string" ? body.league : undefined);
+        // `expect` is required: what the page was showing ({ to }), so a repeated or stale request changes nothing.
+        const exp = body.expect && typeof body.expect === "object" ? (body.expect as { to?: unknown }) : null;
+        if (!exp || !("to" in exp)) {
+          send(res, 400, { error: "Say what you expect to change: { expect: { to } }." });
+          return;
+        }
+        const done = applyAdvice(db, body.key, kind, new Date(), typeof body.league === "string" ? body.league : undefined, { to: exp.to });
         send(res, 200, { applied: done, advice: visibleAdvice(db) });
       } catch (err) {
+        if (err instanceof AdviceChanged) {
+          send(res, 409, { error: err.message });
+          return;
+        }
         send(res, 400, { error: err instanceof Error ? err.message : "Couldn't apply that." });
       }
       return;
@@ -1614,6 +1625,12 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         try {
           const before = getSendingSettings(db);
           const body = await readJsonBody(req);
+          const needed = unconfirmed(moneyProblems(body, getBank(db).total), body.confirm);
+          if (needed.length > 0) {
+            // 422: nothing is saved. The page asks the owner to type the figure again and sends it as `confirm`.
+            send(res, 422, { error: "confirm_needed", reason: needed.map((p) => p.reason).join(" "), confirm: needed.map((p) => ({ what: p.what, figure: p.figure })) });
+            return;
+          }
           const after = saveSendingSettings(db, body);
           // Stop loss limits ride along: { stopLoss: { "strategy name": { dailyLoss, lossRun, resume } } }
           if (body.stopLoss && typeof body.stopLoss === "object") {

@@ -33,8 +33,9 @@
  *       last 30 not losing more than 5%), is not already Live on its own, and isn't following a Live strategy.
  *       Apply: its own Live switch on at a 1% trial stake.
  *     - Slice back to Sim: Live on its own, and its own Live bets are losing 10% or more per £1 over 15+ bets.
- *     - Slice stake up: Live on its own, 20+ priced picks, +10% or better per £1, 3+ units, last 30 not losing. One step up
- *       the ladder, never above BEST_SLICE_PCT (4%); the single best such slice goes to 4% in one go, the owner's "run the best one at 4%+".
+ *     - Slice stake up: Live on its own with 100+ of its own Live bets (11 Nov 2026; was 20 priced picks), +10% or better
+ *       per £1, 3+ units, last 30 not losing. One step up the ladder, capped at 2% under 150 own bets (and never above its
+ *       strategy's stake), 3% under 300, BEST_SLICE_PCT (4%) after; only past 300 does the best slice go to 4% in one go.
  *     - Slice stake down: Live on its own with its own Live bets losing over 15+ bets: one step down.
  *   EARLY WARNING (a Live strategy): 12+ priced Live bets in the last 30 days, 8% or more below zero and down a unit or
  *     more, at a stake of 3% or higher: back to Sim, ahead of the slower 30-bet rule. Underdog taking charge, 1 Nov 2026:
@@ -153,9 +154,21 @@ const SLICE_TRIAL_PCT = 1;
 export const BEST_SLICE_PCT = 4;
 const SLICE_SIM_BETS = 15;
 const SLICE_SIM_ROI = -0.1;
-const SLICE_UP_PICKS = 20;
 const SLICE_UP_ROI = 0.1;
 const SLICE_UP_UNITS = 3;
+/**
+ * A slice is raised only on its own Live bets, counted from when it went Live: the strategy ladder's RAISE_FROM (100).
+ * Before, 20 priced picks from the watched history were enough, and three Time to fight slices sat at 4-5% on 17-19 Live
+ * bets (site review S1, 11 Nov 2026). At these odds 20 bets carry a margin of about +-33 points.
+ */
+export const SLICE_RAISE_FROM = RAISE_FROM;
+/** Stake caps by a slice's own Live bets: 2% under 150, 3% under 300, BEST_SLICE_PCT after. A slice never out-stakes its strategy before 150. */
+export const SLICE_CAP_UNDER_150 = 2;
+export const SLICE_CAP_UNDER_300 = 3;
+export function sliceStakeCap(ownBets: number, parentPct: number | null): number {
+  const byBets = ownBets < 150 ? SLICE_CAP_UNDER_150 : ownBets < 300 ? SLICE_CAP_UNDER_300 : BEST_SLICE_PCT;
+  return ownBets < 150 && parentPct !== null ? Math.min(byBets, parentPct) : byBets;
+}
 /** Early warning for a Live strategy (see the header). */
 /**
  * A change needs time to show (owner, 8 Nov 2026: "it keeps telling me to change a strategy before it has had a chance
@@ -238,16 +251,17 @@ export function sliceAdviceFrom(slices: SliceInput[], settings: SendingSettings)
       }
     }
     const recentOk = !s.recent || s.recent.n < 10 || (s.recent.roi !== null && s.recent.roi >= 0);
-    if (stakeNow !== null && stakeNow < BEST_SLICE_PCT && s.status !== "not holding up" && mine.counted >= SLICE_UP_PICKS && mine.roi !== null && mine.roi >= SLICE_UP_ROI && (mine.units ?? 0) >= SLICE_UP_UNITS && recentOk) upCandidates.push({ s, now: stakeNow });
+    if (stakeNow !== null && stakeNow < BEST_SLICE_PCT && s.status !== "not holding up" && own && own.n >= SLICE_RAISE_FROM && mine.roi !== null && mine.roi >= SLICE_UP_ROI && (mine.units ?? 0) >= SLICE_UP_UNITS && recentOk) upCandidates.push({ s, now: stakeNow });
   }
   // The best of the ones earning a raise goes straight to the owner's target; the rest go up one step.
   upCandidates.sort((a, b) => per(b.s.slice.all) - per(a.s.slice.all));
   upCandidates.forEach(({ s, now }, i) => {
     const mine = s.slice.all;
-    const best = i === 0 && now < BEST_SLICE_PCT;
+    const cap = sliceStakeCap(s.ownLive?.n ?? 0, settings.stakePct[s.strategyKey.toLowerCase()] ?? null);
+    const best = i === 0 && now < cap && cap >= BEST_SLICE_PCT;
     const step = ladderStep({ pct: now }, 1);
-    // Slices are small samples: their stake never goes above the best-performer level, whatever the ladder allows.
-    const to = best ? { pct: BEST_SLICE_PCT } : step && "pct" in step ? { pct: Math.min(step.pct, BEST_SLICE_PCT) } : null;
+    // Slices are small samples: their stake never goes above the cap for their own Live bets, whatever the ladder allows.
+    const to = best ? { pct: BEST_SLICE_PCT } : step && "pct" in step ? { pct: Math.min(step.pct, cap) } : null;
     if (!to || to.pct <= now) return;
     out.push({
       ...base(s),
@@ -478,10 +492,19 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
   return out;
 }
 
-/** Carries out one current suggestion (the admin pressed Apply). Throws if it no longer applies. */
-export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = new Date(), leagueKey?: string): Advice {
+/** The suggestion changed between the page showing it and Apply (answered 409, nothing changed). */
+export class AdviceChanged extends Error {}
+
+/**
+ * Carries out one current suggestion (the admin pressed Apply). Throws if it no longer applies.
+ * `expect` is what the page was showing: the stake the suggestion moves to (null when it has none). If the current
+ * suggestion differs, nothing changes (AdviceChanged). That is what makes a repeated request harmless: after the first
+ * apply the next suggestion for the same slice is a different step, or none (11 Nov 2026, site review C3).
+ */
+export function applyAdvice(db: EngineDb, key: string, kind: AdviceKind, now = new Date(), leagueKey?: string, expect?: { to: unknown }): Advice {
   const a = strategyAdvice(db, now).find((x) => x.key === key.toLowerCase() && x.kind === kind && (kind !== "league-block" || x.league?.key === leagueKey));
   if (!a) throw new Error("That suggestion no longer applies. Refresh to see the current ones.");
+  if (expect && JSON.stringify(expect.to ?? null) !== JSON.stringify(a.to ?? null)) throw new AdviceChanged("That suggestion has changed since you opened it. Refresh to see the current one. Nothing was changed.");
   const k = a.key;
   if (a.kind === "league-block") setLeagueBlock(db, k, a.league!.key, a.league!.name, true, now);
   else if (a.kind === "back-to-sim") saveSendingSettings(db, { strategies: { [k]: false } });
