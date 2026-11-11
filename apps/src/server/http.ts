@@ -105,7 +105,7 @@ import { log } from "./log";
 import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
-import { moneyProblems, unconfirmed } from "./money-guard";
+import { liveBetCounter, moneyProblems, unconfirmed } from "./money-guard";
 import { AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
@@ -1625,7 +1625,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         try {
           const before = getSendingSettings(db);
           const body = await readJsonBody(req);
-          const needed = unconfirmed(moneyProblems(body, getBank(db).total), body.confirm);
+          const needed = unconfirmed(moneyProblems(body, { current: before, balance: getBank(db).total, liveBets: liveBetCounter(db, before) }), body.confirm);
           if (needed.length > 0) {
             // 422: nothing is saved. The page asks the owner to type the figure again and sends it as `confirm`.
             send(res, 422, { error: "confirm_needed", reason: needed.map((p) => p.reason).join(" "), confirm: needed.map((p) => ({ what: p.what, figure: p.figure })) });

@@ -28,6 +28,11 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** danger = deletes or removes something; money = changes what gets bet. */
   tone?: "default" | "danger" | "money";
+  /**
+   * The owner must type this exactly before the confirm button works (a figure the engine wants typed again: a stake or
+   * loss limit above its safe size). A leading £ or a trailing % is ignored.
+   */
+  typeToConfirm?: string;
 }
 
 interface Request extends ConfirmOptions {
@@ -44,6 +49,14 @@ interface DialogApi {
 
 const DialogContext = createContext<DialogApi | null>(null);
 let nextId = 1;
+
+/** The same, or null outside <DialogProvider> (a component rendered on its own in a test). */
+export function useDialogOptional(): DialogApi | null {
+  return useContext(DialogContext);
+}
+
+/** What was typed, as the figure it stands for: "£45", "45%" and " 45 " are all 45. */
+export const typedFigure = (s: string) => s.trim().replace(/^£\s*/, "").replace(/\s*%$/, "");
 
 export function useDialog(): DialogApi {
   const api = useContext(DialogContext);
@@ -96,6 +109,9 @@ function ConfirmDialog({ request, onClose }: { request: Request; onClose: (ok: b
   const titleId = useId();
   const bodyId = useId();
   const tone = request.tone ?? "default";
+  const inputId = useId();
+  const [typed, setTyped] = useState("");
+  const locked = request.typeToConfirm !== undefined && typedFigure(typed) !== request.typeToConfirm;
 
   useEffect(() => {
     const d = ref.current;
@@ -131,6 +147,25 @@ function ConfirmDialog({ request, onClose }: { request: Request; onClose: (ok: b
             </dl>
           )}
           {request.body && <div className="space-y-2 text-sm text-ink-muted [&_strong]:text-ink">{request.body}</div>}
+          {request.typeToConfirm !== undefined && (
+            <div className="space-y-1">
+              <label htmlFor={inputId} className="block text-sm font-medium text-ink">
+                Type <span className="tabular-nums">{request.typeToConfirm}</span> to confirm
+              </label>
+              <input
+                id={inputId}
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                // Enter in the box must not confirm a figure not yet typed.
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && locked) e.preventDefault();
+                }}
+                inputMode="decimal"
+                autoComplete="off"
+                className="w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-base tabular-nums text-ink"
+              />
+            </div>
+          )}
         </div>
         <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
           {!request.notice && (
@@ -147,7 +182,8 @@ function ConfirmDialog({ request, onClose }: { request: Request; onClose: (ok: b
             type="submit"
             value="confirm"
             autoFocus={request.notice}
-            className={`rounded-md px-4 py-2 text-sm font-semibold ${request.notice ? TONE_BUTTON.default : TONE_BUTTON[tone]}`}
+            disabled={locked}
+            className={`rounded-md px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${request.notice ? TONE_BUTTON.default : TONE_BUTTON[tone]}`}
           >
             {request.confirmLabel}
           </button>

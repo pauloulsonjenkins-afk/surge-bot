@@ -48,6 +48,7 @@
  * wait), each with its own notification. "Try Live"
  * and "Back to Sim" are never automatic.
  */
+import { stakeCapFor } from "./money-guard";
 import { RECORD_FROM, type EngineDb } from "../storage/engine-db";
 import { ALL_TIME, computeAdviceReturns, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";
 import { getSendingSettings, saveSendingSettings, strategyLabel, type SendingSettings } from "../inplayguru/bet-feed";
@@ -431,7 +432,9 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
     if (l.counted >= RAISE_FROM && l.roi !== null && l.roi >= 0.05 && beatsBreakeven(l) && recentOk) {
       if (cutRecently) continue;
       const to = ladderStep(stake, 1);
-      if (to) {
+      // The evidence cap (money-guard.ts): nothing is raised past 2% of the balance on fewer than 150 Live bets, or past
+      // 3% on fewer than 300. A flat stake has no percentage to judge here; the settings guard judges it when saved.
+      if (to && !("pct" in to && to.pct > stakeCapFor(l.counted))) {
         const be = l.breakevenEffective ?? l.breakeven;
         out.push({
           key,

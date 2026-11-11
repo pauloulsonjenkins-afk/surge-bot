@@ -495,7 +495,11 @@ export interface LearnedName {
   undoneAt: string | null;
 }
 
-export type SendingPatch = Partial<SendingSettings> & { stopLoss?: Record<string, StopLossPatch> };
+export type SendingPatch = Partial<SendingSettings> & {
+  stopLoss?: Record<string, StopLossPatch>;
+  /** Figures typed again by the owner, for a change the engine won't save without them (a big stake or loss limit). */
+  confirm?: string[];
+};
 
 /** A strategy's verdict in one league (engine inplayguru/league-form.ts). */
 export interface LeagueFormRow {
@@ -526,6 +530,20 @@ export function fetchLeagueForm(): Promise<LeagueFormReport> {
   return engineCall<LeagueFormReport>("/internal/leagues/form", "league form", { timeoutMs: 20000 });
 }
 
+/** The engine wants a risky figure typed again before it saves (engine money-guard.ts); nothing was changed. */
+export interface ConfirmNeededItem {
+  what: string;
+  figure: string;
+}
+export class ConfirmNeeded extends Error {
+  constructor(
+    readonly reason: string,
+    readonly items: ConfirmNeededItem[],
+  ) {
+    super(reason);
+  }
+}
+
 async function sendingRequest(method: "GET" | "PUT", body?: SendingPatch): Promise<SendingState> {
   const baseUrl = process.env.ENGINE_BASE_URL;
   const internalKey = process.env.ADMIN_INTERNAL_KEY;
@@ -542,6 +560,10 @@ async function sendingRequest(method: "GET" | "PUT", body?: SendingPatch): Promi
       cache: "no-store",
       signal: controller.signal,
     });
+    if (res.status === 422) {
+      const b = (await res.json().catch(() => ({}))) as { reason?: string; confirm?: ConfirmNeededItem[] };
+      throw new ConfirmNeeded(b.reason ?? "This change needs confirming.", Array.isArray(b.confirm) ? b.confirm : []);
+    }
     if (!res.ok) throw new Error(`Engine responded ${res.status} for sending options.`);
     return (await res.json()) as SendingState;
   } finally {

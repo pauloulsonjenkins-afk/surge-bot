@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { LearnedName, SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
+import { useDialogOptional } from "@/components/ui/ConfirmDialog";
 import { usePersistedQuery } from "./persist";
 
 export type { LearnedName, SendingPatch, SendingSettings, SendingState, StopLossPatch, StopLossStatus };
@@ -19,18 +20,43 @@ export function useSending(refetchInterval = 15_000) {
   });
 }
 
+/** The owner chose not to confirm a risky figure: nothing was saved. */
+export class SaveCancelled extends ApiFetchError {
+  constructor() {
+    super("Not saved: you cancelled it.", 422);
+  }
+}
+
 export function useSaveSending() {
   const qc = useQueryClient();
+  const dialog = useDialogOptional();
   return useMutation({
     mutationFn: async (patch: SendingPatch): Promise<SendingState> => {
-      const res = await fetch("/api/admin/sending", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
+      const put = (body: SendingPatch) => fetch("/api/admin/sending", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      let res = await put(patch);
+      // The engine won't save a big stake or loss limit until its figure is typed again (engine money-guard.ts). Each
+      // one is asked for in turn; cancelling any of them saves nothing.
+      if (res.status === 422 && dialog) {
+        const ask = (await res.json().catch(() => ({}))) as { reason?: string; confirm?: Array<{ what: string; figure: string }> };
+        const figures: string[] = [];
+        for (const item of ask.confirm ?? []) {
+          const ok = await dialog.confirm({
+            title: `${item.what}: are you sure?`,
+            body: ask.reason,
+            typeToConfirm: item.figure,
+            confirmLabel: "Save it anyway",
+            cancelLabel: "Don't save",
+            tone: "danger",
+          });
+          if (!ok) throw new SaveCancelled();
+          figures.push(item.figure);
+        }
+        if (figures.length === 0) throw new ApiFetchError(ask.reason ?? "Could not save (422)", 422);
+        res = await put({ ...patch, confirm: figures });
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new ApiFetchError(body?.error ?? `Could not save (${res.status})`, res.status);
+        throw new ApiFetchError(body?.reason ?? body?.error ?? `Could not save (${res.status})`, res.status);
       }
       return (await res.json()) as SendingState;
     },

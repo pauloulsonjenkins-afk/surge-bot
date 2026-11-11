@@ -88,6 +88,21 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
  * Betting's first two tabs. "bets": what is going on Betfair now (and what didn't). "limits": how bets are placed and
  * the switches and limits behind them. The on / off status is at the top of both.
  */
+/**
+ * The daily loss limit as a share of the balance. A limit that is most of the balance can't stop a bad day (it was £45
+ * on a £73.61 balance until 7 Nov 2026); above 20% the engine asks for the figure to be typed again before it saves.
+ */
+export function LossLimitShare({ limit, balance }: { limit: number; balance: number | null }) {
+  if (!Number.isFinite(limit) || limit <= 0 || balance === null || balance <= 0) return null;
+  const share = Math.round((100 * limit) / balance);
+  const high = share > 20;
+  return (
+    <span className={`mt-1 block ${high ? "font-medium text-miss" : "text-ink"}`}>
+      £{limit} is {share}% of your £{balance.toFixed(2)} balance.{high ? ` That is too high to stop a bad day: 20% would be £${Math.floor(balance / 5)}. You will be asked to type the figure again to save it.` : ""}
+    </span>
+  );
+}
+
 export default function SendingView({ view }: { view: "bets" | "limits" }) {
   const { data, isLoading, error } = useSending();
   const save = useSaveSending();
@@ -399,6 +414,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                   value={form.dailyLossLimit}
                   onChange={(e) => setForm({ ...form, dailyLossLimit: e.target.value })}
                 />
+                <LossLimitShare limit={Number(form.dailyLossLimit)} balance={data?.bank?.total ?? null} />
                 <span className="mt-1 block">
                   Across every strategy together, on top of each strategy&apos;s own stop loss. Once reached, no new bets go out until tomorrow (UK time), and you
                   get a notification. Bets already placed carry on.
