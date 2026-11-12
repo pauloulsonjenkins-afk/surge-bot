@@ -422,3 +422,88 @@ html {
     animation: none;
   }
 }
+
+/*
+ * Phone polish (12 Nov 2026), mostly for Android where the site runs as an installed app.
+ *
+ *   - No grey flash over a tapped link or button: each has its own pressed state.
+ *   - touch-action: manipulation on things you tap, so a tap acts at once (no wait to see if it is a double-tap zoom).
+ *   - Text keeps its size when the phone turns sideways.
+ *   - Dragging past the end of the tab bar doesn't pull the page behind it.
+ */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+a,
+button,
+summary,
+label,
+select,
+[role="button"],
+[role="tab"] {
+  touch-action: manipulation;
+}
+.bottom-nav {
+  overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* A tab gives under the finger: its pill dips and springs back, and the current tab's pill eases in. */
+.tab-pill {
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 200ms ease;
+}
+.tab-link:active .tab-pill {
+  transform: scale(0.88);
+  background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.tab-link[aria-current="page"] .tab-pill {
+  animation: tab-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes tab-in {
+  from {
+    transform: scaleX(0.6);
+    opacity: 0.4;
+  }
+}
+
+/* A page eases in as it opens: a short fade and a 6px rise. Quick enough not to hold anything up. */
+.page-enter {
+  animation: page-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* On a touch screen, a card or list row you can tap dips slightly while pressed (hover does this job with a mouse). */
+@media (pointer: coarse) {
+  .card-hover:active,
+  ul.divide-y > li > a:active,
+  ul.divide-y > li > button:active {
+    background-color: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  }
+  button:not(:disabled):active,
+  a.tap-target:active {
+    transform: scale(0.97);
+    transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .tab-link[aria-current="page"] .tab-pill {
+    animation: none;
+  }
+  .tab-link:active .tab-pill,
+  button:not(:disabled):active,
+  a.tap-target:active {
+    transform: none;
+  }
+}

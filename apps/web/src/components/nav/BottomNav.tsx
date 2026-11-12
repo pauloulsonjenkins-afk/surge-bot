@@ -47,6 +47,25 @@ export function useVisibleTabs() {
   });
 }
 
+/**
+ * A tap on the bar (phone polish, 12 Nov 2026). On the tab you are already on, it goes back to the top of the page,
+ * as phone apps do, instead of loading the same page again. Any tap gives a very short buzz where the phone
+ * supports it (Android; iPhones ignore it), so a press is felt as well as seen.
+ */
+export function onTabTap(e: { preventDefault(): void }, sameTab: boolean): void {
+  try {
+    navigator.vibrate?.(8);
+  } catch {
+    // no vibration here
+  }
+  if (!sameTab) return;
+  e.preventDefault();
+  const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const to = { top: 0, behavior: smooth ? "smooth" : "auto" } as const;
+  window.scrollTo(to);
+  document.querySelector("main")?.scrollTo(to);
+}
+
 /** The tab bar along the bottom of the screen on phones and tablets. Wide screens use the sidebar instead. */
 export default function BottomNav() {
   const pathname = usePathname();
@@ -60,7 +79,7 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 border-t lg:hidden border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80"
+      className="bottom-nav fixed inset-x-0 bottom-0 z-40 border-t lg:hidden border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-1 max-[360px]:px-1">
@@ -74,12 +93,13 @@ export default function BottomNav() {
               <Link
                 href={target}
                 aria-current={active ? "page" : undefined}
-                className={`relative flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors max-[360px]:text-[0.65rem] max-[360px]:tracking-tight ${
-                  active ? "text-accent" : "text-ink-muted"
+                onClick={(e) => onTabTap(e, pathname === target)}
+                className={`tab-link relative flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors max-[360px]:text-[0.65rem] max-[360px]:tracking-tight ${
+                  active ? "font-semibold text-accent" : "text-ink-muted"
                 }`}
               >
                 {/* The current tab's icon sits on a soft pill that eases in, so where you are reads at a glance. */}
-                <span className={`relative rounded-full px-4 py-0.5 transition-colors duration-200 max-[360px]:px-2.5 ${active ? "bg-accent/15" : "bg-transparent"}`}>
+                <span className={`tab-pill relative rounded-full px-4 py-0.5 max-[360px]:px-2.5 ${active ? "bg-accent/15" : "bg-transparent"}`}>
                   <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
                   {admin && href === "/more/admin/strategies" && (
                     <span className="absolute -right-0.5 -top-1.5 scale-90">
