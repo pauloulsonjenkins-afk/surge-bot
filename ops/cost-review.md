@@ -6,10 +6,10 @@ Goal: lower the monthly cost of GoalBrew without risking the engine (alerts in, 
 
 | Item | Cost | Source |
 |---|---|---|
-| DigitalOcean engine component (`surge-bot-apps-web`) | $12/month | HANDOVER-2026-10-20.md |
-| DigitalOcean site component (`surge-bot-admin`) | $12/month | HANDOVER-2026-10-20.md |
-| DigitalOcean Space (database backups) | $5/month | HANDOVER-2026-10-20.md |
-| VAT on the above | about 20% | HANDOVER-2026-10-20.md (about $35/month in all) |
+| DigitalOcean engine component (`surge-bot-apps-web`) | $12/month | docs/history/HANDOVER-2026-10-20.md |
+| DigitalOcean site component (`surge-bot-admin`) | $12/month | docs/history/HANDOVER-2026-10-20.md |
+| DigitalOcean Space (database backups) | $5/month | docs/history/HANDOVER-2026-10-20.md |
+| VAT on the above | about 20% | docs/history/HANDOVER-2026-10-20.md (about $35/month in all) |
 | "Other spend" | £45/month | ops/agents/README.md; not itemised anywhere in the repo |
 
 ## Not yet known (needs the owner or a DigitalOcean sign-in)
