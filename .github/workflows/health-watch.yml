@@ -1,0 +1,82 @@
+# An outside watch on the live engine (site review R1, 12 Nov 2026).
+#
+# Twice the engine stopped reading alerts and nothing said so: 14 hours on 19-20 Oct 2026 (Telegram session cancelled)
+# and the BTTS freebies in Nov. The engine can't report its own death, so this asks it from outside, once an hour.
+# When a check fails the run goes red and GitHub emails the repository owner (Settings > Notifications > Actions).
+#
+# It only READS the public health page. It never signs in, restarts, deploys or changes anything.
+#
+# Hourly on purpose: a private repository gets 2,000 free minutes a month and each run is billed as one minute,
+# so this uses about 750. Raise the frequency only if the repository is public or the minutes are there.
+name: Health watch
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  engine:
+    name: Engine is up, reading alerts and backing up
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Ask the engine how it is
+        env:
+          HEALTH_URL: https://seashell-app-z8xl5.ondigitalocean.app/engine/health
+        run: |
+          set -u
+          problems() {
+            # Prints one line per problem found in the health reply given as $1; nothing when all is well.
+            python3 - "$1" <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          raw = sys.argv[1]
+          try:
+              h = json.loads(raw)
+          except Exception:
+              print("The engine did not answer with its health page.")
+              sys.exit(0)
+          if h.get("ok") is not True:
+              print("The engine says it is not ok.")
+          t = h.get("telegram") or {}
+          if t.get("sessionDead"):
+              print("Telegram session is DEAD: no alerts are being read. Log in again on Admin > Settings > Telegram.")
+          elif t.get("connectError"):
+              print(f"Telegram cannot connect: {t.get('connectError')}")
+          elif not t.get("connected"):
+              print("Telegram is not connected, so no alerts are being read.")
+          b = h.get("backup") or {}
+          if b.get("lastError"):
+              print(f"The last database backup failed: {b.get('lastError')}")
+          last = b.get("lastSuccessAt")
+          if last:
+              age = (datetime.now(timezone.utc) - datetime.fromisoformat(last.replace("Z", "+00:00"))).total_seconds() / 3600
+              if age > 6:
+                  print(f"No database backup has succeeded for {age:.0f} hours.")
+          else:
+              print("No database backup has succeeded since the engine started.")
+          PY
+          }
+          ask() { curl -s -m 30 --retry 2 --retry-delay 5 "$HEALTH_URL" || true; }
+
+          found="$(problems "$(ask)")"
+          if [ -z "$found" ]; then
+            echo "All well."
+            exit 0
+          fi
+          # A deploy restarts the engine and it waits 90 seconds before connecting to Telegram, so a first bad answer
+          # is given four minutes to clear before anyone is told.
+          echo "First look found: $found"
+          echo "Looking again in four minutes, in case a deploy is in progress."
+          sleep 240
+          found="$(problems "$(ask)")"
+          if [ -z "$found" ]; then
+            echo "All well on the second look."
+            exit 0
+          fi
+          echo "::error title=GoalBrew engine needs attention::$(echo "$found" | tr '\n' ' ')"
+          echo "$found"
+          exit 1
