@@ -97,7 +97,8 @@ export default function StrategiesPage() {
           </span>
           {/* A return from a handful of bets means nothing (2 bets read +352%), so it is greyed and marked until there are enough. */}
           {money && money.counted >= MIN_SHOWN ? (
-            <span className={`shrink-0 text-sm font-medium tabular-nums ${roiTone(money.roi)}`}>{roiText(money.roi)}</span>
+            // A tinted chip, coloured only once the engine's verdict says the bets can back it (100+): under that, grey.
+            <span className={`roi-chip shrink-0 tabular-nums ${money.verdict === "too early" ? "text-ink-muted" : roiTone(money.roi)}`}>{roiText(money.roi)}</span>
           ) : (
             <span className="shrink-0 text-xs text-ink-muted">{money && money.counted > 0 ? "too few" : "–"}</span>
           )}

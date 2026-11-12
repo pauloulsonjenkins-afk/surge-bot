@@ -507,3 +507,128 @@ select,
     transform: none;
   }
 }
+
+/*
+ * "Crema glow" (12 Nov 2026): depth and a little warmth, on top of the Espresso colours above. The owner asked for a
+ * livelier look; until now cards were flat panels told apart by a 1px line alone. Nothing here changes a colour's job
+ * (accent is still "tap this", green and red are still money), and every effect is still readable with it removed.
+ *
+ *   - the page: a faint caramel glow at the top, fixed behind the content;
+ *   - cards: lit from above (a soft highlight along the top edge) and lifted off the page by a shadow;
+ *   - the selected choice and primary buttons: a lit caramel, with a glow under them;
+ *   - page titles: cream running into caramel;
+ *   - the tab bar: a rounded bar floating above the bottom edge, as phone apps have it;
+ *   - loading placeholders: a light sweeping across them, not a blink.
+ */
+.app-shell {
+  isolation: isolate;
+}
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(110% 55% at 0% -8%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
+    radial-gradient(80% 45% at 105% 2%, color-mix(in srgb, var(--chart) 7%, transparent), transparent 58%);
+}
+:root[data-theme="light"] .app-shell::before {
+  background:
+    radial-gradient(110% 55% at 0% -8%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 62%),
+    radial-gradient(80% 45% at 105% 2%, color-mix(in srgb, var(--chart) 6%, transparent), transparent 58%);
+}
+
+/* Cards: any bordered panel on the card colour, whatever built it. */
+.rounded-xl.border.bg-surface,
+.rounded-2xl.border.bg-surface {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--ink) 4.5%, transparent), transparent 46%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ink) 7%, transparent),
+    0 10px 28px -18px rgb(0 0 0 / 0.75);
+}
+:root[data-theme="light"] .rounded-xl.border.bg-surface,
+:root[data-theme="light"] .rounded-2xl.border.bg-surface {
+  background-image: none;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    0 8px 22px -16px rgb(70 45 20 / 0.35);
+}
+
+/* The selected choice in a row of options, and primary buttons: lit from above, with a glow beneath. */
+button.bg-accent:not(:disabled),
+a.bg-accent {
+  background-image: linear-gradient(180deg, color-mix(in srgb, #fff 18%, var(--accent)), var(--accent) 70%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 6px 16px -8px color-mix(in srgb, var(--accent) 75%, transparent);
+}
+
+/* Page titles: cream running into caramel. Plain cream where a browser can't clip a background to text. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .font-display.text-title {
+    background-image: linear-gradient(96deg, var(--ink) 35%, color-mix(in srgb, var(--accent) 80%, var(--ink)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+/* A return as a chip: a tint of whatever colour the figure is (green, red, or grey when it is too early to say). */
+.roi-chip {
+  border-radius: 9999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background-color: color-mix(in srgb, currentColor 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+}
+
+/* Loading placeholders: a light sweeping across. */
+.animate-pulse.bg-surface-2 {
+  background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--ink) 8%, transparent) 50%, transparent 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* The tab bar floats: rounded, clear of the edges, with the page showing through it. */
+@media (max-width: 1023.98px) {
+  .bottom-nav {
+    left: 10px;
+    right: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0 !important;
+    border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+    border-radius: 22px;
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    backdrop-filter: blur(18px) saturate(1.3);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent),
+      0 14px 32px -12px rgb(0 0 0 / 0.8);
+  }
+  :root[data-theme="light"] .bottom-nav {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 12px 28px -14px rgb(70 45 20 / 0.45);
+  }
+  /* The current tab: a lit pill, and a dot of light under its name. */
+  .tab-link[aria-current="page"] .tab-pill {
+    background-image: linear-gradient(180deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 12%, transparent));
+    box-shadow: 0 0 18px -4px color-mix(in srgb, var(--accent) 65%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse.bg-surface-2 {
+    animation: none;
+    background-image: none;
+  }
+}

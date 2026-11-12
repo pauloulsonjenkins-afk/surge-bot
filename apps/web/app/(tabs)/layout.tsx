@@ -42,9 +42,10 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-app text-ink">
+    <div className="app-shell flex min-h-dvh flex-col bg-app text-ink">
       <SideNav />
-      <main className="flex-1 overflow-y-auto pb-[calc(64px+env(safe-area-inset-bottom,0px))] lg:pb-10 lg:pl-60">
+      {/* Room under the content for the floating tab bar: its height, the gap beneath it, and the phone's own inset. */}
+      <main className="flex-1 overflow-y-auto pb-[calc(84px+env(safe-area-inset-bottom,0px))] lg:pb-10 lg:pl-60">
         {/* Chart pages use more of a big screen (design review: at 1440px, 40% of the width sat empty). */}
         <div className={`mx-auto w-full max-w-5xl lg:pt-4 ${wide ? "2xl:max-w-7xl" : ""}`}>
           {/* Keyed by the page, so each one eases in as it opens (globals.css .page-enter); none with reduced motion. */}
