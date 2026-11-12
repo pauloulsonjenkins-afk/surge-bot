@@ -19,6 +19,7 @@ import { BackupScheduler, leaseIsLive, SpacesSync } from "../storage/spaces-sync
 import { createTelegramClient } from "../telegram/client";
 import { getListenerStatus, setConnectState, startTelegramListener, stopTelegramListener } from "../telegram/listener";
 import { HANDOVER_WAIT_MS, superviseTelegram, type Supervisor } from "../telegram/supervisor";
+import { waitForHandover } from "../telegram/handover";
 import { log } from "./log";
 import { startDailyFixturePull } from "../fixtures/daily-pull";
 import { recordSimBets } from "../inplayguru/bet-feed";
@@ -81,12 +82,16 @@ async function main(): Promise<void> {
     5_000,
     60_000,
     instanceId,
-    () => {
-      // Two containers on one Telegram session can get the session revoked, and both would store alerts.
-      void telegram?.stop();
+    (newOwner) => {
+      // Two containers on one Telegram session can get the session revoked, and both would store alerts. Once this one
+      // is fully off, it says so, and the newer container connects at once instead of waiting (telegram/handover.ts).
       stopTelegramListener();
-      void disconnectLoginClient();
-      log.warn("Telegram listener disconnected: the newer container has taken over.");
+      void (async () => {
+        await telegram?.stop().catch(() => {});
+        await disconnectLoginClient().catch(() => {});
+        log.warn("Telegram listener disconnected: the newer container has taken over.");
+        await sync.writeRelease(newOwner).catch((err: unknown) => log.warn(`Couldn't tell the newer container this one has let go (it will wait the full time): ${err instanceof Error ? err.message : String(err)}`));
+      })();
     },
     () => {
       // The newer container went away (its deploy failed or was rolled back): this one listens again.
@@ -94,6 +99,8 @@ async function main(): Promise<void> {
       log.warn("Telegram listener starting again: this container has taken the backup back.");
     },
     born,
+    undefined,
+    10_000,
   );
   backups.start();
 
@@ -109,6 +116,14 @@ async function main(): Promise<void> {
     await stopReportWorker();
     await telegram?.stop().catch(() => {});
     await disconnectLoginClient().catch(() => {});
+    // Stopped for a deploy before the lease watch saw the newer container: tell it this one is off Telegram, so it
+    // connects now instead of waiting the full time (telegram/handover.ts).
+    try {
+      const lease = await sync.readLease();
+      if (lease && lease.owner !== instanceId) await sync.writeRelease(lease.owner);
+    } catch {
+      // the newer container waits the full time
+    }
     try {
       await backups?.flush();
     } finally {
@@ -306,7 +321,20 @@ async function main(): Promise<void> {
       // Logged in again from the admin's Telegram tab meanwhile: that listener is the one in use.
       attachedElsewhere: () => getListenerStatus().watching !== null,
     });
-    telegram.start(handover ? HANDOVER_WAIT_MS : 0);
+    if (!handover) telegram.start(0);
+    else {
+      // A deploy: connect as soon as the outgoing container says it has let go, or after the full wait if it never does.
+      const waitFrom = Date.now();
+      const tg = telegram;
+      void waitForHandover({ readRelease: () => sync.readRelease(), me: instanceId, maxMs: HANDOVER_WAIT_MS }).then((how) => {
+        log.info(
+          how === "released"
+            ? `The outgoing container let go of Telegram after ${Math.round((Date.now() - waitFrom) / 1000)} s: connecting.`
+            : `No word from the outgoing container after ${HANDOVER_WAIT_MS / 1000} s: connecting.`,
+        );
+        tg.start(how === "released" ? 2_000 : 0);
+      });
+    }
   } else {
     log.info("Telegram env vars not fully set yet; log in via the admin Telegram tab first.");
   }

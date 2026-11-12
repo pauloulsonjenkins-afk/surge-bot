@@ -112,6 +112,29 @@ export class SpacesSync {
     );
   }
 
+  private get releaseKey(): string {
+    const dir = posix.dirname(this.cfg.objectKey);
+    return posix.join(dir === "." ? "" : dir, "release.json");
+  }
+
+  /** The outgoing container's note that it has disconnected from Telegram for the container `to` (telegram/handover.ts). */
+  async writeRelease(to: string): Promise<void> {
+    await this.s3.send(
+      new PutObjectCommand({ Bucket: this.cfg.bucket, Key: this.releaseKey, Body: JSON.stringify({ to, at: Date.now() }), ContentType: "application/json", ACL: "private" }),
+    );
+  }
+
+  async readRelease(): Promise<{ to: string; at: number } | null> {
+    try {
+      const res = await this.s3.send(new GetObjectCommand({ Bucket: this.cfg.bucket, Key: this.releaseKey }));
+      const note = JSON.parse(res.Body ? await res.Body.transformToString() : "") as { to?: unknown; at?: unknown };
+      return typeof note.to === "string" && typeof note.at === "number" ? { to: note.to, at: note.at } : null;
+    } catch (err) {
+      if (err instanceof S3ServiceException && err.name === "NoSuchKey") return null;
+      throw err;
+    }
+  }
+
   get liveKey(): string {
     return this.cfg.objectKey;
   }
@@ -174,8 +197,8 @@ export class BackupScheduler {
     private readonly retryMs = 60_000,
     /** This container's id for the backup lease. */
     private readonly instanceId: string = "single",
-    /** Called once when another container takes over the backup (a newer deploy). */
-    private readonly onLostOwnership: () => void = () => {},
+    /** Called once when another container takes over the backup (a newer deploy), with that container's lease id. */
+    private readonly onLostOwnership: (newOwner: string) => void = () => {},
     /** Called when this container takes the backup back after handing it over (the newer one stopped refreshing it). */
     private readonly onRegainedOwnership: () => void = () => {},
     /** When this container started: the newest container keeps the lease (shouldHandOver). */
@@ -186,7 +209,11 @@ export class BackupScheduler {
      * ran up to 8 times in 3 minutes. At most once every 2 minutes now; stopping (flush) still uploads the last changes.
      */
     private readonly minGapMs = 120_000,
+    /** How often to look for a newer container between the minute ticks (0 = don't). */
+    private readonly watchMs = 0,
   ) {}
+
+  private watchTimer: NodeJS.Timeout | null = null;
 
   /** How long until an upload may start: the debounce, or what's left of the minimum gap since the last one. */
   private waitMs(): number {
@@ -200,7 +227,7 @@ export class BackupScheduler {
       if (this.owner) {
         this.owner = false;
         log.warn("A newer container holds the backup lease: this container stops uploading and hands over.");
-        this.onLostOwnership();
+        this.onLostOwnership(lease!.owner);
       }
       return false;
     }
@@ -213,7 +240,25 @@ export class BackupScheduler {
     return true;
   }
 
+  /**
+   * Looks for a newer container often (every 10 s), so a deploy's hand-over starts within seconds instead of at the
+   * next minute's tick. Only reads the lease; the minute tick still refreshes it and takes it back if it is abandoned.
+   */
+  private async watchLease(): Promise<void> {
+    if (!this.owner) return;
+    const lease = await this.sync.readLease();
+    if (this.owner && shouldHandOver(lease, { owner: this.instanceId, born: this.born }, Date.now())) {
+      this.owner = false;
+      log.warn("A newer container holds the backup lease: this container stops uploading and hands over.");
+      this.onLostOwnership(lease!.owner);
+    }
+  }
+
   start(): void {
+    if (this.watchMs > 0) {
+      this.watchTimer = setInterval(() => void this.watchLease().catch(() => {}), this.watchMs);
+      this.watchTimer.unref?.();
+    }
     this.retryTimer = setInterval(() => {
       // Refreshes the lease every tick even with nothing to upload, so it never looks abandoned.
       if (this.dirty && this.waitMs() <= this.debounceMs) void this.runUpload();
@@ -235,6 +280,7 @@ export class BackupScheduler {
   async flush(): Promise<void> {
     if (this.debounce) clearTimeout(this.debounce);
     if (this.retryTimer) clearInterval(this.retryTimer);
+    if (this.watchTimer) clearInterval(this.watchTimer);
     if (this.inFlight) await this.inFlight;
     if (this.dirty) await this.runUpload();
   }
