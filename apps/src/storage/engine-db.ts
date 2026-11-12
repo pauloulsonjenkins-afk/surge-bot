@@ -3177,6 +3177,14 @@ export class EngineDb {
     return this.resultWrites;
   }
 
+  /**
+   * Results were written through ANOTHER connection to this file (the report worker's copy of the engine's database,
+   * server/report-worker.ts): the settled picks kept here are read again on the next report. Nothing is written.
+   */
+  resultsChangedElsewhere(): void {
+    this.resultWrites++;
+  }
+
   /** A money figure's input changed: counted for resultsVersion, and saved in the next backup like any change. */
   private resultsChanged(): void {
     this.resultWrites++;

@@ -269,7 +269,7 @@ export function ByBetLine({ row, mode }: { row: AdminStrategy; mode: "all" | "li
           {i > 0 && " · "}
           {p.text}
           {p.roi !== null && (
-            <span className={p.counted >= SAMPLE ? roiTone(p.roi) : ""}>
+            <span className={p.counted >= JUDGE_FROM ? roiTone(p.roi) : ""}>
               {" "}
               {roiText(p.roi)} on {p.counted}
             </span>
@@ -294,7 +294,7 @@ export function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | 
     return (
       <>
         {hits}–{m.settled - hits}
-        {m.counted > 0 && m.roi !== null && <span className={m.counted >= SAMPLE ? roiTone(m.roi) : ""}> {roiText(m.roi)} on {m.counted}</span>}
+        {m.counted > 0 && m.roi !== null && <span className={m.counted >= JUDGE_FROM ? roiTone(m.roi) : ""}> {roiText(m.roi)} on {m.counted}</span>}
       </>
     );
   };
@@ -314,6 +314,8 @@ export function SegmentLines({ row, mode }: { row: AdminStrategy; mode: "all" | 
 
 /** Below this many priced picks a return is too noisy to act on. */
 export const SAMPLE = 50;
+/** Bets before a return is coloured as a win or a loss: the engine's "too early" line (verdict.ts). Under it a figure shows, uncoloured. */
+export const JUDGE_FROM = 100;
 
 export function roiTone(roi: number | null): string {
   return roi === null || roi === 0 ? "text-ink" : roi > 0 ? "text-hit" : "text-loss";

@@ -23,6 +23,9 @@ import type { EngineDb } from "../storage/engine-db";
 import { getSendingSettings } from "../inplayguru/bet-feed";
 import { getBank } from "../inplayguru/stake";
 import { getWinLossSettings } from "./winloss";
+import { log } from "./log";
+import { runReport, type ReportName } from "./reports";
+import { reportWorkerReady, workerReport } from "./report-client";
 
 export const REPORT_TTL_MS = 60_000;
 /**
@@ -84,4 +87,51 @@ export function cachedReport(db: EngineDb, key: string, compute: () => Record<st
 /** Forgets every kept report, so the next of each is worked out anew. */
 export function clearReportCache(db: EngineDb): void {
   cache.delete(db);
+}
+
+const inFlight = new WeakMap<EngineDb, Map<string, Promise<Record<string, unknown>>>>();
+
+/**
+ * cachedReport for a report in reports.ts, worked out on the report worker when it is running (report-client.ts), so
+ * the engine's thread is not held while a page loads. The same rules for reuse as above. Without the worker, or if it
+ * fails or is too slow, the report is worked out here on the engine's own thread, exactly as cachedReport does: the
+ * worker can only make a page faster, never stop it loading.
+ */
+export async function cachedReportVia(db: EngineDb, key: string, name: ReportName, args: unknown[], now = Date.now(), ttlMs = REPORT_TTL_MS): Promise<Record<string, unknown>> {
+  if (!reportWorkerReady()) return cachedReport(db, key, () => runReport(db, name, args), now, ttlMs);
+  let byKey = cache.get(db);
+  if (!byKey) cache.set(db, (byKey = new Map()));
+  const stamp = inputsStamp(db);
+  const hit = byKey.get(key);
+  const age = hit ? now - hit.at : -1;
+  if (hit && hit.stamp === stamp && age >= 0 && age < ttlMs) return hit.body;
+
+  let flying = inFlight.get(db);
+  if (!flying) inFlight.set(db, (flying = new Map()));
+  const fetchFresh = (): Promise<Record<string, unknown>> => {
+    const already = flying!.get(key);
+    if (already) return already;
+    const p = workerReport(name, args, db.resultsVersion())
+      .catch((err: unknown) => {
+        log.warn(`Report "${name}" fell back to the engine's own thread: ${err instanceof Error ? err.message : String(err)}`);
+        return runReport(db, name, args);
+      })
+      .then((body) => {
+        // Kept under the stamp read before it was asked for: if something changed meanwhile, the next view sees that.
+        let m = cache.get(db);
+        if (!m) cache.set(db, (m = new Map()));
+        m.set(key, { at: Date.now(), stamp, body });
+        if (m.size > 50) m.delete(m.keys().next().value as string);
+        return body;
+      })
+      .finally(() => flying!.delete(key));
+    flying!.set(key, p);
+    return p;
+  };
+  // Out of date, but recent: show it now and bring it up to date behind the scenes.
+  if (hit && age >= 0 && age < STALE_OK_MS && ttlMs === REPORT_TTL_MS) {
+    void fetchFresh().catch(() => {});
+    return hit.body;
+  }
+  return fetchFresh();
 }

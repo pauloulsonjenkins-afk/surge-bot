@@ -102,10 +102,13 @@ import { getPublicView, setPublicView } from "./access-settings";
 import { handleUsersRoute } from "./users-routes";
 import { ALL_TIME, computeHitRateContext, computePickProfits, computeSinceModeReturns, computeSparks, computeStrategyEquity, computeStrategyForm, computeStrategyReturns, computeWinLoss, getWinLossSettings, saveWinLossSettings } from "./winloss";
 import { log } from "./log";
-import { cachedReport, clearReportCache, TODAY_TTL_MS } from "./report-cache";
+import { cachedReport, cachedReportVia, clearReportCache, TODAY_TTL_MS } from "./report-cache";
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
 import { liveBetCounter, moneyProblems, unconfirmed } from "./money-guard";
+import { loopDelay } from "./loop-delay";
+import { reportWorkerReady, reportWorkerStatus } from "./report-client";
+import { runReport } from "./reports";
 import { AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { layIdeas } from "./lay-finder";
@@ -216,12 +219,22 @@ export function buildStrategiesReport(db: EngineDb, since: string | null): Recor
  * holding up the engine's one thread (which also places bets) while the admin waits. Call every 30-60s; never throws.
  */
 export function warmReportCache(db: EngineDb): void {
-  try {
-    cachedReport(db, "today", () => todaySnapshot(db), Date.now(), TODAY_TTL_MS);
-    cachedReport(db, `strategies:null`, () => buildStrategiesReport(db, null));
-  } catch (err) {
-    log.warn(`Warming the report cache failed: ${err instanceof Error ? err.message : String(err)}`);
+  const failed = (err: unknown) => log.warn(`Warming the report cache failed: ${err instanceof Error ? err.message : String(err)}`);
+  // Without the report worker: here and now, as it always was.
+  if (!reportWorkerReady()) {
+    try {
+      cachedReport(db, "today", () => runReport(db, "today", []), Date.now(), TODAY_TTL_MS);
+      cachedReport(db, `strategies:null`, () => runReport(db, "strategies", [null]));
+    } catch (err) {
+      failed(err);
+    }
+    return;
   }
+  // With it: asked of the worker, one after the other, while this thread carries on.
+  (async () => {
+    await cachedReportVia(db, "today", "today", [], Date.now(), TODAY_TTL_MS);
+    await cachedReportVia(db, `strategies:null`, "strategies", [null]);
+  })().catch(failed);
 }
 
 function send(res: ServerResponse, status: number, body: Record<string, unknown>, closeConnection = false): void {
@@ -379,6 +392,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         webhooksStored: db.countWebhooks(),
         livePicks: db.countLivePicks(),
         backup: backups.getStatus(),
+        // How long the engine's one thread kept alerts and bets waiting in the last minute (loop-delay.ts), and whether
+        // reports are being worked out off it (report-client.ts).
+        loop: loopDelay(),
+        reportWorker: reportWorkerStatus(),
         // Public: whether alerts are being listened for, not which chat (the admin's Telegram status has the detail).
         telegram: (({ watching, lastAlertAt, lastSyncAt, connectError, sessionDead }) => ({ connected: watching !== null, lastAlertAt, lastSyncAt, connectError, sessionDead }))(
           getListenerStatus(),
@@ -748,13 +765,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           return;
         }
       }
-      const golden = () => {
-        const { timed, done } = reportTimings("Golden page data");
-        const report = timed("golden", () => goldenReport(db));
-        return { ...report, timings: done(), at: new Date().toISOString() };
-      };
       // After a change, worked out anew; otherwise reused for up to a minute (report-cache.ts).
-      send(res, 200, req.method === "GET" ? cachedReport(db, "golden", golden) : golden());
+      send(res, 200, req.method === "GET" ? await cachedReportVia(db, "golden", "golden", []) : runReport(db, "golden", []));
       return;
     }
 
@@ -765,11 +777,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         res,
         200,
         // The UK day is in the key, so a new week starts at midnight on Monday even with no new results.
-        cachedReport(db, `strategy-weeks:${ukDateOf(new Date())}`, () => {
-          const { timed, done } = reportTimings("Strategies weekly data");
-          const weeks = timed("weeks", () => computeStrategyWeeks(db));
-          return { ...weeks, timings: done(), at: new Date().toISOString() };
-        }),
+        await cachedReportVia(db, `strategy-weeks:${ukDateOf(new Date())}`, "strategy-weeks", []),
       );
       return;
     }
@@ -1104,7 +1112,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (path === "/internal/today") {
         // Reused for up to a minute, and warmed in the background (see above): the page polls every 15s, so this was
         // the single busiest uncached report on the engine's one thread until 27 Oct 2026.
-        send(res, 200, { ...cachedReport(db, "today", () => todaySnapshot(db), Date.now(), TODAY_TTL_MS) });
+        send(res, 200, { ...(await cachedReportVia(db, "today", "today", [], Date.now(), TODAY_TTL_MS)) });
         return;
       }
       const days = Math.min(365, Math.max(1, Number(new URL(rawUrl, "http://internal").searchParams.get("days")) || 30));
@@ -1240,14 +1248,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
       }
       const winLossMode = parsePickMode(new URL(rawUrl, "http://internal").searchParams.get("mode"));
-      const winLoss = () => {
-        const { timed, done } = reportTimings("Profit page data");
-        const state = timed("winloss", () => computeWinLoss(db, new Date(), winLossMode));
-        return { ...state, timings: done(), at: new Date().toISOString() };
-      };
       // After a change, worked out anew; otherwise reused for up to a minute (report-cache.ts). The UK day is in the key,
       // so "today" and the month roll over at midnight even with no new data.
-      send(res, 200, req.method === "GET" ? cachedReport(db, `winloss:${winLossMode}:${ukDateOf(new Date())}`, winLoss) : winLoss());
+      send(res, 200, req.method === "GET" ? await cachedReportVia(db, `winloss:${winLossMode}:${ukDateOf(new Date())}`, "winloss", [winLossMode]) : runReport(db, "winloss", [winLossMode]));
       return;
     }
 
@@ -1452,7 +1455,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const since = Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null;
       // Reused for up to a minute, and warmed in the background every 45s so a view is (almost) always instant
       // (report-cache.ts, the warmer in main.ts: warmReportCache).
-      send(res, 200, cachedReport(db, `strategies:${since}`, () => buildStrategiesReport(db, since)));
+      send(res, 200, await cachedReportVia(db, `strategies:${since}`, "strategies", [since]));
       return;
     }
 
