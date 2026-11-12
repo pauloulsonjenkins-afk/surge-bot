@@ -176,8 +176,11 @@ test("Resume today restarts the count; clearing limits removes the rule", () => 
   saveStopLossRule(db, S, { dailyLoss: 2 });
   sentAndSettled("miss");
   assert.equal(computeStopLoss(db, NOW).get(KEY)?.stopped, true);
-  saveStopLossRule(db, S, { resume: true }, new Date(NOW.getTime() + 1000));
-  assert.equal(computeStopLoss(db, new Date(NOW.getTime() + 2000)).get(KEY)?.stopped, false);
+  // Pressed after the pick was stored. The store takes the real clock, so a test that ran slower than a second (it did,
+  // about one run in eight on GitHub's Node 22) left "NOW + 1 s" before the pick, and the loss still counted.
+  const pressed = Math.max(NOW.getTime(), Date.now()) + 1000;
+  saveStopLossRule(db, S, { resume: true }, new Date(pressed));
+  assert.equal(computeStopLoss(db, new Date(pressed + 1000)).get(KEY)?.stopped, false);
   saveStopLossRule(db, S, { dailyLoss: null });
   assert.deepEqual(getStopLossRules(db), {});
 });

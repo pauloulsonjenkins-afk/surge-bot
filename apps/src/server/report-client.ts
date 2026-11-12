@@ -25,6 +25,18 @@ let givenUp = false;
 const waiting = new Map<number, { resolve: (b: Record<string, unknown>) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
 const stats = { done: 0, failed: 0, lastMs: null as number | null, lastError: null as string | null };
 
+/**
+ * The worker doesn't keep Node running on its own (it is unref'd: the engine's server and timers do that). But while a
+ * reply is awaited something must, or Node can end with the reply still to come: on Node 22 the tests were cut off
+ * that way ("Promise resolution is still pending but the event loop has already resolved", GitHub checks, 12 Nov 2026).
+ * So it is held while any request is waiting, and let go when none is.
+ */
+function holdWhileWaiting(): void {
+  if (!worker) return;
+  if (waiting.size > 0) worker.ref();
+  else worker.unref();
+}
+
 function failAll(why: string): void {
   for (const [id, w] of waiting) {
     clearTimeout(w.timer);
@@ -43,6 +55,7 @@ function spawn(dbPath: string): void {
     const wait = waiting.get(reply.id);
     if (!wait) return;
     waiting.delete(reply.id);
+    holdWhileWaiting();
     clearTimeout(wait.timer);
     if (reply.ok) {
       restarts = 0;
@@ -117,12 +130,14 @@ export function workerReport(name: ReportName, args: unknown[], resultsVersion: 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       waiting.delete(id);
+      holdWhileWaiting();
       stats.failed++;
       stats.lastError = `"${name}" took over ${TIMEOUT_MS / 1000} s`;
       reject(new Error(stats.lastError));
     }, TIMEOUT_MS);
     timer.unref?.();
     waiting.set(id, { resolve, reject, timer });
+    holdWhileWaiting();
     w.postMessage({ id, name, args, resultsVersion } satisfies ReportRequest);
   });
 }
