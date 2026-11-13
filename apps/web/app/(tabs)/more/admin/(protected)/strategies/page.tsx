@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/Card";
+import { Sparkline } from "@/components/ui/Sparkline";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useAdminStrategies, useStrategyWeeks, type AdminStrategy } from "@/queries/use-strategies";
@@ -95,12 +96,18 @@ export default function StrategiesPage() {
               {a && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${isGoodAdvice(a) ? "bg-hit/15 text-hit" : "bg-warn/20 text-warn"}`}>{ADVICE_LABEL[a.kind]}</span>}
             </span>
           </span>
+          {/* The shape of its last 30 bets (running profit), as on Full detail; left out on the narrowest phones. */}
+          {r.spark && r.spark.length >= 5 && (
+            <span className="shrink-0 max-[359px]:hidden">
+              <Sparkline values={r.spark} width={56} height={24} />
+            </span>
+          )}
           {/* A return from a handful of bets means nothing (2 bets read +352%), so it is greyed and marked until there are enough. */}
           {money && money.counted >= MIN_SHOWN ? (
             // A tinted chip, coloured only once the engine's verdict says the bets can back it (100+): under that, grey.
             <span className={`roi-chip shrink-0 tabular-nums ${money.verdict === "too early" ? "text-ink-muted" : roiTone(money.roi)}`}>{roiText(money.roi)}</span>
           ) : (
-            <span className="shrink-0 text-xs text-ink-muted">{money && money.counted > 0 ? "too few" : "–"}</span>
+            <span className="shrink-0 text-xs text-ink-muted">{money && money.counted > 0 ? "too few" : "No bets yet"}</span>
           )}
           <ChevronRight size={16} aria-hidden className="shrink-0 text-ink-muted" />
         </Link>
@@ -136,7 +143,8 @@ export default function StrategiesPage() {
     <div className="space-y-5">
       <PageHeader as="h2" title="Strategies" subtitle="Return per £1 on each strategy's own bets." />
 
-      <nav className="flex flex-wrap gap-2 text-xs font-medium" aria-label="Related pages">
+      {/* One line that scrolls sideways on a narrow phone: wrapped, "Archive" sat alone on a second row. */}
+      <nav className="chip-row text-xs font-medium lg:mx-0 lg:px-0" aria-label="Related pages">
         <Link href="/more/admin/reports" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Daily and weekly report</Link>
         <Link href="/more/admin/strategies/all" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Full detail{layCount > 0 ? ` and LAY bets (${layCount})` : ""}</Link>
         <Link href="/more/admin/archive" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Archive</Link>
@@ -184,7 +192,13 @@ export default function StrategiesPage() {
       )}
 
       <details className="space-y-2">
-        <summary className="cursor-pointer text-sm font-medium text-ink">Golden slices <span className="font-normal text-ink-muted">· parts of a strategy you can put Live on their own</span></summary>
+        <summary className="cursor-pointer text-sm font-medium text-ink">
+          {/* The note under the name, not beside it: side by side, both wrapped on a phone. */}
+          <span className="min-w-0 flex-1">
+            Golden slices
+            <span className="block text-xs font-normal text-ink-muted">Parts of a strategy you can put Live on their own.</span>
+          </span>
+        </summary>
         <div className="mt-2">
           <GoldenSlicesSection />
         </div>

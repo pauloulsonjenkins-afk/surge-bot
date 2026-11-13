@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { gbp, units } from "@/lib/format";
-import { LOSS, ProfitGradients, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
+import { LOSS, ProfitGradients, profitGlow, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
 
 export interface LineSeries {
   key: string;
@@ -130,6 +130,7 @@ export function WinLossLines({
                 key={s.key}
                 type="linear"
                 dataKey={s.key}
+                className={filled ? profitGlow(split) : undefined}
                 stroke={stroke ?? s.color}
                 strokeWidth={selectable && picked === s.key ? 3.5 : filled ? 2.25 : 2}
                 strokeOpacity={selectable && picked !== null && picked !== s.key ? 0.12 : 1}

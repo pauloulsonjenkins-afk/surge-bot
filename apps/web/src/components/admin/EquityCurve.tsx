@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import { Area, ComposedChart, Line, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ProfitGradients, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
+import { ProfitGradients, profitGlow, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
 import { useStrategyEquity, type StrategyEquity } from "@/queries/use-strategies";
 import type { PickMode } from "@/server/engine-client";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -104,7 +104,7 @@ export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) 
             <ReferenceLine y={0} stroke="var(--line)" />
             <Tooltip content={<PointTooltip />} cursor={{ stroke: "var(--ink-muted)", strokeDasharray: "3 3" }} />
             <Area type="linear" dataKey="total" baseValue={0} stroke="none" fill={`url(#${id}-fill)`} isAnimationActive={false} activeDot={false} tooltipType="none" />
-            <Line type="linear" dataKey="total" stroke={profitStroke(id, split)} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
+            <Line type="linear" dataKey="total" className={profitGlow(split)} stroke={profitStroke(id, split)} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
             {peak && <ReferenceDot x={peak.n} y={peak.total} r={4} fill="var(--surface)" stroke="var(--ink-muted)" strokeWidth={2} />}
             {trough && <ReferenceDot x={trough.n} y={trough.total} r={4} fill="var(--loss)" stroke="var(--surface)" strokeWidth={2} />}
           </ComposedChart>

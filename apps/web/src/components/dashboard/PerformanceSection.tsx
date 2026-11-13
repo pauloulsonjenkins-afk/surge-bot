@@ -213,6 +213,13 @@ export function PerformanceSection({
                         {r.agg.pending > 0 && ` · ${r.agg.pending} waiting`}
                         {r.agg.lowSample && r.agg.alerts > 0 && <LowSample />}
                       </span>
+                      {/* Won against lost as one thin bar, so the split reads without the numbers. */}
+                      {r.agg.hits + r.agg.misses > 0 && (
+                        <span aria-hidden className="mt-1.5 flex h-1 w-32 gap-0.5 overflow-hidden rounded-full">
+                          <span className="rounded-full bg-hit" style={{ width: `${(r.agg.hits / (r.agg.hits + r.agg.misses)) * 100}%` }} />
+                          <span className="flex-1 rounded-full bg-loss/70" />
+                        </span>
+                      )}
                     </span>
                     {(() => {
                       // For the admin, the money figure leads (return per £1 over the period): a high hit rate at short odds

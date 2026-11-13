@@ -36,10 +36,20 @@ function Tile({ label, value, sub, warn, flat, children }: { label: string; valu
         {warn && <AttentionDot />}
         {label}
       </p>
-      <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">{value}</p>
+      <p className="mt-0.5 font-display text-xl font-bold tabular-nums text-ink [font-stretch:108%]">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-ink-muted">{sub}</p>}
       {children}
     </div>
+  );
+}
+
+/** Today's Sim figure under a Live one: a tinted chip in its own colour, then how many Sim bets it is from. */
+function SimToday({ value, tone, settled }: { value: string; tone: string; settled: number }) {
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <span className={`roi-chip !px-2 !py-0 !text-xs tabular-nums ${tone}`}>Sim {value}</span>
+      <span>{settled} settled</span>
+    </span>
   );
 }
 
@@ -230,13 +240,13 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
-        <Tile flat label="Live today" value={<Flash value={d.today.liveNet}><span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span></Flash>} sub={`${d.today.liveSettled} settled · Sim ${gbp(d.today.simNet, false)} (${d.today.simSettled})`} />
+        <Tile flat label="Live today" value={<Flash value={d.today.liveNet}><span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span></Flash>} sub={<>{d.today.liveSettled} settled<SimToday value={gbp(d.today.simNet, false)} tone={toneOf(d.today.simNet)} settled={d.today.simSettled} /></>} />
         {/* The same day as if every bet were the same 1-unit stake, so a stake change can't make it look better or worse. */}
         {d.today.liveUnits !== undefined && (
           <Tile flat
             label="Units today"
             value={<Flash value={d.today.liveUnits}><span className={toneOf(d.today.liveUnits)}>{units(d.today.liveUnits)}</span></Flash>}
-            sub={`Live, ${d.today.liveSettled} settled · Sim ${units(d.today.simUnits ?? 0)} (${d.today.simSettled})`}
+            sub={<>Live, {d.today.liveSettled} settled<SimToday value={units(d.today.simUnits ?? 0)} tone={toneOf(d.today.simUnits ?? 0)} settled={d.today.simSettled} /></>}
           />
         )}
         <Tile flat
@@ -261,8 +271,18 @@ function Tiles({ d }: { d: TodaySnapshot }) {
             {systemsWarn && <AttentionDot />}
             {systemsWarn ? "Systems: needs a look" : "Systems: all OK"}
           </span>
-          <span className="mt-0.5 block text-xs text-ink-muted">
-            balance {d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`} · £{d.exposure.openStake.toFixed(2)} out · {d.alerts.lastHour} alerts in the last hour · {d.queue.waiting + d.queue.placing} waiting
+          {/* Four short labelled figures in place of one run-on line. */}
+          <span className="mt-1.5 flex flex-wrap gap-1.5 text-xs text-ink-muted">
+            {[
+              ["Balance", d.bank.available === null ? "not read yet" : `£${d.bank.available.toFixed(2)}`],
+              ["Out", `£${d.exposure.openStake.toFixed(2)}`],
+              ["Alerts, last hour", String(d.alerts.lastHour)],
+              ["Waiting", String(d.queue.waiting + d.queue.placing)],
+            ].map(([k, v]) => (
+              <span key={k} className="rounded-full bg-surface-2 px-2 py-0.5">
+                {k} <span className="font-medium tabular-nums text-ink">{v}</span>
+              </span>
+            ))}
           </span>
           </span>
         </summary>

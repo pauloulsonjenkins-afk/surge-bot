@@ -42,5 +42,8 @@ export function ProfitGradients({ id, split }: { id: string; split: ReturnType<t
   );
 }
 
+/** The class that makes the line glow in the colour it ends on (globals.css .glow-hit / .glow-loss). */
+export const profitGlow = (split: ReturnType<typeof profitSplit>) => (split.last >= 0 ? "glow-hit" : "glow-loss");
+
 /** The stroke to give the line: the split gradient, or one colour when it never crosses £0. */
 export const profitStroke = (id: string, split: ReturnType<typeof profitSplit>) => (split.crosses ? `url(#${id}-stroke)` : split.whole);

@@ -9,8 +9,9 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-ink-muted">
-        <Inbox size={16} />
+      {/* A lit disc with a halo (globals.css .empty-orb), so an empty card still looks finished. */}
+      <span className="empty-orb mb-3 flex h-12 w-12 items-center justify-center rounded-full">
+        <Inbox size={20} aria-hidden />
       </span>
       <p className="text-sm font-medium text-ink">{title}</p>
       {detail && <p className="max-w-[22ch] text-xs text-ink-muted">{detail}</p>}

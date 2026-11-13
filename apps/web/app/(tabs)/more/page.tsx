@@ -56,7 +56,7 @@ export default function MorePage() {
                 return (
                   <li key={href}>
                     <Link href={href} className="flex items-center gap-3 px-3 py-3 active:bg-surface-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink-muted">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center icon-tile rounded-lg">
                         <Icon size={18} />
                       </span>
                       <span className="flex-1">

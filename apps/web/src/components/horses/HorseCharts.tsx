@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import { Area, Bar, BarChart, Cell, ComposedChart, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ProfitGradients, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
+import { ProfitGradients, profitGlow, profitSplit, profitStroke } from "@/components/charts/ProfitColours";
 import { gbp } from "@/lib/format";
 import { RANK_COLOUR, RANK_LABEL, RANKS, type Point, type Summary } from "@/lib/horses";
 
@@ -60,6 +60,7 @@ export function RunningProfitChart({ points }: { points: Point[] }) {
           <Line
             type="linear"
             dataKey="total"
+            className={profitGlow(split)}
             stroke={profitStroke(id, split)}
             strokeWidth={2}
             dot={points.length <= 20 ? (p: { cx?: number; cy?: number; value?: unknown; index?: number }) => <circle key={p.index} cx={p.cx} cy={p.cy} r={3} fill={typeof p.value === "number" && p.value < 0 ? "var(--loss)" : "var(--hit)"} /> : false}
