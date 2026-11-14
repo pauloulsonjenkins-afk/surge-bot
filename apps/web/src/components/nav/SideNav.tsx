@@ -11,6 +11,7 @@ import { ADMIN_MAIN, ADMIN_MORE, navActive, type NavItem } from "@/lib/admin-sec
 import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import AdminLogoutButton from "./AdminLogoutButton";
+import Glossary from "./Glossary";
 
 const itemCls = (active: boolean) =>
   `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
@@ -88,7 +89,10 @@ export default function SideNav() {
 
       <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
         {me?.admin ? <AdminLogoutButton /> : <span className="text-xs text-ink-muted">Theme</span>}
-        <ThemeToggle />
+        <span className="flex items-center gap-2">
+          {me?.admin && <Glossary />}
+          <ThemeToggle />
+        </span>
       </div>
     </aside>
   );

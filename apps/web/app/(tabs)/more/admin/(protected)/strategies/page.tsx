@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/Card";
 import { Sparkline } from "@/components/ui/Sparkline";
+import { PriceCheck } from "@/components/admin/PriceCheck";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
 import { useAdminStrategies, useStrategyWeeks, type AdminStrategy } from "@/queries/use-strategies";
@@ -190,6 +191,10 @@ export default function StrategiesPage() {
           {group("Quiet", `No alerts for ${INACTIVE_DAYS}+ days. They move to the Archive after 30.`, quiet, true)}
         </>
       )}
+
+      {/* Does each strategy get a better price than the market? The earliest sign of an edge, so it sits on the
+          overview now (it was only on Full detail). Folded; it loads when opened. */}
+      {strategies.length > 0 && <PriceCheck />}
     </div>
   );
 }

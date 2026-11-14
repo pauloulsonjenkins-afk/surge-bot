@@ -22,6 +22,7 @@ import { Power } from "lucide-react";
 import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
 import { Flash } from "@/components/ui/Flash";
 import { DashboardBody } from "@/components/dashboard/DashboardBody";
+import { PayingCard } from "@/components/admin/PayingCard";
 
 
 function ago(iso: string | null): string {
@@ -410,6 +411,7 @@ export default function TodayPage() {
         }
         actions={data ? <KillSwitch on={data.betting.on} /> : undefined}
       />
+      <PayingCard />
       {error ? (
         <QueryError error={error} next="/more/admin/today" />
       ) : isLoading || !data ? (

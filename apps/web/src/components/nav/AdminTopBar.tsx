@@ -6,6 +6,7 @@ import { Bell } from "lucide-react";
 import { ADMIN_HOME } from "@/lib/admin-sections";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import AdminLogoutButton from "./AdminLogoutButton";
+import Glossary from "./Glossary";
 
 /**
  * The admin's header on phones and tablets, the same on every page (14 Nov 2026): the logo (which goes Home), the
@@ -29,10 +30,9 @@ export default function AdminTopBar() {
         >
           <Bell size={15} />
         </Link>
+        <Glossary />
         <ThemeToggle />
-        <span className="pl-1">
-          <AdminLogoutButton />
-        </span>
+        <AdminLogoutButton icon />
       </div>
     </header>
   );
