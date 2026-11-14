@@ -65,8 +65,6 @@ export default function StrategiesPage() {
     const m = ownMode(r).mode;
     return trendOf(w.last7[m], w.prev28[m]);
   };
-  /** Sim strategies whose last 7 days have turned up after a flat or losing month: the early-curve ones to look at. */
-  const warming = strategies.filter((r) => modeOf(r) === "sim" && !isInactive(r) && !adviceOf.has(r.label.toLowerCase()) && trendFor(r)?.label === "Turning up");
 
   const live = strategies.filter((r) => modeOf(r) === "live" && !isInactive(r));
   const quiet = strategies.filter((r) => isInactive(r));
@@ -79,7 +77,11 @@ export default function StrategiesPage() {
     const money = returnsFor(r, mode);
     const trend = trendFor(r);
     const a = adviceOf.get(r.label.toLowerCase());
-    const showTrend = trend && trend.label !== "Too few bets" && trend.label !== "Level";
+    // A good week says nothing about a strategy still being tested (it can be 5 bets), and the green label read as
+    // "turn me on" (the owner, 14 Nov 2026). So a Sim strategy shows only the warning labels; "ready to try Live"
+    // (200+ bets, in profit in both halves) is the one signal for going Live.
+    const upbeat = trend?.label === "Turning up" || trend?.label === "Steady +";
+    const showTrend = trend && trend.label !== "Too few bets" && trend.label !== "Level" && !(modeOf(r) === "sim" && upbeat);
     return (
       <li key={r.label}>
         <Link href={strategyHref(r.label)} className="flex min-h-14 items-center gap-3 border-t border-line px-3.5 py-2.5 first:border-t-0">
@@ -151,11 +153,11 @@ export default function StrategiesPage() {
         </p>
       )}
 
-      {(advice.length > 0 || warming.length > 0) && (
+      {advice.length > 0 && (
         <section aria-label="Needs a look" className="rounded-xl border border-line bg-surface p-3.5">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
             Needs a look
-            <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs font-bold text-warn">{advice.length + warming.length}</span>
+            <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs font-bold text-warn">{advice.length}</span>
           </h3>
           {advice.length > 0 && (
             <>
@@ -168,14 +170,6 @@ export default function StrategiesPage() {
                 ))}
               </ul>
             </>
-          )}
-          {warming.length > 0 && (
-            <div className="mt-3">
-              <p className="text-xs font-medium text-ink">Turning up in Sim: its last 7 days are better than the 4 weeks before</p>
-              <ul className="mt-1 overflow-hidden rounded-lg border border-line bg-surface">
-                {warming.map(line)}
-              </ul>
-            </div>
           )}
         </section>
       )}
