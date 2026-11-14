@@ -138,9 +138,26 @@ function isIgnored(db: EngineDb, text: string): boolean {
   }
 }
 
+/**
+ * True when the catch-up sync has read an older copy of an alert that already has its result: Telegram can hand back the
+ * text from before the full-time edit for a few seconds after it (seen 14 Nov 2026: message 13133 was settled "miss" by
+ * its edit at 17:12:27, and the sync three seconds later put it back to "pending"). The sync never takes a result away.
+ */
+export function isStaleSyncCopy(db: EngineDb, chatKey: string, messageId: number, text: string): boolean {
+  const stored = db.getLivePickByMessage(chatKey, messageId);
+  if (!stored || (stored.result === null && stored.ftScore === null)) return false;
+  try {
+    const parsed = parseAlert(text);
+    return parsed.result === null && parsed.ftScore === null;
+  } catch {
+    return true;
+  }
+}
+
 /** Stores one message. Returns true when something was written. */
 function store(db: EngineDb, m: IncomingText, how: "new" | "edit" | "sync"): boolean {
   const messageAt = new Date(m.date * 1000).toISOString();
+  if (how === "sync" && isStaleSyncCopy(db, m.chatKey, m.messageId, m.text)) return false;
 
   // An alert deleted along with its strategy stays deleted: not by the catch-up sync, not by a late full-time edit.
   if (db.isPickDeleted(m.chatKey, m.messageId)) return false;
