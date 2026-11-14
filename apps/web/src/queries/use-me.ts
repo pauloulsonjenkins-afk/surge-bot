@@ -1,8 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { getJson } from "./fetch-json";
 import type { UserPage } from "@/lib/user-pages";
 
@@ -34,20 +33,4 @@ export function useMe() {
   // rendered it. Otherwise an answer that arrives mid-hydration draws admin-only parts (the All / Live / Sim switch)
   // the server's HTML didn't have, React reports a hydration mismatch, and it throws the page away and redraws it.
   return hydrated ? query : ({ ...query, data: undefined, isLoading: true } as typeof query);
-}
-
-/** Signs the website user out and forgets everything that was loaded while they were signed in. */
-export function useSignOut(to = "/members") {
-  const qc = useQueryClient();
-  const router = useRouter();
-  return useMutation({
-    mutationFn: async () => {
-      await fetch("/api/auth/logout", { method: "DELETE" });
-    },
-    onSettled: () => {
-      qc.clear();
-      router.replace(to);
-      router.refresh();
-    },
-  });
 }

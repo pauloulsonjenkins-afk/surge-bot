@@ -52,21 +52,8 @@ async function usersRequest<T>(method: "GET" | "POST", path: string, body?: unkn
   }
 }
 
-export const engineSignUp = (input: { email: string; name: string; username: string; password: string }) =>
-  usersRequest<{ ok?: true; error?: string }>("POST", "/internal/users/signup", input);
-
-export const engineLogIn = (input: { email: string; password: string }) =>
-  usersRequest<{ user?: EngineUser; error?: string }>("POST", "/internal/users/login", input);
-
-export const engineListUsers = () => usersRequest<{ users: EngineUser[]; signupsOpen: boolean }>("GET", "/internal/users");
-
-export const engineUpdateUser = (body: Record<string, unknown>) =>
-  usersRequest<{ user?: EngineUser; error?: string }>("POST", "/internal/users/update", body);
-
-export const engineDeleteUser = (id: number) => usersRequest<{ ok?: true; error?: string }>("POST", "/internal/users/delete", { id });
-
-export const engineSetSignupsOpen = (signupsOpen: boolean) =>
-  usersRequest<{ signupsOpen?: boolean; error?: string }>("POST", "/internal/users/settings", { signupsOpen });
+// Sign-up, sign-in and the admin's account list went with the Members area (14 Nov 2026). What is left reads an
+// existing session, so a person the admin once gave a page to keeps it until their session ends.
 
 // A signed-in user is re-checked against the engine so a disabled account or changed access takes effect
 // within a few seconds. The answer is remembered briefly so a page's several requests make one engine call.

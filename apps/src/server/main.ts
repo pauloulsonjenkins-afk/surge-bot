@@ -26,9 +26,7 @@ import { recordSimBets } from "../inplayguru/bet-feed";
 import { startDailySummary } from "./daily-summary";
 import { startWeeklyReview } from "./weekly-review";
 import { startTelegramWatchdog } from "./telegram-watchdog";
-import { BetfairTrader, startDirectBetting, wake as wakeDirect } from "../betfair/direct";
-import { readCredentials } from "../betfair/exchange";
-import { startMembers } from "../members/runner";
+import { startDirectBetting, wake as wakeDirect } from "../betfair/direct";
 import { startHistoryRefresh } from "../history/football-data";
 import { startDailyTips } from "./daily-tips";
 import { notifyAdvice } from "./strategy-advice";
@@ -267,12 +265,6 @@ async function main(): Promise<void> {
   startValueSettling(db);
   // Old strategies move to the Archive by themselves (server/archive.ts).
   startAutoArchive(db);
-
-  // The Members platform: simulated bets for members following strategies, and (only when every live switch is on)
-  // real bets on the house Betfair account for admin members. See src/members/runner.ts and live.ts.
-  const memberCreds = readCredentials();
-  const memberTrader = memberCreds ? new BetfairTrader(memberCreds) : null;
-  startMembers(db, memberTrader ? { trading: memberTrader, account: () => memberTrader.account() } : null);
 
   const server = createEngineHttpServer(env, db, backups);
   httpServer = server;

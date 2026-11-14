@@ -3,13 +3,12 @@
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
 import { ChevronRight, Lock } from "lucide-react";
-import AccountCard from "@/components/account/AccountCard";
 import { ADMIN_MORE } from "@/lib/admin-sections";
 import { navIcon } from "@/components/nav/nav-icons";
 import { useMe } from "@/queries/use-me";
 
 /**
- * Your account, then (for the admin only) the pages that aren't on the tab bar: six of them (14 Nov 2026). It was 17
+ * For the admin only, the pages that aren't on the tab bar: six of them (14 Nov 2026). It was 17
  * rows in five groups, five of them already on the bar; Golden, the Report, the notification log, Fix a result and the
  * Archive now open as tabs under the page they belong to. Everyone else gets a small way into the admin sign-in.
  */
@@ -19,8 +18,6 @@ export default function MorePage() {
   return (
     <div className="space-y-6 px-4 py-4">
       <PageHeader title="More" />
-
-      {!me?.admin && <AccountCard />}
 
       {me?.admin && (
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">

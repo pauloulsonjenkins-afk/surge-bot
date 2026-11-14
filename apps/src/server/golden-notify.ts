@@ -17,7 +17,7 @@
 import type { EngineDb, LivePick } from "../storage/engine-db";
 import { alertOddsOfPick, getSendingSettings, pickSegments, segmentBetFor, strategyLabel } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
-import { marketName } from "../members/catalogue";
+import { marketName } from "../inplayguru/market-names";
 import { computeStrategyReturns } from "./winloss";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { getStoredLeagueForm, leagueLevel, passesLeagueFilter, type LeagueFilter, type LeagueForm } from "../inplayguru/league-form";

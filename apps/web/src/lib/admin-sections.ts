@@ -67,7 +67,6 @@ export const ADMIN_FAMILIES: NavFamily[] = [
       { href: `${A}/settings`, label: "Settings" },
       { href: `${A}/notifications`, label: "Notifications" },
       { href: `${A}/results`, label: "Fix a result" },
-      { href: `${A}/members`, label: "Members" },
     ],
   },
 ];

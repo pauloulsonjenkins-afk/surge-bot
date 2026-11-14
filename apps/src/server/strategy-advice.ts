@@ -49,7 +49,7 @@
  * and "Back to Sim" are never automatic.
  */
 import { ukDateOf } from "./uk-time";
-import { ukWeekStart } from "../members/time";
+import { ukWeekStart } from "./uk-time";
 import { stakeCapFor } from "./money-guard";
 import { RECORD_FROM, type EngineDb } from "../storage/engine-db";
 import { ALL_TIME, computeAdviceReturns, computeStrategyReturns, getWinLossSettings, pricingInputs, type ResultRow, type StrategyReturn } from "./winloss";

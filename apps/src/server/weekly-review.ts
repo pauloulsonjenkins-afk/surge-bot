@@ -11,7 +11,7 @@ import { autoStakeQueue, visibleAdvice } from "./strategy-advice";
 import { goldenReport } from "./golden";
 import { sendPush } from "./push";
 import { ukDateOf, ukDayBounds } from "./uk-time";
-import { ukWeekStart } from "../members/time";
+import { ukWeekStart } from "./uk-time";
 import { log } from "./log";
 
 const SENT_KEY = "weekly_review_last";

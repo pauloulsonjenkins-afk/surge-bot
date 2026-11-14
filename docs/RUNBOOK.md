@@ -50,7 +50,7 @@ Not yet followed end to end by the owner from this page. Do it once on a quiet d
   even when only the site changed. A push that only added a file under `.github/` did not rebuild anything
   (12 Nov 2026); treat any other push as a restart until it has been seen not to be.
 - Batch changes into one push. Several engine restarts close together are what got the Telegram session cancelled.
-- After a push, watch the site's build id change (`curl -sL <site>/members`, the `"b":"..."` value) and then the health
+- After a push, watch the site's build id change (`curl -sL <site>/more/admin/login`, the `"b":"..."` value; `/members` was removed on 14 Nov 2026) and then the health
   page until `telegram.connected` is true again.
 - From 12 Nov 2026 the new container connects as soon as the old one writes its "let go" note (`release.json` in the
   backup Space), and after 90 seconds if no note comes. The first deploy that carries this change still takes the

@@ -487,7 +487,7 @@ export function AboutStrategy({ label }: { label: string }) {
         </dl>
       )}
       <label className="block text-ink-muted">
-        Members&apos; name (what members see; you see InPlayGuru&apos;s name)
+        Own name (kept on file; the app shows InPlayGuru&apos;s name)
         <input
           value={name}
           maxLength={40}

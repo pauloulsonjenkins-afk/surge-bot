@@ -8,7 +8,7 @@ import { AdviceBadge } from "@/components/admin/AdviceBadge";
 /**
  * The tabs along the top of a page that has others under it (lib/admin-sections.ts ADMIN_FAMILIES): Strategies has
  * Overview, Golden, Full detail and Archive; Profit has the Report; Settings has the notification log, Fix a result,
- * Free tips and Members. One line that scrolls sideways on a narrow phone. A single strategy's own page isn't a tab of
+ * Free tips. One line that scrolls sideways on a narrow phone. A single strategy's own page isn't a tab of
  * anything: it has its own "back to Strategies" link, so nothing is shown there.
  */
 export default function AdminSubNav() {

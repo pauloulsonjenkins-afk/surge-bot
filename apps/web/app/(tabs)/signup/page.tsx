@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Sign-up lives in the Members area now (/members/join). Kept so old links still land there. */
+/** Sign-up went with the Members area (14 Nov 2026). Kept so old links land on the sign-in. */
 export default function SignupMoved() {
-  redirect("/members/join");
+  redirect("/more/admin/login");
 }

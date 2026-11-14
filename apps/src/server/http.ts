@@ -140,9 +140,6 @@ import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchang
 import { checkLeague, coverageOfAlertLeagues, fixtureLeagueChecker, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
-import { handleMembersRoute } from "../members/routes";
-import { membersLiveDeps, wakeMembers } from "../members/runner";
-import { stripeWebhook } from "../members/stripe";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const WEBHOOK_PREFIX = "/webhooks/inplayguru/";
@@ -1342,31 +1339,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
-    // Stripe's webhook for paid memberships: checked by its signature (members/stripe.ts), not the internal key.
-    if (req.method === "POST" && path === "/webhooks/stripe") {
-      const raw = await readBody(req, 256 * 1024);
-      const sig = req.headers["stripe-signature"];
-      const r = stripeWebhook(db, raw, Array.isArray(sig) ? sig[0] : sig);
-      send(res, r.status, r.body);
-      return;
-    }
-
-    if (path.startsWith("/internal/members/")) {
-      if (!requireAdmin(req, res)) return;
-      await handleMembersRoute({
-        req,
-        method: req.method ?? "GET",
-        path,
-        url: new URL(rawUrl, "http://internal"),
-        db,
-        res,
-        send,
-        readJsonBody: () => readJsonBody(req),
-        live: membersLiveDeps(),
-      });
-      return;
-    }
-
     if (path === "/internal/users" || path.startsWith("/internal/users/")) {
       if (!requireAdmin(req, res)) return;
       await handleUsersRoute({
@@ -1768,7 +1740,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             requestExchangeCheck();
             recordSimBets(db);
             wakeDirect();
-            wakeMembers();
           }
         } catch (err) {
           log.error(`Could not use an InPlayGuru webhook as a pick: ${err instanceof Error ? err.message : String(err)}`);

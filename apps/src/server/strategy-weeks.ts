@@ -8,7 +8,7 @@ import { isLivePlacement, type EngineDb } from "../storage/engine-db";
 import { strategyLabel } from "../inplayguru/bet-feed";
 import { pricingInputs } from "./winloss";
 import { ukDateOf } from "./uk-time";
-import { addDaysUk, ukWeekStart } from "../members/time";
+import { addDaysUk, ukWeekStart } from "./uk-time";
 import { segmentsOf } from "./segments";
 
 interface WeekTally {

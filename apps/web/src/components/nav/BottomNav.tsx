@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal, Crown } from "lucide-react";
+import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal } from "lucide-react";
 import { ADMIN_MAIN, navActive } from "@/lib/admin-sections";
 import { navIcon } from "./nav-icons";
 import { AdviceBadge } from "@/components/admin/AdviceBadge";
@@ -16,8 +16,6 @@ const TABS = [
   { href: "/live", label: "Live", icon: Radio, isMore: false },
   { href: "/trade-log", label: "Trade Log", icon: ListChecks, isMore: false },
   { href: "/schedule", label: "Schedule", icon: CalendarDays, isMore: false },
-  // The Members platform (beta): opens its own frame at /members.
-  { href: "/members", label: "Members", icon: Crown, isMore: false },
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
 ] as const;
 
@@ -36,8 +34,6 @@ const ADMIN_TABS = [
 export function useVisibleTabs() {
   const { data: me } = useMe();
   return TABS.filter((t) => {
-    // Hidden until we know who is looking: it showed for a moment (or for good, if the check failed) to the admin.
-    if (t.href === "/members" && (!me || me.admin)) return false;
     const needs = TAB_PAGE[t.href] ?? null;
     if (!needs || !me || me.admin || !me.user) return true;
     return me.pages.includes(needs);

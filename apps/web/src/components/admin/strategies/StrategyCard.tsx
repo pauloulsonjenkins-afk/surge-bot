@@ -348,7 +348,7 @@ export function StrategyCard({
               onClick={() => setAbout((v) => !v)}
               className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
             >
-              {about ? "Close" : "About and members' name"}
+              {about ? "Close" : "About"}
             </button>
             {row.mergedInto ? (
               <button

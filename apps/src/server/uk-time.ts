@@ -49,3 +49,16 @@ export function ukDayBounds(date: string): { from: string; to: string } {
     to: new Date(startOfUkDay(ukDay.format(next))).toISOString(),
   };
 }
+
+/** Calendar arithmetic on a YYYY-MM-DD date (the date itself carries no time zone, so a plain UTC sum is safe). */
+export function addDaysUk(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The Monday of the week a UK date is in. */
+export function ukWeekStart(date: string): string {
+  const dow = new Date(`${date}T12:00:00Z`).getUTCDay(); // 0 = Sunday
+  return addDaysUk(date, -((dow + 6) % 7));
+}

@@ -17,7 +17,7 @@
  */
 import type { EngineDb } from "../storage/engine-db";
 import { listHorseBets, setHorseResult, type HorseBet } from "./horses";
-import { addDaysUk } from "../members/time";
+import { addDaysUk } from "./uk-time";
 import { ukDateOf, ukDayBounds } from "./uk-time";
 import { log } from "./log";
 import { sendPush } from "./push";

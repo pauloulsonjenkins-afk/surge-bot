@@ -34,7 +34,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
     return (
       <div className="crema-bg flex min-h-dvh flex-col text-ink">
         <header className="px-5 pt-5">
-          <Link href="/members" aria-label="GoalBrew">
+          <Link href="/" aria-label="GoalBrew">
             <Image unoptimized priority src="/brand/goalbrew-logo-dark.svg" alt="GoalBrew" width={168} height={28} className="h-7 w-auto [[data-theme=light]_&]:hidden" />
             <Image unoptimized src="/brand/goalbrew-logo-light.svg" alt="GoalBrew" width={168} height={28} className="hidden h-7 w-auto [[data-theme=light]_&]:block" />
           </Link>
