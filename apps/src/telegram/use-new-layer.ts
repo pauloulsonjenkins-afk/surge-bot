@@ -11,6 +11,12 @@
  *
  * Classes the newer layer dropped but GramJS's own helpers still check with `instanceof` (the old keyboard buttons) get
  * empty stand-ins, so those checks answer "no" instead of throwing. The engine doesn't use buttons.
+ *
+ * The newer layer also adds "communities": a chat type (Community, CommunityForbidden) and a dialog type
+ * (DialogCommunity) GramJS has never heard of. Once the account is in one, getDialogs() threw "Cannot cast Community to
+ * any kind of int" and the catch-up sync failed. Community and CommunityForbidden are made to behave as a Channel and a
+ * ChannelForbidden (same id, access hash and title fields), and DialogCommunity (which has no peer or last message) as a
+ * DialogFolder, which GramJS's dialog list already skips.
  */
 import Module from "node:module";
 import { TELEGRAM_API_LAYER, TELEGRAM_API_TL } from "./api-layer";
@@ -58,6 +64,13 @@ function install(): void {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Api } = require("telegram/tl/api") as { Api: Record<string, unknown> };
   for (const name of DROPPED) if (!(name in Api)) Api[name] = class {};
+  const kin = Api as Record<string, { prototype: object } | undefined>;
+  const pairs: [string, string][] = [["Community", "Channel"], ["CommunityForbidden", "ChannelForbidden"], ["DialogCommunity", "DialogFolder"]];
+  for (const [child, parent] of pairs) {
+    const c = kin[child];
+    const p = kin[parent];
+    if (c && p) Object.setPrototypeOf(c.prototype, p.prototype);
+  }
   telegramLayer = TELEGRAM_API_LAYER;
 }
 

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import "../src/tips/reader";
 import { telegramLayer } from "../src/telegram/use-new-layer";
 import { TELEGRAM_API_LAYER } from "../src/telegram/api-layer";
-import { Api } from "telegram";
+import { Api, utils } from "telegram";
 import { BinaryReader } from "telegram/extensions";
 import { messageWords } from "../src/tips/rich-text";
 import { classifyTip } from "../src/tips/classify";
@@ -70,4 +70,14 @@ test("buttons the newer layer dropped have stand-ins, so GramJS's own checks don
     assert.equal(typeof A[name], "function", name);
     assert.equal({} instanceof (A[name] as new () => unknown), false);
   }
+});
+
+test("a community in the chat list is read like a channel, so getDialogs() no longer throws 'Cannot cast Community'", () => {
+  const A = Api as unknown as Record<string, new (args: Record<string, unknown>) => object>;
+  const community = new A.Community!({ id: 1234567890 as never, title: "Some community", photo: new Api.ChatPhotoEmpty() });
+  const forbidden = new A.CommunityForbidden!({ id: 1234567891 as never, title: "Closed community" });
+  assert.equal(utils.getPeerId(community as never), "-1001234567890");
+  assert.equal(utils.getPeerId(forbidden as never), "-1001234567891");
+  assert.equal(utils.getDisplayName(community as never), "Some community");
+  assert.ok(new A.DialogCommunity!({ communityId: 1234567890 as never, notifySettings: new Api.PeerNotifySettings({}) }) instanceof Api.DialogFolder);
 });
