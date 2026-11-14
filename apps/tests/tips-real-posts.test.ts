@@ -6,7 +6,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { classifyTip } from "../src/tips/classify";
-import { mergeOldTipStrategies, readTipBet, trackTips, TIPS_STRATEGY } from "../src/tips/track";
+import { mergeOldTipStrategies, readTipBet, resultFromPost, settleChannelPricePicks, trackTips, TIPS_STRATEGY } from "../src/tips/track";
+import { computeStrategyReturns } from "../src/server/winloss";
+import { settleValuePicks } from "../src/edge/value-strategy";
 import { recordTip } from "../src/tips/reader";
 
 const bet = (text: string) => {
@@ -94,4 +96,57 @@ test("every channel records as one strategy, and the old one-per-channel strateg
   assert.deepEqual([...new Set(db.listOpenEdgePicks().map((p) => p.detail.strategyRaw))].sort(), [TIPS_STRATEGY, "Telegram: Old channel"].sort());
   assert.equal(db.getStrategyMerges()["telegram: old channel"], TIPS_STRATEGY);
   assert.equal(mergeOldTipStrategies(db), 0, "merged once only");
+});
+
+test("results are read from a channel's later posts: a tick or 'cashed' is a hit, a cross a miss, a recap line by line", () => {
+  assert.equal(resultFromPost("🟢🔥 THIRD FREEBIE CASHED!!!\nArmenia vs Cyprus\nOver 0.5 First-Half Goals ✅\n💰 £750 RETURN", "Armenia", "Cyprus"), "hit");
+  assert.equal(resultFromPost("🔴 FREEBIE LOST\nZulte-Waregem II vs KVV Zelzate ❌", "Zulte-Waregem II", "KVV Zelzate"), "miss");
+  const recap = "🔄 TUESDAY FREEBIES RECAP! 🔄\n❌ FIRST FREEBIE FC Ulaanbaatar vs Erchim Win\n✅ SECOND FREEBIE Chad vs Mali Win\n✅ THIRD FREEBIE PSG vs Bayern BTTS";
+  assert.equal(resultFromPost(recap, "FC Ulaanbaatar", "Erchim"), "miss");
+  assert.equal(resultFromPost(recap, "Chad", "Mali"), "hit");
+  assert.equal(resultFromPost(recap, "Ajax", "PSV"), null, "a match it doesn't name");
+  // A recap line that names only the team backed counts for a team-to-win tip, not for a tip that backs no team.
+  const short = "🔄 RECAP\n❌ FIRST FREEBIE FC Ulaanbaatar Win\n✅ SECOND FREEBIE Chad (W) Win";
+  assert.equal(resultFromPost(short, "Chad (W)", "Mali (W)", "Chad (W)"), "hit");
+  assert.equal(resultFromPost(short, "Chad (W)", "Mali (W)", null), null);
+  assert.equal(resultFromPost("Armenia vs Cyprus starts soon, good luck family", "Armenia", "Cyprus"), null, "no result in it");
+});
+
+test("a tip on a match Betfair doesn't list is recorded in Sim at the channel's price, never sent, and settled from the channel's later post", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const none = { searchEvents: async () => [], checkBet: async () => ({ status: "noMarket" as const, price: null, runners: [] }) };
+  const posted = Math.floor((Date.now() - 20 * 60_000) / 1000);
+  recordTip(db, { chatKey: "-1001", messageId: 10, date: posted, channel: "Channel one", text: "🔥 FIRST FREEBIE OF THE DAY!\n⚽ Royal Dagon FC vs Nay Pyi Taw\n🎯 ROYAL DAGON FC TO WIN\n🔣 ODDS: 4/6 (1.67)\n⏰ 09:00 UK 🇬🇧" });
+  assert.equal(await trackTips(db, none), 1);
+  const open = db.listOpenEdgePicks();
+  assert.equal(open.length, 1);
+  assert.equal(open[0]!.detail.strategyRaw, TIPS_STRATEGY);
+  const row = db.sqlite.prepare(`SELECT sendable, exchange_odds, sim_row FROM live_picks WHERE id = ?`).get(open[0]!.id) as { sendable: number; exchange_odds: number; sim_row: string };
+  assert.equal(row.sendable, 0, "never sent as a real bet");
+  assert.equal(row.exchange_odds, 1.67);
+  assert.ok(JSON.parse(row.sim_row).stake > 0);
+  // Betfair's settling job leaves it alone, and it waits while the channel says nothing.
+  assert.equal(await settleValuePicks(db, { runnerResult: async () => "WINNER" }, new Date(Date.now() + 10 * 86_400_000)), 0);
+  assert.equal(settleChannelPricePicks(db), 0);
+  // The tip's own post, and another tip carrying a tick, are not results.
+  recordTip(db, { chatKey: "-1001", messageId: 11, date: posted + 600, channel: "Channel one", text: "Tip: Over 2.5 goals\nRoyal Dagon FC vs Nay Pyi Taw ✅ @ 1.80" });
+  assert.equal(settleChannelPricePicks(db), 0);
+  // The channel's recap names the match and says how it ended.
+  recordTip(db, { chatKey: "-1001", messageId: 12, date: posted + 3 * 3600, channel: "Channel one", text: "🔄 FREEBIES RECAP!\n✅ FIRST FREEBIE Royal Dagon FC vs Nay Pyi Taw Win\n❌ SECOND FREEBIE Ajax vs PSV" });
+  assert.equal(settleChannelPricePicks(db), 1);
+  const sim = computeStrategyReturns(db)["telegram tips"]!.sim;
+  assert.equal(sim.counted, 1);
+  assert.equal(sim.hits, 1);
+});
+
+test("a channel-priced tip its channel never reports on counts as lost after 30 hours, and one with no price is not recorded", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const none = { searchEvents: async () => [], checkBet: async () => ({ status: "noMarket" as const, price: null, runners: [] }) };
+  const posted = Math.floor((Date.now() - 31 * 3_600_000) / 1000);
+  recordTip(db, { chatKey: "-1001", messageId: 20, date: posted, channel: "Channel one", text: "🎯 ROYAL DAGON FC TO WIN\n⚽ Royal Dagon FC vs Nay Pyi Taw\n🔣 ODDS: 1.67\n⏰ 09:00 UK 🇬🇧" });
+  recordTip(db, { chatKey: "-1001", messageId: 21, date: posted, channel: "Channel one", text: "🎯 BAYSWATER CITY TO WIN\n⚽ Bayswater City vs Sydney Olympic\n⏰ 08:30 UK 🇬🇧" });
+  await trackTips(db, none);
+  const sim = computeStrategyReturns(db)["telegram tips"]!.sim;
+  assert.equal(sim.counted, 1, "only the priced tip is recorded");
+  assert.equal(sim.hits, 0, "silence is counted as lost");
 });

@@ -203,6 +203,8 @@ export async function settleValuePicks(db: EngineDb, reader: Pick<BetfairReader,
   for (const p of db.listOpenEdgePicks()) {
     const info = (p.detail as ParsedAlert & { edge?: EdgePickInfo }).edge;
     if (!info) continue;
+    // A tip priced from its channel has no Betfair market: tips/track.ts settles it from the channel's own results.
+    if (info.marketType === "BY_CHANNEL") continue;
     const ko = Date.parse(info.kickoff);
     if (now.getTime() < ko + SETTLE_AFTER_MS) continue;
     const r = await reader.runnerResult(info.marketId, info.selectionId).catch(() => null);

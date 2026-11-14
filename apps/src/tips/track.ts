@@ -117,7 +117,19 @@ function pickId(chatKey: string, messageId: number): number {
   return (h >>> 1) || 1;
 }
 
-function detailFor(strategy: string, home: string, away: string, selection: string, e: { kickoff: string; marketId: string; selectionId: number; marketType: string; selectionName: string; price: number }): ParsedAlert {
+/** A tip Betfair doesn't list is recorded this long after it was posted, so a late listing is waited for first. */
+const CHANNEL_PRICE_AFTER_MS = 15 * 60_000;
+/** A channel-priced tip with no result from its channel this long after it was posted is counted as lost (see settleChannelPricePicks). */
+const SILENCE_MEANS_LOST_MS = 30 * 3_600_000;
+const BY_CHANNEL = "BY_CHANNEL";
+
+function detailFor(
+  strategy: string,
+  home: string,
+  away: string,
+  selection: string,
+  e: { kickoff: string; marketId: string; selectionId: number; marketType: string; selectionName: string; price: number; chatKey?: string; tipMessageId?: number; postedAt?: string },
+): ParsedAlert {
   return {
     strategyRaw: strategy,
     strategyKey: strategy.toLowerCase(),
@@ -177,7 +189,7 @@ async function trackOne(
   let judged = await find(searchWord(home));
   if (judged.result === "off") judged = await find(searchWord(away));
   if (judged.result !== "on" || !judged.eventId || !judged.event || !sameOrder(home, away, judged.event)) {
-    return { done: false, retry: true, reason: "Match not found on Betfair." };
+    return recordAtChannelPrice(db, t, bet, home, away, now);
   }
   const events = await reader.searchEvents(searchWord(home), at);
   const open = events.find((e) => e.id === judged.eventId)?.openDate;
@@ -232,6 +244,129 @@ async function trackOne(
     at: now.toISOString(),
   });
   return { done: true };
+}
+
+const NOT_ON_BETFAIR = "Match not found on Betfair.";
+
+/**
+ * A tip whose match Betfair doesn't list (Myanmar, Indonesian and Belgian amateur football, a Copa del Rey minnow: 4 to 6 of
+ * 26 free tips in four days) is recorded in Sim at the price the channel quoted, so the channel's record is whole. It is only
+ * ever Sim (never sent as a bet), and it is settled from the channel's own results (settleChannelPricePicks). A tip with
+ * no price quoted can't be recorded this way, and isn't until the old wait for Betfair runs out.
+ */
+function recordAtChannelPrice(
+  db: EngineDb,
+  t: { chatKey: string; messageId: number; channel: string; postedAt: string; text: string; odds: number | null },
+  bet: TipBet,
+  home: string,
+  away: string,
+  now: Date,
+): Outcome {
+  const age = now.getTime() - Date.parse(t.postedAt);
+  if (age < CHANNEL_PRICE_AFTER_MS) return { done: false, retry: true, reason: NOT_ON_BETFAIR };
+  if (t.odds === null || !(t.odds > 1.01 && t.odds < 20)) return { done: false, retry: true, reason: `${NOT_ON_BETFAIR} The channel quoted no price either.` };
+  const strategy = tipsStrategy(t.channel);
+  const settings = getSendingSettings(db);
+  const stake = resolveStake(settings, strategy.toLowerCase(), getBank(db), { now, live: false }).stake ?? 1;
+  const minPrice = settings.minOdds[strategy.toLowerCase()] ?? null;
+  const skipped = minPrice !== null && t.odds < minPrice ? `Odds ${t.odds.toFixed(2)} were below the minimum ${minPrice.toFixed(2)}.` : null;
+  db.addEdgePick({
+    messageId: pickId(t.chatKey, t.messageId),
+    strategy,
+    selection: bet.words,
+    competition: "Unknown",
+    country: "",
+    home,
+    away,
+    text: `${strategy}\n${t.channel}\n${home} vs ${away}\n${bet.words} @ ${t.odds.toFixed(2)} (the channel's price: Betfair doesn't list this match)\n\n${t.text.slice(0, 400)}`,
+    detail: detailFor(strategy, home, away, bet.words, { kickoff: t.postedAt, marketId: "", selectionId: 0, marketType: BY_CHANNEL, selectionName: bet.words, price: t.odds, chatKey: t.chatKey, tipMessageId: t.messageId, postedAt: t.postedAt }),
+    event: `${home} v ${away}`,
+    eventId: "by-channel",
+    odds: t.odds,
+    simRowJson: JSON.stringify({ stake: skipped === null ? stake : null, minPrice, skipped }),
+    at: t.postedAt,
+    sendable: false,
+  });
+  return { done: true };
+}
+
+const plainWord = (s: string) => plain(searchWord(s)).trim();
+const HIT_MARK = /✅|✔️|cashe+d|\bwinners?\b|\bwon\b|\bwins\b|\bland(ed)?\b/i;
+const MISS_MARK = /❌|✖️|\blost\b|\bloss(es)?\b|\bmissed\b|\bdidn'?t land\b/i;
+
+/** One post's verdict for one match: "hit", "miss", or null when it doesn't name the match or doesn't say (or says both). */
+export function resultFromPost(text: string, home: string, away: string, backed?: string | null): "hit" | "miss" | null {
+  const h = plainWord(home);
+  const a = plainWord(away);
+  if (!h || !a) return null;
+  // A recap line often names only the team backed ("SECOND FREEBIE Chad (W) Win"): for a team-to-win tip, that line counts.
+  const b = backed ? plainWord(backed) : "";
+  const lineResult = (line: string): "hit" | "miss" | null => {
+    if (!(plain(line).includes(h) && plain(line).includes(a)) && !(b.length >= 4 && plain(line).includes(b) && /\b(freebie|tip|bet|pick|win|won|lost|loss)\b/i.test(line))) return null;
+    const hit = HIT_MARK.test(line);
+    const miss = MISS_MARK.test(line);
+    return hit === miss ? null : hit ? "hit" : "miss";
+  };
+  const names = (s: string) => plain(s).includes(h) && plain(s).includes(a);
+  const polarity = (s: string): "hit" | "miss" | null => {
+    const hit = HIT_MARK.test(s);
+    const miss = MISS_MARK.test(s);
+    return hit === miss ? null : hit ? "hit" : "miss";
+  };
+  // A post about this match alone: its marks are its result. A recap lists several, so its lines are read one by one.
+  if (names(text)) {
+    const whole = polarity(text);
+    const lines = text.split("\n").filter((l) => l.trim());
+    const others = lines.filter((l) => !names(l) && /\bvs?\b/i.test(l)).length;
+    if (whole && others === 0) return whole;
+  }
+  for (const line of text.split("\n")) {
+    const p = lineResult(line);
+    if (p) return p;
+  }
+  return null;
+}
+
+/** The team a "X to win" tip backs, or null for any other bet. */
+function backedTeam(words: string | null, home: string, away: string): string | null {
+  const m = /^(.+?)\s+to win$/i.exec((words ?? "").trim());
+  if (!m) return null;
+  const team = plain(m[1]!);
+  return team === plain(home) ? home : team === plain(away) ? away : null;
+}
+
+/**
+ * Settles the tips priced from their channel (recordAtChannelPrice): from a later post in the same channel that names the
+ * match and says how it ended (a tick or "cashed", a cross or "lost"). A channel that never reports a loss would otherwise
+ * show only wins, so a tip the channel is silent on for 30 hours counts as lost: it can only understate the record.
+ * The tip's own post and other tips are never read as results (a tip carries a tick as decoration). Returns how many were settled.
+ */
+export function settleChannelPricePicks(db: EngineDb, now = new Date()): number {
+  let settled = 0;
+  const posts = db.listChannelTips(new Date(now.getTime() - 4 * 86_400_000).toISOString(), 5000);
+  for (const p of db.listOpenEdgePicks()) {
+    const info = (p.detail as unknown as { edge?: { marketType?: string; chatKey?: string; tipMessageId?: number; postedAt?: string } }).edge;
+    if (!info || info.marketType !== BY_CHANNEL || !info.chatKey || info.tipMessageId === undefined || !info.postedAt) continue;
+    const home = p.detail.home ?? "";
+    const away = p.detail.away ?? "";
+    let result: "hit" | "miss" | null = null;
+    const backed = backedTeam(p.detail.selection ?? null, home, away);
+    const tipAt = Date.parse(info.postedAt);
+    for (const post of posts) {
+      if (post.chatKey !== info.chatKey || post.messageId <= info.tipMessageId || post.verdict === "tip" || post.review === "tip") continue;
+      // Within three days of the tip: a recap of a later match with the same team is not this one's.
+      if (Date.parse(post.postedAt) - tipAt > 3 * 86_400_000) continue;
+      result = resultFromPost(post.text, home, away, backed);
+      if (result) break;
+    }
+    if (!result && now.getTime() - Date.parse(info.postedAt) > SILENCE_MEANS_LOST_MS) result = "miss";
+    if (result) {
+      db.settleEdgePick(p.id, result, now.toISOString());
+      settled++;
+    }
+  }
+  if (settled > 0) log.info(`Telegram tips: ${settled} channel-priced pick${settled === 1 ? "" : "s"} settled from the channels' own results.`);
+  return settled;
 }
 
 /** The bets the Free tips page offers for "this is the bet", as words readTipBet reads back (for the ones that can be priced on Betfair). */
@@ -345,6 +480,11 @@ export async function trackTips(db: EngineDb, reader: Pick<BetfairReader, "searc
     } catch (err) {
       log.warn(`Telegram tips: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+  try {
+    settleChannelPricePicks(db, now);
+  } catch (err) {
+    log.warn(`Telegram tips: settling channel-priced picks failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (added > 0) {
     log.info(`Telegram tips: ${added} new Sim pick${added === 1 ? "" : "s"}.`);

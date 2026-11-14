@@ -171,6 +171,8 @@ export function rescoreIfRulesChanged(db: EngineDb): number {
   const chats = [...new Set(db.listChannelTips(since, 5000).map((t) => t.chatKey))];
   let changed = 0;
   for (const chat of chats) changed += rescoreChannel(db, chat, 60);
+  // Tips set aside under the old rules get another look: the new rules read more bets and can record at the channel's price.
+  changed += db.resetSetAsideTips(new Date(Date.now() - 36 * 3_600_000).toISOString());
   db.setSetting(VERSION_KEY, CLASSIFIER_VERSION);
   if (changed > 0) log.info(`Free tips: ${changed} stored message(s) read again with the improved rules.`);
   return changed;

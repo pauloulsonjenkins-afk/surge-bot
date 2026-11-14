@@ -1277,6 +1277,11 @@ export class EngineDb {
     }));
   }
 
+  /** Puts tips that were set aside ("no: ...") since `since` back in the queue, once the rules for reading them have improved. */
+  resetSetAsideTips(since: string): number {
+    return this.db.prepare(`UPDATE channel_tips SET tracked = NULL WHERE tracked LIKE 'no:%' AND posted_at >= ?`).run(since).changes;
+  }
+
   /** The owner's own reading of a tip's bet (null clears it), and the odds they gave. */
   setChannelTipBet(chatKey: string, messageId: number, bet: string | null, odds: number | null): boolean {
     return this.db.prepare(`UPDATE channel_tips SET my_bet = ?, my_odds = ? WHERE chat_key = ? AND message_id = ?`).run(bet, odds, chatKey, messageId).changes > 0;
@@ -3291,6 +3296,8 @@ export class EngineDb {
     /** Null when the strategy is Live: the bet feed handles it, and the Sim recording covers it if it isn't sent. */
     simRowJson: string | null;
     at: string;
+    /** False for a pick that must never be sent as a real bet (a tip priced from the channel, not from Betfair). Default true. */
+    sendable?: boolean;
   }): boolean {
     const r = this.db
       .prepare(
@@ -3298,9 +3305,9 @@ export class EngineDb {
            chat_id, message_id, first_seen_at, updated_at, strategy, market, selection, competition, home, away,
            status, sendable, flags_json, parsed_json, raw_text, message_at, country,
            exchange, exchange_event, exchange_odds, exchange_event_id, market_check, sim_row, sim_at
-         ) VALUES (?, ?, ?, ?, ?, 'EDGE_VALUE', ?, ?, ?, ?, 'captured', 1, '[]', ?, ?, ?, ?, 'on', ?, ?, ?, 'ok', ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, 'EDGE_VALUE', ?, ?, ?, ?, 'captured', ?, '[]', ?, ?, ?, ?, 'on', ?, ?, ?, 'ok', ?, ?)`,
       )
-      .run(EDGE_CHAT, p.messageId, p.at, p.at, p.strategy, p.selection, p.competition, p.home, p.away, JSON.stringify(p.detail), p.text, p.at, p.country, p.event, p.odds, p.eventId, p.simRowJson, p.simRowJson === null ? null : p.at);
+      .run(EDGE_CHAT, p.messageId, p.at, p.at, p.strategy, p.selection, p.competition, p.home, p.away, p.sendable === false ? 0 : 1, JSON.stringify(p.detail), p.text, p.at, p.country, p.event, p.odds, p.eventId, p.simRowJson, p.simRowJson === null ? null : p.at);
     if (r.changes > 0) this.onChange();
     return r.changes > 0;
   }
