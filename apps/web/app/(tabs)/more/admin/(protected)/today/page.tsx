@@ -55,6 +55,20 @@ function SimToday({ value, tone, settled }: { value: string; tone: string; settl
   );
 }
 
+/** Today's Live profit, first thing on Home (it was the second tile of the status strip below). */
+function LiveToday({ d }: { d: TodaySnapshot }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface">
+      <Tile
+        flat
+        label="Live today"
+        value={<Flash value={d.today.liveNet}><span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span></Flash>}
+        sub={<>{d.today.liveSettled} settled<SimToday value={gbp(d.today.simNet, false)} tone={toneOf(d.today.simNet)} settled={d.today.simSettled} /></>}
+      />
+    </div>
+  );
+}
+
 function secs(n: number | null): string {
   return n === null ? "–" : n < 60 ? `${n} s` : `${Math.round(n / 6) / 10} min`;
 }
@@ -235,14 +249,13 @@ function Tiles({ d }: { d: TodaySnapshot }) {
     <>
       <NoticeStack items={notices} />
 
-      <div className={`grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line ${d.today.liveUnits !== undefined ? "lg:grid-cols-4" : "lg:grid-cols-3 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2"}`}>
+      <div className={`grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line ${d.today.liveUnits !== undefined ? "lg:grid-cols-3 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2" : "lg:grid-cols-2"}`}>
         <Tile flat
           label="Betting"
           value={d.betting.on ? (d.betting.breaker.open ? "Paused" : "On") : "Off"}
           sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
-        <Tile flat label="Live today" value={<Flash value={d.today.liveNet}><span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span></Flash>} sub={<>{d.today.liveSettled} settled<SimToday value={gbp(d.today.simNet, false)} tone={toneOf(d.today.simNet)} settled={d.today.simSettled} /></>} />
         {/* The same day as if every bet were the same 1-unit stake, so a stake change can't make it look better or worse. */}
         {d.today.liveUnits !== undefined && (
           <Tile flat
@@ -411,6 +424,7 @@ export default function TodayPage() {
         }
         actions={data ? <KillSwitch on={data.betting.on} /> : undefined}
       />
+      {data && <LiveToday d={data} />}
       <PayingCard />
       {error ? (
         <QueryError error={error} next="/more/admin/today" />
