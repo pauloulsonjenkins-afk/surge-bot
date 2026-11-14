@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import BottomNav from "@/components/nav/BottomNav";
 import SideNav from "@/components/nav/SideNav";
+import AdminTopBar from "@/components/nav/AdminTopBar";
+import { useMe } from "@/queries/use-me";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
 import Image from "next/image";
@@ -12,6 +14,7 @@ import Link from "next/link";
 export default function TabsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const setLastMoreRoute = useUiStore((s) => s.setLastMoreRoute);
+  const { data: me } = useMe();
 
   // Remember where under /more the user last was (but never remember an
   // admin route as the "return to" target — always land back on the More
@@ -48,6 +51,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
       <main className="flex-1 overflow-y-auto pb-[calc(84px+env(safe-area-inset-bottom,0px))] lg:pb-10 lg:pl-60">
         {/* Chart pages use more of a big screen (design review: at 1440px, 40% of the width sat empty). */}
         <div className={`mx-auto w-full max-w-5xl lg:pt-4 ${wide ? "2xl:max-w-7xl" : ""}`}>
+          {me?.admin && <AdminTopBar />}
           {/* Keyed by the page, so each one eases in as it opens (globals.css .page-enter); none with reduced motion. */}
           <div key={pathname} className={`page-enter ${wide ? "" : "max-w-3xl"}`}>
             {children}

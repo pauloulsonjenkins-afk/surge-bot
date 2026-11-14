@@ -14,7 +14,6 @@ import { useToday } from "@/queries/use-today";
 import { AdviceRow, ApplyAllAdvice, adviceTitle, ADVICE_LABEL, isGoodAdvice, IgnoredAdvice } from "@/components/admin/Advice";
 import { trendOf } from "@/components/admin/StrategyWeekly";
 import { isLayRow } from "@/components/admin/LaySection";
-import { GoldenSlicesSection } from "@/components/admin/strategies/GoldenSlicesSection";
 import { INACTIVE_DAYS, SAMPLE, adjustedRoi, modeOf, ownMode, returnsFor, roiTone } from "@/components/admin/strategies/strategy-parts";
 import { roiText } from "@/lib/hit-rate";
 import type { StrategyAdvice } from "@/server/engine-client";
@@ -143,12 +142,13 @@ export default function StrategiesPage() {
     <div className="space-y-5">
       <PageHeader as="h2" title="Strategies" subtitle="Return per £1 on each strategy's own bets." />
 
-      {/* One line that scrolls sideways on a narrow phone: wrapped, "Archive" sat alone on a second row. */}
-      <nav className="chip-row text-xs font-medium lg:mx-0 lg:px-0" aria-label="Related pages">
-        <Link href="/more/admin/reports" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Daily and weekly report</Link>
-        <Link href="/more/admin/strategies/all" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Full detail{layCount > 0 ? ` and LAY bets (${layCount})` : ""}</Link>
-        <Link href="/more/admin/archive" className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-ink">Archive</Link>
-      </nav>
+      {/* Golden, Full detail and the Archive are the tabs above this page (nav/AdminSubNav); the Report is under Profit. */}
+      {layCount > 0 && (
+        <p className="text-xs text-ink-muted">
+          {layCount} LAY {layCount === 1 ? "strategy is" : "strategies are"} on{" "}
+          <Link href="/more/admin/strategies/all" className="text-accent underline underline-offset-2">Full detail</Link>.
+        </p>
+      )}
 
       {(advice.length > 0 || warming.length > 0) && (
         <section aria-label="Needs a look" className="rounded-xl border border-line bg-surface p-3.5">
@@ -190,19 +190,6 @@ export default function StrategiesPage() {
           {group("Quiet", `No alerts for ${INACTIVE_DAYS}+ days. They move to the Archive after 30.`, quiet, true)}
         </>
       )}
-
-      <details className="space-y-2">
-        <summary className="cursor-pointer text-sm font-medium text-ink">
-          {/* The note under the name, not beside it: side by side, both wrapped on a phone. */}
-          <span className="min-w-0 flex-1">
-            Golden slices
-            <span className="block text-xs font-normal text-ink-muted">Parts of a strategy you can put Live on their own.</span>
-          </span>
-        </summary>
-        <div className="mt-2">
-          <GoldenSlicesSection />
-        </div>
-      </details>
     </div>
   );
 }

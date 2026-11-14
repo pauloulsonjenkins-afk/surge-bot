@@ -34,7 +34,8 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (admin) return keep(path === "/" ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next());
+  // The admin's Dashboard is part of Home now (14 Nov 2026), so the old address and the front door both go there.
+  if (admin) return keep(path === "/" || path === "/dashboard" ? NextResponse.redirect(new URL("/more/admin/today", req.url)) : NextResponse.next());
   // A session that has run out (or was ended by a password change) is the admin's: back to the admin sign-in, not Members.
   if (token) {
     const loginUrl = new URL("/more/admin/login", req.url);

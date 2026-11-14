@@ -2,40 +2,17 @@
 
 import { PageHeader } from "@/components/ui/Card";
 import Link from "next/link";
-import { Archive, Bell, CalendarDays, ChevronRight, LayoutGrid, ListChecks, Crown, FileText, Gauge, Layers, Lock, Megaphone, PencilLine, Send, Settings, Sparkles, TrendingUp, Trophy } from "lucide-react";
-import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
+import { ChevronRight, Lock } from "lucide-react";
 import AccountCard from "@/components/account/AccountCard";
-import { ADMIN_GROUPS } from "@/lib/admin-sections";
-import { AdviceBadge } from "@/components/admin/AdviceBadge";
+import { ADMIN_MORE } from "@/lib/admin-sections";
+import { navIcon } from "@/components/nav/nav-icons";
 import { useMe } from "@/queries/use-me";
 
-/** For the admin, the main site's pages the bottom bar doesn't carry. */
-const SITE_PAGES = [
-  { href: "/trade-log", label: "Trade Log", description: "Every settled pick." },
-  { href: "/schedule", label: "Schedule", description: "Today's fixtures." },
-];
-
-const ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
-  "/dashboard": LayoutGrid,
-  "/trade-log": ListChecks,
-  "/schedule": CalendarDays,
-  "/more/admin/today": Gauge,
-  "/more/admin/sending": Send,
-  "/more/admin/strategies": Layers,
-  "/more/admin/golden": Sparkles,
-  "/more/admin/reports": FileText,
-  "/more/admin/tips": Megaphone,
-  "/more/admin/archive": Archive,
-  "/more/admin/leagues": Trophy,
-  "/more/admin/winloss": TrendingUp,
-  "/more/admin/results": PencilLine,
-  "/more/admin/horses": HorseHeadIcon,
-  "/more/admin/members": Crown,
-  "/more/admin/settings": Settings,
-  "/more/admin/notifications": Bell,
-};
-
-/** Your account, then (for the admin only) the admin pages. Everyone else gets a small way into the admin sign-in. */
+/**
+ * Your account, then (for the admin only) the pages that aren't on the tab bar: six of them (14 Nov 2026). It was 17
+ * rows in five groups, five of them already on the bar; Golden, the Report, the notification log, Fix a result and the
+ * Archive now open as tabs under the page they belong to. Everyone else gets a small way into the admin sign-in.
+ */
 export default function MorePage() {
   const { data: me } = useMe();
 
@@ -43,37 +20,29 @@ export default function MorePage() {
     <div className="space-y-6 px-4 py-4">
       <PageHeader title="More" />
 
-      <AccountCard />
+      {!me?.admin && <AccountCard />}
 
-      {me?.admin &&
-        // The everyday pages first, then the site's other pages, then research and settings.
-        [...ADMIN_GROUPS.slice(0, 1), { label: "Results and fixtures", items: SITE_PAGES }, ...ADMIN_GROUPS.slice(1)].map((g) => (
-          <section key={g.label} className="space-y-3">
-            <h2 className="text-base font-semibold text-ink">{g.label}</h2>
-            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-              {g.items.map(({ href, label, description }) => {
-                const Icon = ICONS[href] ?? ChevronRight;
-                return (
-                  <li key={href}>
-                    <Link href={href} className="flex items-center gap-3 px-3 py-3 active:bg-surface-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center icon-tile rounded-lg">
-                        <Icon size={18} />
-                      </span>
-                      <span className="flex-1">
-                        <span className="flex items-center text-sm font-medium text-ink">
-                          {label}
-                          <AdviceBadge href={href} />
-                        </span>
-                        <span className="block text-xs text-ink-muted">{description}</span>
-                      </span>
-                      <ChevronRight size={16} className="text-ink-muted" />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
+      {me?.admin && (
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+          {ADMIN_MORE.map(({ href, label, description }) => {
+            const Icon = navIcon(href);
+            return (
+              <li key={href}>
+                <Link href={href} className="flex items-center gap-3 px-3 py-3.5 active:bg-surface-2">
+                  <span className="icon-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                    <Icon size={19} />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block text-sm font-medium text-ink">{label}</span>
+                    <span className="block text-xs text-ink-muted">{description}</span>
+                  </span>
+                  <ChevronRight size={16} className="text-ink-muted" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {me && !me.admin && (
         <Link href="/more/admin/login" className="flex items-center gap-1.5 text-xs text-ink-muted hover:text-ink">

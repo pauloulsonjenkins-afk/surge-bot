@@ -629,9 +629,10 @@ export default function LivePage() {
           value={show}
           onChange={setShow}
           options={[
-            { value: "all", label: "All" },
+            // The same order as every other Live / Sim / All switch (it was All first here only).
             { value: "live", label: "Live" },
             { value: "sim", label: "Sim" },
+            { value: "all", label: "All" },
           ]}
         />
       )}

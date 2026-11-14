@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal, Crown, Gauge, Layers, TrendingUp } from "lucide-react";
+import { LayoutGrid, Radio, ListChecks, CalendarDays, MoreHorizontal, Crown } from "lucide-react";
+import { ADMIN_MAIN, navActive } from "@/lib/admin-sections";
+import { navIcon } from "./nav-icons";
 import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
@@ -20,19 +22,14 @@ const TABS = [
 ] as const;
 
 /**
- * The admin's own bar (design review, 8 Nov 2026), from the overview to the detail: Dashboard, Today, Live,
- * Strategies, Profit, then More. It replaced the admin tab strip that sat at the top as well (two menus, ten places, the
- * strip cut off at "M…"). Dashboard was first left to More, which put the main page a level down (owner, 8 Nov 2026).
- * Trade Log and Schedule are listed on More.
+ * The admin's own bar: Home, Live, Strategies, Profit, then More (14 Nov 2026; lib/admin-sections.ts holds the list, shared
+ * with the sidebar). Five tabs, not six: Dashboard and Today were two pages answering "how am I doing" and are now one,
+ * Home. Pages that belong to a tab (Golden, the Report) open under it and keep it lit.
  */
 const ADMIN_TABS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, isMore: false },
-  { href: "/more/admin/today", label: "Today", icon: Gauge, isMore: false },
-  { href: "/live", label: "Live", icon: Radio, isMore: false },
-  { href: "/more/admin/strategies", label: "Strategies", icon: Layers, isMore: false },
-  { href: "/more/admin/winloss", label: "Profit", icon: TrendingUp, isMore: false },
+  ...ADMIN_MAIN.map((m) => ({ href: m.href, label: m.label, icon: navIcon(m.href), isMore: false })),
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
-] as const;
+];
 
 /** A signed-in user only sees the tabs the admin has given them. Signed-out visitors and the admin see them all
  * (a signed-out visitor who taps one is offered the sign-in). */
@@ -74,7 +71,8 @@ export default function BottomNav() {
   const { data: me } = useMe();
   const admin = me?.admin === true;
   const tabs = admin ? ADMIN_TABS : visible;
-  const own = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  // For the admin a tab is also lit on the pages that open under it (Golden under Strategies, the Report under Profit).
+  const own = (href: string) => (admin ? navActive(pathname, href) : pathname === href || pathname.startsWith(`${href}/`));
 
   return (
     <nav

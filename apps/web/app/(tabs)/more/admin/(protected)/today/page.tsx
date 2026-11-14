@@ -21,6 +21,7 @@ import { AttentionDot, NoticeStack, type NoticeItem } from "@/components/ui/Noti
 import { Power } from "lucide-react";
 import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
 import { Flash } from "@/components/ui/Flash";
+import { DashboardBody } from "@/components/dashboard/DashboardBody";
 
 
 function ago(iso: string | null): string {
@@ -391,14 +392,17 @@ function Tiles({ d }: { d: TodaySnapshot }) {
   );
 }
 
-/** The admin's one-glance page: is everything working, and what's at risk right now. */
+/**
+ * Home: the admin's one page for "is it working, how am I doing, what needs me" (14 Nov 2026). The day's status first
+ * (this was the Today page), then the performance figures that were the Dashboard, then the slower detail folded away.
+ * The address is still /today so saved links and notifications keep working.
+ */
 export default function TodayPage() {
   const { data, error, isLoading, dataUpdatedAt } = useToday();
   return (
     <div className="space-y-6">
       <PageHeader
-        as="h2"
-        title="Today"
+        title="Home"
         subtitle={
           <>
             <UpdatedAgo at={dataUpdatedAt || null} staleAfter={60} />
@@ -414,6 +418,9 @@ export default function TodayPage() {
         <Tiles d={data} />
       )}
       <NotPlaced />
+      <div className="border-t border-line pt-6">
+        <DashboardBody embedded />
+      </div>
     </div>
   );
 }
