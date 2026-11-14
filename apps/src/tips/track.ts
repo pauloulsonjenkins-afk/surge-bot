@@ -20,11 +20,31 @@ import { getSendingSettings } from "../inplayguru/bet-feed";
 import { getBank, resolveStake } from "../inplayguru/stake";
 import { log } from "../server/log";
 
-/** Each channel is a strategy of its own, so each builds its own record: "Telegram: <channel name>". */
-export const TIPS_PREFIX = "Telegram: ";
-export function tipsStrategy(channel: string): string {
-  const clean = channel.replace(/[^\p{L}\p{N} .&'-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim();
-  return `${TIPS_PREFIX}${clean || "channel"}`;
+/**
+ * Every channel's tips are one strategy, "Telegram tips" (the owner, 14 Nov 2026): one record, one switch, one stake.
+ * Each channel was a strategy of its own before ("Telegram: <channel name>"), which left four records of 1 to 7 picks.
+ * The channel is still on every pick (its text) and in every notification.
+ */
+export const TIPS_STRATEGY = "Telegram tips";
+export const OLD_TIPS_PREFIX = "Telegram: ";
+export function tipsStrategy(_channel?: string): string {
+  return TIPS_STRATEGY;
+}
+
+/**
+ * Reports the old one-per-channel strategies under "Telegram tips" (the Strategies page's own merge, so nothing is
+ * rewritten and it can be undone there). Needs a first "Telegram tips" pick to merge into. Returns how many were merged.
+ */
+export function mergeOldTipStrategies(db: EngineDb): number {
+  const seen = db.listStrategiesSeen().map((s) => s.label);
+  if (!seen.some((l) => l.toLowerCase() === TIPS_STRATEGY.toLowerCase())) return 0;
+  const merges = db.getStrategyMerges();
+  let merged = 0;
+  for (const label of seen) {
+    if (!label.toLowerCase().startsWith(OLD_TIPS_PREFIX.toLowerCase()) || merges[label.toLowerCase()]) continue;
+    if (db.setStrategyMerge(label, TIPS_STRATEGY).ok) merged++;
+  }
+  return merged;
 }
 /** A tip is looked at while it is this young; after that, if it still can't be placed, it is set aside. */
 const MAX_AGE_MS = 36 * 3_600_000;
@@ -46,26 +66,42 @@ const plain = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerC
 /** Which Betfair bet a tip is, or why it can't be tracked. Pure. */
 export function readTipBet(selection: string | null, text: string, home: string, away: string): TipBetRead {
   const sel = (selection ?? "").trim();
-  const all = plain(`${sel} ${text}`);
-  if (/corner|card|booking|scorer|to score first|handicap|ah\b|acca|accumulator|double chance|1x\b|x2\b|or draw|draw or|first half|1st half|second half|2nd half|half.?time|ht\/ft/.test(all)) {
-    return { reason: "Only match goals, both teams to score and a team or draw to win are tracked." };
-  }
+  // The bet's own line decides. The rest of the post is read only when no line was picked out: a write-up mentions
+  // half-time, cards and corners for its own reasons, and that was ruling out bets that could be tracked (14 Nov 2026).
   const s = plain(sel || text);
-  const ou = /\b(over|under)\s*(\d(?:\.5))\b/.exec(s);
-  if (ou) {
-    const line = ou[2]!;
-    const code = `OVER_UNDER_${line.replace(".", "")}`;
-    return { marketType: code, selectionName: `${ou[1] === "over" ? "Over" : "Under"} ${line} Goals`, words: `${ou[1] === "over" ? "Over" : "Under"} ${line} goals` };
+  const NOT_TRACKED = "Only goals (match or first half), both teams to score, a team or draw to win, and double chance are tracked.";
+  if (/corner|card|booking|scorer|to score first|handicap|\bah\b|acca|accumulator|ht\/ft|second half|2nd half/.test(s)) return { reason: NOT_TRACKED };
+  if (/\b(over|under)\s*\d{2,3}(\.\d)?\b|\bpoints\b.*\b(over|under)\b|\b(sets?|rebounds|runs)\b/.test(s)) return { reason: "Only football bets are tracked." };
+  const h = plain(searchWord(home));
+  const a = plain(searchWord(away));
+  const mentionsHome = h.length > 0 && s.includes(h);
+  const mentionsAway = a.length > 0 && s.includes(a);
+  const goals = /\b(over|under)\s*(\d(?:\.\d{1,2})?)\b/.exec(s);
+  const btts = /btts|both teams to score/.test(s);
+  const winner = /\b(to win|wins?|ml|moneyline)\b/.test(s);
+  if (sel && [goals !== null, btts, winner].filter(Boolean).length > 1) return { reason: "Two bets in one (like a win and over 1.5 goals) aren't tracked." };
+  const firstHalf = /first[- ]half|1st[- ]half|\bfh\b|half[- ]?time|\bht\b/.test(s);
+  if (goals) {
+    const line = goals[2]!;
+    if (!/^\d\.5$/.test(line)) return { reason: "Asian goal lines (like 2.0 or 2.25) aren't tracked, only whole-and-a-half lines like 2.5." };
+    const side = goals[1] === "over" ? "Over" : "Under";
+    if (firstHalf) return { marketType: `FIRST_HALF_GOALS_${line.replace(".", "")}`, selectionName: `${side} ${line} Goals`, words: `${side} ${line} first-half goals` };
+    return { marketType: `OVER_UNDER_${line.replace(".", "")}`, selectionName: `${side} ${line} Goals`, words: `${side} ${line} goals` };
   }
-  if (/\b(over|under)\s*\d(\.0|\.25|\.75)\b/.test(s)) return { reason: "Asian goal lines (like 2.0 or 2.25) aren't tracked, only whole-and-a-half lines like 2.5." };
-  if (/btts|both teams to score/.test(s)) {
+  if (firstHalf) return { reason: NOT_TRACKED };
+  if (btts) {
     const no = /\bno\b|\bnot\b|\bn\b/.test(s.replace(/both teams to score|btts/g, ""));
     return { marketType: "BOTH_TEAMS_TO_SCORE", selectionName: no ? "No" : "Yes", words: `Both teams to score: ${no ? "No" : "Yes"}` };
   }
-  const h = plain(searchWord(home));
-  const a = plain(searchWord(away));
-  const mentionsHome = s.includes(h);
-  const mentionsAway = s.includes(a);
+  // Double chance: "Al Nairyah or draw (1X)", "Boulogne or draw (X2)", "double chance".
+  const dcHome = /\b1x\b/.test(s) || (mentionsHome && !mentionsAway && /\bor draw\b|\bdraw or\b|double chance/.test(s));
+  const dcAway = /\bx2\b/.test(s) || (mentionsAway && !mentionsHome && /\bor draw\b|\bdraw or\b|double chance/.test(s));
+  if (dcHome !== dcAway) {
+    return dcHome
+      ? { marketType: "DOUBLE_CHANCE", selectionName: "home-or-draw", words: `${home} or draw` }
+      : { marketType: "DOUBLE_CHANCE", selectionName: "draw-or-away", words: `${away} or draw` };
+  }
+  if (/\bor draw\b|\bdraw or\b|double chance/.test(s)) return { reason: "Couldn't tell which side of the double chance this is." };
   if (/\bdraw\b/.test(s) && !mentionsHome && !mentionsAway) return { marketType: "MATCH_ODDS", selectionName: "draw", words: "The Draw" };
   if (mentionsHome !== mentionsAway && /\b(win|wins|to win|ml|moneyline|1)\b|^[a-z .'-]+$/.test(s)) {
     return mentionsHome ? { marketType: "MATCH_ODDS", selectionName: "home", words: `${home} to win` } : { marketType: "MATCH_ODDS", selectionName: "away", words: `${away} to win` };
@@ -155,7 +191,16 @@ async function trackOne(
   }
 
   const [bfHome = home, bfAway = away] = judged.event.split(/ v /i).map((s) => s.trim());
-  const selectionName = bet.selectionName === "home" ? bfHome : bet.selectionName === "away" ? bfAway : bet.selectionName === "draw" ? "The Draw" : bet.selectionName;
+  const settings = getSendingSettings(db);
+  // Double chance uses the same wording the bet feed sends for the underdog bets (Betting, Limits, Bet wording).
+  const fill = (template: string) => template.replace(/\{home\}/g, bfHome).replace(/\{away\}/g, bfAway);
+  const selectionName =
+    bet.selectionName === "home" ? bfHome
+    : bet.selectionName === "away" ? bfAway
+    : bet.selectionName === "draw" ? "The Draw"
+    : bet.selectionName === "home-or-draw" ? fill(settings.underdogHomeSelection)
+    : bet.selectionName === "draw-or-away" ? fill(settings.underdogAwaySelection)
+    : bet.selectionName;
   const check = await reader.checkBet(judged.eventId, bet.marketType, selectionName);
   if (check.status !== "ok" || check.marketId === undefined || check.selectionId === undefined) {
     return { done: false, retry: false, reason: check.status === "noMarket" ? "Betfair has no such market." : "Betfair has no such selection." };
@@ -164,7 +209,6 @@ async function trackOne(
 
   const strategy = tipsStrategy(t.channel);
   const KEY_NAME = strategy.toLowerCase();
-  const settings = getSendingSettings(db);
   const staked = resolveStake(settings, KEY_NAME, getBank(db), { now, live: false });
   const stake = staked.stake ?? 1;
   const minPrice = settings.minOdds[KEY_NAME] ?? null;
@@ -302,6 +346,10 @@ export async function trackTips(db: EngineDb, reader: Pick<BetfairReader, "searc
       log.warn(`Telegram tips: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  if (added > 0) log.info(`Telegram tips: ${added} new Sim pick${added === 1 ? "" : "s"}.`);
+  if (added > 0) {
+    log.info(`Telegram tips: ${added} new Sim pick${added === 1 ? "" : "s"}.`);
+    const merged = mergeOldTipStrategies(db);
+    if (merged > 0) log.info(`Telegram tips: ${merged} old one-per-channel strateg${merged === 1 ? "y is" : "ies are"} now reported under "${TIPS_STRATEGY}".`);
+  }
   return added;
 }

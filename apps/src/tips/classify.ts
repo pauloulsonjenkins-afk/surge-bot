@@ -43,9 +43,26 @@ const ADVERT_PATTERNS: Array<[RegExp, string]> = [
 const MARKET_WORDS =
   /\b(over|under|btts|both teams to score|to win|win|draw|double chance|1x|x2|12|handicap|ah|asian|corners?|cards?|goals?|clean sheet|first half|1st half|second half|2nd half|dnb|draw no bet|anytime|scorer|acca|accumulator|lay|back)\b/i;
 // Later words may carry digits: "Tai Po U22 vs Hong Kong FC U22" (Both Teams to Score, 9 Nov 2026).
-const FIXTURE = /([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}\p{N}.'&-]+){0,3})[ \t]+(?:vs\.?|VS\.?|v\.?|V\.?|-|–|—|x)[ \t]+([A-Z][\p{L}.'&-]+(?:[ \t][\p{L}\p{N}.'&-]+){0,3})/u;
+// Curly apostrophes count as part of a name: "ST-OUEN L’AUMÔNE VS BOULOGNE" read as "AUMÔNE v BOULOGNE" (14 Nov 2026).
+const FIXTURE = /([A-Z][\p{L}.'’&-]+(?:[ \t][\p{L}\p{N}.'’&-]+){0,3})[ \t]+(?:vs\.?|VS\.?|v\.?|V\.?|-|–|—|x)[ \t]+([A-Z][\p{L}.'’&-]+(?:[ \t][\p{L}\p{N}.'’&-]+){0,3})/gu;
+/**
+ * Words no team has. "Add to betslip - Betfair", "TOP ACCA — STAKE 10", "FREE vs VIP" and "BOTD - Best Odds 47" were all
+ * read as matches (14 Nov 2026), which made adverts look like half a tip.
+ */
+const NOT_A_TEAM = /\b(cashe+d|goals|betslip|betfair|paddy\s?power|bet365|odds|stakes?|acca|free|vip|premium|botd|freebies?|winners?|loss(es)?|profit|bookie|what|returns?)\b/i;
+
+/** The first pair of names in the text that could be two teams. */
+function fixtureIn(text: string): [string, string] | null {
+  for (const m of text.matchAll(FIXTURE)) {
+    const home = homeTeam(m[1]!);
+    const away = awayTeam(m[2]!);
+    if (home && away && !NOT_A_TEAM.test(home) && !NOT_A_TEAM.test(away)) return [home, away];
+  }
+  return null;
+}
 const DECIMAL_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bprice\b[:\s]*|\bat\b\s*)(\d{1,2}\.\d{1,3})\b|\b(\d{1,2}\.\d{2})\b/i;
-const FRACTION_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bat\b\s*)(\d{1,3})\s?\/\s?(\d{1,3})\b/i;
+// ...or a fraction that starts a line: "4/6 - 5 points advised" (TipMan InPlays).
+const FRACTION_ODDS = /(?:@\s*|\bodds?\b[:\s]*|\bat\b\s*)(\d{1,3})\s?\/\s?(\d{1,3})\b|^[ \t]*(\d{1,3})\/(\d{1,3})\b(?=.*\b(?:points?|pts?|units?|advised)\b)/im;
 const STAKE = /\b(\d+(?:\.\d+)?)\s?(units?|u|pts?|points?|stars?)\b|\bstake[:\s]+(\d[^\n]{0,15})/i;
 const TIP_LABEL = /\b(tip|bet|pick|selection|prediction|our (?:bet|pick)|today'?s (?:bet|tip|pick))\b\s*[:\-–]/i;
 const BRAG =
@@ -53,7 +70,12 @@ const BRAG =
 /** Wording that looks ahead to a match not yet played: a kick-off time, "is here", "we're backing". It outweighs boasting words in the same post. */
 // "10:30 AM UK" and "FIRST FREEBIE OF THE DAY" are both forward-looking: a "PROFIT: £285.71" line in the same post is the
 // stake maths, not a boast (Both Teams to Score, 9 Nov 2026).
-const FORWARD = /\bis here\b|we'?re backing|we back\b|\d{1,2}[:.]\d{2}\s*(?:[ap]\.?m\.?\s*)?(uk|eu|gmt|bst|cet)\b|kick[- ]?off (time|at)|\bstarts? (at|in)\b|today'?s (bet|tip|pick)|(free )?bet of the day|freebie of the day/i;
+// Live tips look ahead too, and were all being thrown out as celebrations (14 Nov 2026): CVPICKS's "LIVE PICK ALERT!!!"
+// for its exclamation marks, PRIME BET's "🔴LIVE ... I’m backing Over 1.0 goals" for "Hungary won the reverse fixture".
+const FORWARD =
+  /\bis here\b|we[’']?re backing|we back\b|i[’']?m (backing|going with)|\d{1,2}[:.]\d{2}\s*(?:[ap]\.?m\.?\s*)?(uk|eu|gmt|bst|cet)\b|kick[- ]?off (time|at)|\bstarts? (at|in)\b|today[’']?s (bet|tip|pick)|(free )?bet of the day|freebie of the day|live pick|🔴\s*live|\d{1,3}(st|nd|rd|th) minute|current score|in-?play (single|double|bet)|rolling challenge/i;
+/** An update on a tip already posted (a reminder, a half-time report, a recap): never a new tip, whatever else it says. */
+const UPDATE = /starting soon|almost underway|half[- ]?time update|full[- ]?time update|\brecap\b|kicks? off soon/i;
 const RESULT_ONLY = /^\s*(?:[✅❌✔️❎🟢🔴]|won|lost|win|loss|void)\b|\bresult[s]?\b[:\s]/i;
 
 function oddsFrom(text: string): number | null {
@@ -62,15 +84,15 @@ function oddsFrom(text: string): number | null {
   if (Number.isFinite(dec) && dec > 1 && dec < 100) return dec;
   const f = FRACTION_ODDS.exec(text);
   if (f) {
-    const n = Number(f[1]);
-    const dd = Number(f[2]);
+    const n = Number(f[1] ?? f[3]);
+    const dd = Number(f[2] ?? f[4]);
     if (dd > 0) return Math.round((1 + n / dd) * 100) / 100;
   }
   return null;
 }
 
 /** A line that states a bet outright. */
-const BARE_BET = /\b(to win|over \d|under \d|btts|both teams to score)\b/i;
+const BARE_BET = /\b(to win|over \d|under \d|btts|both teams to score|or draw|draw or|double chance|handicap|1x|x2)\b/i;
 
 /**
  * The home team without the words that led into it: "BTTS YES in Plymouth Parkway vs …" and "backing Arsenal v …" name
@@ -102,8 +124,8 @@ export function classifyTip(text: string): TipRead {
   }
 
   // The bet itself
-  const fx = FIXTURE.exec(t);
-  const match = fx ? `${homeTeam(fx[1]!)} v ${awayTeam(fx[2]!)}` : null;
+  const fx = fixtureIn(t);
+  const match = fx ? `${fx[0]} v ${fx[1]}` : null;
   const odds = oddsFrom(t);
   const market = MARKET_WORDS.test(t);
   const labelled = TIP_LABEL.test(t);
@@ -130,7 +152,9 @@ export function classifyTip(text: string): TipRead {
 
   // The selection: the line after a "Tip:" style label, else the line that carries the market and the price.
   let selection: string | null = null;
-  const lab = /(?:tip|bet|pick|selection|prediction)\s*[:\-–]\s*([^\n]{2,80})/i.exec(t);
+  // The label must start its line: "...the main argument behind this pick: Albacete regularly face stronger opposition"
+  // is a sentence of the write-up, and was taken as PRIME BET's bet (12 Nov 2026), so none of its tips could be read.
+  const lab = /^[^\p{L}\n]*(?:tip|bet|pick|selection|prediction)\s*[:\-–]\s*([^\n]{2,80})/imu.exec(t);
   if (lab) selection = lab[1]!.trim();
   else {
     const lines = t.split("\n").map((l) => l.trim());
@@ -144,9 +168,15 @@ export function classifyTip(text: string): TipRead {
     if (line) selection = line.slice(0, 80);
   }
 
+  if (UPDATE.test(t)) {
+    return { verdict: advert > 1 ? "advert" : "other", reasons: ["an update on a tip already posted, not a new one"], match, selection: null, odds, stake: null };
+  }
+
   // A celebration of a bet already won ("CASHED!!!", "KUPS WINS THE FIRST HALF", "compensation delivered") is advertising,
   // however much it looks like a tip: it names the match, the market and the price, but the match is over.
-  if (!FORWARD.test(t) && (BRAG.test(t) || (t.match(/!/g) ?? []).length >= 4)) {
+  // A headline that boasts ("STAKE 50 CASHEEEED!!!") settles it, whatever looks forward further down.
+  const headline = t.split("\n").find((l) => l.trim()) ?? "";
+  if (BRAG.test(headline) || (!FORWARD.test(t) && (BRAG.test(t) || (t.match(/!/g) ?? []).length >= 4))) {
     // Selling as well as boasting ("guaranteed wins, join VIP") is an advert; boasting alone is just other.
     return { verdict: advert > 0 ? "advert" : "other", reasons: [...reasons.filter((x) => ADVERT_PATTERNS.some(([, why]) => why === x)), "celebrates a bet already won, so it isn't a new tip"], match, selection: null, odds, stake: null };
   }

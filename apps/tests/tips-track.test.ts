@@ -12,7 +12,7 @@ test("goals, both teams to score and a team to win are read; the rest are not tr
   assert.equal((readTipBet("Ajax to win", "", "Ajax", "PSV") as { selectionName: string }).selectionName, "home");
   assert.equal((readTipBet("PSV to win", "", "Ajax", "PSV") as { selectionName: string }).selectionName, "away");
   assert.ok("reason" in readTipBet("Over 9.5 corners", "", "Ajax", "PSV"));
-  assert.ok("reason" in readTipBet("Ajax or draw", "", "Ajax", "PSV"));
+  assert.deepEqual(readTipBet("Ajax or draw", "", "Ajax", "PSV"), { marketType: "DOUBLE_CHANCE", selectionName: "home-or-draw", words: "Ajax or draw" });
   assert.ok("reason" in readTipBet("Something odd", "", "Ajax", "PSV"));
 });
 
@@ -33,8 +33,8 @@ test("a tip is recorded once as a Sim pick, at Betfair's price, and settles from
   assert.equal(await trackTips(db, reader()), 0, "not added twice");
   const open = db.listOpenEdgePicks();
   assert.equal(open.length, 1);
-  assert.equal(open[0]!.detail.strategyRaw, "Telegram: Free tips");
-  assert.equal(tipsStrategy("CVPICKS 🟢💰 Free Betting Club"), "Telegram: CVPICKS Free Betting Club", "emoji dropped from the name");
+  assert.equal(open[0]!.detail.strategyRaw, "Telegram tips");
+  assert.equal(tipsStrategy("CVPICKS 🟢💰 Free Betting Club"), "Telegram tips", "every channel records as the one strategy");
   assert.equal(db.listChannelTips("1970-01-01T00:00:00.000Z")[0]!.tracked, "done");
   const later = new Date(Date.parse(kickoff) + 3 * 3_600_000);
   assert.equal(await settleValuePicks(db, { runnerResult: async () => "WINNER" }, later), 1);
@@ -70,7 +70,7 @@ test("a tip with no price yet is tried again; one that can't be tracked says why
   recordTip(db2, { chatKey: "-1001", messageId: 6, date: Math.floor(Date.now() / 1000), text: "Tip: Over 9.5 corners\nAjax vs PSV @ 1.80", channel: "Free tips" });
   db2.setChannelTipReview("-1001", 6, "tip");
   await trackTips(db2, reader());
-  assert.match(db2.listChannelTips("1970-01-01T00:00:00.000Z")[0]!.tracked ?? "", /^no: Only match goals/);
+  assert.match(db2.listChannelTips("1970-01-01T00:00:00.000Z")[0]!.tracked ?? "", /^no: Only goals/);
 });
 
 import { applyMyBet, myBetWords, recordTipByHand } from "../src/tips/track";
@@ -119,7 +119,7 @@ test("a bet the system can't price is recorded by hand: counts in the channel's 
   const t = db.listChannelTips("1970-01-01T00:00:00.000Z")[0]!;
   assert.equal(t.tracked, "done");
   assert.equal(t.review, "tip");
-  const sim = computeStrategyReturns(db)["telegram: free tips"]!.sim;
+  const sim = computeStrategyReturns(db)["telegram tips"]!.sim;
   assert.equal(sim.counted, 1);
   assert.equal(sim.hits, 1);
   assert.ok(sim.profit > 0, "a win at 1.8 makes money");
@@ -127,5 +127,5 @@ test("a bet the system can't price is recorded by hand: counts in the channel's 
   // A tip that is a loss by hand.
   unclear(db, 8);
   assert.equal(recordTipByHand(db, { chatKey: "-1001", messageId: 8, channel: "Free tips", postedAt: new Date().toISOString(), match: "Ajax v PSV" }, { words: "Corners", odds: 2, result: "lost" }).ok, true);
-  assert.equal(computeStrategyReturns(db)["telegram: free tips"]!.sim.counted, 2);
+  assert.equal(computeStrategyReturns(db)["telegram tips"]!.sim.counted, 2);
 });
