@@ -39,8 +39,8 @@ export default function StrategiesPage() {
 
   const advice = useMemo<StrategyAdvice[]>(() => today.data?.advice ?? [], [today.data]);
   const adviceOf = useMemo(() => new Map(advice.filter((a) => a.kind !== "league-block" && !a.kind.startsWith("slice")).map((a) => [a.key.toLowerCase(), a])), [advice]);
-  const strategies = useMemo(() => (data?.strategies ?? []).filter((r) => !isArchived(r.label) && !isLayRow(r)), [data, isArchived]);
-  const layCount = (data?.strategies ?? []).filter((r) => !isArchived(r.label) && isLayRow(r)).length;
+  const strategies = useMemo(() => (data?.strategies ?? []).filter((r) => !isArchived(r.label) && (!isLayRow(r) || modeOf(r) === "live")), [data, isArchived]);
+  const layCount = (data?.strategies ?? []).filter((r) => !isArchived(r.label) && isLayRow(r) && modeOf(r) !== "live").length;
 
   if (error) return <QueryError error={error} next="/more/admin/strategies" />;
   if (isLoading || !data) {
@@ -89,7 +89,7 @@ export default function StrategiesPage() {
             <span className="block truncate text-sm font-medium text-ink">{names.name(r.label)}</span>
             <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
               {/* The strategy's real state, which is where it is listed; the figures may come from its other side (past Live bets). */}
-              <span>{modeOf(r) === "live" ? "Live" : "Sim"}</span>
+              <span>{modeOf(r) === "live" ? "Live" : "Sim"}{isLayRow(r) ? " · LAY" : ""}</span>
               <span>
                 · {money?.counted ?? 0} {money?.counted === 1 ? "bet" : "bets"}
                 {modeOf(r) !== mode ? ` (${mode === "live" ? "Live" : "Sim"} bets)` : ""}
@@ -148,7 +148,7 @@ export default function StrategiesPage() {
       {/* Golden, Full detail and the Archive are the tabs above this page (nav/AdminSubNav); the Report is under Profit. */}
       {layCount > 0 && (
         <p className="text-xs text-ink-muted">
-          {layCount} LAY {layCount === 1 ? "strategy is" : "strategies are"} on{" "}
+          {layCount} more LAY {layCount === 1 ? "strategy is" : "strategies are"} in Sim, on{" "}
           <Link href="/more/admin/strategies/all" className="text-accent underline underline-offset-2">Full detail</Link>.
         </p>
       )}
