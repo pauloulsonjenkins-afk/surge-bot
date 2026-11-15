@@ -107,7 +107,14 @@ export function tipPoints(r: { betType: "win" | "ew"; result: "won" | "lost" | "
   return { staked: 2, profit: leg(r.result === "won", r.bsp) + leg(r.placed, r.placeBsp) };
 }
 
-const ddmmyyyy = (day: string) => `${day.slice(8, 10)}${day.slice(5, 7)}${day.slice(0, 4)}`;
+/**
+ * The file name's date. A file is named for the day AFTER its races (the file dated 12 Nov holds 11 Nov's races: checked
+ * 15 Nov 2026 against the real files), because it is published the morning after.
+ */
+const ddmmyyyy = (day: string) => {
+  const next = new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  return `${next.slice(8, 10)}${next.slice(5, 7)}${next.slice(0, 4)}`;
+};
 
 /** Fetches a file's text, or null when it isn't there (yet). */
 export type FetchText = (url: string) => Promise<string | null>;
@@ -118,12 +125,14 @@ export async function fetchBspText(url: string): Promise<string | null> {
 }
 
 /**
- * One pass: every earlier day (up to two weeks back) with tips not yet looked up is read from Betfair's files.
+ * One pass: every earlier day (up to two weeks back) with tips not yet found is read from Betfair's files.
  * A day whose win files aren't published yet is left for the next pass. Returns how many tips were recorded.
  */
 export async function settleHorseTips(db: EngineDb, fetchText: FetchText = fetchBspText, now = new Date()): Promise<number> {
   const today = ukDateOf(now);
-  const done = new Set(db.listHorseTipResults().map((r) => `${r.day}|${r.rank}`));
+  // A tip not found is looked up again each pass (up to the two weeks): the files may not have been out, or a name may be
+  // spelt differently in a later one. Found ones are done.
+  const done = new Set(db.listHorseTipResults().filter((r) => r.result !== "not found").map((r) => `${r.day}|${r.rank}`));
   const oldest = new Date(now.getTime() - DAYS_BACK * 86_400_000).toISOString().slice(0, 10);
   const open = db.listHorseTipLog().filter((t) => t.day < today && t.day >= oldest && !done.has(`${t.day}|${t.rank}`));
   let recorded = 0;

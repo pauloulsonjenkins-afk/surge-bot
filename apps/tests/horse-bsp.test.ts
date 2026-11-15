@@ -50,12 +50,13 @@ test("an earlier day's tips are looked up once its files are out, and not before
   assert.equal(await settleHorseTips(db, async () => null, now), 0);
   assert.equal(db.listHorseTipResults().length, 0);
 
-  const files: Record<string, string> = { dwbfpricesukwin15112026: "", dwbfpricesukwin14112026: WIN, dwbfpricesukplace14112026: PLACE };
+  const files: Record<string, string> = { dwbfpricesukwin15112026: WIN, dwbfpricesukplace15112026: PLACE };
   const fetchText = async (url: string) => files[url.split("/").pop()!.replace(".csv", "")] ?? null;
   assert.equal(await settleHorseTips(db, fetchText, now), 2);
   const [first, second] = db.listHorseTipResults();
   assert.deepEqual([first!.result, first!.bsp, first!.placed, first!.placeBsp], ["won", 5, true, 1.8]);
   assert.equal(second!.result, "not found");
-  // Looked up once: a second pass records nothing more.
-  assert.equal(await settleHorseTips(db, fetchText, now), 0);
+  // The found one is done; the unfound one is tried again (its horse may be spelt differently in a later file).
+  assert.equal(await settleHorseTips(db, fetchText, now), 1);
+  assert.equal(db.listHorseTipResults().filter((x) => x.result === "won").length, 1);
 });
