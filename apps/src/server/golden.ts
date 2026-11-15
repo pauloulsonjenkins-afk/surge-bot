@@ -271,6 +271,10 @@ export function retireQuietSlices(db: EngineDb, now = new Date()): CustomSegment
   return retired;
 }
 
+/** Return and bets a finder idea needs to be watched whatever the limits (the owner, 15 Nov 2026). */
+export const PROVEN = { roi: 0.1, bets: 50 };
+export const isProven = (g: GoldenSuggestion) => g.slice.n >= PROVEN.bets && g.slice.roi >= PROVEN.roi;
+
 /**
  * Hourly: the finder's new ideas are watched at once, quietly (no notification) and counted from today, within
  * QUIET_LIMITS (the rest stay as suggestions on the Golden page, to watch by hand). Each is kept on `TOLD_KEY` once
@@ -297,8 +301,14 @@ export function autoWatchGoldenFinds(db: EngineDb, now = new Date()): CustomSegm
   let room = Math.min(QUIET_LIMITS.total - quiet.length, QUIET_LIMITS.perWeek - thisWeek);
   const fresh: GoldenSuggestion[] = [];
   for (const g of list) {
-    if (room <= 0) break;
-    if (told.includes(id(g)) || (per.get(g.strategyKey) ?? 0) >= QUIET_LIMITS.perStrategy) continue;
+    if (told.includes(id(g))) continue;
+    // A proven one (15 Nov 2026, the owner): +10% or better over 50+ priced bets is always watched, outside the limits below.
+    // Watching is Sim only; going Live is still the owner's switch. One stopped by hand stays stopped (it is on `told`).
+    if (isProven(g)) {
+      fresh.push(g);
+      continue;
+    }
+    if (room <= 0 || (per.get(g.strategyKey) ?? 0) >= QUIET_LIMITS.perStrategy) continue;
     fresh.push(g);
     per.set(g.strategyKey, (per.get(g.strategyKey) ?? 0) + 1);
     room--;

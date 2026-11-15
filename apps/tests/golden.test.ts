@@ -135,12 +135,31 @@ test("the finder watches at most three new slices in any week", () => {
   watchSegment(db, "Time to fight", ["score00"], new Date(now.getTime() - 3 * 86_400_000), true);
   db.setSetting(
     "golden_suggestions",
-    JSON.stringify({ at: now.toISOString(), list: [{ strategyKey: "time to fight", strategy: "Time to fight", rule: ["apart1"], label: "1 goal apart", slice: { n: 60, hits: 40, roi: 0.2, low: 0.01 }, rest: { n: 200, roi: -0.02 }, halves: [] }] }),
+    JSON.stringify({ at: now.toISOString(), list: [{ strategyKey: "time to fight", strategy: "Time to fight", rule: ["apart1"], label: "1 goal apart", slice: { n: 60, hits: 40, roi: 0.05, low: 0.01 }, rest: { n: 200, roi: -0.02 }, halves: [] }] }),
   );
   assert.deepEqual(autoWatchGoldenFinds(db, now), []);
   // Eight days on, those three are no longer "this week": the find is taken.
   const later = new Date(now.getTime() + 8 * 86_400_000);
   db.setSetting("golden_suggestions", JSON.stringify({ at: later.toISOString(), list: JSON.parse(db.getSetting("golden_suggestions")!).list }));
   assert.equal(autoWatchGoldenFinds(db, later).length, 1);
+  setCustomSegments([]);
+});
+
+test("a find with +10% or better over 50+ bets is watched whatever the weekly limit, and one stopped by hand stays stopped", () => {
+  setCustomSegments([]);
+  const db = new EngineDb(":memory:", () => {});
+  loadCustomSegments(db);
+  const now = new Date();
+  watchSegment(db, "Blistering Momentum", ["score00"], new Date(now.getTime() - 86_400_000), true);
+  watchSegment(db, "Blistering Momentum", ["apart1"], new Date(now.getTime() - 2 * 86_400_000), true);
+  watchSegment(db, "Time to fight", ["score00"], new Date(now.getTime() - 3 * 86_400_000), true);
+  const find = (rule: string[], n: number, roi: number) => ({ strategyKey: "time to fight", strategy: "Time to fight", rule, label: rule.join("+"), slice: { n, hits: n / 2, roi, low: 0.01 }, rest: { n: 200, roi: -0.02 }, halves: [] });
+  db.setSetting("golden_suggestions", JSON.stringify({ at: now.toISOString(), list: [find(["apart1"], 49, 0.3), find(["apart2"], 60, 0.09), find(["goals4"], 50, 0.1)] }));
+  // Three this week already, so only the one that is proven (50 bets, +10%) gets in; 49 bets or 9% don't.
+  const added = autoWatchGoldenFinds(db, now);
+  assert.deepEqual(added.map((c) => c.rule), [["goals4"]]);
+  // Stopped by hand, it isn't added again.
+  unwatchSegment(db, "time to fight", added[0]!.id);
+  assert.equal(autoWatchGoldenFinds(db, now).length, 0);
   setCustomSegments([]);
 });
