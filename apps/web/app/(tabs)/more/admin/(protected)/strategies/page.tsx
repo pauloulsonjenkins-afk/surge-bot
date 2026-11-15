@@ -15,6 +15,7 @@ import { useToday } from "@/queries/use-today";
 import { AdviceRow, ApplyAllAdvice, adviceTitle, ADVICE_LABEL, isGoodAdvice, IgnoredAdvice } from "@/components/admin/Advice";
 import { trendOf } from "@/components/admin/StrategyWeekly";
 import { isLayRow } from "@/components/admin/LaySection";
+import { ProofChart } from "@/components/admin/strategies/ProofChart";
 import { INACTIVE_DAYS, SAMPLE, adjustedRoi, modeOf, ownMode, returnsFor, roiTone } from "@/components/admin/strategies/strategy-parts";
 import { roiText } from "@/lib/hit-rate";
 import type { StrategyAdvice } from "@/server/engine-client";
@@ -152,6 +153,15 @@ export default function StrategiesPage() {
           <Link href="/more/admin/strategies/all" className="text-accent underline underline-offset-2">Full detail</Link>.
         </p>
       )}
+
+      {/* The centrepiece: every active strategy by how many bets it has and what it returns (ProofChart.tsx). */}
+      <ProofChart
+        enough={SAMPLE}
+        points={[...live, ...testing, ...parked].flatMap((r) => {
+          const money = returnsFor(r, ownMode(r).mode);
+          return money && money.roi !== null && money.counted > 0 ? [{ key: r.label, name: names.name(r.label), href: strategyHref(r.label), bets: money.counted, roi: money.roi, live: modeOf(r) === "live" }] : [];
+        })}
+      />
 
       {advice.length > 0 && (
         <section aria-label="Needs a look" className="rounded-xl border border-line bg-surface p-3.5">

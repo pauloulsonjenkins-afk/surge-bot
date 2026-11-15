@@ -14,6 +14,7 @@ import { WinLossLines, gbp, type LineSeries } from "@/components/admin/WinLossLi
 import { DailyPnlChart } from "@/components/admin/DailyPnlChart";
 import { marketName } from "@/lib/markets";
 import { useSaveWinLoss, useWinLoss, type WinLossState } from "@/queries/use-winloss";
+import { MonthWaterfall, ProfitHero } from "@/components/admin/MonthWaterfall";
 import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import type { PickMode } from "@/server/engine-client";
 import { useStrategyNames } from "@/queries/use-strategy-names";
@@ -99,6 +100,9 @@ function dateLabel(l: string): string {
 function monthName(ym: string): string {
   return new Date(`${ym}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
 }
+
+/** "November" from the engine's UK date for today ("2026-11-15"). */
+const monthLong = (day: string) => new Date(`${day.slice(0, 7)}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "long", timeZone: "UTC" });
 
 export default function WinLossPage() {
   const mode = usePickMode();
@@ -226,6 +230,20 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         <p className="text-sm text-destructive">{saveWinLoss.error.message}</p>
       )}
 
+      {/* ---- the centrepiece: this month's total, and how the strategies add up to it (MonthWaterfall.tsx) ---- */}
+      {lines.length > 0 && anyMoney && (
+        <>
+          <ProfitHero label={`${monthLong(state.today)} so far${mode === "live" ? ", real money" : mode === "sim" ? ", Sim" : ""}`} total={state.periods.mtd.total} />
+          <MonthWaterfall
+            totalLabel="The month"
+            total={state.periods.mtd.total}
+            items={[
+              ...lines.map((s) => ({ name: strategyNames.name(s.label), value: state.periods.mtd.strategies[s.key] ?? 0 })),
+              ...(archivedLines.length > 0 ? [{ name: "Archived", value: archivedLines.reduce((sum, s) => sum + (state.periods.mtd.strategies[s.key] ?? 0), 0) }] : []),
+            ]}
+          />
+        </>
+      )}
       {/* ---- figures ---- */}
       <Card title="Profit and loss" subtitle="Settled picks only.">
         {lines.length === 0 ? (

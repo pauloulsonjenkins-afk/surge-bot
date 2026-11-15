@@ -8,6 +8,7 @@ import { useDialog } from "@/components/ui/ConfirmDialog";
 import { useSending } from "@/queries/use-sending";
 import { bestStatus, GoldenBadge } from "@/components/ui/SegmentLabel";
 import { useSliceStatus } from "@/queries/use-golden";
+import { MatchClock, type ClockPin } from "@/components/live/MatchClock";
 import { GoldenLine } from "@/components/admin/GoldenLine";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
@@ -520,11 +521,14 @@ function MatchGroup({
   admin,
   placements,
   waiting = false,
+  headless = false,
 }: {
   picks: LivePick[];
   admin: boolean;
   placements: Record<string, Placement>;
   waiting?: boolean;
+  /** Without the teams and score on top: the featured match, whose clock above already says them. */
+  headless?: boolean;
 }) {
   // picks arrive newest first, so the first holds the latest score and minute.
   const latest = picks[0]!;
@@ -534,7 +538,7 @@ function MatchGroup({
   const sent = picks.filter((p) => p.sentAt).length;
   return (
     <li className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="flex items-start justify-between gap-3 border-b border-line bg-surface-2/40 px-3 py-2.5">
+      <div className={headless ? "hidden" : "flex items-start justify-between gap-3 border-b border-line bg-surface-2/40 px-3 py-2.5"}>
         <div className="min-w-0">
           <h2 className="break-words text-sm font-semibold text-ink">
             {latest.home ?? "Unknown"} <span className="font-normal text-ink-muted">v</span> {latest.away ?? "Unknown"}
@@ -567,6 +571,66 @@ function MatchGroup({
   );
 }
 
+/**
+ * The featured match: its clock (MatchClock.tsx), then its alerts. `best` is the alert that earned it the place.
+ */
+function Featured({
+  picks,
+  best,
+  now,
+  stageOf,
+  isLive,
+  name,
+  admin,
+  placements,
+}: {
+  picks: LivePick[];
+  best: LivePick;
+  now: number;
+  stageOf: (p: LivePick) => ReturnType<typeof bestStatus>;
+  isLive: (p: LivePick) => boolean;
+  name: string;
+  admin: boolean;
+  placements: Record<string, Placement>;
+}) {
+  const latest = picks[0]!;
+  const clock = matchClock(latest, now);
+  // The estimate as a minute for the ring: half-time is 45, "should be over" is 90, before kick-off nothing.
+  const minute = clock === null || clock.startsWith("KO") ? null : clock === "HT" ? 45 : clock === "FT?" ? 90 : Number(clock.replace(/[^0-9]/g, ""));
+  const words = clock === null ? null : clock === "HT" ? "Half time" : clock === "FT?" ? "Should be over" : clock.startsWith("KO") ? `Kick-off about ${clock.slice(3)}` : `About ${clock.replace("~", "")} now`;
+  const pins: ClockPin[] = picks
+    .filter((p) => p.minute !== null)
+    .map((p) => {
+      const stage = stageOf(p);
+      return { id: p.id, minute: p.minute!, kind: isLive(p) ? "real" : stage === "full" || stage === "trial" || stage === "candidate" ? "gold" : "sim" };
+    });
+  const stage = stageOf(best);
+  const sim = best.similar;
+  const why =
+    stage === "full" ? `${name}: Golden, full stake`
+    : stage === "trial" ? `${name}: Golden, Live trial`
+    : stage === "candidate" ? `${name}: Golden candidate`
+    : sim && sim.roiPct !== null ? `${name}: +${sim.roiPct}% per £1 over ${sim.n} similar bets`
+    : name;
+  return (
+    <div className="space-y-3">
+      <MatchClock
+        home={latest.home ?? "Unknown"}
+        away={latest.away ?? "Unknown"}
+        competition={latest.competition}
+        score={latestScore(latest).replace(/\s/g, "")}
+        minute={minute !== null && Number.isFinite(minute) ? minute : null}
+        clock={words}
+        pins={pins}
+        why={why}
+      />
+      <ul>
+        <MatchGroup picks={picks} admin={admin} placements={placements} headless />
+      </ul>
+    </div>
+  );
+}
+
 export default function LivePage() {
   // Enough for a busy day: the waiting list goes back 24 hours. Only picks without a result are sent: settled ones are
   // on the Trade Log, and they were most of the download every 15 seconds.
@@ -574,6 +638,9 @@ export default function LivePage() {
   const admin = useMe().data?.admin === true;
   // Admin only: whether each sent pick was actually placed and matched on Betfair.
   const placements = usePlacements(admin).data?.picks ?? {};
+  // Admin only: each Golden slice's stage, to pick the featured match (a member would be refused the Golden report).
+  const sliceStatus = useSliceStatus(admin);
+  const strategyNames = useStrategyNames();
   const [showCleared, setShowCleared] = useState(false);
   // Admin: open games' picks by Live (money staked), Sim, or both.
   const [show, setShow] = useState<"all" | "live" | "sim">("all");
@@ -609,6 +676,26 @@ export default function LivePage() {
   // Grouped by match, in order of each match's newest alert (Map keeps insertion order, and the list is newest first).
   const matches = new Map<string, LivePick[]>();
   for (const p of inPlay) (matches.get(matchKey(p)) ?? matches.set(matchKey(p), []).get(matchKey(p))!).push(p);
+  // The featured match (the owner, 15 Nov 2026): the one whose alert comes from the best-performing strategy. A Golden
+  // slice counts first (full stake, then Live trial, then candidate); after that an alert whose similar alerts made
+  // money over 50+ bets in the last 30 days, best return first. Money on the bet only breaks a tie. No such alert in
+  // play: no featured match, just the list.
+  const stageOf = (p: LivePick) => bestStatus((p.segments ?? []).map((s) => sliceStatus(strategyKey(p.strategy), s.id)));
+  const STAGE_SCORE: Record<string, number> = { full: 5, trial: 4, candidate: 3 };
+  const scoreOf = (p: LivePick) => {
+    const stage = stageOf(p);
+    const golden = stage ? (STAGE_SCORE[stage] ?? 0) : 0;
+    const sim = p.similar;
+    const proven = sim && sim.roiPct !== null && sim.roiPct > 0 && sim.n >= 50 ? 1 + Math.min(1, sim.roiPct / 100) : 0;
+    return Math.max(golden, proven) + (isLive(p) ? 0.25 : 0);
+  };
+  const ranked = admin
+    ? [...matches.entries()]
+        .flatMap(([key, picks]) => picks.map((best) => ({ key, picks, best, score: scoreOf(best) })))
+        .filter((f) => f.score >= 1)
+        .sort((a, b) => b.score - a.score)
+    : [];
+  const featured = ranked[0] ?? null;
   const older = (data ?? []).filter((p) => {
     const age = now - startOf(p);
     return p.status !== "settled" && age >= STILL_LIVE_MS && age < WAITING_MS;
@@ -643,11 +730,17 @@ export default function LivePage() {
           detail="New alerts appear here as they arrive."
         />
       ) : (
-        <ul className="space-y-3">
-          {[...matches.entries()].map(([key, picks]) => (
-            <MatchGroup key={key} picks={picks} admin={admin} placements={placements} />
-          ))}
-        </ul>
+        <>
+          {featured && <Featured picks={featured.picks} best={featured.best} now={now} stageOf={stageOf} isLive={isLive} name={strategyNames.name(featured.best.strategy)} admin={admin} placements={placements} />}
+          {featured && matches.size > 1 && <h2 className="font-display text-base font-bold text-ink [font-stretch:112%]">Also in play</h2>}
+          <ul className="space-y-3">
+            {[...matches.entries()]
+              .filter(([key]) => key !== featured?.key)
+              .map(([key, picks]) => (
+                <MatchGroup key={key} picks={picks} admin={admin} placements={placements} />
+              ))}
+          </ul>
+        </>
       )}
 
       {(waiting.length > 0 || (admin && cleared > 0)) && (

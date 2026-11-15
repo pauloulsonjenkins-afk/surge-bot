@@ -22,6 +22,9 @@ import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
 import { Flash } from "@/components/ui/Flash";
 import { DashboardBody } from "@/components/dashboard/DashboardBody";
 import { PayingCard } from "@/components/admin/PayingCard";
+import { BrewGauge } from "@/components/admin/BrewGauge";
+import { useDashboard } from "@/queries/use-dashboard";
+import { ukMidnightIso } from "@/lib/uk-time";
 
 
 function ago(iso: string | null): string {
@@ -54,20 +57,28 @@ function SimToday({ value, tone, settled }: { value: string; tone: string; settl
   );
 }
 
-/** Today's Live profit, first thing on Home (it was the second tile of the status strip below). */
+/**
+ * Today's Live profit, first thing on Home, inside the brew gauge (BrewGauge.tsx): the hit rate against the rate
+ * needed to break even, from the same Live figures the Performance section below shows for today.
+ */
 function LiveToday({ d }: { d: TodaySnapshot }) {
+  const dash = useDashboard(null, null, "live", ukMidnightIso());
+  const stats = dash.data?.stats;
+  const c = stats?.context;
   return (
-    <div className="rounded-xl border border-line bg-surface">
-      <Tile
-        flat
-        label="Live today"
-        value={<Flash value={d.today.liveNet}><span className={toneOf(d.today.liveNet)}>{gbp(d.today.liveNet, false)}</span></Flash>}
-        sub={<>{d.today.liveSettled} settled<SimToday value={gbp(d.today.simNet, false)} tone={toneOf(d.today.simNet)} settled={d.today.simSettled} /></>}
-      />
-    </div>
+    <BrewGauge
+      net={d.today.liveNet}
+      hitRate={stats?.totals.hitRate ?? null}
+      needs={c?.breakevenEffective ?? c?.breakeven ?? null}
+      won={stats?.totals.hits ?? 0}
+      lost={stats?.totals.misses ?? 0}
+    >
+      <span className="flex w-full justify-center text-xs text-ink-muted">
+        <SimToday value={gbp(d.today.simNet, false)} tone={toneOf(d.today.simNet)} settled={d.today.simSettled} />
+      </span>
+    </BrewGauge>
   );
 }
-
 function secs(n: number | null): string {
   return n === null ? "–" : n < 60 ? `${n} s` : `${Math.round(n / 6) / 10} min`;
 }
