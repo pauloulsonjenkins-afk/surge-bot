@@ -7,7 +7,7 @@
  * Once a day's racing is over this finds each tip of that day in the files, and keeps won/lost, the win BSP and, for
  * each-way tips, whether it placed and the place BSP (horse_tip_results). Nothing here places or changes a bet.
  *
- * The record is a level-stakes one: 1 point to win, or 1 each way (2 points), at the starting price with Betfair's 5%
+ * The record is a level-stakes one: 1 point to win, or 1 each way (2 points), at the starting price with Betfair's 2%
  * commission on winnings: tipPoints() below. This is the tip's own track record, not what the owner's bets returned.
  * The files give no jockey, trainer, going or form: a fuller API can sit beside this later (see ops notes).
  */
@@ -17,7 +17,7 @@ import { log } from "./log";
 
 const BASE = "https://promo.betfair.com/betfairsp/prices/";
 /** Betfair's commission on winnings, for the level-stakes record. */
-export const COMMISSION = 0.05;
+export const COMMISSION = 0.02;
 /** Days back that are still tried. */
 const DAYS_BACK = 14;
 

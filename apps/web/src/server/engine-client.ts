@@ -1445,7 +1445,7 @@ export interface HorseTipResult {
   bsp: number | null;
   placed: boolean | null;
   placeBsp: number | null;
-  /** Level stakes: 1 point to win or 1 each way, at the starting price less 5% commission; null when it cannot be worked out. */
+  /** Level stakes: 1 point to win or 1 each way, at the starting price less 2% commission; null when it cannot be worked out. */
   points: { staked: number; profit: number } | null;
 }
 

@@ -1,4 +1,4 @@
-﻿/** Horse tip results (server/horse-bsp.ts): tipped horses looked up in Betfair's starting-price files. */
+/** Horse tip results (server/horse-bsp.ts): tipped horses looked up in Betfair's starting-price files. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
@@ -27,12 +27,12 @@ test("a BSP file is read, and a runner found by name", () => {
   assert.deepEqual(parseBsp("not,the,right,columns\n1,2,3,4"), []);
 });
 
-test("level-stakes points: win and each-way, 5% commission on winnings", () => {
-  assert.ok(Math.abs(tipPoints({ betType: "win", result: "won", bsp: 5, placed: null, placeBsp: null })!.profit - 3.8) < 1e-9);
+test("level-stakes points: win and each-way, 2% commission on winnings", () => {
+  assert.ok(Math.abs(tipPoints({ betType: "win", result: "won", bsp: 5, placed: null, placeBsp: null })!.profit - 3.92) < 1e-9);
   assert.equal(tipPoints({ betType: "win", result: "lost", bsp: 5, placed: null, placeBsp: null })!.profit, -1);
-  // Each way: wins and places = 3.8 + 0.76; lost but placed = -1 + 0.76; neither = -2.
-  assert.ok(Math.abs(tipPoints({ betType: "ew", result: "won", bsp: 5, placed: true, placeBsp: 1.8 })!.profit - 4.56) < 1e-9);
-  assert.ok(Math.abs(tipPoints({ betType: "ew", result: "lost", bsp: 18, placed: true, placeBsp: 4 })!.profit - (-1 + 3 * 0.95)) < 1e-9);
+  // Each way: wins and places = 3.92 + 0.784; lost but placed = -1 + 0.94; neither = -2.
+  assert.ok(Math.abs(tipPoints({ betType: "ew", result: "won", bsp: 5, placed: true, placeBsp: 1.8 })!.profit - 4.704) < 1e-9);
+  assert.ok(Math.abs(tipPoints({ betType: "ew", result: "lost", bsp: 18, placed: true, placeBsp: 4 })!.profit - (-1 + 3 * 0.98)) < 1e-9);
   assert.equal(tipPoints({ betType: "ew", result: "lost", bsp: 18, placed: false, placeBsp: 4 })!.profit, -2);
   assert.equal(tipPoints({ betType: "ew", result: "won", bsp: 5, placed: null, placeBsp: null }), null, "no place file, no each-way figure");
   assert.equal(tipPoints({ betType: "win", result: "not found", bsp: null, placed: null, placeBsp: null }), null);

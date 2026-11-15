@@ -95,7 +95,7 @@ export default function HorseLogPage() {
             <p className="text-sm font-medium text-ink">Every tip, as if each had been bet (level stakes)</p>
             {priced.length === 0 ? (<p className="mt-1 text-xs text-ink-muted">Results are read from Betfair&apos;s starting-price files once a day&apos;s racing is over. None yet.</p>) : (<>
               <p className={`mt-1 text-lg font-semibold tabular-nums ${profit >= 0 ? "text-hit" : "text-loss"}`}>{profit >= 0 ? "+" : ""}{profit.toFixed(2)} points <span className="text-xs font-normal text-ink-muted">on {staked} staked ({staked > 0 ? `${profit >= 0 ? "+" : ""}${((profit / staked) * 100).toFixed(1)}%` : "–"})</span></p>
-              <p className="text-xs text-ink-muted">{winners} winners from {looked} horses found. 1 point to win, or 1 each way, at Betfair starting price less 5% commission. This is the tips&apos; own record, not what your bets returned.</p>
+              <p className="text-xs text-ink-muted">{winners} winners from {looked} horses found. 1 point to win, or 1 each way, at Betfair starting price less 2% commission. This is the tips&apos; own record, not what your bets returned.</p>
             </>)}
           </div>
 
