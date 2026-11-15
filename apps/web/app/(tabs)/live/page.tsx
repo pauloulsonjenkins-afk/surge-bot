@@ -9,6 +9,7 @@ import { useSending } from "@/queries/use-sending";
 import { bestStatus, GoldenBadge } from "@/components/ui/SegmentLabel";
 import { useSliceStatus } from "@/queries/use-golden";
 import { MatchClock, type ClockPin } from "@/components/live/MatchClock";
+import { predictionFor, usePredictions } from "@/queries/use-predictions";
 import { GoldenLine } from "@/components/admin/GoldenLine";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { ListSkeleton } from "@/components/ui/Skeleton";
@@ -595,6 +596,8 @@ function Featured({
 }) {
   const latest = picks[0]!;
   const clock = matchClock(latest, now);
+  // FootballBin's prediction for this match, when it has a current one (usually it has none; see server/footballbin.ts).
+  const prediction = predictionFor(usePredictions(admin).data ?? [], latest.home, latest.away);
   // The estimate as a minute for the ring: half-time is 45, "should be over" is 90, before kick-off nothing.
   const minute = clock === null || clock.startsWith("KO") ? null : clock === "HT" ? 45 : clock === "FT?" ? 90 : Number(clock.replace(/[^0-9]/g, ""));
   const words = clock === null ? null : clock === "HT" ? "Half time" : clock === "FT?" ? "Should be over" : clock.startsWith("KO") ? `Kick-off about ${clock.slice(3)}` : `About ${clock.replace("~", "")} now`;
@@ -624,6 +627,21 @@ function Featured({
         pins={pins}
         why={why}
       />
+      {prediction && (
+        <div className="rounded-xl border border-line bg-surface px-3.5 py-3" aria-label="FootballBin prediction">
+          <p className="text-xs text-ink-muted">
+            Predicted by FootballBin<span title="Pre-match, from a free outside service. Information only: it changes no bet."> · for information</span>
+          </p>
+          <div className="mt-2 grid grid-cols-4 gap-2 text-center">
+            {([["Half time", prediction.halfTime], ["Full time", prediction.fullTime], ["Next goal", prediction.nextGoal?.replace(",", ": ") ?? null], ["Corners", prediction.corners]] as const).map(([label, value]) => (
+              <div key={label} className="rounded-lg bg-surface-2/60 px-1 py-2">
+                <p className="font-display text-sm font-bold tabular-nums text-ink">{value ?? "–"}</p>
+                <p className="text-[11px] text-ink-muted">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <ul>
         <MatchGroup picks={picks} admin={admin} placements={placements} headless />
       </ul>
