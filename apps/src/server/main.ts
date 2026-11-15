@@ -38,6 +38,7 @@ import { startValueSettling } from "../edge/value-strategy";
 import { startAutoArchive } from "./archive";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { logHorseResults } from "./horse-results";
+import { settleHorseTips } from "./horse-bsp";
 import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
 import { notifyBetResults } from "./bet-result-notify";
 import { maybeSendDripReport } from "./drip-shadow-report";
@@ -233,6 +234,12 @@ async function main(): Promise<void> {
     void logHorseResults(db, reader).catch((err) => log.warn(`Horse results from Betfair failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3 * 60_000);
   horseResults.unref();
+
+  // Horses: what became of every tipped horse, from Betfair's published starting-price files (horse-bsp.ts). Hourly; an earlier day
+  // whose files are not out yet is simply tried again.
+  const horseTips = setInterval(() => void settleHorseTips(db).catch((err) => log.warn(`Horse tip results failed: ${err instanceof Error ? err.message : String(err)}`)), 60 * 60_000);
+  horseTips.unref();
+  setTimeout(() => void settleHorseTips(db).catch(() => {}), 90_000).unref();
 
   // A notification when a bet with real money on it settles (a Betfair bet, or one placed by hand): won or lost, and how much.
   const betResults = setInterval(() => void notifyBetResults(db).catch((err) => log.warn(`Bet result notifications failed: ${err instanceof Error ? err.message : String(err)}`)), 60_000);

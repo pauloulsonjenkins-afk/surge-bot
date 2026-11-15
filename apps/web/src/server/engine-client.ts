@@ -1437,6 +1437,18 @@ export interface HorseSuggestion {
   importedAt: string;
 }
 
+/** What became of one tipped horse (engine horse-bsp.ts): from Betfair's starting-price files, bet or not. */
+export interface HorseTipResult {
+  day: string;
+  rank: number;
+  result: "won" | "lost" | "not found";
+  bsp: number | null;
+  placed: boolean | null;
+  placeBsp: number | null;
+  /** Level stakes: 1 point to win or 1 each way, at the starting price less 5% commission; null when it cannot be worked out. */
+  points: { staked: number; profit: number } | null;
+}
+
 /** One fetched pick in the permanent log. */
 export interface HorseTipLogEntry {
   day: string;
@@ -1476,6 +1488,7 @@ export function fetchHorseBets(): Promise<{
   knownCourses?: string[];
   suggestions?: HorseSuggestion[];
   tipLog?: HorseTipLogEntry[];
+  tipResults?: HorseTipResult[];
   importStatus?: HorseImportStatus | null;
 }> {
   return engineCall("/internal/horses", "the horse bets");

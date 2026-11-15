@@ -110,6 +110,7 @@ import { reportWorkerReady, reportWorkerStatus } from "./report-client";
 import { runReport } from "./reports";
 import { AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
+import { horseTipResultsWithPoints } from "./horse-bsp";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
 import { layGroups, unwatchLayGroup, watchLayGroup } from "../inplayguru/lay-groups";
@@ -1151,6 +1152,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             knownCourses: RACECOURSES,
             suggestions: db.listHorseSuggestions(),
             tipLog: db.listHorseTipLog(),
+            tipResults: horseTipResultsWithPoints(db),
             importStatus: getHorseImportStatus(db),
           });
           return;

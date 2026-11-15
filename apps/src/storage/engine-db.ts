@@ -791,6 +791,19 @@ export class EngineDb {
         PRIMARY KEY (day, rank)
       );
 
+      -- What became of each tipped horse, from Betfair's published starting-price files (server/horse-bsp.ts): won, lost or
+      -- not found, its win starting price (bsp) and, for each-way tips, whether it placed and the place starting price.
+      CREATE TABLE IF NOT EXISTS horse_tip_results (
+        day        TEXT NOT NULL,
+        rank       INTEGER NOT NULL,
+        result     TEXT NOT NULL,
+        bsp        REAL,
+        placed     INTEGER,
+        place_bsp  REAL,
+        source     TEXT NOT NULL,
+        checked_at TEXT NOT NULL,
+        PRIMARY KEY (day, rank)
+      );
       -- Price check (betfair/price-check.ts): the price of a pick's bet read again a little later (2 and 5 minutes after
       -- an in-play alert, or at kick-off for a pre-match one), to see whether the strategy beats the market's later price.
       CREATE TABLE IF NOT EXISTS pick_price_checks (
@@ -2883,6 +2896,28 @@ export class EngineDb {
       betType: r.bet_type === "ew" ? "ew" : "win",
       ewPlaces: r.ew_places === null || r.ew_places === undefined ? null : Number(r.ew_places),
       importedAt: String(r.imported_at),
+    }));
+  }
+
+  /** Records what became of a tipped horse (horse-bsp.ts); a later run for the same tip replaces it. */
+  setHorseTipResult(r: { day: string; rank: number; result: "won" | "lost" | "not found"; bsp: number | null; placed: boolean | null; placeBsp: number | null; source: string }, at = new Date()): void {
+    this.db
+      .prepare(`INSERT OR REPLACE INTO horse_tip_results (day, rank, result, bsp, placed, place_bsp, source, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(r.day, r.rank, r.result, r.bsp, r.placed === null ? null : r.placed ? 1 : 0, r.placeBsp, r.source, at.toISOString());
+  }
+
+  /** What became of each tipped horse so far, newest day first. */
+  listHorseTipResults(): Array<{ day: string; rank: number; result: "won" | "lost" | "not found"; bsp: number | null; placed: boolean | null; placeBsp: number | null; source: string; checkedAt: string }> {
+    const rows = this.db.prepare(`SELECT * FROM horse_tip_results ORDER BY day DESC, rank`).all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      day: String(r.day),
+      rank: Number(r.rank),
+      result: r.result === "won" ? "won" : r.result === "lost" ? "lost" : "not found",
+      bsp: typeof r.bsp === "number" ? r.bsp : null,
+      placed: r.placed === null || r.placed === undefined ? null : Number(r.placed) === 1,
+      placeBsp: typeof r.place_bsp === "number" ? r.place_bsp : null,
+      source: String(r.source),
+      checkedAt: String(r.checked_at),
     }));
   }
 
