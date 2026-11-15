@@ -26,6 +26,8 @@ import { log } from "../server/log";
  * The channel is still on every pick (its text) and in every notification.
  */
 export const TIPS_STRATEGY = "Telegram tips";
+/** The league shown for a tip: a channel's post rarely names one, and "Unknown" read as a fault on the league tables (15 Nov 2026). */
+export const TIPS_LEAGUE = "Telegram tips (league not given)";
 export const OLD_TIPS_PREFIX = "Telegram: ";
 export function tipsStrategy(_channel?: string): string {
   return TIPS_STRATEGY;
@@ -140,7 +142,7 @@ function detailFor(
     selection,
     targetLine: null,
     kickoffRaw: null,
-    competition: "Unknown",
+    competition: TIPS_LEAGUE,
     country: "",
     positions: null,
     home,
@@ -231,7 +233,7 @@ async function trackOne(
     messageId: pickId(t.chatKey, t.messageId),
     strategy,
     selection: bet.words,
-    competition: "Unknown",
+    competition: TIPS_LEAGUE,
     country: "",
     home,
     away,
@@ -274,7 +276,7 @@ function recordAtChannelPrice(
     messageId: pickId(t.chatKey, t.messageId),
     strategy,
     selection: bet.words,
-    competition: "Unknown",
+    competition: TIPS_LEAGUE,
     country: "",
     home,
     away,
@@ -411,7 +413,7 @@ export function recordTipByHand(
     messageId: pickId(t.chatKey, t.messageId),
     strategy,
     selection: by.words,
-    competition: "Unknown",
+    competition: TIPS_LEAGUE,
     country: "",
     home,
     away,
