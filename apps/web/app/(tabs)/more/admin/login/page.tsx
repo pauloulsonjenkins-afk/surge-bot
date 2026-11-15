@@ -19,6 +19,10 @@ export default function AdminLoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (password.length === 0) {
+      setError("Enter your password.");
+      return;
+    }
     setPending(true);
 
     try {
@@ -57,7 +61,6 @@ export default function AdminLoginPage() {
           <input
             id="admin-password"
             type="password"
-            autoFocus
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -79,7 +82,7 @@ export default function AdminLoginPage() {
 
           <button
             type="submit"
-            disabled={pending || password.length === 0}
+            disabled={pending}
             className="min-h-11 w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink"
           >
             {pending ? "Checking…" : "Sign in"}

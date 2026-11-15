@@ -33,7 +33,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#17120E",
+  // The phone's top bar follows the system theme: espresso in dark, paper in light.
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#17120E" },
+    { media: "(prefers-color-scheme: light)", color: "#F5EFE6" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
