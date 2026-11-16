@@ -3217,6 +3217,12 @@ export class EngineDb {
     return this.resultWrites;
   }
 
+  /** resultsVersion plus the newest alert: changes when a result is written or a new alert is stored, not on other writes. */
+  picksVersion(): string {
+    const row = this.db.prepare(`SELECT MAX(id) AS id FROM live_picks`).get() as { id: number | null };
+    return `${this.resultWrites}:${row.id ?? 0}`;
+  }
+
   /**
    * Results were written through ANOTHER connection to this file (the report worker's copy of the engine's database,
    * server/report-worker.ts): the settled picks kept here are read again on the next report. Nothing is written.

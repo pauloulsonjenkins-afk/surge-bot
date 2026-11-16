@@ -324,13 +324,18 @@ export async function disconnectLoginClient(): Promise<void> {
  * so figures that move with the clock still roll on). The Dashboard, Strategies and Win/Loss poll every 15-30 seconds,
  * and each answer re-reads every settled pick: between alerts and results the data is the same, so is the answer.
  */
-const responseMemo = new WeakMap<EngineDb, Map<string, { version: number; at: number; body: Record<string, unknown> }>>();
+const responseMemo = new WeakMap<EngineDb, Map<string, { version: number | string; at: number; body: Record<string, unknown> }>>();
 const MEMO_MAX_AGE_MS = 60_000;
 
-function memoized(db: EngineDb, key: string, compute: () => Record<string, unknown>): Record<string, unknown> {
+/**
+ * `byPicks`: reused while no result is written and no new alert arrives, instead of while nothing at all is written. The
+ * engine writes all the time (Telegram sync, backups, checks), so the hit-rate stats and the breakdown (2-3 s together on
+ * 16 Nov 2026) were worked out afresh on almost every 30-second poll, holding up alerts and bets each minute.
+ */
+function memoized(db: EngineDb, key: string, compute: () => Record<string, unknown>, byPicks = false): Record<string, unknown> {
   let byKey = responseMemo.get(db);
   if (!byKey) responseMemo.set(db, (byKey = new Map()));
-  const version = db.changeCount();
+  const version = byPicks ? db.picksVersion() : db.changeCount();
   const hit = byKey.get(key);
   if (hit && hit.version === version && Date.now() - hit.at < MEMO_MAX_AGE_MS) return hit.body;
   const body = compute();
@@ -499,7 +504,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           ...db.hitRateStats(days, strategy, mode, since),
           // The odds, break-even hit rate, range, return and profit that the headline figures need beside them.
           context: computeHitRateContext(db, db.statsSettledIds(days, strategy, mode, since), since),
-        })),
+        }), true),
       );
       return;
     }
@@ -519,7 +524,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       const days = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(Math.floor(daysParam), 3650) : null;
       const mode = parsePickMode(url.searchParams.get("mode"));
       const since = sinceParam(url) ?? (days === null ? null : daysBack(days));
-      send(res, 200, memoized(db, `performance:${since}:${mode}`, () => ({ cells: db.performanceCells(days, mode, since) })));
+      send(res, 200, memoized(db, `performance:${since}:${mode}`, () => ({ cells: db.performanceCells(days, mode, since) }), true));
       return;
     }
 

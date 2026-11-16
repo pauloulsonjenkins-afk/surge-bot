@@ -171,11 +171,16 @@ test("the results count goes up for what changes the money figures, not for back
   };
   const unchanged = (what: string) => assert.equal(v(), last, `${what} doesn't count`);
 
+  const picks = db.picksVersion();
   db.upsertLivePick("chat", 50, alert(50), parseAlert(alert(50)), new Date().toISOString());
   unchanged("a new alert waiting for its result");
+  // The Dashboard's stats count alerts waiting too, so their version moves with a new alert, but not with background checks.
+  assert.notEqual(db.picksVersion(), picks, "a new alert moves the picks version");
+  const picksAfter = db.picksVersion();
   db.setPickExchangeOdds(1, 1.9);
   db.markUnplacedAlerted([1], new Date().toISOString());
   unchanged("background checks");
+  assert.equal(db.picksVersion(), picksAfter, "background checks leave the picks version");
   db.upsertLivePick("chat", 50, alert(50, "hit"), parseAlert(alert(50, "hit")), new Date().toISOString());
   changed("a result arriving");
   const id50 = db.listLivePicks(10).find((p) => p.messageId === 50)!.id;
