@@ -865,6 +865,8 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     if (!alreadySent) {
       const against = cancelling(betsOn, p);
       if (against) {
+        // Noted for the clash chooser's Sim record (server/clash-choices.ts); what is placed doesn't change.
+        if (opts.markSent) db.noteClash(p.id, against.id, isLayMarket(p.market) ? "lay" : "back", now);
         skipped.push(skip(p, `Would cancel out ${against.label}'s Live bet on this match, so it isn't placed.`));
         continue;
       }

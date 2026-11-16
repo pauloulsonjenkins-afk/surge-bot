@@ -804,6 +804,18 @@ export class EngineDb {
         checked_at TEXT NOT NULL,
         PRIMARY KEY (day, rank)
       );
+      -- Clash choice, Sim only (inplayguru/clash-choice.ts): a pick held back because it would cancel a Live bet on the
+      -- same match, and which side the chooser would have placed (filled in later by server/clash-choices.ts). Bets are
+      -- never changed by it: it is a record to judge the chooser against results before it is trusted.
+      CREATE TABLE IF NOT EXISTS clash_choices (
+        pick_id    INTEGER PRIMARY KEY,
+        against_id INTEGER NOT NULL,
+        pick_side  TEXT NOT NULL,
+        seen_at    TEXT NOT NULL,
+        side       TEXT,
+        reason     TEXT,
+        chosen_at  TEXT
+      );
       -- Price check (betfair/price-check.ts): the price of a pick's bet read again a little later (2 and 5 minutes after
       -- an in-play alert, or at kick-off for a pre-match one), to see whether the strategy beats the market's later price.
       CREATE TABLE IF NOT EXISTS pick_price_checks (
@@ -3215,6 +3227,33 @@ export class EngineDb {
    */
   resultsVersion(): number {
     return this.resultWrites;
+  }
+
+  /** A pick held back by the clash guard (once per pick; later sightings change nothing). */
+  noteClash(pickId: number, againstId: number, pickSide: "back" | "lay", at = new Date()): void {
+    const r = this.db
+      .prepare(`INSERT OR IGNORE INTO clash_choices (pick_id, against_id, pick_side, seen_at) VALUES (?, ?, ?, ?)`)
+      .run(pickId, againstId, pickSide, at.toISOString());
+    if (r.changes > 0) this.onChange();
+  }
+
+  setClashChoice(pickId: number, side: "back" | "lay" | "first", reason: string, at = new Date()): void {
+    this.db.prepare(`UPDATE clash_choices SET side = ?, reason = ?, chosen_at = ? WHERE pick_id = ?`).run(side, reason, at.toISOString(), pickId);
+    this.onChange();
+  }
+
+  listClashChoices(opts: { unchosen?: boolean } = {}): Array<{ pickId: number; againstId: number; pickSide: "back" | "lay"; seenAt: string; side: "back" | "lay" | "first" | null; reason: string | null }> {
+    const rows = this.db
+      .prepare(`SELECT * FROM clash_choices ${opts.unchosen ? "WHERE side IS NULL" : ""} ORDER BY seen_at`)
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      pickId: r.pick_id as number,
+      againstId: r.against_id as number,
+      pickSide: r.pick_side as "back" | "lay",
+      seenAt: r.seen_at as string,
+      side: (r.side as "back" | "lay" | "first" | null) ?? null,
+      reason: (r.reason as string | null) ?? null,
+    }));
   }
 
   /** resultsVersion plus the newest alert: changes when a result is written or a new alert is stored, not on other writes. */

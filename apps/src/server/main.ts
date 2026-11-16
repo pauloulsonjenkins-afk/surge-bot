@@ -39,6 +39,7 @@ import { startAutoArchive } from "./archive";
 import { startGoalTimes } from "../fixtures/goal-times";
 import { logHorseResults } from "./horse-results";
 import { settleHorseTips } from "./horse-bsp";
+import { fillClashChoices } from "./clash-choices";
 import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
 import { notifyBetResults } from "./bet-result-notify";
 import { maybeSendDripReport } from "./drip-shadow-report";
@@ -240,6 +241,16 @@ async function main(): Promise<void> {
   const horseTips = setInterval(() => void settleHorseTips(db).catch((err) => log.warn(`Horse tip results failed: ${err instanceof Error ? err.message : String(err)}`)), 60 * 60_000);
   horseTips.unref();
   setTimeout(() => void settleHorseTips(db).catch(() => {}), 90_000).unref();
+
+  // Clash chooser, Sim only: what it would have placed for each pick the clash guard held back (clash-choices.ts).
+  const clashChoices = setInterval(() => {
+    try {
+      fillClashChoices(db);
+    } catch (err) {
+      log.warn(`Clash choices failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, 10 * 60_000);
+  clashChoices.unref();
 
   // A notification when a bet with real money on it settles (a Betfair bet, or one placed by hand): won or lost, and how much.
   const betResults = setInterval(() => void notifyBetResults(db).catch((err) => log.warn(`Bet result notifications failed: ${err instanceof Error ? err.message : String(err)}`)), 60_000);
