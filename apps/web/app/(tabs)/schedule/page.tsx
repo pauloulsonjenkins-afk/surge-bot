@@ -260,7 +260,7 @@ export default function SchedulePage() {
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search"
+                  placeholder="Team, league or country"
                   aria-label="Search by team, league or country"
                   className="w-full rounded-lg border border-line bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-muted"
                 />

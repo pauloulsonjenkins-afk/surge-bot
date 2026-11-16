@@ -6,6 +6,20 @@ import { ChevronRight, Lock } from "lucide-react";
 import { ADMIN_MORE } from "@/lib/admin-sections";
 import { navIcon } from "@/components/nav/nav-icons";
 import { useMe } from "@/queries/use-me";
+import { useSending } from "@/queries/use-sending";
+
+/** The betting switch at a glance, from the figures Home already keeps: read once on opening, never polled from here. */
+function BettingStatus() {
+  const { data } = useSending(0);
+  const s = data?.settings;
+  if (!s) return null;
+  const live = Object.values(s.strategies).filter(Boolean).length;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${s.enabled ? "bg-hit/15 text-hit" : "bg-surface-2 text-ink-muted"}`}>
+      {s.enabled ? `On · ${live} Live` : "Off"}
+    </span>
+  );
+}
 
 /**
  * For the admin only, the pages that aren't on the tab bar: six of them (14 Nov 2026). It was 17
@@ -29,8 +43,11 @@ export default function MorePage() {
                   <span className="icon-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
                     <Icon size={19} />
                   </span>
-                  <span className="flex-1">
-                    <span className="block text-sm font-medium text-ink">{label}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 text-sm font-medium text-ink">
+                      {label}
+                      {href.endsWith("/sending") && <BettingStatus />}
+                    </span>
                     <span className="block text-xs text-ink-muted">{description}</span>
                   </span>
                   <ChevronRight size={16} className="text-ink-muted" />

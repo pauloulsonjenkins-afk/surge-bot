@@ -1,5 +1,6 @@
 "use client";
 
+import { useUrlChoice } from "@/lib/use-url-choice";
 import { PageHeader, Segmented } from "@/components/ui/Card";
 import { useMemo, useState } from "react";
 import { useAdminStrategies, useDeleteStrategy, useIgnoreStrategy, useMergeStrategy, useStrategyWeeks, type AdminStrategy } from "@/queries/use-strategies";
@@ -26,7 +27,8 @@ import { StrategyCard } from "@/components/admin/strategies/StrategyCard";
 import { GoldenSlicesSection } from "@/components/admin/strategies/GoldenSlicesSection";
 
 export default function StrategiesPage() {
-  const [period, setPeriod] = useState<Period>("ALL");
+  // Period, sort, figures and layout are kept in the address (a refresh or a shared link opens the page as it was).
+  const [period, setPeriod] = useUrlChoice<Period>("period", "ALL", PERIODS.map((p) => p.value));
   const since = useMemo(() => periodStart(period), [period]);
   const { data, isLoading, error, isPlaceholderData } = useAdminStrategies(since);
   const merge = useMergeStrategy();
@@ -75,11 +77,11 @@ export default function StrategiesPage() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortBy>("adjusted");
+  const [sortBy, setSortBy] = useUrlChoice<SortBy>("sort", "adjusted", SORTS.map((s) => s.value));
   // Each card shows its own mode's figures (Live strategies their Live bets, Sim ones their Sim picks) unless one is chosen.
-  const [view, setView] = useState<View>("own");
+  const [view, setView] = useUrlChoice<View>("figures", "own", VIEWS.map((v) => v.value));
   // Weekly (the default): one row per strategy, £ week by week; Cards: the full card per strategy.
-  const [layout, setLayout] = useState<"weekly" | "cards">("weekly");
+  const [layout, setLayout] = useUrlChoice<"weekly" | "cards">("layout", "weekly", ["weekly", "cards"]);
   // Back bets, or the LAY section (lays bet against something, so they get their own view).
   const [side, setSide] = useState<"back" | "lay">("back");
   const [showOptions, setShowOptions] = useState(false);

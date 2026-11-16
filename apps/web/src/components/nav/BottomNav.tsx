@@ -88,12 +88,12 @@ export default function BottomNav() {
                 href={target}
                 aria-current={active ? "page" : undefined}
                 onClick={(e) => onTabTap(e, pathname === target)}
-                className={`tab-link relative flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors max-[360px]:text-[0.65rem] max-[360px]:tracking-tight ${
+                className={`tab-link relative flex flex-col items-center gap-0.5 whitespace-nowrap py-2 text-[0.75rem] leading-4 transition-colors max-[360px]:text-[0.6875rem] max-[360px]:tracking-tight ${
                   active ? "font-semibold text-accent" : "text-ink-muted"
                 }`}
               >
                 {/* The current tab's icon sits on a soft pill that eases in, so where you are reads at a glance. */}
-                <span className={`tab-pill relative rounded-full px-4 py-0.5 max-[360px]:px-2.5 ${active ? "bg-accent/15" : "bg-transparent"}`}>
+                <span className={`tab-pill relative rounded-full px-4 py-0.5 max-[360px]:px-2 ${active ? "bg-accent/15" : "bg-transparent"}`}>
                   <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
                   {admin && href === "/more/admin/strategies" && (
                     <span className="absolute -right-0.5 -top-1.5 scale-90">

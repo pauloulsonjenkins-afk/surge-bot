@@ -61,7 +61,7 @@ export function BrewGauge({
 
   return (
     <section aria-label={summary} className="relative mx-auto w-full max-w-[390px]">
-      <svg aria-hidden viewBox="0 0 390 300" className="block w-full" fill="none">
+      <svg aria-hidden viewBox="0 0 390 300" className="block w-full overflow-visible" fill="none">
         <defs>
           <radialGradient id="brew-glow" cx={CX} cy={CY} r="150" gradientUnits="userSpaceOnUse">
             <stop stopColor={colour} stopOpacity=".2" />
@@ -79,8 +79,10 @@ export function BrewGauge({
         {tick !== null && (
           <>
             <line x1={tx0} y1={ty0} x2={tx1} y2={ty1} stroke="var(--ink)" strokeWidth="2.5" strokeLinecap="round" />
-            <text x={lx} y={ly} fill="var(--ink-muted)" fontSize="11" textAnchor={lx > CX + 20 ? "start" : lx < CX - 20 ? "end" : "middle"} dominantBaseline="middle">
-              {needs}% to break even
+            {/* Two short lines, so a mark far round the dial (67.8%) doesn't run off the side of the drawing. */}
+            <text x={lx} y={ly - 7} fill="var(--ink-muted)" fontSize="11" textAnchor={lx > CX + 20 ? "start" : lx < CX - 20 ? "end" : "middle"} dominantBaseline="middle">
+              <tspan x={lx} className="font-semibold" fill="var(--ink)">{needs}%</tspan>
+              <tspan x={lx} dy="13">to break even</tspan>
             </text>
           </>
         )}
