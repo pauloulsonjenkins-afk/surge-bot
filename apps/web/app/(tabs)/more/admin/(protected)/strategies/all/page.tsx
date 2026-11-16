@@ -87,7 +87,10 @@ export default function StrategiesPage() {
   // Archived strategies are hidden here (the Archive page lists them); their bets still count in every money total.
   const isArchived = useIsArchived();
   const strategies = useMemo(() => (data?.strategies ?? []).filter((r) => !isArchived(r.label)), [data, isArchived]);
-  const inactive = strategies.filter((r) => isInactive(r) && !isLayRow(r));
+  const inactive = strategies.filter((r) => isInactive(r) && !isLayRow(r) && !r.mergedInto);
+  // Counted under another strategy (the old per-channel Telegram tips under "Telegram tips"): out of the main lists, which
+  // show them in the strategy they count under; kept here to undo the merge.
+  const merged = strategies.filter((r) => r.mergedInto && !isLayRow(r));
   const ignored = data?.ignored ?? [];
 
   const includesOf = useMemo(() => {
@@ -376,7 +379,7 @@ export default function StrategiesPage() {
             // Best first by the chosen figure (in the section's own mode), so what to act on is at the top and bottom.
             const valueOf = (r: AdminStrategy) => sortValue(r, view === "own" ? ownMode(r).mode : m, sortBy) ?? -Infinity;
             const group = strategies
-              .filter((r) => modeOf(r) === m && !isLayRow(r) && !isInactive(r) && !isParked(r))
+              .filter((r) => modeOf(r) === m && !r.mergedInto && !isLayRow(r) && !isInactive(r) && !isParked(r))
               .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
             const renderCard = (r: AdminStrategy) => (
@@ -429,7 +432,7 @@ export default function StrategiesPage() {
                 <ul className="space-y-2">{group.filter((r) => hasPicks(r, m)).map(renderCard)}</ul>
                 )}
                 {m === "sim" && (() => {
-                  const parked = strategies.filter((r) => modeOf(r) === "sim" && !isInactive(r) && isParked(r));
+                  const parked = strategies.filter((r) => modeOf(r) === "sim" && !r.mergedInto && !isInactive(r) && isParked(r));
                   return parked.length > 0 ? (
                     <details className="rounded-xl border border-line bg-surface p-3">
                       <summary className="cursor-pointer text-sm font-medium text-ink">
@@ -446,6 +449,14 @@ export default function StrategiesPage() {
                       Inactive <span className="font-normal text-ink-muted">· {inactive.length} · no alerts for {INACTIVE_DAYS}+ days</span>
                     </summary>
                     <ul className="mt-2 space-y-2">{inactive.map(renderCard)}</ul>
+                  </details>
+                )}
+                {m === "sim" && merged.length > 0 && (
+                  <details className="rounded-xl border border-line bg-surface p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-ink">
+                      Counted under another strategy <span className="font-normal text-ink-muted">· {merged.length}</span>
+                    </summary>
+                    <ul className="mt-2 space-y-2">{merged.map(renderCard)}</ul>
                   </details>
                 )}
                 {layout === "cards" && group.some((r) => !hasPicks(r, m)) && (

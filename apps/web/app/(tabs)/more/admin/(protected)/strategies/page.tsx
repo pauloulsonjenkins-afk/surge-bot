@@ -40,7 +40,8 @@ export default function StrategiesPage() {
 
   const advice = useMemo<StrategyAdvice[]>(() => today.data?.advice ?? [], [today.data]);
   const adviceOf = useMemo(() => new Map(advice.filter((a) => a.kind !== "league-block" && !a.kind.startsWith("slice")).map((a) => [a.key.toLowerCase(), a])), [advice]);
-  const strategies = useMemo(() => (data?.strategies ?? []).filter((r) => !isArchived(r.label) && (!isLayRow(r) || modeOf(r) === "live")), [data, isArchived]);
+  // A strategy counted under another (the old per-channel Telegram tips) is shown only as part of that one.
+  const strategies = useMemo(() => (data?.strategies ?? []).filter((r) => !isArchived(r.label) && !r.mergedInto && (!isLayRow(r) || modeOf(r) === "live")), [data, isArchived]);
   const layCount = (data?.strategies ?? []).filter((r) => !isArchived(r.label) && isLayRow(r) && modeOf(r) !== "live").length;
 
   if (error) return <QueryError error={error} next="/more/admin/strategies" />;

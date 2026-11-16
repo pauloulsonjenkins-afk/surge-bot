@@ -182,10 +182,30 @@ function layReport(db: EngineDb): Record<string, unknown> {
  * figures, recent form and sparklines. Exported so the engine can work it out ahead of time, between requests, rather
  * than only when the admin happens to load the page (phase 3 of the 27 Oct 2026 site tidy-up).
  */
+/** Each merged strategy's alert and result counts added into the strategy it is merged into (rows are copied, not changed). */
+export function foldMergedCounts<T extends { label: string; mergedInto: string | null; alerts: number; alertsSince: number; hits: number; misses: number; liveHits: number; liveMisses: number; simHits: number; simMisses: number; sent: number; lastAlertAt: string }>(list: T[]): T[] {
+  const out = list.map((x) => ({ ...x }));
+  const byKey = new Map(out.map((x) => [x.label.toLowerCase(), x]));
+  for (const child of list) {
+    const parent = child.mergedInto ? byKey.get(child.mergedInto.toLowerCase()) : undefined;
+    if (!parent || parent.label.toLowerCase() === child.label.toLowerCase()) continue;
+    for (const k of ["alerts", "alertsSince", "hits", "misses", "liveHits", "liveMisses", "simHits", "simMisses", "sent"] as const) parent[k] += child[k];
+    if (child.lastAlertAt > parent.lastAlertAt) parent.lastAlertAt = child.lastAlertAt;
+  }
+  return out;
+}
+
 export function buildStrategiesReport(db: EngineDb, since: string | null): Record<string, unknown> {
   const { timed, done } = reportTimings("Strategies page data");
   const settings = getSendingSettings(db);
-  const rows = timed("read", () => db.listResultsForWinLoss(ALL_TIME));
+  // A strategy merged into another counts under that one here too, as its "Counted under" badge says (16 Nov 2026: the
+  // old per-channel Telegram tips under "Telegram tips"). Its own row stays, with its counts, so the merge can be undone.
+  const merges = db.getStrategyMerges();
+  const target = (raw: string) => merges[raw.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().toLowerCase()];
+  const rows = timed("read", () => {
+    const all = db.listResultsForWinLoss(ALL_TIME);
+    return Object.keys(merges).length === 0 ? all : (all.map((r) => (target(r.strategy) ? { ...r, strategy: target(r.strategy)! } : r)) as typeof all);
+  });
   const returns = timed("returns", () => computeStrategyReturns(db, since, { fromRuleChange: true, rows }));
   const form = timed("form", () => computeStrategyForm(db, new Date(), rows));
   const sparks = timed("sparks", () => computeSparks(db, new Date(), rows));
@@ -195,7 +215,7 @@ export function buildStrategiesReport(db: EngineDb, since: string | null): Recor
   for (const key of Object.keys(settings.modeSince)) currentMode[key] = modeOf(key);
   const sinceMode = timed("sinceMode", () => computeSinceModeReturns(db, settings.modeSince, currentMode, rows));
   const strategies = timed("list", () =>
-    db.listStrategiesForAdmin(since).map((x) => ({
+    foldMergedCounts(db.listStrategiesForAdmin(since)).map((x) => ({
       ...x,
       returns: returns[x.label.toLowerCase()] ?? null,
       form: form[x.label.toLowerCase()] ?? null,
