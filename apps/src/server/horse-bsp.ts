@@ -19,7 +19,8 @@ const BASE = "https://promo.betfair.com/betfairsp/prices/";
 /** Betfair's commission on winnings, for the level-stakes record. */
 export const COMMISSION = 0.02;
 /** Days back that are still tried. */
-const DAYS_BACK = 14;
+/** Every tip in the log is looked up (Betfair keeps the files for years); one not found is tried again for RETRY_DAYS. */
+const RETRY_DAYS = 14;
 
 export interface BspRow {
   /** "Newmarket 31st Oct" */
@@ -125,16 +126,16 @@ export async function fetchBspText(url: string): Promise<string | null> {
 }
 
 /**
- * One pass: every earlier day (up to two weeks back) with tips not yet found is read from Betfair's files.
+ * One pass: every earlier day with tips not yet looked up (or not found in the last two weeks) is read from Betfair's files.
  * A day whose win files aren't published yet is left for the next pass. Returns how many tips were recorded.
  */
 export async function settleHorseTips(db: EngineDb, fetchText: FetchText = fetchBspText, now = new Date()): Promise<number> {
   const today = ukDateOf(now);
   // A tip not found is looked up again each pass (up to the two weeks): the files may not have been out, or a name may be
   // spelt differently in a later one. Found ones are done.
-  const done = new Set(db.listHorseTipResults().filter((r) => r.result !== "not found").map((r) => `${r.day}|${r.rank}`));
-  const oldest = new Date(now.getTime() - DAYS_BACK * 86_400_000).toISOString().slice(0, 10);
-  const open = db.listHorseTipLog().filter((t) => t.day < today && t.day >= oldest && !done.has(`${t.day}|${t.rank}`));
+  const retryFrom = new Date(now.getTime() - RETRY_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const done = new Set(db.listHorseTipResults().filter((r) => r.result !== "not found" || r.day < retryFrom).map((r) => `${r.day}|${r.rank}`));
+  const open = db.listHorseTipLog().filter((t) => t.day < today && !done.has(`${t.day}|${t.rank}`));
   let recorded = 0;
   for (const day of [...new Set(open.map((t) => t.day))]) {
     const get = async (region: "uk" | "ire", kind: "win" | "place") => {

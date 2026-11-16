@@ -31,8 +31,22 @@ export default function HorseLogPage() {
   const rows = useMemo(() => {
     const bets = data?.bets ?? [];
     const results = new Map((data?.tipResults ?? []).map((r) => [`${r.day}|${r.rank}`, r]));
-    return (data?.tipLog ?? []).map((t) => ({ tip: t, bet: bets.find((b) => b.day === t.day && b.horse && norm(b.horse) === norm(t.horse)) ?? null, outcome: results.get(`${t.day}|${t.rank}`) ?? null }));
+    const log = data?.tipLog ?? [];
+    return log.map((t) => ({
+      tip: t,
+      bet: bets.find((b) => b.day === t.day && b.horse && norm(b.horse) === norm(t.horse)) ?? null,
+      outcome: results.get(`${t.day}|${t.rank}`) ?? null,
+      // Repeat horses (the owner, 16 Nov 2026: the tipster often comes back to the same horse): every earlier tip of
+      // this horse, newest first, with what became of it.
+      before: log
+        .filter((o) => o.day < t.day && norm(o.horse) === norm(t.horse))
+        .map((o) => ({ day: o.day, outcome: results.get(`${o.day}|${o.rank}`) ?? null })),
+    }));
   }, [data]);
+  // How horses tipped again did the next time: of repeat tips with a result, how many won or placed.
+  const repeats = rows.filter((r) => r.before.length > 0);
+  const repeatsDone = repeats.filter((r) => r.outcome && r.outcome.result !== "not found");
+  const repeatsUp = repeatsDone.filter((r) => r.outcome!.result === "won" || r.outcome!.placed).length;
 
   const q = norm(search);
   const filtered = useMemo(() => (q ? rows.filter((r) => norm(r.tip.horse).includes(q) || norm(r.tip.course ?? "").includes(q)) : rows), [rows, q]);
@@ -99,6 +113,13 @@ export default function HorseLogPage() {
             </>)}
           </div>
 
+          {repeats.length > 0 && (
+            <p className="text-xs text-ink-muted">
+              <b className="font-medium text-ink">{repeats.length} {repeats.length === 1 ? "tip was a horse" : "tips were horses"} tipped before</b>
+              {repeatsDone.length > 0 ? `; ${repeatsUp} of ${repeatsDone.length} with a result won or placed.` : "."} Marked &ldquo;Tipped before&rdquo; below. Too few yet to read much into.
+            </p>
+          )}
+
           <input
             type="search"
             value={search}
@@ -116,8 +137,8 @@ export default function HorseLogPage() {
                 <li key={day}>
                   <Card title={dayLabel(day)}>
                     <ul className="divide-y divide-line">
-                      {list.map(({ tip, bet, outcome }) => (
-                        <TipRow key={`${tip.day}-${tip.rank}`} tip={tip} bet={bet} outcome={outcome} />
+                      {list.map(({ tip, bet, outcome, before }) => (
+                        <TipRow key={`${tip.day}-${tip.rank}`} tip={tip} bet={bet} outcome={outcome} before={before} />
                       ))}
                     </ul>
                   </Card>
@@ -136,7 +157,17 @@ export default function HorseLogPage() {
   );
 }
 
-function TipRow({ tip, bet, outcome }: { tip: HorseTipLogEntry; bet: HorseBet | null; outcome: HorseTipResult | null }) {
+const shortDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** "won at 5.00", "placed", "lost", or "no result" for an earlier tip of the same horse. */
+function pastText(o: HorseTipResult | null): { text: string; tone: string } {
+  if (!o || o.result === "not found") return { text: "no result", tone: "text-ink-muted" };
+  if (o.result === "won") return { text: `won${o.bsp ? ` at ${o.bsp.toFixed(2)}` : ""}`, tone: "text-hit" };
+  if (o.placed) return { text: "placed", tone: "text-hit" };
+  return { text: "lost", tone: "text-loss" };
+}
+
+function TipRow({ tip, bet, outcome, before }: { tip: HorseTipLogEntry; bet: HorseBet | null; outcome: HorseTipResult | null; before: Array<{ day: string; outcome: HorseTipResult | null }> }) {
   const result = bet ? RESULT[bet.result] : null;
   return (
     <li className="flex items-baseline justify-between gap-3 py-2.5">
@@ -151,6 +182,20 @@ function TipRow({ tip, bet, outcome }: { tip: HorseTipLogEntry; bet: HorseBet | 
           {tip.betType === "ew" ? ` · each-way${tip.ewPlaces ? `, ${tip.ewPlaces} places` : ""}` : ""}
           {outcome && outcome.result !== "not found" ? ` · ${outcome.result === "won" ? "Won" : outcome.placed ? "Placed" : "Lost"}${outcome.bsp ? ` at SP ${outcome.bsp.toFixed(2)}` : ""}` : outcome ? " · not in Betfair's files" : ""}
         </span>
+        {before.length > 0 && (
+          <span className="mt-0.5 block text-xs">
+            <span className="rounded-full bg-accent/15 px-1.5 py-px font-medium text-accent">Tipped before</span>{" "}
+            {before.map((b, i) => {
+              const p = pastText(b.outcome);
+              return (
+                <span key={b.day} className="text-ink-muted">
+                  {i > 0 && ", "}
+                  {shortDay(b.day)} <span className={p.tone}>{p.text}</span>
+                </span>
+              );
+            })}
+          </span>
+        )}
       </span>
       <span className={`shrink-0 text-xs font-medium ${result ? result.tone : "text-ink-muted"}`}>{result ? result.text : "Not bet"}</span>
     </li>
