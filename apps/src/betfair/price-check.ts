@@ -17,7 +17,8 @@
  */
 import type { EngineDb } from "../storage/engine-db";
 import type { BetfairReader } from "./exchange";
-import { exchangeNamer, feedMarket, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
+import { alertOddsOfPick, exchangeNamer, feedMarket, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
+import { isStaleExchangePrice } from "../server/pricing";
 
 export type CheckKind = "t2" | "t5" | "ko";
 
@@ -53,7 +54,11 @@ export async function runPriceChecks(db: EngineDb, reader: Pick<BetfairReader, "
   const namer = exchangeNamer(db);
   const picks = db
     .listLivePicks(200)
-    .filter((p) => !p.excluded && p.exchange === "on" && p.exchangeEventId && p.exchangeOdds !== null && now - alertTime(p) < 6 * 3_600_000);
+    .filter((p) => !p.excluded && p.exchange === "on" && p.exchangeEventId && p.exchangeOdds !== null && now - alertTime(p) < 6 * 3_600_000)
+    // A Betfair price well above the alert's own is a stale pre-goal snapshot (pricing.ts), not a price anyone could have
+    // taken: about one next-goal alert in ten (strategy search, 14 Nov 2026). Checked against it, the later price makes a
+    // phantom +100-200% "edge", so those picks get no price check at all.
+    .filter((p) => !isStaleExchangePrice(p.exchangeOdds, alertOddsOfPick(p)));
   if (picks.length === 0) return 0;
   const done = db.priceChecksDone(picks.map((p) => p.id));
   let calls = 0;

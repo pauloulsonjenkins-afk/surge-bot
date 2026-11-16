@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
-import { dueChecks, priceCheckReport } from "../src/betfair/price-check";
+import { dueChecks, priceCheckReport, runPriceChecks } from "../src/betfair/price-check";
+import { parseAlert } from "../src/inplayguru/parse-alert";
 
 const pick = (id: number, alertIso: string, market: string | null = "NEXT_GOAL") =>
   ({ id, messageAt: alertIso, firstSeenAt: alertIso, market, detail: null }) as unknown as Parameters<typeof dueChecks>[0];
@@ -34,4 +35,21 @@ test("the report averages alert price / later price, leaving out bets a goal had
   assert.equal(ttf.picks, 2);
   assert.equal(ttf.edge, 0);
   assert.equal(r.typical.t5, Math.round((100 * (0.1 - 0.1 + 0.2)) / 3 * 10) / 10);
+});
+
+test("a pick whose Betfair price is a stale pre-goal snapshot gets no price check", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const at = new Date("2026-11-16T15:00:00Z");
+  const text = ["🔔 Time to fight", "", "🇫🇷 France Ligue 1", "Lyon vs Nantes", "", "Timer: 60'", "Goals: 0 - 1", "Over/Under 1.50 Odds:", "1.80 2.00"].join("\n");
+  db.upsertLivePick("chat", 1, text, parseAlert(text), at.toISOString(), at.toISOString());
+  db.upsertLivePick("chat", 2, text.replace("Lyon vs Nantes", "Nice vs Lens"), parseAlert(text.replace("Lyon vs Nantes", "Nice vs Lens")), at.toISOString(), at.toISOString());
+  const fair = db.getLivePickByMessage("chat", 1)!.id;
+  const stale = db.getLivePickByMessage("chat", 2)!.id;
+  db.setPickExchange(fair, "on", "Lyon v Nantes", 1.85, null, "E1");
+  // Over 1.5 at 0-1 shown at 5.0: the Over 2.5 price from before the goal, not one that could be taken.
+  db.setPickExchange(stale, "on", "Nice v Lens", 5.0, null, "E2");
+  const asked: string[] = [];
+  const reader = { checkBet: async (eventId: string) => (asked.push(eventId), { status: "ok" as const, price: 1.9, runners: [], marketId: "M1", selectionId: 7 }) };
+  await runPriceChecks(db, reader as never, at.getTime() + 3 * 60_000);
+  assert.deepEqual(asked, ["E1"]);
 });
