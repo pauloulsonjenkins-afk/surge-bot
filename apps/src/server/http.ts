@@ -91,6 +91,7 @@ import { parseAlert } from "../inplayguru/parse-alert";
 import { alertTextFrom, handleVerifiedPick, useWebhookAlert } from "../inplayguru/receiver";
 import { directExportCsv, directIsLive, directReadiness, effectiveMode, getDirectSettings, retryDirectBet, saveDirectSettings, stakedToday, wake as wakeDirect } from "../betfair/direct";
 import { createTelegramClient } from "../telegram/client";
+import { listChats } from "../telegram/chat-list";
 import { loginFlow } from "../telegram/session-flow";
 import { getListenerStatus, startTelegramListener } from "../telegram/listener";
 import { telegramHealth } from "./telegram-watchdog";
@@ -1856,18 +1857,12 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       try {
-        const dialogs = await activeTelegramClient.getDialogs({ limit: 80 });
         // No group/channel filter: InPlayGuru can deliver as a group post OR
         // as a DM from a personal alerts bot (a "bot" dialog looks like a
         // private chat, not a group/channel) — list everything and let the
-        // admin pick the right one.
-        const chats = dialogs.map((d) => {
-          const entity = d.entity as { bot?: boolean; username?: string } | undefined;
-          const kind = d.isChannel ? "channel" : d.isGroup ? "group" : entity?.bot ? "bot" : "person";
-          const title = d.title || (entity?.username ? `@${entity.username}` : "(untitled)");
-          return { id: d.id?.toString() ?? "", title, kind };
-        });
-        send(res, 200, { chats });
+        // admin pick the right one. Read raw (chat-list.ts): a Community
+        // dialog breaks GramJS's getDialogs.
+        send(res, 200, { chats: await listChats(activeTelegramClient, 80) });
       } catch (err) {
         send(res, 500, { error: err instanceof Error ? err.message : String(err) });
       }

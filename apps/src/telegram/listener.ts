@@ -27,6 +27,7 @@
  */
 // First: GramJS must load with the newer Telegram schema (use-new-layer.ts).
 import "./use-new-layer";
+import { loadChatList } from "./chat-list";
 import type { TelegramClient } from "telegram";
 import { NewMessage, type NewMessageEvent } from "telegram/events";
 import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMessage";
@@ -294,7 +295,7 @@ export async function startTelegramListener(client: TelegramClient, db: EngineDb
         messages = await client.getMessages(chatRef, { limit });
       } catch {
         // A freshly restored session may not know this chat yet; loading the chat list teaches it.
-        await client.getDialogs({ limit: 100 });
+        await loadChatList(client, 100);
         messages = await client.getMessages(chatRef, { limit });
       }
       backfilled = true;

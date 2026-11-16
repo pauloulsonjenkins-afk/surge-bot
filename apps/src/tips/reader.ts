@@ -9,6 +9,7 @@
  */
 // First: GramJS must load with the newer Telegram schema (use-new-layer.ts).
 import "../telegram/use-new-layer";
+import { loadChatList } from "../telegram/chat-list";
 import type { TelegramClient, Api } from "telegram";
 import { NewMessage, type NewMessageEvent } from "telegram/events";
 import { EditedMessage, type EditedMessageEvent } from "telegram/events/EditedMessage";
@@ -254,7 +255,7 @@ async function resolve(a: Active): Promise<void> {
         // A number only works once the login has seen the chat; loading the chat list teaches it (as the alert listener does).
         if (dialogsLoaded || !/^-?\d+$/.test(ref)) throw err;
         dialogsLoaded = true;
-        await a.client.getDialogs({ limit: 200 });
+        await loadChatList(a.client, 200);
         entity = await ask();
       }
       const id = (await a.client.getPeerId(entity)).toString();
