@@ -27,6 +27,14 @@ test("a BSP file is read, and a runner found by name", () => {
   assert.deepEqual(parseBsp("not,the,right,columns\n1,2,3,4"), []);
 });
 
+test("a tipster's spelling slip still finds the runner, only at the tipped course", () => {
+  const rows = parseBsp(WIN);
+  assert.equal(findRunner(rows, { horse: "Gorgous Mr Gorge", course: "Newmarket", raceTime: null })?.horse, "Gorgeous Mr George");
+  assert.equal(findRunner(rows, { horse: "Gorgous Mr Gorge", course: "Ascot", raceTime: null }), null);
+  assert.equal(findRunner(rows, { horse: "Gorgous Mr Gorge", course: null, raceTime: null }), null);
+  assert.equal(findRunner(rows, { horse: "Highland Frosty Morn", course: "Newmarket", raceTime: null }), null);
+});
+
 test("level-stakes points: win and each-way, 2% commission on winnings", () => {
   assert.ok(Math.abs(tipPoints({ betType: "win", result: "won", bsp: 5, placed: null, placeBsp: null })!.profit - 3.92) < 1e-9);
   assert.equal(tipPoints({ betType: "win", result: "lost", bsp: 5, placed: null, placeBsp: null })!.profit, -1);
@@ -56,7 +64,9 @@ test("an earlier day's tips are looked up once its files are out, and not before
   const [first, second] = db.listHorseTipResults();
   assert.deepEqual([first!.result, first!.bsp, first!.placed, first!.placeBsp], ["won", 5, true, 1.8]);
   assert.equal(second!.result, "not found");
-  // The found one is done; the unfound one is tried again (its horse may be spelt differently in a later file).
-  assert.equal(await settleHorseTips(db, fetchText, now), 1);
+  // The found one is done; the unfound one is tried again once a day, however old the tip.
+  assert.equal(await settleHorseTips(db, fetchText, now), 0);
+  assert.equal(await settleHorseTips(db, fetchText, new Date("2026-11-16T10:00:00Z")), 1);
+  assert.equal(await settleHorseTips(db, fetchText, new Date("2026-12-30T10:00:00Z")), 1);
   assert.equal(db.listHorseTipResults().filter((x) => x.result === "won").length, 1);
 });

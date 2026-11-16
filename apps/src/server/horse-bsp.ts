@@ -18,9 +18,8 @@ import { log } from "./log";
 const BASE = "https://promo.betfair.com/betfairsp/prices/";
 /** Betfair's commission on winnings, for the level-stakes record. */
 export const COMMISSION = 0.02;
-/** Days back that are still tried. */
-/** Every tip in the log is looked up (Betfair keeps the files for years); one not found is tried again for RETRY_DAYS. */
-const RETRY_DAYS = 14;
+/** Every tip in the log is looked up (Betfair keeps the files for years); one not found is tried again once a day. */
+const RETRY_EVERY_MS = 24 * 3_600_000;
 
 export interface BspRow {
   /** "Newmarket 31st Oct" */
@@ -89,9 +88,28 @@ function sameTime(raceTime: string | null, at: string): boolean | null {
   return hours.includes(Number(t[1])) && m[2] === t[2];
 }
 
-/** The runner a tip is, among a day's rows: by name, then the course and race time to tell two of one name apart. */
+/** Letters to change, add or drop to turn one name into the other. */
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length]!;
+}
+
+/**
+ * The runner a tip is, among a day's rows: by name, then the course and race time to tell two of one name apart.
+ * With no exact name, a tipster's slip ("Gabriels Getwaway") still matches when it is the only runner at the tipped
+ * course within two letters, for names of six letters or more.
+ */
 export function findRunner(rows: BspRow[], tip: { horse: string; course: string | null; raceTime: string | null }): BspRow | null {
-  const same = rows.filter((r) => norm(r.horse) === norm(tip.horse));
+  let same = rows.filter((r) => norm(r.horse) === norm(tip.horse));
+  if (same.length === 0 && tip.course && norm(tip.horse).length >= 6) {
+    const near = rows.filter((r) => norm(r.menu).startsWith(norm(tip.course!)) && editDistance(norm(r.horse), norm(tip.horse)) <= 2);
+    same = near.length === 1 ? near : [];
+  }
   if (same.length <= 1) return same[0] ?? null;
   const byCourse = tip.course ? same.filter((r) => norm(r.menu).startsWith(norm(tip.course!))) : same;
   const pool = byCourse.length > 0 ? byCourse : same;
@@ -131,10 +149,15 @@ export async function fetchBspText(url: string): Promise<string | null> {
  */
 export async function settleHorseTips(db: EngineDb, fetchText: FetchText = fetchBspText, now = new Date()): Promise<number> {
   const today = ukDateOf(now);
-  // A tip not found is looked up again each pass (up to the two weeks): the files may not have been out, or a name may be
-  // spelt differently in a later one. Found ones are done.
-  const retryFrom = new Date(now.getTime() - RETRY_DAYS * 86_400_000).toISOString().slice(0, 10);
-  const done = new Set(db.listHorseTipResults().filter((r) => r.result !== "not found" || r.day < retryFrom).map((r) => `${r.day}|${r.rank}`));
+  // A tip not found is looked up again once a day, however old: an earlier pass may have read the wrong day's file, or the
+  // matching may have improved since. Found ones are done.
+  const retryBefore = now.getTime() - RETRY_EVERY_MS;
+  const done = new Set(
+    db
+      .listHorseTipResults()
+      .filter((r) => r.result !== "not found" || Date.parse(r.checkedAt) > retryBefore)
+      .map((r) => `${r.day}|${r.rank}`),
+  );
   const open = db.listHorseTipLog().filter((t) => t.day < today && !done.has(`${t.day}|${t.rank}`));
   let recorded = 0;
   for (const day of [...new Set(open.map((t) => t.day))]) {
