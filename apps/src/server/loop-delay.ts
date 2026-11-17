@@ -40,6 +40,23 @@ export function startLoopDelay(everyMs = 60_000): void {
   }, everyMs).unref?.();
 }
 
+/** A task that holds the thread this long is named in the log (17 Nov 2026: pauses of 1-7 s with no name to them). */
+export const SLOW_TASK_MS = 250;
+
+/**
+ * Runs `fn` and, if it held the engine's thread for SLOW_TASK_MS or more, logs its name and how long. Only the
+ * synchronous part is timed: what an async task does after its first await is not counted here.
+ */
+export function timed<T>(name: string, fn: () => T): T {
+  const t0 = performance.now();
+  try {
+    return fn();
+  } finally {
+    const ms = Math.round(performance.now() - t0);
+    if (ms >= SLOW_TASK_MS) log.warn(`Slow on the engine's thread: "${name}" held it for ${ms} ms.`);
+  }
+}
+
 export function loopDelay(): LoopDelay {
   return state;
 }

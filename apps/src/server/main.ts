@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { loadServerEnv } from "./server-env";
 import { createEngineHttpServer, disconnectLoginClient, warmReportCache } from "./http";
-import { startLoopDelay } from "./loop-delay";
+import { startLoopDelay, timed } from "./loop-delay";
 import { startReportWorker, stopReportWorker } from "./report-client";
 import { EngineDb } from "../storage/engine-db";
 import { BackupScheduler, leaseIsLive, SpacesSync } from "../storage/spaces-sync";
@@ -169,14 +169,14 @@ async function main(): Promise<void> {
   startLoopDelay();
   startReportWorker(env.dbPath);
   warmReportCache(db);
-  const reportWarm = setInterval(() => warmReportCache(db), 45_000);
+  const reportWarm = setInterval(() => timed("report warm-up", () => warmReportCache(db)), 45_000);
   reportWarm.unref();
 
   // Simulated bets are recorded as alerts arrive; this sweep also catches a Live strategy's pick that aged out
   // without being sent, so it is counted as not placed.
   const simSweep = setInterval(() => {
     try {
-      recordSimBets(db);
+      timed("Sim bet sweep", () => recordSimBets(db));
     } catch (err) {
       log.error(`Could not record simulated bets: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
   // read while it's still the alert's moment; their sources' later edits are copied across so they settle.
   const laySweep = setInterval(() => {
     try {
-      if (syncLayPicks(db) > 0) {
+      if (timed("LAY pick sweep", () => syncLayPicks(db)) > 0) {
         requestExchangeCheck();
         recordSimBets(db);
       }
@@ -207,14 +207,14 @@ async function main(): Promise<void> {
     void monitorGoldenBets(db).catch((err) => log.warn(`Golden safety check failed: ${err instanceof Error ? err.message : String(err)}`));
     // Golden finder: new ideas are watched at once, quietly (no notification; golden.ts notifies at 30 and 50 picks).
     try {
-      autoWatchGoldenFinds(db);
+      timed("Golden finder", () => autoWatchGoldenFinds(db));
     } catch (err) {
       log.warn(`Golden finder failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.
     void notifyLeagueMilestones(db).catch((err) => log.warn(`League milestones failed: ${err instanceof Error ? err.message : String(err)}`));
     // How each strategy does in each league, for the league filters and alerts (league-form.ts): every hour.
-    refreshLeagueForm(db);
+    timed("league form", () => refreshLeagueForm(db));
     // LAY badges: the same idea as Golden, for LAY groups (one notification each way).
     void monitorLayBadges(db).catch((err) => log.warn(`LAY badges failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3_600_000);
@@ -243,13 +243,10 @@ async function main(): Promise<void> {
   setTimeout(() => void settleHorseTips(db).catch(() => {}), 90_000).unref();
 
   // Clash chooser, Sim only: what it would have placed for each pick the clash guard held back (clash-choices.ts).
-  const clashChoices = setInterval(() => {
-    try {
-      fillClashChoices(db);
-    } catch (err) {
-      log.warn(`Clash choices failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }, 10 * 60_000);
+  const clashChoices = setInterval(
+    () => void fillClashChoices(db).catch((err) => log.warn(`Clash choices failed: ${err instanceof Error ? err.message : String(err)}`)),
+    10 * 60_000,
+  );
   clashChoices.unref();
 
   // A notification when a bet with real money on it settles (a Betfair bet, or one placed by hand): won or lost, and how much.

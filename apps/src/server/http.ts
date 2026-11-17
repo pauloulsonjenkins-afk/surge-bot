@@ -106,7 +106,7 @@ import { cachedReport, cachedReportVia, clearReportCache, TODAY_TTL_MS } from ".
 import { reportTimings } from "./report-timings";
 import { priceCheckReport } from "../betfair/price-check";
 import { liveBetCounter, moneyProblems, unconfirmed } from "./money-guard";
-import { loopDelay } from "./loop-delay";
+import { loopDelay, timed } from "./loop-delay";
 import { reportWorkerReady, reportWorkerStatus } from "./report-client";
 import { runReport } from "./reports";
 import { AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
@@ -359,7 +359,7 @@ function memoized(db: EngineDb, key: string, compute: () => Record<string, unkno
   const version = byPicks ? db.picksVersion() : db.changeCount();
   const hit = byKey.get(key);
   if (hit && hit.version === version && Date.now() - hit.at < MEMO_MAX_AGE_MS) return hit.body;
-  const body = compute();
+  const body = timed(`page ${key}`, compute);
   byKey.set(key, { version, at: Date.now(), body });
   // Oldest first out, so a run of different requests can't grow it without limit.
   if (byKey.size > 100) byKey.delete(byKey.keys().next().value as string);

@@ -26,6 +26,7 @@ import { getWinLossSettings } from "./winloss";
 import { log } from "./log";
 import { runReport, type ReportName } from "./reports";
 import { reportWorkerReady, workerReport } from "./report-client";
+import { timed } from "./loop-delay";
 
 export const REPORT_TTL_MS = 60_000;
 /**
@@ -66,7 +67,7 @@ export function cachedReport(db: EngineDb, key: string, compute: () => Record<st
           // Skipped if a request (or a clear) has dealt with it since.
           if (fresh === hit) {
             const again = inputsStamp(db);
-            byKey.set(key, { at: Date.now(), stamp: again, body: compute() });
+            byKey.set(key, { at: Date.now(), stamp: again, body: timed(`report ${key}`, compute) });
           }
         } catch {
           // The next request works it out itself.
@@ -77,7 +78,7 @@ export function cachedReport(db: EngineDb, key: string, compute: () => Record<st
     }
     return hit.body;
   }
-  const body = compute();
+  const body = timed(`report ${key}`, compute);
   byKey.set(key, { at: now, stamp, body });
   // Oldest first out, so a run of different requests (each "since" date) can't grow it without limit.
   if (byKey.size > 50) byKey.delete(byKey.keys().next().value as string);
@@ -114,7 +115,7 @@ export async function cachedReportVia(db: EngineDb, key: string, name: ReportNam
     const p = workerReport(name, args, db.resultsVersion())
       .catch((err: unknown) => {
         log.warn(`Report "${name}" fell back to the engine's own thread: ${err instanceof Error ? err.message : String(err)}`);
-        return runReport(db, name, args);
+        return timed(`report ${key} (fallback)`, () => runReport(db, name, args));
       })
       .then((body) => {
         // Kept under the stamp read before it was asked for: if something changed meanwhile, the next view sees that.

@@ -4,13 +4,12 @@
  * the first bet to arrive still wins, as before. The record is there to judge the chooser against results first.
  *
  * Each side's record is its strategy's settled return per £1 (Live and Sim together) from the Strategies report, which is
- * kept warm (report-cache.ts), so this adds no heavy work to the engine's thread.
+ * kept warm (report-cache.ts) and worked out on the report worker when it is running.
  */
 import type { EngineDb } from "../storage/engine-db";
 import { chooseClash, type TrackRecord } from "../inplayguru/clash-choice";
 import { strategyLabel } from "../inplayguru/bet-feed";
-import { cachedReport } from "./report-cache";
-import { runReport } from "./reports";
+import { cachedReportVia } from "./report-cache";
 import { log } from "./log";
 
 type ReturnsByKey = (key: string) => TrackRecord | null;
@@ -26,11 +25,15 @@ export function recordsFromReport(body: Record<string, unknown>): ReturnsByKey {
   };
 }
 
-/** Fills in the chooser's verdict for clashes not yet judged. Returns how many were. */
-export function fillClashChoices(db: EngineDb, recordOf?: ReturnsByKey, now = new Date()): number {
+/**
+ * Fills in the chooser's verdict for clashes not yet judged. Returns how many were. The Strategies report comes through
+ * the report worker when it is running (17 Nov 2026: worked out here, it held the engine's thread for about 1 s every
+ * 10 minutes).
+ */
+export async function fillClashChoices(db: EngineDb, recordOf?: ReturnsByKey, now = new Date()): Promise<number> {
   const open = db.listClashChoices({ unchosen: true });
   if (open.length === 0) return 0;
-  const records = recordOf ?? recordsFromReport(cachedReport(db, "strategies:null", () => runReport(db, "strategies", [null])));
+  const records = recordOf ?? recordsFromReport(await cachedReportVia(db, "strategies:null", "strategies", [null]));
   let n = 0;
   for (const c of open) {
     const pick = db.getLivePick(c.pickId);
