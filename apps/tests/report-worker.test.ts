@@ -11,6 +11,7 @@ import { setCustomSegments } from "../src/server/segments";
 import { runReport, isReportName } from "../src/server/reports";
 import { reportWorkerReady, reportWorkerStatus, startReportWorker, stopReportWorker, workerReport } from "../src/server/report-client";
 import { cachedReportVia, clearReportCache } from "../src/server/report-cache";
+import { todayLiveState, withTodayLiveState } from "../src/server/today";
 
 const dir = mkdtempSync(join(tmpdir(), "goalbrew-worker-"));
 const dbPath = join(dir, "engine.db");
@@ -75,6 +76,29 @@ test("the worker gives the same reports as the engine's own thread", async () =>
   assert.equal(s.on, true);
   assert.equal(s.done, 3);
   assert.equal(s.failed, 0);
+});
+
+test("Today from the worker gets the engine thread's breaker, Betfair link and Telegram listener, not the worker's empty copies", async () => {
+  const fromWorker = await workerReport("today", [], db.resultsVersion());
+  // What the worker's own copies said on 17 Nov 2026, whatever the engine's state: stand-ins here, so the test can see them replaced.
+  const stale = {
+    ...fromWorker,
+    betting: { ...(fromWorker.betting as object), liveAllowed: "worker", breaker: "worker", betfair: "worker" },
+    alerts: { ...(fromWorker.alerts as object), telegram: "worker" },
+  };
+  const shown = withTodayLiveState(stale, db);
+  const here = todayLiveState(db);
+  const betting = shown.betting as Record<string, unknown>;
+  assert.deepEqual(betting.breaker, here.breaker);
+  assert.deepEqual(betting.betfair, here.betfair);
+  assert.equal(betting.liveAllowed, here.liveAllowed);
+  assert.deepEqual((shown.alerts as { telegram: unknown }).telegram, here.telegram);
+  // Everything else is the worker's report as it came.
+  assert.equal(betting.on, (fromWorker.betting as { on: unknown }).on);
+  assert.equal(betting.directMode, (fromWorker.betting as { directMode: unknown }).directMode);
+  assert.equal((shown.alerts as { lastHour: unknown }).lastHour, (fromWorker.alerts as { lastHour: unknown }).lastHour);
+  assert.deepEqual(shown.today, fromWorker.today);
+  assert.deepEqual(shown.queue, fromWorker.queue);
 });
 
 test("results settled after the worker started show in its next report", async () => {

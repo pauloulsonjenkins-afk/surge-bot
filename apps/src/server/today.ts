@@ -222,6 +222,30 @@ function reused<T>(db: EngineDb, key: string, ttlMs: number, now: Date, work: ()
   return value;
 }
 
+/**
+ * The parts of the Today page that live only in the engine's memory, not in the database: the circuit breaker, the
+ * Betfair link and the Telegram listener (and the env setting that allows Live betting). The report worker
+ * (report-worker.ts) has its own empty copies of these modules, so a Today report worked out there showed the breaker
+ * closed, Betfair "not configured" and Telegram "not connected" whatever the engine's state (17 Nov 2026, the day
+ * REPORT_WORKER=1 was set). They are cheap, so they are read here, on the engine's own thread, every time Today is
+ * served, over whatever report was worked out or kept.
+ */
+export function todayLiveState(db: EngineDb, now = new Date()) {
+  return { liveAllowed: liveAllowed(), breaker: breakerStatus(), betfair: getBetfairLinkStatus(), telegram: telegramHealth(db, now) };
+}
+
+/** A Today report (from the worker, the cache or this thread) with todayLiveState read now, on the engine's thread. */
+export function withTodayLiveState(body: Record<string, unknown>, db: EngineDb, now = new Date()): Record<string, unknown> {
+  const state = todayLiveState(db, now);
+  const betting = (body.betting ?? {}) as Record<string, unknown>;
+  const alerts = (body.alerts ?? {}) as Record<string, unknown>;
+  return {
+    ...body,
+    betting: { ...betting, liveAllowed: state.liveAllowed, breaker: state.breaker, betfair: state.betfair },
+    alerts: { ...alerts, telegram: state.telegram },
+  };
+}
+
 export function todaySnapshot(db: EngineDb, now = new Date()) {
   // How long each part takes (ms): shown on the page's data as "timings", and logged when the whole takes over a second.
   const { timed, done } = reportTimings("Today page data");

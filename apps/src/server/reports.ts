@@ -4,7 +4,9 @@
  * One list, used two ways: the engine's own thread calls a report directly (as it always has), and the report worker
  * (report-worker.ts) calls the same function on its own thread with its own connection to the database. Both get the
  * same answer because it is the same code; nothing here may depend on anything but the database and its arguments,
- * which must be plain values (they cross to the worker as a message).
+ * which must be plain values (they cross to the worker as a message). Today breaks that rule for its breaker, Betfair
+ * link and Telegram fields, which live in the engine's memory: http.ts reads them again on the engine's thread
+ * (withTodayLiveState in today.ts) before the page gets them.
  */
 import type { EngineDb } from "../storage/engine-db";
 import { parsePickMode } from "../storage/engine-db";
