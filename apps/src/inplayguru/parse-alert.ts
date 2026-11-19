@@ -190,6 +190,9 @@ const STRATEGY_MARKETS: Array<{ test: RegExp; market: MarketCode }> = [
   { test: /losing team pushing/, market: "NEXT_GOAL" },
   // "Super favorite 0-0 at 75'": a 1.50-or-shorter pre-match favourite still 0-0 at 75', backed to score.
   { test: /super favou?rite 0-0/, market: "FAVOURITE_TO_SCORE" },
+  // "Super favorite conceded goal in first half" (added 19 Nov 2026, from InPlayGuru's gallery, Sim test): a 1.70-or-shorter
+  // pre-match favourite after the underdog scores in the first half, backed to score ("Over 0.5 Favorite Goals Since Picked").
+  { test: /super favou?rite conceded/, market: "FAVOURITE_TO_SCORE" },
   { test: /late goal hunter/, market: "NEXT_GOAL" },
   // "2nd half goals last 10 matches 2" (added 11 Oct 2026, confirmed a next-goal bet by the owner): late second-half
   // alerts, backed as the next goal.

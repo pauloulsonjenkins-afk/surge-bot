@@ -110,3 +110,11 @@ test("with no price in the alert, Win/Loss uses the assumed odds until Betfair p
   const before = computeStrategyReturns(db)["super favorite 0-0 at 75'"]!.sim;
   assert.equal(before.counted, 0, "unpriced: the 1X2 price is for winning, not scoring");
 });
+
+test("Super favorite conceded goal in first half is a favourite-to-score bet too (gallery, 19 Nov 2026)", () => {
+  const text = alert({ goals: "0 - 1", live: "2.10 3.20 3.40" }).replace("Super favorite 0-0 at 75'", "Super favorite conceded goal in first half");
+  const p = parseAlert(text);
+  assert.equal(p.market, "FAVOURITE_TO_SCORE", "not unmapped");
+  assert.equal(p.favourite, "home");
+  assert.equal(p.targetLine, 0.5, "the favourite has no goals yet");
+});
