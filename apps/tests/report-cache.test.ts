@@ -11,7 +11,7 @@ import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, getSendingSettings, saveSendingSettings } from "../src/inplayguru/bet-feed";
 import { saveBank } from "../src/inplayguru/stake";
-import { cachedReport, clearReportCache, REPORT_TTL_MS, STALE_OK_MS, TODAY_TTL_MS } from "../src/server/report-cache";
+import { cachedReport, clearReportCache, REPORT_TTL_MS, STALE_OK_MS, STRATEGIES_HOLD_MS, TODAY_TTL_MS } from "../src/server/report-cache";
 
 /** Lets the background refresh of an out-of-date report run (it goes straight after the stale one is shown). */
 const tick = () => new Promise<void>((r) => setImmediate(r));
@@ -311,4 +311,29 @@ test("Apply with what the page showed changes the setting once; a repeat or a st
   // The same request again: the suggestion has moved on (or gone), so it is refused and the stake stays.
   assert.throws(() => applyAdvice(db, KEY, "stake-up", now, undefined, { to: shown.to ?? null }), /no longer applies|has changed since/);
   assert.equal(getSendingSettings(db).stakes[KEY], 2, "the second request did not apply the next step");
+});
+
+test("the Strategies figures are re-added at most every 5 minutes, however many results arrive; an admin change still clears them", async () => {
+  const db = engine();
+  let runs = 0;
+  const strategies = (now: number) => cachedReport(db, "strategies:null", () => ({ runs: ++runs }), now);
+  const t = Date.now();
+  const first = strategies(t);
+  settle(db, 100, "hit");
+  assert.equal(strategies(t + 1_000), first, "a new result inside the 5 minutes: the kept figures");
+  assert.equal(strategies(t + STRATEGIES_HOLD_MS - 1), first, "still kept just before 5 minutes");
+  assert.equal(runs, 1);
+  assert.equal(strategies(t + STRATEGIES_HOLD_MS + 1), first, "after 5 minutes: shown at once while they are re-added");
+  await tick();
+  assert.equal(runs, 2, "...and re-added straight after");
+  // Other reports still start afresh on a new result.
+  const { report, runs: otherRuns } = counted(db);
+  report(t);
+  settle(db, 101, "hit");
+  report(t + 1_000);
+  await tick();
+  assert.equal(otherRuns(), 2, "other reports: a new result is worked in straight away");
+  clearReportCache(db);
+  strategies(Date.now());
+  assert.equal(runs, 3, "an admin change clears the kept figures at once");
 });

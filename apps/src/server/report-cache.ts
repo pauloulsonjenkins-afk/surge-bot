@@ -37,6 +37,17 @@ export const REPORT_TTL_MS = 60_000;
  */
 export const STALE_OK_MS = 90_000;
 const refreshing = new WeakMap<EngineDb, Set<string>>();
+/**
+ * The Strategies figures are re-added at most this often, however many results arrive meanwhile (19 Nov 2026, the
+ * owner's choice): each re-add reads the whole history, and on a match day it ran about once a minute, holding the
+ * engine up on its single processor. Nothing that places or stops bets reads these figures; a change made from the admin
+ * site still clears them at once (http.ts), so a change you make shows straight away.
+ */
+export const STRATEGIES_HOLD_MS = 5 * 60_000;
+/** How long a kept report under `key` is shown as it is, even when a result has been written since. */
+export function holdFor(key: string): number {
+  return key.startsWith("strategies:") ? STRATEGIES_HOLD_MS : 0;
+}
 /** Today's own, much shorter reuse window (see above). */
 export const TODAY_TTL_MS = 10_000;
 
@@ -54,9 +65,9 @@ export function cachedReport(db: EngineDb, key: string, compute: () => Record<st
   const stamp = inputsStamp(db);
   const hit = byKey.get(key);
   const age = hit ? now - hit.at : -1;
-  if (hit && hit.stamp === stamp && age >= 0 && age < ttlMs) return hit.body;
+  if (hit && age >= 0 && ((hit.stamp === stamp && age < ttlMs) || age < holdFor(key))) return hit.body;
   // Out of date, but recent: show it now and bring it up to date straight after, so nobody waits for the report.
-  if (hit && age >= 0 && age < STALE_OK_MS && ttlMs === REPORT_TTL_MS) {
+  if (hit && age >= 0 && age < STALE_OK_MS + holdFor(key) && ttlMs === REPORT_TTL_MS) {
     let busy = refreshing.get(db);
     if (!busy) refreshing.set(db, (busy = new Set()));
     if (!busy.has(key)) {
@@ -105,7 +116,7 @@ export async function cachedReportVia(db: EngineDb, key: string, name: ReportNam
   const stamp = inputsStamp(db);
   const hit = byKey.get(key);
   const age = hit ? now - hit.at : -1;
-  if (hit && hit.stamp === stamp && age >= 0 && age < ttlMs) return hit.body;
+  if (hit && age >= 0 && ((hit.stamp === stamp && age < ttlMs) || age < holdFor(key))) return hit.body;
 
   let flying = inFlight.get(db);
   if (!flying) inFlight.set(db, (flying = new Map()));
@@ -130,7 +141,7 @@ export async function cachedReportVia(db: EngineDb, key: string, name: ReportNam
     return p;
   };
   // Out of date, but recent: show it now and bring it up to date behind the scenes.
-  if (hit && age >= 0 && age < STALE_OK_MS && ttlMs === REPORT_TTL_MS) {
+  if (hit && age >= 0 && age < STALE_OK_MS + holdFor(key) && ttlMs === REPORT_TTL_MS) {
     void fetchFresh().catch(() => {});
     return hit.body;
   }
