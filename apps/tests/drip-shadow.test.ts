@@ -74,7 +74,8 @@ async function record(db: EngineDb, alertAtMs: number, backs: number[]) {
 
 test("prices are recorded for watched alerts only, and the report replays the ladder on them", async () => {
   const db = new EngineDb(":memory:", () => {});
-  const alertAt = Date.now() - 10 * 60_000;
+  // A fixed time inside the test's recording window (it ended on DRIP_LAST_DAY, 16 Nov 2026), so this passes on any date.
+  const alertAt = Date.parse("2026-11-14T15:00:00Z");
   const id = seed(db, new Date(alertAt).toISOString());
   const other = "🔔 Time to fight\n\n🇫🇷 France Ligue 1\nParis vs Metz\n\nTimer: 64'\nGoals: 0 - 0\nOver/Under 0.50 Odds:\n2.00 1.80";
   db.upsertLivePick("chat", 2, other, parseAlert(other), new Date(alertAt).toISOString(), new Date(alertAt).toISOString());
