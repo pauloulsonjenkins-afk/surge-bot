@@ -168,7 +168,9 @@ export function accountToday(db: EngineDb, now = new Date(), mode: "live" | "sim
   // The same at a flat 1-unit stake per bet (Today's "Units today"), so a bigger stake can't make the day look worse.
   let units = 0;
   let settled = 0;
-  for (const r of db.listResultsForWinLoss(since)) {
+  // Only the window is read (19 Nov 2026): listResultsForWinLoss re-read the whole history after every result, up to
+  // 3.5 s on the engine's thread, and this runs as bets are sent and every minute for result notifications.
+  for (const r of db.readResultsForWinLoss(since)) {
     if (ukDay.format(new Date(r.firstSeenAt)) !== today) continue;
     const stake = countedStake(r, mode);
     if (stake === null) continue;
@@ -204,7 +206,7 @@ export function computeStopLoss(db: EngineDb, now = new Date(), mode: "live" | "
   // sent but never placed lost nothing). Sim counts the simulated bets that would have been placed, at their recorded
   // stake: the same limits, run as if the strategy were live.
   const stakeOf = (r: WinLossRow): number | null => countedStake(r, mode);
-  const picks = db.listResultsForWinLoss(since).filter((r) => stakeOf(r) !== null && ukDay.format(new Date(r.firstSeenAt)) === today);
+  const picks = db.readResultsForWinLoss(since).filter((r) => stakeOf(r) !== null && ukDay.format(new Date(r.firstSeenAt)) === today);
 
   for (const key of keys) {
     const rule = rules[key]!;

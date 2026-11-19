@@ -77,7 +77,7 @@ interface Settled {
 function settledBets(db: EngineDb, now: Date): Settled[] {
   const { price } = pricingInputs(db);
   const out: Settled[] = [];
-  for (const r of db.listResultsForWinLoss(new Date(now.getTime() - WINDOW_MS).toISOString())) {
+  for (const r of db.readResultsForWinLoss(new Date(now.getTime() - WINDOW_MS).toISOString())) {
     if (!(r.placement === "betfair" || r.placement === "manual" || r.byHand)) continue;
     const { priced } = price(r);
     if (priced.kind !== "priced") continue;
