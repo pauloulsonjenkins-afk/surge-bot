@@ -622,6 +622,12 @@ export class EngineDb {
   private resultWrites = 0;
   /** The settled picks as listResultsForWinLoss reads them, kept while nothing they depend on changes. */
   private readonly winLossRows = new Map<string, { sig: string; at: number; rows: ResultRows }>();
+  /**
+   * Each settled pick's figures as readResultsForWinLoss works them out, kept with every raw column they come from
+   * (19 Nov 2026). Reading the rows is quick; parsing each pick's alert and working out its figures is what had grown to
+   * 2.4-4.3 s on the live data, redone for every pick after every result. Now only a pick whose columns changed is.
+   */
+  private readonly winLossRowMemo = new Map<number, { key: string; row: unknown }>();
 
   constructor(path: string, onChange: () => void) {
     mkdirSync(dirname(path), { recursive: true });
@@ -2478,6 +2484,8 @@ export class EngineDb {
         // leave this row as it was
       }
     }
+    // The kept figures are keyed by the alert itself, so they would notice; cleared anyway, as every alert was rewritten.
+    this.winLossRowMemo.clear();
     if (rows.length > 0) this.resultsChanged();
     return changed;
   }
@@ -2588,7 +2596,7 @@ export class EngineDb {
     const hiddenLeague = (r: { competition: string | null; country: string | null }) =>
       !opts.includeHiddenLeagues && prefs[leagueIdentity(r.competition, r.country).key]?.hidden === true;
 
-    const out = rows.map((r) => {
+    const work = (r: (typeof rows)[number]) => {
       let targetLine: number | null = null;
       let overLine: number | null = null;
       let overOdds: number | null = null;
@@ -2676,14 +2684,32 @@ export class EngineDb {
         takenOdds: manual?.odds ?? null,
         exchangeOdds: typeof r.exchange_odds === "number" && r.exchange_odds > 1 ? r.exchange_odds : null,
         sim: r.sent_at === null && manual === null ? (r.exchange === "off" ? { stake: null, minPrice: null, skipped: "The match wasn't on Betfair." } : parseSimRow(r.sim_row)) : null,
-        hiddenLeague: hiddenLeague(r),
         byHand,
         simShadow: byHand ? parseSimRow(r.sim_row) : null,
         facts,
       };
-    });
-    // A hidden league's pick leaves the figures unless real money was staked on it.
-    return out.filter((r) => !(r.hiddenLeague && (r.placement === "sim" || r.placement === "notPlaced"))).map(({ hiddenLeague: _h, ...r }) => r);
+    };
+    type Row = ReturnType<typeof work>;
+    const out: Row[] = [];
+    for (const r of rows) {
+      // Every raw column `work` reads, and the Betfair start date it compares with: the same key, the same figures.
+      const key = [
+        betfairFrom, r.first_seen_at, r.strategy, r.market, r.result, r.parsed_json, r.sent_row, r.sent_at, r.sim_row, r.exchange, r.manual_bet,
+        r.exchange_odds, r.competition, r.country, r.bet_odds, r.bet_stake, r.bet_profit,
+      ].join("\u0001");
+      const kept = this.winLossRowMemo.get(r.id);
+      let row: Row;
+      if (kept && kept.key === key) row = kept.row as Row;
+      else {
+        row = work(r);
+        this.winLossRowMemo.set(r.id, { key, row });
+      }
+      // A hidden league's pick leaves the figures unless real money was staked on it. Hidden leagues are a setting, not a
+      // column, so this is looked at every time.
+      if (hiddenLeague(r) && (row.placement === "sim" || row.placement === "notPlaced")) continue;
+      out.push(row);
+    }
+    return out;
   }
 
   // ---- Bets placed by hand, and results to review -------------------------------------------------
