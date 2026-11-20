@@ -229,6 +229,16 @@ export function betslipLinks(m: { message?: string; entities?: unknown; replyMar
   return out;
 }
 
+/** The links wordsWithLinks stored with a post, read back for the Free tips page's "Open betslip" buttons. Pure. */
+export function storedLinks(text: string): Array<{ label: string; url: string }> {
+  const out: Array<{ label: string; url: string }> = [];
+  for (const line of text.split("\n")) {
+    const m = /^(.{1,80}?): (https?:\/\/\S+)\s*$/.exec(line.trim());
+    if (m && /betslip|betfair|bet\s*builder/i.test(line)) out.push({ label: m[1]!, url: m[2]! });
+  }
+  return out;
+}
+
 /** The post's words with its bookmaker links (betslipLinks) added at the end, one a line. */
 export function wordsWithLinks(words: string, m: WordsMessage): string {
   const links = betslipLinks(m);

@@ -389,10 +389,25 @@ export default function TipsPage() {
               )}
               {effective(t) === "tip" && (
                 <p className="mt-1 text-xs font-medium text-ink">
-                  {t.tracked === "done" ? "Recorded in Sim as Telegram tips" : t.tracked ? `Not tracked: ${t.tracked.replace(/^no: /, "")}` : "Waiting to be priced on Betfair"}
+                  {t.tracked === "done" ? `Recorded in Sim as ${/tip\s*man/i.test(t.channel) ? (/premium/i.test(t.channel) ? "TipMan Premium" : "TipMan Free") : "Telegram tips"}` : t.tracked ? `Not tracked: ${t.tracked.replace(/^no: /, "")}` : "Waiting to be priced on Betfair"}
                 </p>
               )}
               <p className="mt-1.5 line-clamp-4 whitespace-pre-line text-xs text-ink-muted">{t.text}</p>
+              {t.links && t.links.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {t.links.map((l) => (
+                    <a
+                      key={l.url}
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex min-h-11 items-center rounded-full px-4 py-2 text-xs font-medium ${/betfair/i.test(l.label + l.url) ? "bg-accent text-accent-ink" : "border border-line text-ink"}`}
+                    >
+                      Open {/betfair/i.test(l.label + l.url) ? "Betfair" : /paddy/i.test(l.label + l.url) ? "Paddy Power" : ""} betslip
+                    </a>
+                  ))}
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${BADGE[effective(t)]}`}>{t.review ? "You decided" : "Read as"}: {effective(t) === "other" && t.review ? "not a tip" : effective(t)}</span>
                 <span className="text-xs text-ink-muted">{t.reasons.slice(0, 3).join(" · ")}</span>

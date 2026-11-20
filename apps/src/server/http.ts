@@ -123,7 +123,7 @@ import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
 import { archiveRows, getArchived, setArchived } from "./archive";
 import { getTipNotify, setTipNotify } from "../tips/notify";
-import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel, rescoreChannel, trackSoon } from "../tips/reader";
+import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel, rescoreChannel, storedLinks, trackSoon } from "../tips/reader";
 import { applyMyBet, type MyBet } from "../tips/track";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
@@ -1331,7 +1331,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         channels: getTipChannels(db),
         notify: getTipNotify(db),
         stats: Object.values(getTipStats(db)),
-        tips: db.listChannelTips(since).map((t) => ({ ...t, text: t.text.slice(0, 700) })),
+        tips: db.listChannelTips(since).map((t) => ({ ...t, text: t.text.slice(0, 700), links: storedLinks(t.text) })),
       });
       if (req.method === "POST") responseMemo.get(db)?.delete("tips");
       send(res, 200, memoized(db, "tips", tipsBody));

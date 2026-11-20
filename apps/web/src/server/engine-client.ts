@@ -2270,6 +2270,8 @@ export interface ChannelTip {
   /** The bet in the owner's own words (set on the page), and the odds they gave; null until they say. */
   myBet?: string | null;
   myOdds?: number | null;
+  /** Bookmaker betslip links stored with the post ("Betfair - add to betslip"): the page shows each as an "Open betslip" button. */
+  links?: Array<{ label: string; url: string }>;
 }
 export interface TipsState {
   channels: string[];

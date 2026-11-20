@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tipsStrategy, TIPMAN_FREE, TIPMAN_PREMIUM, TIPS_STRATEGY } from "../src/tips/track";
-import { betslipLinks, wordsWithLinks } from "../src/tips/reader";
+import { betslipLinks, storedLinks, wordsWithLinks } from "../src/tips/reader";
 
 test("TipMan's premium channel and its free ones are strategies of their own; other channels stay Telegram tips", () => {
   assert.equal(tipsStrategy("TipMan Tips Premium"), TIPMAN_PREMIUM);
@@ -37,4 +37,13 @@ test("a betslip button is read too, and a post without links is unchanged", () =
   assert.deepEqual(betslipLinks(m), ["Add to Betfair betslip: https://betfair.com/x"]);
   assert.equal(wordsWithLinks("Just words", { id: 3, message: "Just words" }), "Just words");
   assert.equal(wordsWithLinks("", m), "", "a post with no words is still not stored");
+});
+
+test("the stored links are read back for the page's Open betslip buttons", () => {
+  const text = `${POST}\n\nBetfair - add to betslip: https://www.betfair.com/sport/x?b=1\nPaddy - add to betslip: https://paddypower.com/y`;
+  assert.deepEqual(storedLinks(text), [
+    { label: "Betfair - add to betslip", url: "https://www.betfair.com/sport/x?b=1" },
+    { label: "Paddy - add to betslip", url: "https://paddypower.com/y" },
+  ]);
+  assert.deepEqual(storedLinks(POST), [], "the channel's own web address is not a betslip");
 });
