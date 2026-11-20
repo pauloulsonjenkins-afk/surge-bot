@@ -204,7 +204,36 @@ export function recordTip(db: EngineDb, m: { chatKey: string; messageId: number;
   return true;
 }
 
-type WordsMessage = { id: number; message?: string; richMessage?: unknown };
+type WordsMessage = { id: number; message?: string; richMessage?: unknown; entities?: unknown; replyMarkup?: unknown };
+
+/**
+ * The bookmaker links in a post: "Betfair - add to betslip" in TipMan Tips Premium is a word linked to the bet itself, with
+ * the selections only in a screenshot (20 Nov 2026). Telegram sends the address apart from the words (a text-link entity,
+ * or a button), so it was being dropped. Each is returned as "label: address", for links whose label or address names a
+ * betslip or Betfair. Pure.
+ */
+export function betslipLinks(m: { message?: string; entities?: unknown; replyMarkup?: unknown }): string[] {
+  const out: string[] = [];
+  const text = m.message ?? "";
+  const keep = (label: string, url: string) => {
+    const l = label.trim().replace(/\s+/g, " ");
+    if (!/^https?:\/\//i.test(url) || !/betslip|betfair|bet\s*builder/i.test(`${l} ${url}`)) return;
+    const line = `${l || "Link"}: ${url}`;
+    if (!out.includes(line)) out.push(line);
+  };
+  for (const e of Array.isArray(m.entities) ? (m.entities as Array<{ className?: string; offset?: number; length?: number; url?: string }>) : []) {
+    if (e.className === "MessageEntityTextUrl" && typeof e.url === "string") keep(text.substr(e.offset ?? 0, e.length ?? 0), e.url);
+  }
+  const rows = (m.replyMarkup as { rows?: Array<{ buttons?: Array<{ text?: string; url?: string }> }> } | null | undefined)?.rows ?? [];
+  for (const row of rows) for (const b of row.buttons ?? []) if (typeof b.url === "string") keep(b.text ?? "", b.url);
+  return out;
+}
+
+/** The post's words with its bookmaker links (betslipLinks) added at the end, one a line. */
+export function wordsWithLinks(words: string, m: WordsMessage): string {
+  const links = betslipLinks(m);
+  return links.length === 0 || !words.trim() ? words : `${words.trimEnd()}\n\n${links.join("\n")}`;
+}
 
 /**
  * A message's words: its text, else its rich part's (rich-text.ts). Telegram sends only the start of a long rich post
@@ -284,7 +313,7 @@ async function sync(a: Active): Promise<void> {
         // Whole rich posts are asked for only for the last two days' posts, at most 10 a pass: Telegram limits requests.
         const recent = Date.now() / 1000 - m.date < 2 * 86_400 && fetches < 10;
         if (recent && richMessageIsPart((m as { richMessage?: unknown }).richMessage) && !(m.message ?? "").trim()) fetches++;
-        const text = recent ? await wordsOf(a.client, id, m) : messageWords(m as WordsMessage);
+        const text = wordsWithLinks(recent ? await wordsOf(a.client, id, m) : messageWords(m as WordsMessage), m as WordsMessage);
         if (recordTip(a.db, { chatKey: id, messageId: m.id, date: m.date, text, channel: name }, reviewed)) stored++;
       }
     }
@@ -343,7 +372,7 @@ export function startTipReader(client: TelegramClient, db: EngineDb, stopped: ()
         // A message that arrives live is priced straight away, not at the next five-minute read: an in-play tip's price
         // only means something if it is read within minutes.
         const store = (text: string) => {
-          if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text, channel: name })) {
+          if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: wordsWithLinks(text, message as WordsMessage), channel: name })) {
             void notifyNewTips(db);
             void trackSoon(db);
           }

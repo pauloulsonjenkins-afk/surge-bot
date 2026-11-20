@@ -29,7 +29,16 @@ export const TIPS_STRATEGY = "Telegram tips";
 /** The league shown for a tip: a channel's post rarely names one, and "Unknown" read as a fault on the league tables (15 Nov 2026). */
 export const TIPS_LEAGUE = "Telegram tips (league not given)";
 export const OLD_TIPS_PREFIX = "Telegram: ";
-export function tipsStrategy(_channel?: string): string {
+/**
+ * TipMan has strategies of its own (the owner, 20 Nov 2026): its premium channel ("TipMan Tips Premium") is "TipMan
+ * Premium", its free ones ("TipMan InPlays & Rollers", "TipMan InPlay Bot") are "TipMan Free". New picks only: earlier
+ * TipMan picks stay under "Telegram tips".
+ */
+export const TIPMAN_PREMIUM = "TipMan Premium";
+export const TIPMAN_FREE = "TipMan Free";
+export function tipsStrategy(channel?: string): string {
+  const c = channel ?? "";
+  if (/tip\s*man/i.test(c)) return /premium/i.test(c) ? TIPMAN_PREMIUM : TIPMAN_FREE;
   return TIPS_STRATEGY;
 }
 
