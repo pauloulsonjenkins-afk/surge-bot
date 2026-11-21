@@ -5,8 +5,9 @@
  *
  *  - Four main pages, the same on every screen: Home, Live, Strategies, Profit.
  *  - "More": the handful of pages opened now and then.
- *  - Families: pages that belong to a main page sit under it as tabs (Golden under Strategies, the Report under
- *    Profit, the notification log under Settings), not as menu rows of their own. The main page's tab stays lit on
+ *  - Families: pages that belong to a main page sit under it as tabs (Golden under Strategies, the notification
+ *    log under Settings). Profit is one page (21 Nov 2026: the Report tab repeated the suggestions on Home and
+ *    Strategies; its address still works), not as menu rows of their own. The main page's tab stays lit on
  *    all of them.
  */
 const A = "/more/admin";
@@ -21,8 +22,8 @@ export interface NavItem {
 export const ADMIN_MAIN: NavItem[] = [
   { href: `${A}/today`, label: "Home", description: "Is it working, how today is going and what needs you." },
   { href: "/live", label: "Live", description: "Matches in play with their alerts." },
-  { href: `${A}/strategies`, label: "Strategies", description: "Results, Live / Sim and stakes." },
-  { href: `${A}/winloss`, label: "Profit", description: "Profit by day and strategy." },
+  { href: `${A}/strategies`, label: "Strategies", description: "Is each one making or losing money." },
+  { href: `${A}/winloss`, label: "Profit", description: "Real money: profit by day and strategy." },
 ];
 
 /** Everything else: the More page on phones, the second group in the desktop sidebar. */
@@ -52,13 +53,6 @@ export const ADMIN_FAMILIES: NavFamily[] = [
       // Each tip channel is already a strategy of its own ("Telegram: <channel>", tips/track.ts in the engine); this
       // page is where its channels are chosen and its messages checked, so it sits with the strategies.
       { href: `${A}/tips`, label: "Tip channels" },
-    ],
-  },
-  {
-    root: `${A}/winloss`,
-    tabs: [
-      { href: `${A}/winloss`, label: "Profit" },
-      { href: `${A}/reports`, label: "Report" },
     ],
   },
   {

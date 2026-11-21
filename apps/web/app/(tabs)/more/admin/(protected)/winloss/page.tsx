@@ -15,7 +15,6 @@ import { DailyPnlChart } from "@/components/admin/DailyPnlChart";
 import { marketName } from "@/lib/markets";
 import { useSaveWinLoss, useWinLoss, type WinLossState } from "@/queries/use-winloss";
 import { MonthWaterfall, ProfitHero } from "@/components/admin/MonthWaterfall";
-import { ModeToggle, usePickMode } from "@/components/ui/ModeToggle";
 import type { PickMode } from "@/server/engine-client";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useIsArchived } from "@/queries/use-archive";
@@ -105,7 +104,9 @@ function monthName(ym: string): string {
 const monthLong = (day: string) => new Date(`${day.slice(0, 7)}-01T12:00:00Z`).toLocaleDateString("en-GB", { month: "long", timeZone: "UTC" });
 
 export default function WinLossPage() {
-  const mode = usePickMode();
+  // Real money only (owner, 21 Nov 2026: "this SIM/LIVE business is just so confusing"). The shared All / Live / Sim
+  // switch remembered its last choice, so Profit could quietly add pretend money in. Trial results are on Strategies.
+  const mode: PickMode = "live";
   const { data, isLoading, error } = useWinLoss(mode);
 
   if (error) return <QueryError error={error} next="/more/admin/winloss" />;
@@ -119,12 +120,6 @@ export default function WinLossPage() {
   }
   return <WinLoss state={data} mode={mode} />;
 }
-
-const MODE_NOTE: Record<PickMode, string> = {
-  all: "Every settled pick, bet or not. Picks sent but never placed count for hit rates but have no money on them.",
-  live: "Live: only bets actually placed (matched on Betfair, or placed by hand), at the real stake and price.",
-  sim: "Sim: only picks that were recorded but not sent, priced at each strategy's stake as if they had been.",
-};
 
 function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
   const strategyNames = useStrategyNames();
@@ -214,16 +209,9 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
         as="h2"
         title="Profit"
         subtitle={
-          <>
-          Real Betfair bets at their real figures; everything else estimated from the alert&apos;s odds.
-          </>
+          <>Real money only: bets placed on Betfair, at their real stakes and prices. Pretend (trial) bets are on Strategies.</>
         }
       />
-
-      <div className="space-y-1.5">
-        <ModeToggle />
-        <p className="text-xs text-ink-muted">{MODE_NOTE[mode]}</p>
-      </div>
 
       {message && <p className="text-sm text-destructive">{message}</p>}
       {saveWinLoss.error && (
