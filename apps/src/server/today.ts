@@ -289,3 +289,20 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
     timings,
   };
 }
+
+/**
+ * The parts of the Today page that live in the engine's own thread, not the database: the Betfair link (the poller runs
+ * here), the betting breaker, and Telegram's health (the listener runs here). The report worker (report-worker.ts) has
+ * none of them, so a Today page worked out there read "Betfair link: Not set up" and "Alerts may not be arriving" while
+ * bets were being placed and alerts were arriving (owner, 21 Nov 2026). The route puts these back from this thread.
+ */
+export function todayLiveParts(db: EngineDb, now = new Date()) {
+  return { breaker: breakerStatus(), betfair: getBetfairLinkStatus(), telegram: telegramHealth(db, now) };
+}
+
+/** A Today snapshot (from the worker or not) with the engine thread's own parts put back. Pure apart from `live`. */
+export function withLiveParts(body: Record<string, unknown>, live: ReturnType<typeof todayLiveParts>): Record<string, unknown> {
+  const betting = (body.betting ?? {}) as Record<string, unknown>;
+  const alerts = (body.alerts ?? {}) as Record<string, unknown>;
+  return { ...body, betting: { ...betting, breaker: live.breaker, betfair: live.betfair }, alerts: { ...alerts, telegram: live.telegram } };
+}

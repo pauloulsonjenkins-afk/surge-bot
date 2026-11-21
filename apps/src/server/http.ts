@@ -131,7 +131,7 @@ import { displayName } from "../inplayguru/strategy-names";
 import { leagueFormReport } from "./league-form";
 import { getStoredLeagueForm, leagueLevel } from "../inplayguru/league-form";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
-import { notPlacedReport, todaySnapshot } from "./today";
+import { notPlacedReport, todayLiveParts, todaySnapshot, withLiveParts } from "./today";
 import { pickDetail } from "./pick-detail";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
@@ -1127,7 +1127,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (path === "/internal/today") {
         // Reused for up to a minute, and warmed in the background (see above): the page polls every 15s, so this was
         // the single busiest uncached report on the engine's one thread until 27 Oct 2026.
-        send(res, 200, { ...(await cachedReportVia(db, "today", "today", [], Date.now(), TODAY_TTL_MS)) });
+        send(res, 200, withLiveParts(await cachedReportVia(db, "today", "today", [], Date.now(), TODAY_TTL_MS), todayLiveParts(db)));
         return;
       }
       const days = Math.min(365, Math.max(1, Number(new URL(rawUrl, "http://internal").searchParams.get("days")) || 30));
