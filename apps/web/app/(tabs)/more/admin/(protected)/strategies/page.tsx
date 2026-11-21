@@ -14,7 +14,7 @@ import { useToday } from "@/queries/use-today";
 import { AdviceRow, ApplyAllAdvice, adviceTitle, IgnoredAdvice } from "@/components/admin/Advice";
 import { isLayRow } from "@/components/admin/LaySection";
 import { INACTIVE_DAYS, modeOf } from "@/components/admin/strategies/strategy-parts";
-import { byMoney, ENOUGH, signedGbp, totalOf, VERDICT_WORDS, verdictOf, type MoneyLine, type Verdict } from "@/lib/money-verdict";
+import { byMoney, disagrees, ENOUGH, LEVEL_BAND, signedGbp, totalOf, VERDICT_WORDS, verdictOf, type MoneyLine, type Verdict } from "@/lib/money-verdict";
 import type { StrategyAdvice } from "@/server/engine-client";
 
 /** The address of a strategy's own page. */
@@ -23,8 +23,8 @@ export const strategyHref = (label: string) => `/more/admin/strategies/${encodeU
 /** Real bets a strategy needs on trial before its earlier real-money record is mentioned. */
 const EARLIER_FROM = 20;
 
-const TONE: Record<Verdict, string> = { making: "text-hit", losing: "text-loss", early: "text-ink-muted", none: "text-ink-muted" };
-const CHIP: Record<Verdict, string> = { making: "bg-hit/15 text-hit", losing: "bg-loss/15 text-loss", early: "bg-ink/5 text-ink-muted", none: "bg-ink/5 text-ink-muted" };
+const TONE: Record<Verdict, string> = { making: "text-hit", losing: "text-loss", level: "text-ink", early: "text-ink-muted", none: "text-ink-muted" };
+const CHIP: Record<Verdict, string> = { making: "bg-hit/15 text-hit", losing: "bg-loss/15 text-loss", level: "bg-ink/10 text-ink", early: "bg-ink/5 text-ink-muted", none: "bg-ink/5 text-ink-muted" };
 
 /**
  * Strategies, stripped back (owner, 21 Nov 2026). Two lists that never mix: Real money (real £ only, including Golden
@@ -65,7 +65,7 @@ export default function StrategiesPage() {
       const live = r.returns?.live;
       const profit = live?.profit ?? 0;
       const bets = live?.counted ?? 0;
-      return { key: r.label, name: names.name(r.label), profit, bets, verdict: verdictOf(profit, bets), lay: isLayRow(r) };
+      return { key: r.label, name: names.name(r.label), profit, bets, verdict: verdictOf(profit, bets, live?.staked), lay: isLayRow(r) };
     });
   // ...and Golden slices betting real money inside a strategy that is otherwise on trial (it used to look like Sim).
   const liveLabels = new Set(realLines.map((l) => l.key.toLowerCase()));
@@ -74,7 +74,7 @@ export default function StrategiesPage() {
     const profit = s.ownLive?.profit ?? s.slice.live.profit ?? 0;
     const bets = s.ownLive?.n ?? s.slice.live.counted ?? 0;
     const parent = shown.find((r) => r.label.toLowerCase() === s.strategyKey)?.label ?? s.strategy;
-    realLines.push({ key: `${parent}#${s.id}`, name: names.name(parent), detail: `Only: ${s.label.replace(/^Golden:\s*/, "")}`, profit, bets, verdict: verdictOf(profit, bets) });
+    realLines.push({ key: `${parent}#${s.id}`, name: names.name(parent), detail: `Only: ${s.label.replace(/^Golden:\s*/, "")}`, profit, bets, verdict: verdictOf(profit, bets, s.ownLive?.staked ?? s.slice.live.staked) });
   }
   realLines.sort(byMoney);
 
@@ -89,10 +89,11 @@ export default function StrategiesPage() {
       name: names.name(r.label),
       profit,
       bets,
-      verdict: verdictOf(profit, bets),
+      verdict: verdictOf(profit, bets, sim?.staked),
       lay: isLayRow(r),
       ready: readyKeys.has(r.label.toLowerCase()),
       earlierReal: live && live.counted >= EARLIER_FROM ? { profit: live.profit, bets: live.counted } : null,
+      disagree: !!live && live.counted >= EARLIER_FROM && disagrees(profit, live.profit),
     };
   };
   const onTrial = shown.filter((r) => modeOf(r) === "sim" && !isQuiet(r));
@@ -121,8 +122,10 @@ export default function StrategiesPage() {
             {l.ready && <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[11px] font-medium text-accent">Ready for real money</span>}
           </span>
           {l.earlierReal && (
-            <span className="mt-0.5 block text-xs text-ink-muted">
-              Earlier with real money: {signedGbp(l.earlierReal.profit)} over {l.earlierReal.bets} bets
+            <span className={`mt-0.5 block text-xs ${l.disagree ? "font-medium text-warn" : "text-ink-muted"}`}>
+              {l.disagree
+                ? `With real money it did the opposite: ${signedGbp(l.earlierReal.profit)} over ${l.earlierReal.bets} bets. Trust the real result.`
+                : `Earlier with real money: ${signedGbp(l.earlierReal.profit)} over ${l.earlierReal.bets} bets`}
             </span>
           )}
         </span>
@@ -203,7 +206,7 @@ export default function StrategiesPage() {
       <IgnoredAdvice nameOf={(a) => adviceTitle(a, names.name)} />
 
       <p className="text-xs text-ink-muted">
-        A label needs {ENOUGH}+ bets: before that it is too early to tell, however good or bad the £ looks. Tap a strategy for its detail, or see{" "}
+        A label needs {ENOUGH}+ bets: before that it is too early to tell, however good or bad the £ looks. Within {Math.round(LEVEL_BAND * 100)}% of the money staked either way counts as around break-even. Real and trial results often disagree at these sizes: when they do, trust the real one. Tap a strategy for its detail, or see{" "}
         <Link href="/more/admin/strategies/all" className="text-accent underline underline-offset-2">
           Full detail
         </Link>
