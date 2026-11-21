@@ -190,6 +190,30 @@ export function listStrategyNames(db: EngineDb): Record<string, StrategyInfo & {
   }
   return out;
 }
+/**
+ * The owner's names, the SAME list as the site's ADMIN_SHORT_NAMES (web/src/queries/use-strategy-names.ts; a test keeps
+ * the two equal): notifications, Golden and the logs said "Og 2 Shg" and "Time To Fight" while the pages said "OG 2 SHG"
+ * and "Time to Fight" (21 Nov 2026). One name per strategy, everywhere.
+ */
+export const ADMIN_NAMES: Record<string, string> = {
+  "favourite pressure 2nd half": "Fav Pressure 2H",
+  "favourite pressure level": "Fav Pressure Level",
+  "underdog taking charge": "Underdog Charge",
+  "losing team pushing hard": "Losing Team Push",
+  "blistering momentum": "Blistering",
+  "over 1.5 goals / early goal": "Early Goal O1.5",
+  "pass master 1st half": "Pass Master 1H",
+  "dominant momentum 0-0": "Dominant 0-0",
+  "early pressure with low score": "Early Pressure",
+  "both teams to score": "BTTS",
+  "first half goal": "1st Half Goal",
+  "lay next goal · japan and brazil": "LAY · Japan/Brazil",
+  "away super fav 2 goals": "Away Super Fav 2G",
+  "away super fav 1 goal": "Away Super Fav 1G",
+  "time to fight": "Time to Fight",
+  "og 2 shg": "OG 2 SHG",
+};
+
 
 /**
  * What the ADMIN side shows for a strategy (notifications, reviews, Golden, LAY): InPlayGuru's own name, title-cased
@@ -198,6 +222,8 @@ export function listStrategyNames(db: EngineDb): Record<string, StrategyInfo & {
  */
 export function displayName(_db: EngineDb, raw: string): string {
   const label = strategyLabel(raw);
+  const own = ADMIN_NAMES[label.toLowerCase()];
+  if (own) return own;
   return label === label.toLowerCase() ? label.replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : label;
 }
 

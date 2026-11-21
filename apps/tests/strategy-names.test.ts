@@ -15,10 +15,10 @@ test("defaults: the coffee names, found from InPlayGuru's name with or without i
   assert.equal(memberName(db, "Pass Master 1st half"), "Filter Coffee");
   assert.equal(memberName(db, "French Press"), "French Press");
   assert.equal(memberName(db, "Some New Strategy (v2)"), "Some New Strategy");
-  // The admin side shows InPlayGuru's own name (27 Oct 2026).
-  assert.equal(displayName(db, "Time to fight"), "Time to fight");
-  assert.equal(displayName(db, "blistering momentum"), "Blistering Momentum");
-  assert.equal(displayName(db, "Both Teams to Score (fav conceded first)"), "Both Teams to Score");
+  // The admin side shows the owner's short name where there is one (the site's list), else InPlayGuru's.
+  assert.equal(displayName(db, "Time to fight"), "Time to Fight", "the owner's name, the same as the site's");
+  assert.equal(displayName(db, "blistering momentum"), "Blistering");
+  assert.equal(displayName(db, "Both Teams to Score (fav conceded first)"), "BTTS");
   assert.equal(strategyKey("Underdog taking charge"), "underdog taking charge");
   const all = listStrategyNames(db);
   assert.equal(Object.keys(all).length, 21); // 17 coffee names + 4 LAY groups (lay-groups.ts)
@@ -33,7 +33,7 @@ test("the admin can rename and describe a strategy, and clearing it goes back to
   assert.equal(s.description, "Underdog ahead: next goal.");
   assert.equal(s.custom, true);
   assert.equal(memberName(db, "Time to fight"), "Flat White");
-  assert.equal(displayName(db, "Time to fight"), "Time to fight", "the admin side keeps InPlayGuru's name");
+  assert.equal(displayName(db, "Time to fight"), "Time to Fight", "the admin side keeps its own name, not the members' one");
 
   saveStrategyName(db, "Time to fight", "", "");
   s = listStrategyNames(db)["time to fight"]!;

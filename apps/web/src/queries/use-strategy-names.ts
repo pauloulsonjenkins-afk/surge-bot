@@ -50,7 +50,9 @@ export const ADMIN_SHORT_NAMES: Record<string, string> = {
   "first half goal": "1st Half Goal",
   "lay next goal · japan and brazil": "LAY · Japan/Brazil",
   // Live strategies that had no short form showed in different casing on different pages.
-  "away super fav 2 goals": "Away Super Fav",
+  // "Away Super Fav" alone read as either of the two (21 Nov 2026).
+  "away super fav 2 goals": "Away Super Fav 2G",
+  "away super fav 1 goal": "Away Super Fav 1G",
   "time to fight": "Time to Fight",
   "og 2 shg": "OG 2 SHG",
 };

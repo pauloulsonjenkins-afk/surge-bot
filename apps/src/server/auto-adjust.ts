@@ -22,6 +22,8 @@ import { displayName } from "../inplayguru/strategy-names";
 import { cachedReportVia } from "./report-cache";
 import { sendPush } from "./push";
 import { log } from "./log";
+import { archiveLosingTrials, type TrialFigures } from "./archive";
+import { getSendingSettings } from "../inplayguru/bet-feed";
 
 export const MAX_CHANGES = 4;
 const ON_KEY = "auto_adjust_on";
@@ -127,6 +129,27 @@ export interface RunLog {
   applied: Array<{ key: string; name: string; kind: Advice["kind"]; action: string; reason: string }>;
   held: Array<{ key: string; name: string; kind: Advice["kind"]; action: string; why: string }>;
   failed: Array<{ key: string; kind: Advice["kind"]; error: string }>;
+  /** Trial strategies archived for losing over 200+ pretend bets (archive.ts archiveLosingTrials). */
+  archived?: Array<{ key: string; name: string; note: string }>;
+}
+
+/** The archive's trial figures from the Strategies report body. Pure. */
+export function trialFiguresFromReport(body: Record<string, unknown>, liveSliceParents: Set<string>): TrialFigures[] {
+  type Row = { label: string; mode?: string; mergedInto?: string | null; returns?: { sim?: { counted?: number; profit?: number } | null } | null; form?: { week?: { sim?: { counted?: number; roi?: number | null } | null } | null } | null };
+  return ((body.strategies ?? []) as Row[])
+    .filter((r) => !r.mergedInto)
+    .map((r) => {
+      const wk = r.form?.week?.sim;
+      return {
+        key: r.label.toLowerCase(),
+        label: r.label,
+        live: r.mode === "live",
+        hasLiveSlice: liveSliceParents.has(r.label.toLowerCase()),
+        simBets: r.returns?.sim?.counted ?? 0,
+        simProfit: r.returns?.sim?.profit ?? 0,
+        weekSimRoi: wk && (wk.counted ?? 0) > 0 && typeof wk.roi === "number" ? wk.roi : null,
+      };
+    });
 }
 
 export function autoAdjustOn(db: EngineDb): boolean {
@@ -185,12 +208,24 @@ export async function runAutoAdjust(db: EngineDb, slot: string, now = new Date()
       run.failed.push({ key: d.advice.key, kind: d.advice.kind, error: err instanceof Error ? err.message : String(err) });
     }
   }
+  // Trial strategies still losing over 200+ pretend bets go to the Archive (restorable there).
+  try {
+    const liveSliceParents = new Set(Object.entries(getSendingSettings(db).segmentBets).filter(([, b]) => b.live).map(([k]) => k.split("#")[0]!));
+    run.archived = archiveLosingTrials(db, trialFiguresFromReport(body, liveSliceParents), protectedKeys(db), now).map((r) => ({
+      key: r.key,
+      name: displayName(db, r.key),
+      note: `£${r.simProfit.toFixed(2)} over ${r.simBets} pretend bets`,
+    }));
+  } catch (err) {
+    log.warn(`Auto-adjust: archiving losing trials failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
   db.setSetting(LOG_KEY, JSON.stringify([run, ...autoAdjustLog(db)].slice(0, LOG_KEEP)));
   log.info(`Auto-adjust (${slot}): ${run.applied.length} applied, ${run.held.length} held back, ${run.failed.length} failed.`);
-  if (run.applied.length > 0) {
+  const archivedN = run.archived?.length ?? 0;
+  if (run.applied.length > 0 || archivedN > 0) {
     await sendPush(db, {
-      title: `Auto-adjust: ${run.applied.length} change${run.applied.length === 1 ? "" : "s"}`,
-      body: run.applied.map((a) => `${a.name}: ${a.action.toLowerCase()}`).join(" · "),
+      title: `Auto-adjust: ${run.applied.length + archivedN} change${run.applied.length + archivedN === 1 ? "" : "s"}`,
+      body: [...run.applied.map((a) => `${a.name}: ${a.action.toLowerCase()}`), ...(run.archived ?? []).map((a) => `${a.name}: archived, losing on trial`)].join(" · "),
       url: "/more/admin/strategies",
       tag: "auto-adjust",
     });

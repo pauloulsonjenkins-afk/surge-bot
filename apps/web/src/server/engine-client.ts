@@ -2266,6 +2266,7 @@ export interface AutoAdjustState {
     applied: Array<{ key: string; name: string; kind: string; action: string; reason: string }>;
     held: Array<{ key: string; name: string; kind: string; action: string; why: string }>;
     failed: Array<{ key: string; kind: string; error: string }>;
+    archived?: Array<{ key: string; name: string; note: string }>;
   }>;
 }
 export function fetchAutoAdjust(): Promise<AutoAdjustState> {

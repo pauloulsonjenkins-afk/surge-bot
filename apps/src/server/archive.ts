@@ -131,6 +131,47 @@ export function autoArchive(db: EngineDb, now = new Date()): string[] {
   return done;
 }
 
+/** Pretend bets a strategy on trial needs before it can be archived for losing. */
+export const LOSING_TRIAL_BETS = 200;
+
+export interface TrialFigures {
+  key: string;
+  label: string;
+  live: boolean;
+  /** A Golden slice of it bets real money: never archived (archiving would switch the slice off). */
+  hasLiveSlice: boolean;
+  simBets: number;
+  simProfit: number;
+  /** Its pretend bets over the last 7 days (null with none). */
+  weekSimRoi: number | null;
+}
+
+/** Which trial strategies to archive for losing: 200+ pretend bets, still losing, and not winning lately. Pure. */
+export function losingTrials(rows: TrialFigures[], archived: Record<string, unknown>, kept: Record<string, unknown>, protectedKeys: string[] = []): TrialFigures[] {
+  const prot = new Set(protectedKeys.map((k) => k.toLowerCase()));
+  return rows.filter(
+    (r) =>
+      !r.live &&
+      !r.hasLiveSlice &&
+      !archived[r.key] &&
+      !kept[r.key] &&
+      !prot.has(r.key) &&
+      r.simBets >= LOSING_TRIAL_BETS &&
+      r.simProfit < 0 &&
+      (r.weekSimRoi === null || r.weekSimRoi <= 0),
+  );
+}
+
+/**
+ * Archives the trial strategies losing over LOSING_TRIAL_BETS pretend bets (owner, 21 Nov 2026: "strategies everywhere").
+ * Still restorable from the Archive page, and one restored there is never archived again by this. Returns them.
+ */
+export function archiveLosingTrials(db: EngineDb, rows: TrialFigures[], protectedKeys: string[] = [], now = new Date()): TrialFigures[] {
+  const out = losingTrials(rows, load(db), loadKept(db), protectedKeys);
+  for (const r of out) setArchived(db, r.label, true, `Losing on trial: £${r.simProfit.toFixed(2)} over ${r.simBets} pretend bets.`, now);
+  return out;
+}
+
 /** Runs the automatic archiving a minute after start and every six hours. */
 export function startAutoArchive(db: EngineDb): void {
   const run = () => {
