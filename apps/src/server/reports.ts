@@ -14,6 +14,7 @@ import { goldenReport } from "./golden";
 import { computeWinLoss } from "./winloss";
 import { computeStrategyWeeks } from "./strategy-weeks";
 import { buildStrategiesReport } from "./http";
+import { strategyAdvice } from "./strategy-advice";
 
 export const REPORTS = {
   today: (db: EngineDb): Record<string, unknown> => todaySnapshot(db) as unknown as Record<string, unknown>,
@@ -28,6 +29,8 @@ export const REPORTS = {
     const state = timed("winloss", () => computeWinLoss(db, new Date(), parsePickMode(mode)));
     return { ...state, timings: done(), at: new Date().toISOString() };
   },
+  // The strategy suggestions as worked out, before the week's pass and snoozes (strategy-advice.ts adviceFromComputed).
+  advice: (db: EngineDb): Record<string, unknown> => ({ advice: strategyAdvice(db), at: new Date().toISOString() }),
   "strategy-weeks": (db: EngineDb): Record<string, unknown> => {
     const { timed, done } = reportTimings("Strategies weekly data");
     const weeks = timed("weeks", () => computeStrategyWeeks(db));

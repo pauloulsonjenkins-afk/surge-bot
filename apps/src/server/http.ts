@@ -109,7 +109,7 @@ import { liveBetCounter, moneyProblems, unconfirmed } from "./money-guard";
 import { loopDelay, timed } from "./loop-delay";
 import { reportWorkerReady, reportWorkerStatus } from "./report-client";
 import { runReport } from "./reports";
-import { AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
+import { adviceFromComputed, AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice, type Advice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { autoAdjustLog, autoAdjustOn, protectedKeys } from "./auto-adjust";
 import { horseTipResultsWithPoints } from "./horse-bsp";
@@ -252,6 +252,7 @@ export function warmReportCache(db: EngineDb): void {
   (async () => {
     await cachedReportVia(db, "today", "today", [], Date.now(), TODAY_TTL_MS);
     await cachedReportVia(db, `strategies:null`, "strategies", [null]);
+    await cachedReportVia(db, "advice", "advice", []);
   })().catch(failed);
 }
 
@@ -670,7 +671,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     // The suggestions on their own: a light call the menus poll for their count badge (Today's summary is much heavier).
     if (req.method === "GET" && path === "/internal/strategy-advice") {
       if (!requireAdmin(req, res)) return;
-      send(res, 200, { advice: visibleAdvice(db), snoozed: snoozedAdvice(db) });
+      // Worked out on the report worker when it is running (reports.ts "advice"); only the cheap last steps run here.
+      const computed = (await cachedReportVia(db, "advice", "advice", [])).advice as Advice[];
+      send(res, 200, adviceFromComputed(db, computed));
       return;
     }
 
@@ -695,6 +698,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     if (req.method === "POST" && path === "/internal/strategy-advice/apply-all") {
       if (!requireAdmin(req, res)) return;
       const done = applyAllAdvice(db);
+      clearReportCache(db);
       log.info(`Apply all: ${done.applied.length} suggestion(s) applied, ${done.failed.length} no longer applied.`);
       send(res, 200, { ...done, advice: visibleAdvice(db) });
       return;
@@ -718,6 +722,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           return;
         }
         const done = applyAdvice(db, body.key, kind, new Date(), typeof body.league === "string" ? body.league : undefined, { to: exp.to });
+        clearReportCache(db);
         send(res, 200, { applied: done, advice: visibleAdvice(db) });
       } catch (err) {
         if (err instanceof AdviceChanged) {

@@ -718,6 +718,20 @@ export function snoozedAdvice(db: EngineDb, now = new Date()): Array<Advice & { 
     .map((a) => ({ ...a, until: snoozed[snoozeId(a)]! }));
 }
 
+/**
+ * visibleAdvice and snoozedAdvice from suggestions already worked out (strategyAdvice, on the report worker: reports.ts
+ * "advice"). Only the cheap steps run here: the week's pass, what is set aside, and stake steps hidden while automatic
+ * stakes are on. Working the suggestions out took 2-3.3 s on the engine's thread on a busy Saturday (21 Nov 2026) and held
+ * the Today page's Suggestions, and every alert and bet, until it finished.
+ */
+export function adviceFromComputed(db: EngineDb, computed: Advice[], now = new Date()): { advice: Advice[]; snoozed: Array<Advice & { until: string }> } {
+  const all = weeklyGrowth(db, computed, now);
+  const snoozed = activeSnoozes(db, now);
+  const shown = all.filter((a) => !snoozed[snoozeId(a)]);
+  const advice = getSendingSettings(db).ladderAuto ? shown.filter((a) => a.kind !== "stake-up" && a.kind !== "stake-down") : shown;
+  return { advice, snoozed: all.filter((a) => snoozed[snoozeId(a)]).map((a) => ({ ...a, until: snoozed[snoozeId(a)]! })) };
+}
+
 /** With automatic stakes on: the stake steps waiting for their week to pass, and when each is due. */
 export function autoStakeQueue(db: EngineDb, now = new Date()): Array<{ key: string; action: string; due: string }> {
   if (!getSendingSettings(db).ladderAuto) return [];
