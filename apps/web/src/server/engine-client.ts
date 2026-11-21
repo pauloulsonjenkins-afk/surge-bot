@@ -2245,6 +2245,24 @@ export function setArchive(label: string, archived: boolean, note?: string): Pro
 }
 
 /** The drip shadow test's report (engine drip-shadow-report.ts): admin only, no page uses it. */
+/** Auto-adjust (engine auto-adjust.ts): whether it is on, what it leaves alone, and each run's changes and held-back suggestions. */
+export interface AutoAdjustState {
+  on: boolean;
+  protected: string[];
+  runs: Array<{
+    at: string;
+    slot: string;
+    applied: Array<{ key: string; name: string; kind: string; action: string; reason: string }>;
+    held: Array<{ key: string; name: string; kind: string; action: string; why: string }>;
+    failed: Array<{ key: string; kind: string; error: string }>;
+  }>;
+}
+export function fetchAutoAdjust(): Promise<AutoAdjustState> {
+  return engineCall<AutoAdjustState>("/internal/auto-adjust", "auto-adjust");
+}
+export function setAutoAdjust(on: boolean): Promise<AutoAdjustState> {
+  return engineCall<AutoAdjustState>("/internal/auto-adjust", "auto-adjust", { method: "POST", body: { on } });
+}
 export function fetchDripShadow(): Promise<{ headline: string; text: string; recorded: number; settled: number }> {
   return engineCall<{ headline: string; text: string; recorded: number; settled: number }>("/internal/drip-shadow", "the drip test report");
 }

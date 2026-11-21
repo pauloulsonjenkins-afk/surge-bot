@@ -111,6 +111,7 @@ import { reportWorkerReady, reportWorkerStatus } from "./report-client";
 import { runReport } from "./reports";
 import { AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
+import { autoAdjustLog, autoAdjustOn, protectedKeys } from "./auto-adjust";
 import { horseTipResultsWithPoints } from "./horse-bsp";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -1102,6 +1103,18 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     // The Today page (server/today.ts), and the not-placed picks grouped by reason.
+    // Auto-adjust (auto-adjust.ts): its runs (what it applied, held back and why) for the Claude cross-check, whether it
+    // is on, and the strategies it leaves alone. POST { on } switches it on or off.
+    if (path === "/internal/auto-adjust" && (req.method === "GET" || req.method === "POST")) {
+      if (!requireAdmin(req, res)) return;
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        if (typeof body.on === "boolean") db.setSetting("auto_adjust_on", body.on ? "1" : "0");
+      }
+      send(res, 200, { on: autoAdjustOn(db), protected: protectedKeys(db), runs: autoAdjustLog(db) });
+      return;
+    }
+
     // The dates the agents' weekly review reads (strategy-advice.ts agentDates). Read-only.
     if (req.method === "GET" && path === "/internal/agent-dates") {
       if (!requireAdmin(req, res)) return;
