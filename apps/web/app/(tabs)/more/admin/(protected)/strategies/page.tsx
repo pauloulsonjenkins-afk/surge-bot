@@ -114,7 +114,7 @@ export default function StrategiesPage() {
             <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${CHIP[l.verdict]}`}>{VERDICT_WORDS[kind][l.verdict]}</span>
             {l.bets > 0 && (
               <span>
-                {l.bets} {kind === "real" ? "real" : "trial"} {l.bets === 1 ? "bet" : "bets"}
+                {l.bets} {kind === "real" ? "real" : "trial"} {l.bets === 1 ? "bet" : "bets"} in total
               </span>
             )}
             {l.lay && <span>· lay</span>}
@@ -153,13 +153,13 @@ export default function StrategiesPage() {
           <h3 className="text-base font-semibold text-ink">
             Real money <span className="text-sm font-normal text-ink-muted">· {realLines.length}</span>
           </h3>
-          <p className="text-xs text-ink-muted">Real bets on Betfair. Only real results are shown here.</p>
+          <p className="text-xs text-ink-muted">Real bets on Betfair, in total since each started: not just today. Only real results are shown here.</p>
         </div>
         {realLines.length > 0 ? (
           <>
             <div className="flex items-baseline justify-between rounded-xl border border-line bg-surface px-3.5 py-3">
               <span className="text-sm text-ink">
-                Together, on their real bets
+                Together, all their real bets so far
                 <span className="block text-xs text-ink-muted">{real.bets} bets</span>
               </span>
               <span className={`text-xl font-semibold tabular-nums ${real.profit > 0 ? "text-hit" : real.profit < 0 ? "text-loss" : "text-ink"}`}>{signedGbp(real.profit)}</span>
@@ -176,7 +176,7 @@ export default function StrategiesPage() {
           <h3 className="text-base font-semibold text-ink">
             On trial <span className="text-sm font-normal text-ink-muted">· {trialMain.length}</span>
           </h3>
-          <p className="text-xs text-ink-muted">Pretend bets: what it would have made. No money is placed.</p>
+          <p className="text-xs text-ink-muted">Pretend bets, in total since each started: what it would have made. No money is placed.</p>
         </div>
         {trialMain.length > 0 ? list(trialMain, "trial") : <p className="text-sm text-ink-muted">Nothing on trial is ahead or new.</p>}
         {folded("Losing on trial", `Losing over ${ENOUGH}+ pretend bets. Still recorded, in case they turn.`, trialLosing)}

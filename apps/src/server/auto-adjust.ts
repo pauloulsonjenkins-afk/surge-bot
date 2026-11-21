@@ -15,6 +15,7 @@
  *
  * Each change is applied once, through applyAdvice, which works the suggestion out afresh: a run can't apply one twice.
  */
+import { withChangeSource } from "../inplayguru/change-log";
 import type { EngineDb } from "../storage/engine-db";
 import { applyAdvice, strategyAdvice, weeklyGrowth, type Advice } from "./strategy-advice";
 import { displayName } from "../inplayguru/strategy-names";
@@ -178,7 +179,7 @@ export async function runAutoAdjust(db: EngineDb, slot: string, now = new Date()
       continue;
     }
     try {
-      const a = applyAdvice(db, d.advice.key, d.advice.kind, now, undefined, { to: d.advice.to ?? null });
+      const a = withChangeSource("Auto-adjust", () => applyAdvice(db, d.advice.key, d.advice.kind, now, undefined, { to: d.advice.to ?? null }));
       run.applied.push({ key: a.key, name: nameOf(a), kind: a.kind, action: a.action, reason: a.reason });
     } catch (err) {
       run.failed.push({ key: d.advice.key, kind: d.advice.kind, error: err instanceof Error ? err.message : String(err) });

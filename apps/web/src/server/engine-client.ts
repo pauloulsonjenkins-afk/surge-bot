@@ -2245,6 +2245,17 @@ export function setArchive(label: string, archived: boolean, note?: string): Pro
 }
 
 /** The drip shadow test's report (engine drip-shadow-report.ts): admin only, no page uses it. */
+/** One line of the changes log (engine inplayguru/change-log.ts). */
+export interface ChangeEntry {
+  at: string;
+  by: string;
+  key: string;
+  kind: "mode" | "stake" | "betting";
+  change: string;
+}
+export function fetchChanges(): Promise<{ changes: ChangeEntry[] }> {
+  return engineCall<{ changes: ChangeEntry[] }>("/internal/changes", "the changes log");
+}
 /** Auto-adjust (engine auto-adjust.ts): whether it is on, what it leaves alone, and each run's changes and held-back suggestions. */
 export interface AutoAdjustState {
   on: boolean;

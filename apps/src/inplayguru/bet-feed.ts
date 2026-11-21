@@ -48,6 +48,7 @@ import { getLeagueBlocks, isLeagueBlocked } from "./league-blocks";
 import { getStoredLeagueForm, leagueLevel, passesLeagueFilter, type LeagueFilter, type StoredLeagueForm } from "./league-form";
 import { extraFacts, segmentsOf, type AlertFacts } from "../server/segments";
 import { clashOf, exposureOf, type Exposure } from "./clash";
+import { recordChanges } from "./change-log";
 
 export interface SendingSettings {
   /** Master switch. */
@@ -506,6 +507,8 @@ export function saveSendingSettings(db: EngineDb, patch: Record<string, unknown>
     }
   }
   db.setSetting(SETTINGS_KEY, JSON.stringify(next));
+  // Every switch and stake change is logged with who made it (change-log.ts): the admin site names itself with changedBy.
+  recordChanges(db, current, next, typeof patch.changedBy === "string" && patch.changedBy.trim() ? patch.changedBy.trim().slice(0, 40) : undefined);
   return next;
 }
 

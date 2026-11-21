@@ -14,17 +14,16 @@ import { useQuery } from "@tanstack/react-query";
 import { getJson } from "@/queries/fetch-json";
 import { AdviceRow, ApplyAllAdvice, adviceTitle, IgnoredAdvice } from "@/components/admin/Advice";
 import { TodayByStrategy } from "@/components/admin/TodayByStrategy";
-import { toneOf, gbp, units } from "@/lib/format";
+import { gbp } from "@/lib/format";
 import { Fold } from "@/components/ui/Fold";
 import { AttentionDot, NoticeStack, type NoticeItem } from "@/components/ui/Notice";
 import { Power } from "lucide-react";
 import { notPlacedText, notPlacedWarns } from "@/lib/not-placed";
-import { Flash } from "@/components/ui/Flash";
-import { DashboardBody } from "@/components/dashboard/DashboardBody";
 import { PayingCard } from "@/components/admin/PayingCard";
 import { BrewGauge } from "@/components/admin/BrewGauge";
 import { useDashboard } from "@/queries/use-dashboard";
 import { ukMidnightIso } from "@/lib/uk-time";
+import type { ChangeEntry } from "@/server/engine-client";
 
 
 function ago(iso: string | null): string {
@@ -47,16 +46,6 @@ function Tile({ label, value, sub, warn, flat, children }: { label: string; valu
   );
 }
 
-/** Today's Sim figure under a Live one: a tinted chip in its own colour, then how many Sim bets it is from. */
-function SimToday({ value, tone, settled }: { value: string; tone: string; settled: number }) {
-  return (
-    <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-      <span className={`roi-chip !px-2 !py-0 !text-xs tabular-nums ${tone}`}>Sim {value}</span>
-      <span>{settled} settled</span>
-    </span>
-  );
-}
-
 /**
  * Today's Live profit, first thing on Home, inside the brew gauge (BrewGauge.tsx): the hit rate against the rate
  * needed to break even, from the same Live figures the Performance section below shows for today.
@@ -72,11 +61,7 @@ function LiveToday({ d }: { d: TodaySnapshot }) {
       needs={c?.breakevenEffective ?? c?.breakeven ?? null}
       won={stats?.totals.hits ?? 0}
       lost={stats?.totals.misses ?? 0}
-    >
-      <span className="flex w-full justify-center text-xs text-ink-muted">
-        <SimToday value={gbp(d.today.simNet, false)} tone={toneOf(d.today.simNet)} settled={d.today.simSettled} />
-      </span>
-    </BrewGauge>
+    />
   );
 }
 function secs(n: number | null): string {
@@ -259,21 +244,13 @@ function Tiles({ d }: { d: TodaySnapshot }) {
     <>
       <NoticeStack items={notices} />
 
-      <div className={`grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line ${d.today.liveUnits !== undefined ? "lg:grid-cols-3 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2" : "lg:grid-cols-2"}`}>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line">
         <Tile flat
           label="Betting"
           value={d.betting.on ? (d.betting.breaker.open ? "Paused" : "On") : "Off"}
           sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
-        {/* The same day as if every bet were the same 1-unit stake, so a stake change can't make it look better or worse. */}
-        {d.today.liveUnits !== undefined && (
-          <Tile flat
-            label="Units today"
-            value={<Flash value={d.today.liveUnits}><span className={toneOf(d.today.liveUnits)}>{units(d.today.liveUnits)}</span></Flash>}
-            sub={<>Live, {d.today.liveSettled} settled<SimToday value={units(d.today.simUnits ?? 0)} tone={toneOf(d.today.simUnits ?? 0)} settled={d.today.simSettled} /></>}
-          />
-        )}
         <Tile flat
           label="Daily loss stop"
           value={d.limits.dailyLossLimit > 0 ? `£${d.limits.dailyLossLimit}` : "Off"}
@@ -415,6 +392,36 @@ function Tiles({ d }: { d: TodaySnapshot }) {
 }
 
 /**
+ * Recent changes (owner, 21 Nov 2026: "who put it Live?"): every switch between real money and trial and every stake
+ * change, newest first, with who made it (engine inplayguru/change-log.ts).
+ */
+function RecentChanges() {
+  const names = useStrategyNames();
+  const q = useQuery({ queryKey: ["changes"], queryFn: ({ signal }) => getJson<{ changes: ChangeEntry[] }>("/api/admin/changes", "the changes log", signal), staleTime: 60_000 });
+  const changes = q.data?.changes ?? [];
+  const nameOf = (key: string) => (key === "*" ? "All betting" : key.includes("#") ? `${names.name(key.split("#")[0]!)} (Golden slice)` : names.name(key));
+  const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: "Europe/London", weekday: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <Fold title="Recent changes" hint={changes.length > 0 ? `latest ${when(changes[0]!.at)} · by ${changes[0]!.by}` : "none logged yet"}>
+      {changes.length === 0 ? (
+        <p className="text-sm text-ink-muted">Changes to real money, trial and stakes are listed here from now on, with who made each one.</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {changes.slice(0, 25).map((c, i) => (
+            <li key={`${c.at}:${c.key}:${i}`}>
+              <span className="font-medium text-ink">{nameOf(c.key)}</span> <span className="text-ink">{c.change}</span>
+              <span className="block text-xs text-ink-muted">
+                {when(c.at)} · by {c.by}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Fold>
+  );
+}
+
+/**
  * Home: the admin's one page for "is it working, how am I doing, what needs me" (14 Nov 2026). The day's status first
  * (this was the Today page), then the performance figures that were the Dashboard, then the slower detail folded away.
  * The address is still /today so saved links and notifications keep working.
@@ -441,10 +448,19 @@ export default function TodayPage() {
       ) : (
         <Tiles d={data} />
       )}
+      <RecentChanges />
       <NotPlaced />
-      <div className="border-t border-line pt-6">
-        <DashboardBody embedded />
-      </div>
+      <p className="text-sm text-ink-muted">
+        Earlier days, weeks and months are on{" "}
+        <Link href="/more/admin/winloss" className="font-medium text-accent underline underline-offset-2">
+          Profit
+        </Link>
+        ; each strategy&apos;s record is on{" "}
+        <Link href="/more/admin/strategies" className="font-medium text-accent underline underline-offset-2">
+          Strategies
+        </Link>
+        .
+      </p>
     </div>
   );
 }

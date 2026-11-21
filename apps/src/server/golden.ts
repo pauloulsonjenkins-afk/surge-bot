@@ -18,6 +18,7 @@
  * luck, which is why a suggestion is only ever watched (from the day it's added, quietly), never bet.
  * Worked out at most every 6 hours.
  */
+import { withChangeSource } from "../inplayguru/change-log";
 import type { EngineDb } from "../storage/engine-db";
 import { getSendingSettings, saveSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { displayName } from "../inplayguru/strategy-names";
@@ -602,7 +603,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
     const pct = (n: number) => `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`;
     if (!rec || rec.n < SAFETY.minBets || rec.roi === null || rec.roi >= SAFETY.worstRoi) continue;
     const why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
-    saveSendingSettings(db, { segmentBets: { [k]: { live: false } } });
+    withChangeSource("Golden safety", () => saveSendingSettings(db, { segmentBets: { [k]: { live: false } } }));
     const name = `${displayName(db, strategyKey)}, ${(slice?.label ?? "Golden").replace(/^Golden: /, "")}`;
     off.push(name);
     lines.push(`${name}: ${why}`);

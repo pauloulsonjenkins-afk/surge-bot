@@ -112,6 +112,7 @@ import { runReport } from "./reports";
 import { adviceFromComputed, AdviceChanged, agentDates, applyAdvice, applyAllAdvice, snoozeAdvice, snoozedAdvice, visibleAdvice, type Advice } from "./strategy-advice";
 import { clashCheck } from "./clash-check";
 import { autoAdjustLog, autoAdjustOn, protectedKeys } from "./auto-adjust";
+import { listChanges, withChangeSource } from "../inplayguru/change-log";
 import { horseTipResultsWithPoints } from "./horse-bsp";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -697,7 +698,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     // Every suggestion showing, carried out in one go (the admin pressed Apply all and confirmed): strategy-advice.ts.
     if (req.method === "POST" && path === "/internal/strategy-advice/apply-all") {
       if (!requireAdmin(req, res)) return;
-      const done = applyAllAdvice(db);
+      const done = withChangeSource("You (Apply all)", () => applyAllAdvice(db));
       clearReportCache(db);
       log.info(`Apply all: ${done.applied.length} suggestion(s) applied, ${done.failed.length} no longer applied.`);
       send(res, 200, { ...done, advice: visibleAdvice(db) });
@@ -721,7 +722,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           send(res, 400, { error: "Say what you expect to change: { expect: { to } }." });
           return;
         }
-        const done = applyAdvice(db, body.key, kind, new Date(), typeof body.league === "string" ? body.league : undefined, { to: exp.to });
+        const done = withChangeSource("You (suggestion)", () => applyAdvice(db, String(body.key), kind, new Date(), typeof body.league === "string" ? body.league : undefined, { to: exp.to }));
         clearReportCache(db);
         send(res, 200, { applied: done, advice: visibleAdvice(db) });
       } catch (err) {
@@ -1108,6 +1109,13 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     // The Today page (server/today.ts), and the not-placed picks grouped by reason.
+    // The changes log (inplayguru/change-log.ts): every switch and stake change, with who made it. Read-only.
+    if (req.method === "GET" && path === "/internal/changes") {
+      if (!requireAdmin(req, res)) return;
+      send(res, 200, { changes: listChanges(db) });
+      return;
+    }
+
     // Auto-adjust (auto-adjust.ts): its runs (what it applied, held back and why) for the Claude cross-check, whether it
     // is on, and the strategies it leaves alone. POST { on } switches it on or off.
     if (path === "/internal/auto-adjust" && (req.method === "GET" || req.method === "POST")) {

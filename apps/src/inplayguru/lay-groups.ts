@@ -19,6 +19,7 @@
  * bet on the same match that is Live (sent, or from a strategy or slice switched Live): see clash.ts. One LAY per
  * match, score and kind of bet.
  */
+import { withChangeSource } from "./change-log";
 import type { EngineDb, LivePick } from "../storage/engine-db";
 import { getSendingSettings, pickFacts, saveSendingSettings, segmentBetFor, strategyLabel } from "./bet-feed";
 import { parseAlert } from "./parse-alert";
@@ -111,7 +112,7 @@ export function watchLayGroup(db: EngineDb, strategyKey: string, source: "NEXT_G
   const entry: SavedLayGroup = { strategyKey: key, source, rule, why, addedAt: now.toISOString() };
   db.setSetting(CUSTOM_KEY, JSON.stringify([...saved, entry]));
   const group = fromSaved(entry);
-  saveSendingSettings(db, { stakes: { [group.header.toLowerCase()]: 2 } });
+  withChangeSource("LAY groups", () => saveSendingSettings(db, { stakes: { [group.header.toLowerCase()]: 2 } }));
   log.info(`LAY group added from a lay idea: ${group.header} (Sim, £2 liability).`);
   return group;
 }

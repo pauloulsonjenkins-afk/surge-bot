@@ -48,6 +48,7 @@
  * wait), each with its own notification. "Try Live"
  * and "Back to Sim" are never automatic.
  */
+import { withChangeSource } from "../inplayguru/change-log";
 import { ukDateOf } from "./uk-time";
 import { ukWeekStart } from "./uk-time";
 import { stakeCapFor } from "./money-guard";
@@ -756,7 +757,7 @@ export function autoApplyStakes(db: EngineDb, now = new Date()): Advice[] {
     const prev = last[a.key];
     if (!a.fast && prev && now.getTime() - Date.parse(prev) < AUTO_GAP_MS) continue;
     try {
-      done.push(applyAdvice(db, a.key, a.kind, now));
+      done.push(withChangeSource("Stake ladder", () => applyAdvice(db, a.key, a.kind, now)));
     } catch (err) {
       log.warn(`Automatic stake for ${a.key} failed: ${err instanceof Error ? err.message : String(err)}`);
     }

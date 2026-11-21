@@ -13,6 +13,7 @@
  *
  * The Archive page (More, under Settings and tools) lists them with what they did and why they were archived.
  */
+import { withChangeSource } from "../inplayguru/change-log";
 import type { EngineDb } from "../storage/engine-db";
 import { getSendingSettings, saveSendingSettings, strategyLabel } from "../inplayguru/bet-feed";
 import { computeStrategyReturns, type StrategyReturn } from "./winloss";
@@ -70,7 +71,7 @@ export function setArchived(db: EngineDb, label: string, archived: boolean, note
         switchedOff.push(k);
       }
     }
-    if (patch.strategies || patch.segmentBets) saveSendingSettings(db, patch);
+    if (patch.strategies || patch.segmentBets) withChangeSource("Archive", () => saveSendingSettings(db, patch));
   } else {
     delete all[key];
     // Restored on purpose: the automatic archiving below leaves it alone from now on.
