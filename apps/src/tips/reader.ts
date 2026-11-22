@@ -282,6 +282,8 @@ interface Active {
 // --------------------------------------------------------------------------- TipMan Premium's screenshots
 
 const SCREENS_KEY = "tipman_screens_done";
+const SCREENS_VERSION_KEY = "tipman_screens_version";
+const SCREENS_VERSION = "2";
 const SCREEN_TRIES = 3;
 const SCREEN_MAX_AGE_S = 30 * 3600;
 const SCREENS_PER_PASS = 3;
@@ -310,6 +312,14 @@ async function readTipmanScreens(a: Active, chatId: string, name: string, messag
     if (!screensKeyWarned) log.info("TipMan screenshots: ANTHROPIC_API_KEY isn't set on the engine, so the images aren't read.");
     screensKeyWarned = true;
     return;
+  }
+  // 22 Nov 2026: the reader now reports each bet in an image separately (a Bet of the Day and an accumulator in one image
+  // had been merged, and a bet builder's advised points and price missed). The first posts read before that are read again.
+  if (a.db.getSetting(SCREENS_VERSION_KEY) !== SCREENS_VERSION) {
+    const gone = a.db.deleteTipmanCardsStartingWith("tg");
+    a.db.setSetting(SCREENS_KEY, "{}");
+    a.db.setSetting(SCREENS_VERSION_KEY, SCREENS_VERSION);
+    if (gone > 0) log.info(`TipMan screenshots: ${gone} bet(s) read by the earlier reader cleared, to be read again.`);
   }
   const done = screensDone(a.db);
   const groups = new Map<string, Api.Message[]>();

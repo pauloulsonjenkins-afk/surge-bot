@@ -3309,6 +3309,13 @@ export class EngineDb {
     this.onChange();
   }
 
+  /** Removes the stored cards whose id starts with this prefix (the screenshot reader's own, "tg"). Returns how many. */
+  deleteTipmanCardsStartingWith(prefix: string): number {
+    const r = this.db.prepare(`DELETE FROM tipman_cards WHERE id LIKE ? ESCAPE '\\'`).run(`${prefix.replace(/[\\%_]/g, "\\$&")}%`);
+    if (r.changes > 0) this.onChange();
+    return r.changes;
+  }
+
   /** The stored cards' json from this UK day on, newest day first. */
   listTipmanCardJson(sinceDay: string): string[] {
     return (this.db.prepare(`SELECT json FROM tipman_cards WHERE day >= ? ORDER BY day DESC, first_seen_at DESC`).all(sinceDay) as Array<{ json: string }>).map((r) => r.json);

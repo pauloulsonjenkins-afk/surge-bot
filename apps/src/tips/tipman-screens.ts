@@ -81,9 +81,22 @@ export interface VisionSel {
   market: string;
   odds: string;
 }
+/** One bet the image shows: a Bet of the Day, an accumulator, a bet builder, or a list to combine by the caption's plan. */
+export interface VisionBet {
+  name: string;
+  shape: "single" | "acca" | "builder" | "multiples";
+  /** The advised stake as shown ("5pts", "3 points", "1pt"), else empty. */
+  pts: string;
+  /** The price shown for the whole bet, else empty. */
+  price: string;
+  selections: VisionSel[];
+}
 export interface VisionRead {
   kind: "selections" | "other";
+  /** Every selection of every bet, in the order shown. */
   selections: VisionSel[];
+  /** The separate bets, when the reader grouped them (several bets can sit in one image). */
+  bets?: VisionBet[];
   totalOdds: string;
   stake: string;
   confidence: "high" | "low";
@@ -96,16 +109,17 @@ export type Vision = (prompt: string, images: Array<{ data: Buffer; mime: string
 export function visionPrompt(caption: string): string {
   return `You read screenshots a football tipster posted in a private Telegram channel, with this caption:
 """${caption.slice(0, 600)}"""
-The images show betting selections (a bookmaker's betslip, a list of picks, or a bet builder). Return ONLY a JSON object, no other text:
-{"kind":"selections" or "other","selections":[{"match":"Home v Away","league":"","kickoff":"","selection":"","market":"","odds":""}],"totalOdds":"","stake":"","confidence":"high" or "low","notes":""}
+The images show betting selections (a bookmaker's betslip, a list of picks, a bet builder). One image can hold SEVERAL separate bets (for example a Bet of the Day single and an accumulator of other selections). Return ONLY a JSON object, no other text:
+{"kind":"selections" or "other","bets":[{"name":"","shape":"single" or "acca" or "builder" or "multiples","pts":"","price":"","selections":[{"match":"Home v Away","league":"","kickoff":"","selection":"","market":"","odds":""}]}],"confidence":"high" or "low","notes":""}
 Rules:
-- selections: every selection shown, once each, even if it appears in several images. Team to win: "<Team> to win". Bookings and cards: the player or team and the market, e.g. selection "Heskey to be carded", market "Player to be carded".
-- match: "Home v Away" as shown. If a selection shows no match, give your best reading and say so in notes.
-- odds: that selection's price exactly as shown, a fraction like 13/8 or a decimal like 2.63. Empty if not shown.
-- kickoff: as shown, e.g. "22 Nov 15:00", else empty.
-- totalOdds: the combined, accumulator or bet builder price if shown. stake: the stake text if shown, e.g. "£10" or "1pt".
-- If the images are not a bet (a result, an advert, a chart, a winning slip), kind is "other" and selections is [].
-- confidence is "low" if any text is blurred, cropped or you had to guess.`;
+- bets: one entry per separate bet the image shows. shape "single": one selection. "acca": an accumulator whose selections are all in one bet. "builder": several selections in ONE match combined into one bet. "multiples": a plain list of picks that the caption says to combine as doubles/trebles (use this when the image is just a list and the caption sets the staking).
+- name: the bet's title as shown, e.g. "Bet of the Day", "Premium BTTS Acca", "Premium Bet Builder".
+- pts: the advised stake in points if shown for that bet, e.g. "5pts" (text like "Advised 3 points" counts). Empty if none.
+- price: the price shown for the WHOLE bet (best price, e.g. "6.09/1", "4/1", "5.75/1"). Empty if none shown.
+- selections: every selection of that bet, once each. Team to win: "<Team> to win". Bookings and cards: the player or team and the market, e.g. selection "Heskey to be carded", market "Player to be carded". odds: that selection's own price as shown (a fraction like 13/8 or decimal like 2.63), else empty. match: "Home v Away" as shown. kickoff: as shown ("22 Nov 15:00") else empty.
+- If the image is cropped so that some selections of a bet are cut off, set confidence "low" and say so in notes.
+- If the images are not a bet (a result, an advert, a chart, a winning slip), kind is "other" and bets is [].
+- confidence is "low" if any text is blurred, cropped or guessed.`;
 }
 
 const str = (v: unknown, max = 160) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
@@ -120,17 +134,25 @@ export function parseVision(text: string): VisionRead | null {
   } catch {
     return null;
   }
-  const sels = Array.isArray(raw.selections) ? raw.selections : [];
-  const selections = sels
-    .slice(0, 12)
-    .map((s) => {
-      const o = (s ?? {}) as Record<string, unknown>;
-      return { match: str(o.match), league: str(o.league), kickoff: str(o.kickoff, 40), selection: str(o.selection), market: str(o.market), odds: str(o.odds, 20) };
+  const toSel = (s: unknown): VisionSel => {
+    const o = (s ?? {}) as Record<string, unknown>;
+    return { match: str(o.match), league: str(o.league), kickoff: str(o.kickoff, 40), selection: str(o.selection), market: str(o.market), odds: str(o.odds, 20) };
+  };
+  const selsOf = (v: unknown): VisionSel[] => (Array.isArray(v) ? v : []).slice(0, 12).map(toSel).filter((s) => s.selection !== "");
+  const bets: VisionBet[] = (Array.isArray(raw.bets) ? raw.bets : [])
+    .slice(0, 6)
+    .map((b) => {
+      const o = (b ?? {}) as Record<string, unknown>;
+      const shape: VisionBet["shape"] = o.shape === "single" || o.shape === "acca" || o.shape === "builder" ? o.shape : "multiples";
+      return { name: str(o.name, 80), shape, pts: str(o.pts, 30), price: str(o.price, 20), selections: selsOf(o.selections) };
     })
-    .filter((s) => s.selection !== "");
+    .filter((b) => b.selections.length > 0);
+  // Older shape: a flat list of selections, one price and stake for all.
+  const selections = bets.length > 0 ? bets.flatMap((b) => b.selections) : selsOf(raw.selections);
   return {
     kind: raw.kind === "selections" && selections.length > 0 ? "selections" : "other",
     selections,
+    ...(bets.length > 0 ? { bets } : {}),
     totalOdds: str(raw.totalOdds, 20),
     stake: str(raw.stake, 40),
     confidence: raw.confidence === "low" ? "low" : "high",
@@ -212,54 +234,86 @@ const BOOK_NAMES: Array<[RegExp, string]> = [
 ];
 const booksOf = (links: ScreenPost["links"]): TipmanBook[] => links.slice(0, 6).map((l) => ({ book: BOOK_NAMES.find(([r]) => r.test(`${l.label} ${l.url}`))?.[1] ?? "Other", url: l.url.slice(0, 700), odds: null }));
 
+/** An advised stake as text: "5pts", "3 points", or a bare number. Null when it isn't one. */
+function ptsText(t: string): number | null {
+  const p = pointsOf(t);
+  if (p !== null) return p;
+  const bare = /^\s*(\d+(?:\.\d+)?)\s*$/.exec(t);
+  return bare && Number(bare[1]) > 0 && Number(bare[1]) <= 20 ? Number(bare[1]) : null;
+}
+
 /** The bets a post sets up, as cards. Empty when the images aren't a bet. Pure. */
 export function buildScreenCards(post: ScreenPost): TipmanCard[] {
   const { read, now } = post;
   if (read.kind !== "selections" || read.selections.length === 0) return [];
-  const legs = read.selections.map((s) => legOf(s, now));
+  const bets: Array<{ name: string; shape: VisionBet["shape"]; pts: string; price: string; legs: TipmanLeg[] }> = read.bets?.length
+    ? read.bets.map((b) => ({ name: b.name, shape: b.shape, pts: b.pts, price: b.price, legs: b.selections.map((s) => legOf(s, now)) }))
+    : [{ name: "", shape: "multiples", pts: read.stake, price: read.totalOdds, legs: read.selections.map((s) => legOf(s, now)) }];
+  const several = !!read.bets && read.bets.length > 1;
+  const all = bets.flatMap((b) => b.legs);
   const firstLine = post.caption.split("\n").find((l) => l.trim())?.trim() ?? "";
-  const category = categoryOf(firstLine || post.caption, legs);
   const plan = parseStakePlan(post.caption);
   const books = booksOf(post.links);
-  // Paddy Power's link, to be split into a link per bet when it has one leg for each selection read (else the slip is left to the owner).
+  // Paddy Power's link, split into a link per bet when it has one leg for each selection read (else the slip is left to the owner).
   const padUrl = post.links.find((l) => /paddy/i.test(`${l.label} ${l.url}`))?.url;
   const padLegs = padUrl ? paddyParts(padUrl)?.legs.length : undefined;
-  const padOk = !!padUrl && padLegs === legs.length;
-  const padFor = (set: TipmanLeg[]): string | undefined => (padOk ? (paddyLinkFor(padUrl!, set.map((l) => legs.indexOf(l))) ?? undefined) : undefined);
-  const first = legs.map((l) => l.kickoff).filter((k): k is string => k !== null).sort()[0];
+  const padOk = !!padUrl && padLegs === all.length;
+  const padFor = (set: TipmanLeg[]): string | undefined => (padOk ? (paddyLinkFor(padUrl!, set.map((l) => all.indexOf(l))) ?? undefined) : undefined);
+  const first = all.map((l) => l.kickoff).filter((k): k is string => k !== null).sort()[0];
   const common = { tier: "premium" as const, books, day: ukDateOf(first ? new Date(first) : now), firstSeenAt: now.toISOString(), updatedAt: now.toISOString(), result: null, settledAt: null, resultBy: null, source: "screenshot" as const };
   const notes: string[] = [];
   if (read.confidence === "low") notes.push("The reader wasn't sure of everything in the image.");
   if (read.notes) notes.push(read.notes);
-  if (legs.some((l) => l.odds === null)) notes.push("A price couldn't be read, so the combined price is missing.");
-  const note = notes.join(" ") || undefined;
-  const id = (suffix: string) => `tg${post.messageId}-${suffix}`;
+  if (all.some((l) => l.odds === null)) notes.push("A selection's price couldn't be read.");
+  if (padUrl && !padOk) notes.push(padLegs === undefined ? "Paddy Power's link couldn't be split into a link for each bet, so its slip is the whole post: pick the bet there." : `Paddy Power's link has ${padLegs} selections but ${all.length} were read: its slip is the whole post, so pick the bet there.`);
 
-  // Every selection in one match: one bet builder at the price shown.
-  const sameMatch = new Set(legs.map(matchKey)).size === 1;
-  if (sameMatch && legs.length > 1) {
-    const pts = plan.parts[0]?.pts ?? pointsOf(read.stake) ?? pointsOf(post.caption);
-    return [{ ...common, id: id("builder"), category: "bet-builder", name: CATEGORY_LABEL["bet-builder"], pts: pts ?? 1, ptsAssumed: pts === null, odds: fractionToDecimal(read.totalOdds), legs, note, pad: padFor(legs) }];
-  }
-
-  const plans = plan.parts.length > 0 ? plan.parts : [{ shape: legs.length === 1 ? ("single" as const) : ("acca" as const), pts: pointsOf(post.caption) ?? 1 }];
-  const assumed = plan.parts.length === 0 && pointsOf(post.caption) === null;
   const cards: TipmanCard[] = [];
   const counts: number[] = [];
-  for (const part of plans) {
-    const sets = part.shape === "acca" ? [legs] : combinations(legs, SIZE[part.shape]).filter((c) => new Set(c.map(matchKey)).size === c.length);
-    counts.push(sets.length);
-    sets.forEach((set, i) => cards.push({ ...common, id: id(`${part.shape}${i + 1}`), category, name: `${CATEGORY_LABEL[category]} · ${part.shape === "acca" ? "accumulator" : part.shape}`, pts: part.pts, ptsAssumed: assumed, odds: product(set), legs: set, note, pad: padFor(set) }));
-  }
+  let planParts: StakePart[] = [];
+  bets.forEach((bet, k) => {
+    const id = (suffix: string) => `tg${post.messageId}-${read.bets?.length ? `b${k + 1}-` : ""}${suffix}`;
+    const legs = bet.legs;
+    if (legs.length === 0) return;
+    const category = categoryOf(bet.name || firstLine || post.caption, legs);
+    const stated = ptsText(bet.pts);
+    const priced = fractionToDecimal(bet.price);
+    const sameMatch = new Set(legs.map(matchKey)).size === 1;
+    if (bet.shape === "builder" || (sameMatch && legs.length > 1)) {
+      const pts = stated ?? plan.parts[0]?.pts ?? pointsOf(post.caption);
+      cards.push({ ...common, id: id("builder"), category: "bet-builder", name: bet.name || CATEGORY_LABEL["bet-builder"], pts: pts ?? 1, ptsAssumed: pts === null, odds: priced, legs, pad: padFor(legs) });
+      return;
+    }
+    if (bet.shape === "single" || (legs.length === 1 && bet.shape !== "multiples")) {
+      const pts = stated ?? plan.parts.find((p) => p.shape === "single")?.pts ?? pointsOf(post.caption);
+      cards.push({ ...common, id: id("single"), category, name: bet.name || CATEGORY_LABEL[category], pts: pts ?? 1, ptsAssumed: pts === null, odds: priced ?? legs[0]!.odds, legs, pad: padFor(legs) });
+      return;
+    }
+    if (bet.shape === "acca") {
+      const pts = stated ?? plan.parts.find((p) => p.shape === "acca")?.pts ?? pointsOf(post.caption);
+      const prod = product(legs);
+      const odds = priced ?? prod;
+      const cropped = priced !== null && prod !== null && Math.abs(prod / priced - 1) > 0.06 ? `The legs read multiply to ${prod.toFixed(2)} but the screenshot's price is ${priced.toFixed(2)}: it may be cropped, with selections missing.` : "";
+      cards.push({ ...common, id: id("acca"), category, name: bet.name || `${CATEGORY_LABEL[category]} · accumulator`, pts: pts ?? 1, ptsAssumed: pts === null, odds, legs, pad: padFor(legs), ...(cropped ? { note: cropped } : {}) });
+      return;
+    }
+    // A plain list of picks: combined as the caption's staking says (a Trixie is three doubles and a treble).
+    const stakeParts = plan.parts.length > 0 ? plan.parts : [{ shape: legs.length === 1 ? ("single" as const) : ("acca" as const), pts: stated ?? pointsOf(post.caption) ?? 1 }];
+    const assumed = plan.parts.length === 0 && stated === null && pointsOf(post.caption) === null;
+    planParts = stakeParts;
+    for (const part of stakeParts) {
+      const sets = part.shape === "acca" ? [legs] : combinations(legs, SIZE[part.shape]).filter((c) => new Set(c.map(matchKey)).size === c.length);
+      counts.push(sets.length);
+      sets.forEach((set, i) => cards.push({ ...common, id: id(`${part.shape}${i + 1}`), category, name: `${CATEGORY_LABEL[category]} · ${part.shape === "acca" ? "accumulator" : part.shape}`, pts: part.pts, ptsAssumed: assumed, odds: product(set), legs: set, pad: padFor(set) }));
+    }
+  });
   if (cards.length === 0) return [];
   const totalPts = Math.round(cards.reduce((t, c) => t + c.pts, 0) * 100) / 100;
-  const label = plan.parts.length > 0 ? groupLabel(plans, legs.length, counts) : cards.length === 1 ? CATEGORY_LABEL[category] : "Bets";
-  if (padUrl && !padOk) notes.push(padLegs === undefined ? "Paddy Power's link couldn't be split into a link for each bet, so its slip is the whole post: pick the bet there." : `Paddy Power's link has ${padLegs} selections but ${legs.length} were read: its slip is the whole post, so pick the bet there.`);
-  if (plan.totalPts !== null && Math.abs(plan.totalPts - totalPts) > 0.01) notes.push(`The caption says ${plan.totalPts}pt in total but these selections make ${totalPts}pt: check them.`);
-  const group = { id: id("group"), label, totalPts, bets: cards.length };
-  const finalNote = notes.join(" ") || undefined;
+  const label = several ? bets.map((b, i) => b.name || `Bet ${i + 1}`).join(" + ") : planParts.length > 0 && plan.parts.length > 0 ? groupLabel(planParts, bets[0]!.legs.length, counts) : cards.length === 1 ? CATEGORY_LABEL[cards[0]!.category] : "Bets";
+  if (!several && plan.totalPts !== null && Math.abs(plan.totalPts - totalPts) > 0.01) notes.push(`The caption says ${plan.totalPts}pt in total but these selections make ${totalPts}pt: check them.`);
+  const group = cards.length > 1 ? { id: `tg${post.messageId}-group`, label, totalPts, bets: cards.length } : undefined;
+  const shared = notes.join(" ");
   // A bet of its own gets its own Paddy Power link; the other bookmakers' links add the whole post, so they aren't kept on a part of it.
-  return cards.map((c) => ({ ...c, group, note: finalNote, books: c.pad ? [{ book: "Paddy Power", url: c.pad, odds: null }] : c.books }));
+  return cards.map((c) => ({ ...c, ...(group ? { group } : {}), note: [shared, c.note].filter(Boolean).join(" ") || undefined, books: c.pad ? [{ book: "Paddy Power", url: c.pad, odds: null }] : c.books }));
 }
 
 /** One phone notification for a post's bets: what it is, the stake in all, and a tap that opens Betfair's betslip. */

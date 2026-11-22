@@ -162,3 +162,43 @@ test("the notification points at the bet sheet on the TipMan page, which lists e
   assert.match(n.title, /Trixie, 4pt: send to bet\?/);
   assert.match(n.body, /4 bets to open in Paddy Power/);
 });
+
+// ---------------------------------------------------------------------------- the three real posts of 21 Nov 2026
+
+const bet = (name: string, shape: "single" | "acca" | "builder" | "multiples", pts: string, price: string, selections: ReturnType<typeof sel>[]) => ({ name, shape, pts, price, selections });
+const readOf = (bets: ReturnType<typeof bet>[], extra: Partial<VisionRead> = {}): VisionRead => ({ kind: "selections", selections: bets.flatMap((b) => b.selections), bets, totalOdds: "", stake: "", confidence: "high", notes: "", ...extra });
+
+test("the bet builder post: the advised 3 points and the price shown are used, not assumed", () => {
+  const legs = ["Man City to win", "Man City 2+ Goals", "E. Haaland 1+ Shots on Target", "E. Haaland to Score"].map((s) => sel("Man City v Fulham", s, "1/3"));
+  const cards = buildScreenCards({ messageId: 30245, caption: "Premium Bet Builder\n\nBest price and stake in the screenshots", read: readOf([bet("Premium Bet Builder", "builder", "3 points", "4.15/1", legs)]), links: [], now: NOW });
+  assert.equal(cards.length, 1);
+  assert.deepEqual([cards[0]!.category, cards[0]!.pts, cards[0]!.ptsAssumed, cards[0]!.odds, cards[0]!.legs.length], ["bet-builder", 3, false, 5.15, 4]);
+});
+
+test("a cropped accumulator: the price shown wins over the legs read, and the card says legs may be missing", () => {
+  const legs = [sel("Cambridge U v Stockport", "BTTS - Yes", "3/5"), sel("Mansfield v MK Dons", "BTTS - Yes", "1/2"), sel("Accrington v Salford", "BTTS - Yes", "3/5"), sel("Cheltenham v Bristol R", "BTTS - Yes", "3/5")];
+  const cards = buildScreenCards({ messageId: 30244, caption: "Premium BTTS Acca\n\n3pt acca", read: readOf([bet("Premium BTTS Acca", "acca", "3pts", "6.09/1", legs)], { confidence: "low", notes: "Screenshot is cropped at the bottom." }), links: [], now: NOW });
+  assert.equal(cards.length, 1);
+  assert.deepEqual([cards[0]!.pts, cards[0]!.odds, cards[0]!.legs.length], [3, 7.09, 4]);
+  assert.match(cards[0]!.note ?? "", /multiply to 6\.14 but the screenshot's price is 7\.09: it may be cropped/);
+  assert.match(cards[0]!.note ?? "", /cropped at the bottom/);
+});
+
+test("one image with two bets: a 5pt Bet of the Day single and a 2pt accumulator are separate bets, not one big one", () => {
+  const botd = bet("Bet of the Day", "single", "5pts", "4/5", [sel("Villa v Sunderland", "Villa to win", "")]);
+  const acca = bet("Acca", "acca", "2pts", "5.75/1", [sel("Bayer 04 v Paderborn", "Bayer 04 to win", "2/7"), sel("Parma v Roma", "Roma to win", "1/4"), sel("Real Madrid v Celta", "Real Madrid to win", "1/6")]);
+  const cards = buildScreenCards({ messageId: 30242, caption: "Premium BOTD & Acca\n\nPlease use an Early Payout bookie", read: readOf([botd, acca]), links: [], now: NOW });
+  assert.equal(cards.length, 2);
+  assert.deepEqual(cards.map((c) => [c.category, c.pts, c.odds, c.legs.length]), [["botd", 5, 1.8, 1], ["acca", 2, 6.75, 3]]);
+  assert.deepEqual(cards[0]!.group, { id: "tg30242-group", label: "Bet of the Day + Acca", totalPts: 7, bets: 2 });
+  assert.deepEqual(cards.map((c) => c.id), ["tg30242-b1-single", "tg30242-b2-acca"]);
+});
+
+test("the reply grouped into bets is read, with its stakes and prices; a flat reply still works", () => {
+  const reply = JSON.stringify({ kind: "selections", bets: [{ name: "Bet of the Day", shape: "single", pts: "5pts", price: "4/5", selections: [{ match: "Villa v Sunderland", selection: "Villa to win" }] }, { name: "Acca", shape: "weird", pts: "2pts", price: "5.75/1", selections: [{ match: "A v B", selection: "A to win", odds: "1/2" }] }, { name: "empty", shape: "acca", selections: [] }], confidence: "high" });
+  const r = parseVision(reply)!;
+  assert.equal(r.bets!.length, 2, "a bet with no selections is dropped");
+  assert.deepEqual(r.bets!.map((b) => [b.shape, b.pts, b.price]), [["single", "5pts", "4/5"], ["multiples", "2pts", "5.75/1"]], "an unknown shape is a plain list");
+  assert.equal(r.selections.length, 2);
+  assert.match(visionPrompt("x"), /SEVERAL separate bets/);
+});

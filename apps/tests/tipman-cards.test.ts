@@ -192,3 +192,13 @@ test("a settled-by-nobody card with a manual leg waits for the owner", async () 
   setResultByHand(db, c.id, "won");
   assert.equal(listCards(db, "2026-11-22")[0]!.resultBy, "owner");
 });
+
+test("the screenshot reader's own cards can be cleared by their id prefix, the site's are left", () => {
+  const db = new EngineDb(":memory:", () => {});
+  recordCards(db, RAW, NOW);
+  const mk = (id: string) => ({ ...normaliseCard(RAW[0]!, NOW)!, id });
+  db.saveTipmanCard({ id: "tg1-acca1", day: "2026-11-22", tier: "premium", category: "acca", json: JSON.stringify(mk("tg1-acca1")), firstSeenAt: NOW.toISOString(), result: null, settledAt: null });
+  db.saveTipmanCard({ id: "tg2-b1-single", day: "2026-11-22", tier: "premium", category: "botd", json: JSON.stringify(mk("tg2-b1-single")), firstSeenAt: NOW.toISOString(), result: null, settledAt: null });
+  assert.equal(db.deleteTipmanCardsStartingWith("tg"), 2);
+  assert.deepEqual(listCards(db, "2026-11-22").map((c) => c.id).sort(), ["297118", "297201", "297203"]);
+});
