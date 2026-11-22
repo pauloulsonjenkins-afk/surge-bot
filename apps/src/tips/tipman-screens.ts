@@ -278,7 +278,10 @@ export function buildScreenCards(post: ScreenPost): TipmanCard[] {
     const stated = ptsText(bet.pts);
     const priced = fractionToDecimal(bet.price);
     const sameMatch = new Set(legs.map(matchKey)).size === 1;
-    if (bet.shape === "builder" || (sameMatch && legs.length > 1)) {
+    // A caption that stakes doubles and a treble ("1pt for all 3 doubles and a 1pt treble") sets up SEPARATE bets even when the
+    // selections are all in one match (bookings): Paddy Power can't load a double or treble from a longer list, so each one is its own build.
+    const splitByPlan = !several && legs.length >= 2 && legs.length <= 4 && plan.parts.some((p) => p.shape === "double" || p.shape === "treble");
+    if (!splitByPlan && (bet.shape === "builder" || (sameMatch && legs.length > 1))) {
       const pts = stated ?? plan.parts[0]?.pts ?? pointsOf(post.caption);
       cards.push({ ...common, id: id("builder"), category: "bet-builder", name: bet.name || CATEGORY_LABEL["bet-builder"], pts: pts ?? 1, ptsAssumed: pts === null, odds: priced, legs, pad: padFor(legs) });
       return;
@@ -301,7 +304,7 @@ export function buildScreenCards(post: ScreenPost): TipmanCard[] {
     const assumed = plan.parts.length === 0 && stated === null && pointsOf(post.caption) === null;
     planParts = stakeParts;
     for (const part of stakeParts) {
-      const sets = part.shape === "acca" ? [legs] : combinations(legs, SIZE[part.shape]).filter((c) => new Set(c.map(matchKey)).size === c.length);
+      const sets = part.shape === "acca" ? [legs] : combinations(legs, SIZE[part.shape]).filter((c) => sameMatch || new Set(c.map(matchKey)).size === c.length);
       counts.push(sets.length);
       sets.forEach((set, i) => cards.push({ ...common, id: id(`${part.shape}${i + 1}`), category, name: `${CATEGORY_LABEL[category]} · ${part.shape === "acca" ? "accumulator" : part.shape}`, pts: part.pts, ptsAssumed: assumed, odds: product(set), legs: set, pad: padFor(set) }));
     }

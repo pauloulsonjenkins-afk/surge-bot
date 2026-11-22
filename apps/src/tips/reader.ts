@@ -283,7 +283,7 @@ interface Active {
 
 const SCREENS_KEY = "tipman_screens_done";
 const SCREENS_VERSION_KEY = "tipman_screens_version";
-const SCREENS_VERSION = "2";
+const SCREENS_VERSION = "3";
 const SCREEN_TRIES = 3;
 const SCREEN_MAX_AGE_S = 30 * 3600;
 const SCREENS_PER_PASS = 3;
@@ -315,6 +315,7 @@ async function readTipmanScreens(a: Active, chatId: string, name: string, messag
   }
   // 22 Nov 2026: the reader now reports each bet in an image separately (a Bet of the Day and an accumulator in one image
   // had been merged, and a bet builder's advised points and price missed). The first posts read before that are read again.
+  // Version 3: "3 doubles and a treble" on bookings in one match had been built as a single treble; now four separate bets.
   if (a.db.getSetting(SCREENS_VERSION_KEY) !== SCREENS_VERSION) {
     const gone = a.db.deleteTipmanCardsStartingWith("tg");
     a.db.setSetting(SCREENS_KEY, "{}");

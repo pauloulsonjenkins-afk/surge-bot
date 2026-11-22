@@ -202,3 +202,20 @@ test("the reply grouped into bets is read, with its stakes and prices; a flat re
   assert.equal(r.selections.length, 2);
   assert.match(visionPrompt("x"), /SEVERAL separate bets/);
 });
+
+test("bookings in ONE match staked as 3 doubles and a treble are four separate bets, each with its own Paddy Power link", () => {
+  const s = (name: string, odds: string) => ({ match: "Hull v Brighton", league: "Championship", kickoff: "22 Nov 17:30", selection: `${name} to be carded`, market: "Player Cards", odds });
+  const sels = [s("M. Crooks", "5/2"), s("E. Stroud", "11/4"), s("O. McBurnie", "7/2")];
+  const pad = "https://media.paddypower.com/redirect.aspx?pid=1&bid=1&redirectURL=https%3A%2F%2Fpaddypower.com/?action=addLegs&leg%3D927.1%7C1%7CSIMPLE_SELECTION%7C%26leg%3D927.2%7C2%7CSIMPLE_SELECTION%7C%26leg%3D927.3%7C3%7CSIMPLE_SELECTION%7C&lpid=53";
+  const cards = buildScreenCards({
+    messageId: 30259,
+    caption: "Premium Bookings\n1pt for all 3 doubles and a 1pt treble (4pt total)",
+    read: { kind: "selections", selections: sels, bets: [{ name: "Premium Bookings", shape: "builder", pts: "1pt", price: "24/1", selections: sels }], totalOdds: "", stake: "", confidence: "high", notes: "" },
+    links: [{ label: "Paddy - add to betslip", url: pad }],
+    now: new Date("2026-11-22T10:00:00Z"),
+  });
+  assert.equal(cards.length, 4);
+  assert.deepEqual(cards.map((c) => c.legs.length).sort(), [2, 2, 2, 3]);
+  assert.ok(cards.every((c) => c.pts === 1 && c.pad && (decodeURIComponent(c.pad).match(/leg=/g) ?? []).length === c.legs.length), "each link holds exactly its own legs");
+  assert.equal(cards[0]!.group?.totalPts, 4);
+});
