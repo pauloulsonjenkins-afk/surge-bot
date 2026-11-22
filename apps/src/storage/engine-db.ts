@@ -3320,6 +3320,15 @@ export class EngineDb {
     return r.changes;
   }
 
+  /** Removes every stored card except these ids (a fresh start). Returns how many went. */
+  deleteTipmanCardsExcept(keep: string[]): number {
+    const ids = keep;
+    const marks = ids.map(() => "?").join(",");
+    const r = ids.length > 0 ? this.db.prepare(`DELETE FROM tipman_cards WHERE id NOT IN (${marks})`).run(...ids) : this.db.prepare(`DELETE FROM tipman_cards`).run();
+    if (r.changes > 0) this.onChange();
+    return r.changes;
+  }
+
   /** The stored cards' json from this UK day on, newest day first. */
   listTipmanCardJson(sinceDay: string): string[] {
     return (this.db.prepare(`SELECT json FROM tipman_cards WHERE day >= ? ORDER BY day DESC, first_seen_at DESC`).all(sinceDay) as Array<{ json: string }>).map((r) => r.json);

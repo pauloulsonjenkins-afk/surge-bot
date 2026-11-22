@@ -326,6 +326,7 @@ async function readTipmanScreens(a: Active, chatId: string, name: string, messag
   const groups = new Map<string, Api.Message[]>();
   for (const m of [...messages].reverse()) {
     if (!(m as unknown as { photo?: unknown }).photo || Date.now() / 1000 - m.date > SCREEN_MAX_AGE_S) continue;
+    if (m.id < Number(a.db.getSetting("tipman_ignore_before") ?? 0)) continue; // cleared: not read again
     const gid = (m as unknown as { groupedId?: unknown }).groupedId;
     const key = `${chatId}:${gid != null ? `g${String(gid)}` : `m${m.id}`}`;
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(m);

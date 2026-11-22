@@ -1137,6 +1137,14 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             send(res, 200, { added: r.added.length, updated: r.updated, skipped: r.skipped, new: r.added.map((c) => ({ id: c.id, category: c.category, tier: c.tier, pts: c.pts, odds: c.odds, legs: c.legs.length })) });
             return;
           }
+          if (body.action === "clear" && body.confirm === true && Array.isArray(body.keep) && typeof body.beforeMessage === "number") {
+            // A fresh start (owner, 22 Nov 2026): every stored bet goes except the ones kept, and posts before this message are not read again.
+            const keep = (body.keep as unknown[]).filter((k): k is string => typeof k === "string");
+            const removed = db.deleteTipmanCardsExcept(keep);
+            db.setSetting("tipman_ignore_before", String(Math.floor(body.beforeMessage)));
+            send(res, 200, { removed, kept: keep.length });
+            return;
+          }
           if (body.action === "result" && typeof body.id === "string" && (body.result === "won" || body.result === "lost" || body.result === "void")) setResultByHand(db, body.id, body.result);
           else if (body.action === "leg" && typeof body.match === "string" && typeof body.selection === "string" && (body.result === "won" || body.result === "lost" || body.result === "void" || body.result === null)) setLegResultByHand(db, body.match, body.selection, body.result);
           else if (body.action === "pointValue" && typeof body.value === "number") setPointValue(db, body.value);

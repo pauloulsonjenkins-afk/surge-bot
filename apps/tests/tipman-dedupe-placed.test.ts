@@ -109,3 +109,15 @@ test("notifications are focused: TipMan, the scheduled summaries and safety warn
   await sendPush(db, { title: "Strategy suggestion", body: "x", tag: "strategy-advice" });
   assert.ok(db.listPushLog(5).some((n) => n.title === "Strategy suggestion"), "switched off: everything is sent again");
 });
+
+test("a fresh start removes every stored bet except the ones kept", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const a = storeCards(db, post(1));
+  const b = storeCards(db, buildScreenCards({ messageId: 2, caption: "Premium BOTD", read: { ...villaRead(), selections: [sel("Spurs v Arsenal", "Spurs to win", "2/1")], bets: [{ name: "Acca", shape: "single", pts: "1pt", price: "2/1", selections: [sel("Spurs v Arsenal", "Spurs to win", "2/1")] }] }, links: [], now: NOW }));
+  assert.equal(listCards(db, "2026-11-22").length, 2);
+  assert.equal(db.deleteTipmanCardsExcept([b[0]!.id]), 1);
+  assert.deepEqual(listCards(db, "2026-11-22").map((c) => c.id), [b[0]!.id]);
+  assert.equal(a.length, 1);
+  assert.equal(db.deleteTipmanCardsExcept([]), 1);
+  assert.equal(listCards(db, "2026-11-22").length, 0);
+});
