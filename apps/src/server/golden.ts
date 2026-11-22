@@ -14,9 +14,10 @@
  *
  * THE FINDER looks through each strategy with 150+ priced settled picks for a slice that did clearly better than the
  * rest: one or two FEATURES (from different groups) that held 40+ picks, made +4% or more per £1, and beat the rest by
- * 5+ points in BOTH halves of the record (older and newer). With ~200 slices tried per strategy, some will look good by
- * luck, which is why a suggestion is only ever watched (from the day it's added, quietly), never bet.
- * Worked out at most every 6 hours.
+ * 5+ points in BOTH halves of the record (older and newer), and still hold ROBUST.minRoi once the country that made the
+ * most profit is taken away (leagueRobustness). With ~200 slices tried per strategy, some will look good by luck, which
+ * is why a suggestion is only ever watched (from the day it's added, quietly), never bet by the finder itself.
+ * Worked out at most every 6 hours, and checked around the clock (main.ts).
  */
 import { withChangeSource } from "../inplayguru/change-log";
 import type { EngineDb } from "../storage/engine-db";
@@ -152,7 +153,48 @@ export function shrunkRoi(sliceRoi: number, slicePicks: number, parentRoi: numbe
   return Math.round((w * sliceRoi + (1 - w) * parentRoi) * 1000) / 1000;
 }
 
+/** The countries in a slice's picks: how much of its profit one country supplies, and what is left without it. */
+export interface LeagueRobustness {
+  /** The country that made the most profit, its picks and return; null when no pick has a profit. */
+  top: { country: string; n: number; roi: number } | null;
+  /** Everything outside that country: picks and return per £1 (null with none). */
+  without: { n: number; roi: number | null };
+  ok: boolean;
+}
+
+/** A slice must keep this many picks, at this return or better, once its best country is taken away. */
+export const ROBUST = { minOutside: 20, minRoi: 0.02 };
+
+/**
+ * "Worth checking against different leagues" (owner, 22 Nov 2026): a slice that only works in one country is a country
+ * effect (or luck in a handful of matches), not a slice. Leave-one-country-out: take away the country that made the most
+ * profit and the rest must still be ROBUST.minOutside+ picks at ROBUST.minRoi+ per £1. Picks with no country (international
+ * or unknown) are one group of their own. Pure.
+ */
+export function leagueRobustness(rows: Array<{ stake: number; profit: number; facts: { country?: string | null } }>): LeagueRobustness {
+  const by = new Map<string, { stake: number; profit: number; n: number }>();
+  for (const r of rows) {
+    const c = r.facts.country?.trim() || "(unknown)";
+    const t = by.get(c) ?? { stake: 0, profit: 0, n: 0 };
+    t.stake += r.stake;
+    t.profit += r.profit;
+    t.n++;
+    by.set(c, t);
+  }
+  let top: [string, { stake: number; profit: number; n: number }] | null = null;
+  for (const e of by) if (e[1].profit > 0 && (!top || e[1].profit > top[1].profit)) top = e;
+  const outside = [...by].filter(([c]) => c !== top?.[0]).reduce((t, [, v]) => ({ stake: t.stake + v.stake, profit: t.profit + v.profit, n: t.n + v.n }), { stake: 0, profit: 0, n: 0 });
+  const withoutRoi = outside.stake > 0 ? outside.profit / outside.stake : null;
+  return {
+    top: top ? { country: top[0], n: top[1].n, roi: top[1].stake > 0 ? top[1].profit / top[1].stake : 0 } : null,
+    without: { n: outside.n, roi: withoutRoi },
+    ok: outside.n >= ROBUST.minOutside && withoutRoi !== null && withoutRoi >= ROBUST.minRoi,
+  };
+}
+
 export interface GoldenSuggestion {
+  /** How the slice holds up across countries (leagueRobustness). Missing on one saved before 22 Nov 2026. */
+  leagues?: LeagueRobustness;
   /** The slice's return shrunk towards its strategy's (shrunkRoi): what the finder ranks by. Missing on one saved before 11 Nov 2026. */
   shrunk?: number;
   strategyKey: string;
@@ -205,7 +247,11 @@ export function findGolden(db: EngineDb): GoldenSuggestion[] {
       const shrunk = shrunkRoi(s.roi, s.n, parent.roi ?? 0);
       const halves = [(r: Row) => r.at < mid, (r: Row) => r.at >= mid].map((h) => ({ slice: stats(inn.filter(h)), rest: stats(rest.filter(h)) }));
       if (!halves.every((h) => h.slice.roi !== null && h.rest.roi !== null && h.slice.n >= 10 && h.slice.roi > 0 && h.slice.roi - h.rest.roi >= 0.05)) continue;
+      // Across leagues: not one country's doing (leagueRobustness).
+      const leagues = leagueRobustness(inn);
+      if (!leagues.ok) continue;
       found.push({
+        leagues,
         shrunk,
         strategyKey: key,
         strategy: displayName(db, key),
@@ -243,7 +289,15 @@ function goldenSuggestions(db: EngineDb, now = new Date(), force = false): { at:
  * Limits on what the finder watches by itself (29 Oct 2026: it had 30 quiet slices on top of 32 chosen ones, with nothing
  * ever retired). Testing that many slices makes some look good by luck alone, and they buried the page.
  */
-export const QUIET_LIMITS = { perStrategy: 2, total: 12, perWeek: 3, retireAfterDays: 14, fewPicks: 10, losingFrom: 30 };
+/**
+ * Relaxed on 22 Nov 2026 (owner: "I want golden slices to auto watch and add ... constantly analyse and look for new
+ * strategies"): 3 per strategy, 24 in all, 7 a week (was 2, 12 and 3). The worry in October was a buried page, not money:
+ * a watched slice is Sim only and counted from the day it is added, so it can't confirm itself with the matches that
+ * suggested it, and real money only follows the stages (50 / 150 / 300 priced picks, in profit in both halves) and the
+ * auto-adjust's trial stake. The Strategies page no longer lists watched slices at all, so there is nothing to bury.
+ * Weaker finds are still held back by the league check in findGolden (leagueRobustness).
+ */
+export const QUIET_LIMITS = { perStrategy: 3, total: 24, perWeek: 7, retireAfterDays: 14, fewPicks: 10, losingFrom: 30 };
 
 /**
  * Retires the finder's own slices (auto, never one the admin chose or bets on its own) that aren't going anywhere: after

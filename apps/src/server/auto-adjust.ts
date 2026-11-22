@@ -23,7 +23,9 @@ import { cachedReportVia } from "./report-cache";
 import { sendPush } from "./push";
 import { log } from "./log";
 import { archiveLosingTrials, type TrialFigures } from "./archive";
-import { getSendingSettings } from "../inplayguru/bet-feed";
+import { getSendingSettings, saveSendingSettings } from "../inplayguru/bet-feed";
+import { storedBacktest } from "./league-form";
+import type { LeagueFilter } from "../inplayguru/league-form";
 
 export const MAX_CHANGES = 4;
 const ON_KEY = "auto_adjust_on";
@@ -131,6 +133,27 @@ export interface RunLog {
   failed: Array<{ key: string; kind: Advice["kind"]; error: string }>;
   /** Trial strategies archived for losing over 200+ pretend bets (archive.ts archiveLosingTrials). */
   archived?: Array<{ key: string; name: string; note: string }>;
+  /** A slice put on real money this run, and the league filter set on it from the league backtest (leagueFilterFor). */
+  leagueFilters?: Array<{ key: string; name: string; filter: LeagueFilter; why: string }>;
+}
+
+/** The backtest figures the league filter is chosen from (server/league-form.ts FilterBacktest). */
+type FilterFigures = Record<LeagueFilter, { n: number; roi: number | null }>;
+/** The skip-red-leagues filter must have paid this much better than no filter, over this many picks, to be set. */
+export const LEAGUE_FILTER = { minPicks: 30, minGain: 0.01 };
+
+/**
+ * "Worth checking against different leagues' performance" (owner, 22 Nov 2026): when a slice goes on real money, its
+ * league filter is set to "notRed" (skip the leagues where its strategy is clearly losing) if the walk-forward backtest
+ * (judging each pick only on what was known before it) shows that filter beat no filter by LEAGUE_FILTER.minGain, over
+ * LEAGUE_FILTER.minPicks+ picks. "greenOnly" is never chosen automatically: it throws away the most picks and is the
+ * easiest to fit to luck. Null when the backtest doesn't support a filter. Pure.
+ */
+export function leagueFilterFor(bt: FilterFigures | null | undefined): LeagueFilter | null {
+  if (!bt?.off || !bt.notRed) return null;
+  const { off, notRed } = bt;
+  if (off.roi === null || notRed.roi === null || notRed.n < LEAGUE_FILTER.minPicks) return null;
+  return notRed.roi - off.roi >= LEAGUE_FILTER.minGain ? "notRed" : null;
 }
 
 /** The archive's trial figures from the Strategies report body. Pure. */
@@ -204,6 +227,14 @@ export async function runAutoAdjust(db: EngineDb, slot: string, now = new Date()
     try {
       const a = withChangeSource("Auto-adjust", () => applyAdvice(db, d.advice.key, d.advice.kind, now, undefined, { to: d.advice.to ?? null }));
       run.applied.push({ key: a.key, name: nameOf(a), kind: a.kind, action: a.action, reason: a.reason });
+      if (a.kind === "slice-live" && a.slice) {
+        const bt = storedBacktest(db)?.strategies[a.slice.strategyKey];
+        const filter = leagueFilterFor(bt);
+        if (filter && bt) {
+          withChangeSource("Auto-adjust", () => saveSendingSettings(db, { leagueFilter: { [a.key]: filter } }));
+          (run.leagueFilters ??= []).push({ key: a.key, name: nameOf(a), filter, why: `skipping red leagues returned ${((bt.notRed.roi ?? 0) * 100).toFixed(1)}% against ${((bt.off.roi ?? 0) * 100).toFixed(1)}% with no filter, over ${bt.notRed.n} picks` });
+        }
+      }
     } catch (err) {
       run.failed.push({ key: d.advice.key, kind: d.advice.kind, error: err instanceof Error ? err.message : String(err) });
     }

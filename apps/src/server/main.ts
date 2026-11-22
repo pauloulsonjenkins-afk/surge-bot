@@ -206,20 +206,25 @@ async function main(): Promise<void> {
     void notifyAdvice(db).catch((err) => log.warn(`Strategy suggestions failed: ${err instanceof Error ? err.message : String(err)}`));
     // Golden safety: a slice bet Live on its own goes back to Sim when it stops earning it (one notification each).
     void monitorGoldenBets(db).catch((err) => log.warn(`Golden safety check failed: ${err instanceof Error ? err.message : String(err)}`));
-    // Golden finder: new ideas are watched at once, quietly (no notification; golden.ts notifies at 30 and 50 picks).
+    // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.
+    void notifyLeagueMilestones(db).catch((err) => log.warn(`League milestones failed: ${err instanceof Error ? err.message : String(err)}`));
+    // LAY badges: the same idea as Golden, for LAY groups (one notification each way).
+    void monitorLayBadges(db).catch((err) => log.warn(`LAY badges failed: ${err instanceof Error ? err.message : String(err)}`));
+  }, 3_600_000);
+  adviceCheck.unref();
+  // Around the clock, every hour (owner, 22 Nov 2026: "constantly analyse and look for new strategies"; it was 08:00-22:00 only):
+  // the Golden finder's new ideas are watched at once, quietly (golden.ts: Sim only, counted from today, checked across
+  // countries; the heavy search itself is redone at most every 6 hours), and how each strategy does in each league is
+  // worked out again for the league filters and alerts (league-form.ts).
+  const analysisCheck = setInterval(() => {
     try {
       timed("Golden finder", () => autoWatchGoldenFinds(db));
     } catch (err) {
       log.warn(`Golden finder failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    // League milestones (50 / 100 / 250 / 500 picks in a league, country or strategy-in-a-league): one notification.
-    void notifyLeagueMilestones(db).catch((err) => log.warn(`League milestones failed: ${err instanceof Error ? err.message : String(err)}`));
-    // How each strategy does in each league, for the league filters and alerts (league-form.ts): every hour.
     timed("league form", () => refreshLeagueForm(db));
-    // LAY badges: the same idea as Golden, for LAY groups (one notification each way).
-    void monitorLayBadges(db).catch((err) => log.warn(`LAY badges failed: ${err instanceof Error ? err.message : String(err)}`));
   }, 3_600_000);
-  adviceCheck.unref();
+  analysisCheck.unref();
   // And once soon after start, so a new deploy doesn't wait an hour for it (a stored copy is used meanwhile).
   setTimeout(() => refreshLeagueForm(db), 90_000).unref();
 

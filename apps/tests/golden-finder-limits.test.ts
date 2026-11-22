@@ -1,6 +1,7 @@
 /**
  * The finder's own (quiet) slices, since 29 Oct 2026: retired after 14 days with too few picks (or 30+ and losing),
- * never one the admin chose or bets on its own; and no more than 2 per strategy, 12 in all.
+ * never one the admin chose or bets on its own; and no more than 3 per strategy, 24 in all (relaxed from 2 and 12 on
+ * 22 Nov 2026).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -30,7 +31,7 @@ test("quiet slices going nowhere are retired after 14 days; chosen, bet-on and y
   assert.deepEqual(loadCustomSegments(db).map((c) => c.id).sort(), ["f-apart2", "f-min70", "f-redcard"]);
 });
 
-test("the finder's limits are 2 per strategy and 12 in all", () => {
-  assert.equal(QUIET_LIMITS.perStrategy, 2);
-  assert.equal(QUIET_LIMITS.total, 12);
+test("the finder's limits are 3 per strategy and 24 in all", () => {
+  assert.equal(QUIET_LIMITS.perStrategy, 3);
+  assert.equal(QUIET_LIMITS.total, 24);
 });

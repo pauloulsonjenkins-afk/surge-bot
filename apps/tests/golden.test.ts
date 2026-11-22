@@ -6,12 +6,12 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { buildFeed, recordSimBets, saveSendingSettings } from "../src/inplayguru/bet-feed";
-import { autoWatchGoldenFinds, CANDIDATE_FROM, findGolden, FULL_FROM, goldenReport, loadCustomSegments, QUIET_LIMITS, shrunkRoi, TRIAL_FROM, unwatchSegment, watchSegment } from "../src/server/golden";
+import { autoWatchGoldenFinds, CANDIDATE_FROM, findGolden, FULL_FROM, goldenReport, leagueRobustness, loadCustomSegments, QUIET_LIMITS, ROBUST, shrunkRoi, TRIAL_FROM, unwatchSegment, watchSegment } from "../src/server/golden";
 import { segmentsOf, setCustomSegments } from "../src/server/segments";
 
 const alert = (n: number, goals: string, result: "hit" | "miss") =>
   [
-    "🔔 Blistering Momentum", "", "🇫🇷 France Ligue 1 (3rd vs 9th)", `Home ${n} vs Away ${n}`, "", "Timer: 60'", `Goals: ${goals}`,
+    "🔔 Blistering Momentum", "", n % 3 === 0 ? "🇩🇪 Germany Bundesliga (3rd vs 9th)" : "🇫🇷 France Ligue 1 (3rd vs 9th)", `Home ${n} vs Away ${n}`, "", "Timer: 60'", `Goals: ${goals}`,
     `Over/Under ${goals === "0 - 0" ? "0.50" : "1.50"} Odds:`, "2.00 1.80", "", "⸻⸻ Match Summary ⸻⸻", "Half-Time Score: 0-0", `Full-Time Score: ${result === "hit" ? "9-9" : goals.replace(" - ", "-")}`, "", result === "hit" ? "✅ Hit" : "❌ Miss",
   ].join("\n");
 
@@ -123,16 +123,20 @@ test("a slice's return is pulled towards its strategy's, more so the fewer picks
   assert.ok(shrunkRoi(0.1, 200, 0.1) === 0.1, "a slice no different from its strategy stays put");
 });
 
-test("the finder watches at most three new slices in any week", () => {
-  assert.equal(QUIET_LIMITS.perWeek, 3);
+/** Fills the week's allowance with finder slices on other strategies (two each, so no per-strategy limit gets in the way). */
+function fillWeek(db: EngineDb, now: Date): void {
+  const keys = ["blistering momentum", "dominant momentum 0-0", "action-packed", "early pressure with low score"];
+  for (let i = 0; i < QUIET_LIMITS.perWeek; i++) watchSegment(db, keys[i % keys.length]!, [i < keys.length ? "score00" : "apart1"], new Date(now.getTime() - (i + 1) * 3_600_000), true);
+}
+
+test("the finder watches at most seven new slices in any week", () => {
+  assert.equal(QUIET_LIMITS.perWeek, 7);
   setCustomSegments([]);
   const db = new EngineDb(":memory:", () => {});
   loadCustomSegments(db);
   const now = new Date();
-  // Three already added by the finder this week: no room, whatever it has found.
-  watchSegment(db, "Blistering Momentum", ["score00"], new Date(now.getTime() - 86_400_000), true);
-  watchSegment(db, "Blistering Momentum", ["apart1"], new Date(now.getTime() - 2 * 86_400_000), true);
-  watchSegment(db, "Time to fight", ["score00"], new Date(now.getTime() - 3 * 86_400_000), true);
+  // The week's allowance already added by the finder: no room, whatever it has found.
+  fillWeek(db, now);
   db.setSetting(
     "golden_suggestions",
     JSON.stringify({ at: now.toISOString(), list: [{ strategyKey: "time to fight", strategy: "Time to fight", rule: ["apart1"], label: "1 goal apart", slice: { n: 60, hits: 40, roi: 0.05, low: 0.01 }, rest: { n: 200, roi: -0.02 }, halves: [] }] }),
@@ -150,16 +154,49 @@ test("a find with +10% or better over 50+ bets is watched whatever the weekly li
   const db = new EngineDb(":memory:", () => {});
   loadCustomSegments(db);
   const now = new Date();
-  watchSegment(db, "Blistering Momentum", ["score00"], new Date(now.getTime() - 86_400_000), true);
-  watchSegment(db, "Blistering Momentum", ["apart1"], new Date(now.getTime() - 2 * 86_400_000), true);
-  watchSegment(db, "Time to fight", ["score00"], new Date(now.getTime() - 3 * 86_400_000), true);
+  fillWeek(db, now);
   const find = (rule: string[], n: number, roi: number) => ({ strategyKey: "time to fight", strategy: "Time to fight", rule, label: rule.join("+"), slice: { n, hits: n / 2, roi, low: 0.01 }, rest: { n: 200, roi: -0.02 }, halves: [] });
   db.setSetting("golden_suggestions", JSON.stringify({ at: now.toISOString(), list: [find(["apart1"], 49, 0.3), find(["apart2"], 60, 0.09), find(["goals4"], 50, 0.1)] }));
-  // Three this week already, so only the one that is proven (50 bets, +10%) gets in; 49 bets or 9% don't.
+  // The week's allowance is used, so only the one that is proven (50 bets, +10%) gets in; 49 bets or 9% don't.
   const added = autoWatchGoldenFinds(db, now);
   assert.deepEqual(added.map((c) => c.rule), [["goals4"]]);
   // Stopped by hand, it isn't added again.
   unwatchSegment(db, "time to fight", added[0]!.id);
   assert.equal(autoWatchGoldenFinds(db, now).length, 0);
   setCustomSegments([]);
+});
+test("across leagues: a slice that only works in one country is not suggested; one that holds without its best country is", () => {
+  const pick = (country: string | null, profit: number) => ({ stake: 1, profit, facts: { country } });
+  const many = (country: string | null, n: number, winShare: number) => Array.from({ length: n }, (_, i) => pick(country, i < n * winShare ? 1 : -1));
+  // All of the profit is France's: take it away and the rest loses.
+  const oneCountry = leagueRobustness([...many("France", 40, 0.8), ...many("Germany", 30, 0.4)]);
+  assert.equal(oneCountry.top?.country, "France");
+  assert.equal(oneCountry.ok, false);
+  // Profit in several countries: still above the bar without the best one.
+  const spread = leagueRobustness([...many("France", 30, 0.7), ...many("Germany", 25, 0.65), ...many("Spain", 25, 0.65)]);
+  assert.equal(spread.top?.country, "France");
+  assert.ok(spread.ok && (spread.without.roi ?? 0) >= ROBUST.minRoi);
+  // A slice found in one country only has nothing outside it to hold it up.
+  assert.equal(leagueRobustness(many("Japan", 60, 0.8)).ok, false);
+  // Picks with no country are a group of their own, not dropped.
+  assert.equal(leagueRobustness([...many(null, 30, 0.7), ...many("Spain", 30, 0.7)]).ok, true);
+});
+
+test("the finder rejects a slice whose profit is one country's, and records the league spread on the ones it keeps", () => {
+  setCustomSegments([]);
+  const db = new EngineDb(":memory:", () => {});
+  saveSendingSettings(db, { enabled: true, stakes: { "blistering momentum": 1 }, dailyCap: 1000 });
+  recordSimBets(db, new Date(Date.now() - 120_000));
+  // Same 0-0 edge as the test above, but only the French picks win: Germany's 0-0 picks lose like the rest.
+  for (let n = 1; n <= 200; n++) {
+    const zero = n % 2 === 0;
+    const german = n % 3 === 0;
+    const win = zero ? (german ? n % 4 === 0 && n % 8 === 0 : n % 10 !== 0 && n % 10 !== 6) : n % 20 < 7;
+    const goals = zero ? "0 - 0" : "1 - 0";
+    const at = new Date(Date.now() - 60_000).toISOString();
+    db.upsertLivePick("chat", n, alert(n, goals, win ? "hit" : "miss").split("\n\n⸻")[0]!, parseAlert(alert(n, goals, win ? "hit" : "miss").split("\n\n⸻")[0]!), at);
+    recordSimBets(db);
+    db.upsertLivePick("chat", n, alert(n, goals, win ? "hit" : "miss"), parseAlert(alert(n, goals, win ? "hit" : "miss")), at);
+  }
+  assert.ok(!findGolden(db).some((g) => g.strategyKey === "blistering momentum" && g.rule.length === 1 && g.rule[0] === "score00"), "0-0 only works in France here");
 });
