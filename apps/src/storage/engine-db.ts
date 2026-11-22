@@ -822,6 +822,18 @@ export class EngineDb {
         reason     TEXT,
         chosen_at  TEXT
       );
+      -- TipMan's bets, as the tipster sets them up (tips/tipman-cards.ts): a card per bet, its legs and result in json.
+      CREATE TABLE IF NOT EXISTS tipman_cards (
+        id            TEXT PRIMARY KEY,
+        day           TEXT NOT NULL,
+        tier          TEXT NOT NULL,
+        category      TEXT NOT NULL,
+        json          TEXT NOT NULL,
+        first_seen_at TEXT NOT NULL,
+        result        TEXT,
+        settled_at    TEXT
+      );
+      CREATE INDEX IF NOT EXISTS tipman_cards_day ON tipman_cards (day);
       -- Price check (betfair/price-check.ts): the price of a pick's bet read again a little later (2 and 5 minutes after
       -- an in-play alert, or at kick-off for a pre-match one), to see whether the strategy beats the market's later price.
       CREATE TABLE IF NOT EXISTS pick_price_checks (
@@ -3280,6 +3292,26 @@ export class EngineDb {
       side: (r.side as "back" | "lay" | "first" | null) ?? null,
       reason: (r.reason as string | null) ?? null,
     }));
+  }
+
+  getTipmanCardJson(id: string): string | null {
+    const r = this.db.prepare(`SELECT json FROM tipman_cards WHERE id = ?`).get(id) as { json: string } | undefined;
+    return r?.json ?? null;
+  }
+
+  saveTipmanCard(c: { id: string; day: string; tier: string; category: string; json: string; firstSeenAt: string; result: string | null; settledAt: string | null }): void {
+    this.db
+      .prepare(
+        `INSERT INTO tipman_cards (id, day, tier, category, json, first_seen_at, result, settled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET day = excluded.day, tier = excluded.tier, category = excluded.category, json = excluded.json, result = excluded.result, settled_at = excluded.settled_at`,
+      )
+      .run(c.id, c.day, c.tier, c.category, c.json, c.firstSeenAt, c.result, c.settledAt);
+    this.onChange();
+  }
+
+  /** The stored cards' json from this UK day on, newest day first. */
+  listTipmanCardJson(sinceDay: string): string[] {
+    return (this.db.prepare(`SELECT json FROM tipman_cards WHERE day >= ? ORDER BY day DESC, first_seen_at DESC`).all(sinceDay) as Array<{ json: string }>).map((r) => r.json);
   }
 
   /** resultsVersion plus the newest alert: changes when a result is written or a new alert is stored, not on other writes. */

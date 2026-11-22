@@ -1,0 +1,53 @@
+[
+  {
+    "id": "297201",
+    "free": true,
+    "name": "Todays Free BOTD",
+    "hdr": "Todays Free BOTD 2/1",
+    "legs": [{ "w": "22 Nov 16:15 - Lorient vs Rennes - Ligue 1", "s": "Lorient Win", "m": "Match Result", "o": "" }],
+    "links": [
+      { "u": "https://betsbk.com/?pid=incomeaccess_int&spl-action=add-to-betslip&spl-cid=483841435", "t": "Returns £30.00 2/1" },
+      { "u": "https://media.betfair.com/redirect.aspx?pid=17720663&bid=1615&redirectURL=https%3A%2F%2Fwww.betfair.com%2Fsport%2Fhome%2F%3Fmodules%3Dbetslip%26action%3DaddAffiliateSelections%26bssId%3D44794%26bsmId%3D924.551151506&lpid=159", "t": "Returns £29.00 19/10" },
+      { "u": "https://www.bet365.com/dl/sportsbookredirect?affiliate=365_04139363&bet=1&bs=203186304-257800409~15/8", "t": "Returns £28.75 15/8" },
+      { "u": "https://media.paddypower.com/redirect.aspx?pid=17720662&bid=1524", "t": "Returns £28.75 15/8" },
+      { "u": "https://ads.skybet.com/redirect.aspx?pid=17720661&lpid=16", "t": "Returns £28.75 15/8" },
+      { "u": "https://ntrfr.betmgm.co.uk/redirect.aspx?pid=3793308&bid=19638", "t": "Returns £28.00 9/5" }
+    ]
+  },
+  {
+    "id": "297203",
+    "free": true,
+    "name": "Todays Free ACCA",
+    "hdr": "Todays Free ACCA 4.23/1",
+    "legs": [
+      { "w": "22 Nov 14:00 - Hull vs Brighton - Premier League", "s": "Brighton Win", "m": "Match Result", "o": "13/25" },
+      { "w": "22 Nov 14:00 - Paris FC vs Angers - Ligue 1", "s": "Paris FC Win", "m": "Match Result", "o": "1/3" },
+      { "w": "22 Nov 19:45 - Marseille vs Le Mans - Ligue 1", "s": "Marseille Win", "m": "Match Result", "o": "49/100" },
+      { "w": "22 Nov 14:00 - Bologna vs Udinese - Serie A", "s": "Bologna Win", "m": "Match Result", "o": "3/4" }
+    ],
+    "links": [
+      { "u": "https://betsbk.com/?pid=incomeaccess_int&spl-action=add-to-betslip&spl-cid=483373903", "t": "Returns £52.30 4.23/1" },
+      { "u": "https://www.bet365.com/dl/sportsbookredirect?affiliate=365_04139363&bet=1", "t": "Returns £49.10 3.91/1" },
+      { "u": "https://media.betfair.com/redirect.aspx?pid=17720663&bid=1615&redirectURL=https%3A%2F%2Fwww.betfair.com%2Fsport%2Fhome%2F%3Fmodules%3Dbetslip%26action%3DaddAffiliateSelections%26bssId%3D18567%2C199545%2C5168454%2C52457652", "t": "Returns £48.70 3.87/1" },
+      { "u": "https://ntrfr.betmgm.co.uk/redirect.aspx?pid=3793308&bid=19638", "t": "Returns £48.30 3.83/1" }
+    ]
+  },
+  {
+    "id": "297118",
+    "free": true,
+    "name": "Liverpool v Manchester Utd",
+    "hdr": "Liverpool v Manchester Utd",
+    "legs": [
+      { "w": "22 Nov 16:30 - Liverpool vs Man Utd - Premier League", "s": "BTTS - Yes", "m": "Both Teams To Score", "o": "53/100" },
+      { "w": "22 Nov 16:30 - Liverpool vs Man Utd - Premier League", "s": "Over 2.5 Goals", "m": "Over 2.5 Goals", "o": "1/2" },
+      { "w": "22 Nov 16:30 - Liverpool vs Man Utd - Premier League", "s": "Over 2.5 Cards", "m": "Over 2.5 Cards", "o": "4/25" },
+      { "w": "22 Nov 16:30 - Liverpool vs Man Utd - Premier League", "s": "A. Isak 1+ Shots on Target", "m": "Player 1+ Shots On Target", "o": "2/5" },
+      { "w": "22 Nov 16:30 - Liverpool vs Man Utd - Premier League", "s": "L. Martinez to be Carded", "m": "Player To Be Carded", "o": "5/2" }
+    ],
+    "links": [
+      { "u": "https://ads.skybet.com/redirect.aspx?pid=17720661&lpid=16&bid=1518", "t": "Returns £22.60 1.26/1" },
+      { "u": "https://media.betfair.com/redirect.aspx?pid=17720663&bid=1615", "t": "Returns £21.90 1.19/1" },
+      { "u": "https://media.paddypower.com/redirect.aspx?pid=17720662&bid=1524", "t": "Returns £21.50 1.15/1" }
+    ]
+  }
+]

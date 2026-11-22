@@ -53,6 +53,7 @@ export const ADMIN_FAMILIES: NavFamily[] = [
       // Each tip channel is already a strategy of its own ("Telegram: <channel>", tips/track.ts in the engine); this
       // page is where its channels are chosen and its messages checked, so it sits with the strategies.
       { href: `${A}/tips`, label: "Tip channels" },
+      { href: `${A}/tipman`, label: "TipMan" },
     ],
   },
   {

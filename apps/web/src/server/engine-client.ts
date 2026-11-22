@@ -2245,6 +2245,61 @@ export function setArchive(label: string, archived: boolean, note?: string): Pro
 }
 
 /** The drip shadow test's report (engine drip-shadow-report.ts): admin only, no page uses it. */
+/** TipMan's bets as the tipster sets them up (engine tips/tipman-cards.ts). Tracked only: nothing is bet. */
+export type TipmanCategory = "botd" | "double-treble" | "acca" | "booking" | "bet-builder" | "btts-win-acca" | "other";
+export interface TipmanLeg {
+  kickoff: string | null;
+  match: string;
+  home: string;
+  away: string;
+  league: string;
+  selection: string;
+  market: string;
+  odds: number | null;
+  /** exchange: settled from Betfair's result; manual: the owner marks the card (bookings, cards, players...). */
+  settle: "exchange" | "manual";
+  why?: string;
+  result: "won" | "lost" | "void" | null;
+}
+export interface TipmanCard {
+  id: string;
+  tier: "free" | "premium";
+  category: TipmanCategory;
+  name: string;
+  pts: number;
+  ptsAssumed: boolean;
+  odds: number | null;
+  legs: TipmanLeg[];
+  books: Array<{ book: string; url: string; odds: number | null }>;
+  day: string;
+  firstSeenAt: string;
+  result: "won" | "lost" | "void" | null;
+  settledAt: string | null;
+  resultBy: string | null;
+}
+export interface TipmanRecord {
+  category: TipmanCategory;
+  tier: "free" | "premium";
+  cards: number;
+  settled: number;
+  won: number;
+  lost: number;
+  stakedPts: number;
+  profitPts: number;
+}
+export interface TipmanState {
+  pointValue: number;
+  cards: TipmanCard[];
+  record: TipmanRecord[];
+  at: string;
+}
+export function fetchTipman(): Promise<TipmanState> {
+  return engineCall<TipmanState>("/internal/tipman", "TipMan");
+}
+export function postTipman(body: Record<string, unknown>): Promise<TipmanState> {
+  return engineCall<TipmanState>("/internal/tipman", "TipMan", { method: "POST", body });
+}
+
 /** One line of the changes log (engine inplayguru/change-log.ts). */
 export interface ChangeEntry {
   at: string;

@@ -113,6 +113,7 @@ import { adviceFromComputed, AdviceChanged, agentDates, applyAdvice, applyAllAdv
 import { clashCheck } from "./clash-check";
 import { autoAdjustLog, autoAdjustOn, protectedKeys } from "./auto-adjust";
 import { listChanges, withChangeSource } from "../inplayguru/change-log";
+import { listCards, notifyNewCards, pointValue, recordCards, recordOf, setPointValue, setResultByHand, settleCards, type RawCard } from "../tips/tipman-cards";
 import { horseTipResultsWithPoints } from "./horse-bsp";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -138,7 +139,7 @@ import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
 import { computeReconcile, decodeCsv, importBetHistory, matchBets, zoneFromName } from "../betfair/reconcile";
 import { learnedNames, undoLearnedName } from "../betfair/name-learning";
-import { cornerMarketsSeen, getBetfairLinkStatus, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
+import { cornerMarketsSeen, getBetfairLinkStatus, getExchangeReader, pickPlacements, requestExchangeCheck, teamMarketsSeen } from "../betfair/exchange";
 import { checkLeague, coverageOfAlertLeagues, fixtureLeagueChecker, saveLeagueList, savedListCoverage, setLeagueOverride } from "../betfair/competitions";
 import { isUkDate, ukDayBounds } from "./uk-time";
 import { addDays, readPullStatus, ukDateOf } from "../fixtures/daily-pull";
@@ -1109,6 +1110,38 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     // The Today page (server/today.ts), and the not-placed picks grouped by reason.
+    // TipMan's bets (tips/tipman-cards.ts): the cards read from tipmantips.com in the owner's signed-in browser, tracked as
+    // the tipster sets them up. POST { action: "ingest", cards } stores what the scheduled read found; { action: "result",
+    // id, result } marks one by hand (bookings, cards and players aren't on the Exchange); { action: "pointValue", value }
+    // sets the £ per point. Nothing is bet.
+    if (path === "/internal/tipman" && (req.method === "GET" || req.method === "POST")) {
+      if (!requireAdmin(req, res)) return;
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        try {
+          if (body.action === "ingest" && Array.isArray(body.cards)) {
+            const r = recordCards(db, (body.cards as RawCard[]).slice(0, 30));
+            void notifyNewCards(db, r.added).catch((err) => log.warn(`TipMan notification failed: ${err instanceof Error ? err.message : String(err)}`));
+            void settleCards(db, getExchangeReader()).catch(() => {});
+            send(res, 200, { added: r.added.length, updated: r.updated, skipped: r.skipped, new: r.added.map((c) => ({ id: c.id, category: c.category, tier: c.tier, pts: c.pts, odds: c.odds, legs: c.legs.length })) });
+            return;
+          }
+          if (body.action === "result" && typeof body.id === "string" && (body.result === "won" || body.result === "lost" || body.result === "void")) setResultByHand(db, body.id, body.result);
+          else if (body.action === "pointValue" && typeof body.value === "number") setPointValue(db, body.value);
+          else {
+            send(res, 400, { error: "unknown_action" });
+            return;
+          }
+        } catch (err) {
+          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't do that." });
+          return;
+        }
+      }
+      const day = (daysAgo: number) => ukDateOf(new Date(Date.now() - daysAgo * 86_400_000));
+      send(res, 200, { pointValue: pointValue(db), cards: listCards(db, day(14)), record: recordOf(listCards(db, day(120))), at: new Date().toISOString() });
+      return;
+    }
+
     // The changes log (inplayguru/change-log.ts): every switch and stake change, with who made it. Read-only.
     if (req.method === "GET" && path === "/internal/changes") {
       if (!requireAdmin(req, res)) return;
