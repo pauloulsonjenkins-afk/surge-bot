@@ -106,6 +106,8 @@ export interface TipmanCard {
   group?: { id: string; label: string; totalPts: number; bets: number };
   /** The screenshot reader's note, e.g. that it read a leg's odds with low confidence. */
   note?: string;
+  /** The owner has put this bet on: when, the stake in pounds actually used, and where. Null/absent until they say so. */
+  placed?: { at: string; stake: number; book: string } | null;
   /** Paddy Power's betslip link with exactly THIS bet's legs (its slip doesn't offer a double or treble from a longer list). */
   pad?: string;
 }
@@ -319,6 +321,17 @@ export function recordCards(db: EngineDb, raws: RawCard[], now = new Date()): { 
     }
     const old = load(db, fresh.id);
     if (!old) {
+      // The same bet already read from a screenshot: the page's own text is the better record (exact odds and points), so it
+      // replaces that one and keeps what was marked on it, but it is not new, so it isn't notified again.
+      const dup = findDuplicate(db, fresh, now);
+      if (dup) {
+        const was = new Map(dup.legs.map((l) => [legKey(l), l]));
+        const legs = fresh.legs.map((l) => ({ ...l, result: was.get(legKey(l))?.result ?? l.result }));
+        db.deleteTipmanCard(dup.id);
+        save(db, { ...fresh, legs, firstSeenAt: dup.firstSeenAt, result: dup.result, settledAt: dup.settledAt, resultBy: dup.resultBy, placed: dup.placed });
+        updated++;
+        continue;
+      }
       save(db, fresh);
       added.push(fresh);
       continue;
@@ -328,7 +341,7 @@ export function recordCards(db: EngineDb, raws: RawCard[], now = new Date()): { 
       const was = oldLegs.get(legKey(l));
       return was ? { ...l, marketId: was.marketId, selectionId: was.selectionId, result: was.result } : l;
     });
-    save(db, { ...fresh, legs, firstSeenAt: old.firstSeenAt, result: old.result, settledAt: old.settledAt, resultBy: old.resultBy });
+    save(db, { ...fresh, legs, firstSeenAt: old.firstSeenAt, result: old.result, settledAt: old.settledAt, resultBy: old.resultBy, placed: old.placed });
     updated++;
   }
   return { added, updated, skipped };
@@ -347,11 +360,41 @@ export async function notifyNewCards(db: EngineDb, added: TipmanCard[]): Promise
   }
 }
 
-/** Stores cards built elsewhere (the screenshot reader). Ones already stored are left as they are. Returns the new ones. */
+const plainMatch = (m: string) => m.toLowerCase().replace(/\bvs?\.?\b/g, " v ").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+const plainSelection = (sel: string) =>
+  sel
+    .toLowerCase()
+    .replace(/\b(to win|win|wins)\b/g, " ")
+    .replace(/[^a-z0-9+. ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * What a bet IS, whichever post or page it came from: its legs (the match and what is backed in it, worded loosely so "Man City
+ * to win" and "Man City Win" are the same), in any order. Two bets with the same signature are the same bet.
+ */
+export function legSignature(c: Pick<TipmanCard, "legs">): string {
+  return c.legs
+    .map((l) => `${plainMatch(l.match)}|${plainSelection(l.selection)}`)
+    .sort()
+    .join("+");
+}
+
+/** A stored bet of the last three days with these legs under another id (the same bet again, from a repost or the other source). */
+export function findDuplicate(db: EngineDb, card: TipmanCard, now = new Date()): TipmanCard | null {
+  const sig = legSignature(card);
+  return listCards(db, ukDateOf(new Date(now.getTime() - 3 * 86_400_000))).find((c) => c.id !== card.id && legSignature(c) === sig) ?? null;
+}
+
+/**
+ * Stores cards built elsewhere (the screenshot reader). A card already stored by id is left as it is, and a bet whose legs
+ * are already stored under another id (the same bet reposted, or read from the page as well) is not stored again: it would
+ * be counted twice and notified twice. Returns the new ones.
+ */
 export function storeCards(db: EngineDb, cards: TipmanCard[]): TipmanCard[] {
   const added: TipmanCard[] = [];
   for (const c of cards) {
-    if (load(db, c.id)) continue;
+    if (load(db, c.id) || findDuplicate(db, c, new Date(c.firstSeenAt))) continue;
     save(db, c);
     added.push(c);
   }
@@ -374,6 +417,57 @@ export function setLegResultByHand(db: EngineDb, match: string, selection: strin
     changed++;
   }
   return changed;
+}
+
+/**
+ * "I've put this bet on" (owner, 22 Nov 2026: a way of tracking that the right bets were placed): the stake actually used and
+ * where. Null takes it back. For a whole post at once (a Trixie's four bets) every bet of its group is marked at its advised
+ * stake (points x the £ per point) unless `stake` is given. Returns how many bets changed.
+ */
+export function setPlaced(db: EngineDb, target: { id?: string; group?: string }, placed: boolean, opts: { stake?: number; book?: string } = {}, now = new Date()): number {
+  const cards = listCards(db, ukDateOf(new Date(now.getTime() - 5 * 86_400_000))).filter((c) => (target.group ? c.group?.id === target.group : c.id === target.id));
+  const pv = pointValue(db);
+  let n = 0;
+  for (const c of cards) {
+    const stake = Math.round((opts.stake ?? c.pts * pv) * 100) / 100;
+    if (placed && !(stake > 0 && stake <= 100_000)) throw new Error("Give the stake in pounds, above 0.");
+    save(db, { ...c, placed: placed ? { at: now.toISOString(), stake, book: (opts.book ?? "Paddy Power").slice(0, 30) } : null, updatedAt: now.toISOString() });
+    n++;
+  }
+  if (n === 0) throw new Error("That bet isn't stored.");
+  return n;
+}
+
+export interface PlacedSummary {
+  /** Bets the owner has marked placed, the pounds staked on them, how many have settled, and the pounds won or lost on those (at the advised price). */
+  bets: number;
+  staked: number;
+  settled: number;
+  profit: number;
+  /** Bets still to place: not marked placed, not settled, and not yet kicked off. */
+  toPlace: number;
+}
+
+/** What the owner has put on, and what is still to place. Pure. */
+export function placedSummary(cards: TipmanCard[], now = new Date()): PlacedSummary {
+  const out: PlacedSummary = { bets: 0, staked: 0, settled: 0, profit: 0, toPlace: 0 };
+  for (const c of cards) {
+    const ko = c.legs.map((l) => l.kickoff).filter((k): k is string => k !== null).sort()[0];
+    if (!c.placed) {
+      if (c.result === null && (!ko || Date.parse(ko) > now.getTime())) out.toPlace++;
+      continue;
+    }
+    out.bets++;
+    out.staked += c.placed.stake;
+    if (c.result === "lost") {
+      out.settled++;
+      out.profit -= c.placed.stake;
+    } else if (c.result === "won" && c.odds !== null) {
+      out.settled++;
+      out.profit += c.placed.stake * (c.odds - 1);
+    }
+  }
+  return { ...out, staked: Math.round(out.staked * 100) / 100, profit: Math.round(out.profit * 100) / 100 };
 }
 
 /** The owner marks a card (or one leg of it) won, lost or void by hand: bookings, cards and players aren't on the Exchange. */

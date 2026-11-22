@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { parseAlert } from "../src/inplayguru/parse-alert";
 import { notifyBetResults } from "../src/server/bet-result-notify";
+import { setPushFocused } from "../src/server/push";
 
 const alert = (n: number, result?: "hit" | "miss") =>
   [
@@ -34,6 +35,7 @@ const pushes = (db: EngineDb) => db.listPushLog();
 
 test("the first pass tells nothing old; a bet that settles afterwards is told once, as won", async () => {
   const db = new EngineDb(":memory:", () => {});
+  setPushFocused(db, false); // these test the result notifications themselves; the focus filter has its own tests
   handBet(db, 1, "hit"); // already settled
   assert.equal(await notifyBetResults(db, noon()), 0, "first pass: baseline only");
   handBet(db, 2); // placed by hand, still open
@@ -48,6 +50,7 @@ test("the first pass tells nothing old; a bet that settles afterwards is told on
 
 test("a lost bet is told as lost; a result changed by hand later is told as a correction", async () => {
   const db = new EngineDb(":memory:", () => {});
+  setPushFocused(db, false); // these test the result notifications themselves; the focus filter has its own tests
   await notifyBetResults(db, noon());
   handBet(db, 3);
   settle(db, 3, "miss");
@@ -62,6 +65,7 @@ test("a lost bet is told as lost; a result changed by hand later is told as a co
 
 test("quiet hours hold results back until the first pass after 07:00", async () => {
   const db = new EngineDb(":memory:", () => {});
+  setPushFocused(db, false); // these test the result notifications themselves; the focus filter has its own tests
   await notifyBetResults(db, noon());
   handBet(db, 4);
   settle(db, 4, "hit");
@@ -73,6 +77,7 @@ test("quiet hours hold results back until the first pass after 07:00", async () 
 
 test("more than three at once come as one summary", async () => {
   const db = new EngineDb(":memory:", () => {});
+  setPushFocused(db, false); // these test the result notifications themselves; the focus filter has its own tests
   await notifyBetResults(db, noon());
   for (let n = 10; n < 15; n++) { handBet(db, n); settle(db, n, n % 2 ? "hit" : "miss"); }
   assert.equal(await notifyBetResults(db, noon()), 1);
@@ -81,6 +86,7 @@ test("more than three at once come as one summary", async () => {
 
 test("a busy day goes hourly: results are held, then sent as one summary with today's total once the hour is up", async () => {
   const db = new EngineDb(":memory:", () => {});
+  setPushFocused(db, false); // these test the result notifications themselves; the focus filter has its own tests
   const t0 = noon();
   await notifyBetResults(db, t0); // baseline
   // Three results trickle in, one at a time, a few minutes apart: still sent one each (a quiet day's behaviour).

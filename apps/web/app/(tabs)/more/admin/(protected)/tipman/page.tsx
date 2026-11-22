@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
-import { useChangeTipman, useTipman, type TipmanCard, type TipmanCategory, type TipmanRecord } from "@/queries/use-tipman";
+import { useChangeTipman, useTipman, type TipmanCard, type TipmanCategory, type TipmanPlaced, type TipmanRecord } from "@/queries/use-tipman";
 import { signedGbp } from "@/lib/money-verdict";
 
 const LABEL: Record<TipmanCategory, string> = {
@@ -55,6 +55,52 @@ function Status({ c }: { c: TipmanCard }) {
   if (c.result === "void") return <span className="rounded-full bg-ink/10 px-2 py-0.5 text-[11px] font-medium text-ink">Void</span>;
   const needsYou = c.legs.some((l) => l.settle === "manual" && l.result === null);
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${needsYou ? "bg-warn/20 text-warn" : "bg-ink/5 text-ink-muted"}`}>{needsYou ? "Needs your result" : "Waiting"}</span>;
+}
+
+/** "I've put this bet on": the stake actually used (the advised one to start with), and a tap to take it back. */
+function PlacedControl({ c, pointValue }: { c: TipmanCard; pointValue: number }) {
+  const change = useChangeTipman();
+  const advised = Math.round(c.pts * pointValue * 100) / 100;
+  const [stake, setStake] = useState<string | null>(null);
+  if (c.placed) {
+    return (
+      <button
+        type="button"
+        disabled={change.isPending}
+        onClick={() => change.mutate({ action: "placed", id: c.id, placed: false })}
+        className="mt-1.5 inline-flex min-h-11 items-center rounded-full border border-hit bg-hit/10 px-4 py-2 text-xs font-medium text-hit disabled:opacity-50"
+        aria-label="Placed: tap to undo"
+      >
+        ✓ Placed {signedGbp(c.placed.stake).replace("+", "")} at {c.placed.book} · tap to undo
+      </button>
+    );
+  }
+  const value = stake ?? String(advised);
+  const n = Number(value);
+  return (
+    <span className="mt-1.5 flex flex-wrap items-center gap-2">
+      <span className="text-ink-muted">£</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        min="0.01"
+        step="0.5"
+        value={value}
+        onChange={(e) => setStake(e.target.value)}
+        className="min-h-11 w-20 rounded-md border border-line bg-surface px-2 py-2 text-xs text-ink"
+        aria-label={`Stake placed on ${c.name}`}
+      />
+      <button
+        type="button"
+        disabled={change.isPending || !(Number.isFinite(n) && n > 0)}
+        onClick={() => change.mutate({ action: "placed", id: c.id, placed: true, stake: n })}
+        className="min-h-11 rounded-full border border-line px-4 py-2 text-xs font-medium text-ink disabled:opacity-50"
+      >
+        I&apos;ve placed this
+      </button>
+      {change.error && <span className="text-destructive">{change.error.message}</span>}
+    </span>
+  );
 }
 
 function CardView({ c, pointValue }: { c: TipmanCard; pointValue: number }) {
@@ -133,6 +179,9 @@ function CardView({ c, pointValue }: { c: TipmanCard; pointValue: number }) {
           ))}
         {c.result !== null && c.resultBy && <span className="text-xs text-ink-muted">Settled {c.resultBy === "owner" ? "by you" : c.resultBy === "betfair" ? "from Betfair" : "from Betfair and you"}</span>}
       </div>
+      <div className="mt-1 text-xs">
+        <PlacedControl c={c} pointValue={pointValue} />
+      </div>
       {change.error && <p className="mt-1 text-xs text-destructive">{change.error.message}</p>}
     </li>
   );
@@ -146,6 +195,7 @@ function GroupView({ cards, pointValue }: { cards: TipmanCard[]; pointValue: num
   const legs = [...new Map(cards.flatMap((c) => c.legs).map((l) => [`${l.match}|${l.selection}`, l] as const)).values()];
   const settled = cards.filter((c) => c.result === "won" || c.result === "lost");
   const profit = settled.reduce((t, c) => t + (cardPts(c) ?? 0), 0);
+  const placedN = cards.filter((c) => c.placed).length;
   const mark = (l: TipmanCard["legs"][number], result: "won" | "lost" | null) => change.mutate({ action: "leg", match: l.match, selection: l.selection, result });
   return (
     <li id={g.id} className="scroll-mt-20 py-3">
@@ -155,7 +205,7 @@ function GroupView({ cards, pointValue }: { cards: TipmanCard[]; pointValue: num
             {LABEL[first.category]}: {g.label} <span className="text-xs font-normal text-ink-muted">· {g.totalPts}pt in all ({signedGbp(g.totalPts * pointValue).replace("+", "")})</span>
           </p>
           <p className="mt-0.5 text-xs text-ink-muted">
-            {g.bets} bets · {settled.length} settled
+            <span className={placedN === g.bets ? "font-medium text-hit" : placedN > 0 ? "font-medium text-warn" : "font-medium text-ink"}>{placedN === g.bets ? "All placed" : `Placed ${placedN} of ${g.bets}`}</span> · {settled.length} settled
             {first.source === "screenshot" ? " · read from the screenshot" : ""}
           </p>
         </div>
@@ -196,7 +246,14 @@ function GroupView({ cards, pointValue }: { cards: TipmanCard[]; pointValue: num
         ))}
       </ul>
 
-      <p className="mt-3 text-xs font-medium text-ink">Place these in Paddy Power</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-ink">Place these in Paddy Power</p>
+        {placedN < g.bets && cards.some((c) => c.result === null) && (
+          <button type="button" disabled={change.isPending} onClick={() => change.mutate({ action: "placed", group: g.id, placed: true })} className="min-h-11 rounded-full border border-line px-3 py-2 text-xs font-medium text-ink disabled:opacity-50">
+            I&apos;ve placed all {g.bets}
+          </button>
+        )}
+      </div>
       <p className="text-xs text-ink-muted">Its slip can&apos;t load a double or treble from a longer list, so each bet has its own button: tap one, check the slip, set the stake, then come back for the next.</p>
       <ul className="mt-1 divide-y divide-line/60 rounded-lg bg-surface-2 px-3 text-xs">
         {cards.map((c) => {
@@ -220,12 +277,52 @@ function GroupView({ cards, pointValue }: { cards: TipmanCard[]; pointValue: num
                 </a>
               )}
               {!c.pad && link && c.result === null && <span className="ml-2 text-ink-muted">adds the whole post</span>}
+              <div>
+                <PlacedControl c={c} pointValue={pointValue} />
+              </div>
             </li>
           );
         })}
       </ul>
       {change.error && <p className="mt-1 text-xs text-destructive">{change.error.message}</p>}
     </li>
+  );
+}
+
+/** What still needs putting on (bets not marked placed that haven't kicked off), and what has been placed and how it is doing. */
+function ToPlace({ cards, placed }: { cards: TipmanCard[]; placed: TipmanPlaced }) {
+  const [now] = useState(() => Date.now());
+  const kickoff = (c: TipmanCard) => c.legs.map((l) => l.kickoff).filter((k): k is string => k !== null).sort()[0] ?? null;
+  const todo = cards.filter((c) => !c.placed && c.result === null && (kickoff(c) === null || Date.parse(kickoff(c)!) > now));
+  const groups = [...new Map(todo.map((c) => [c.group?.id ?? c.id, c] as const)).entries()].map(([anchor, c]) => ({ anchor, c, n: todo.filter((x) => (x.group?.id ?? x.id) === anchor).length }));
+  return (
+    <Card title="Have you put them on?" subtitle="Mark each bet once you have, with the stake you used, so nothing is missed or doubled up.">
+      {groups.length === 0 ? (
+        <p className="text-sm text-ink-muted">Nothing waiting to be placed.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {groups.map(({ anchor, c, n }) => (
+            <li key={anchor} className="flex items-center justify-between gap-2 text-sm">
+              <a href={`#${anchor}`} className="min-w-0 truncate text-accent underline underline-offset-2">
+                {c.group?.label ?? LABEL[c.category]} · {n} bet{n === 1 ? "" : "s"} to place
+              </a>
+              <span className="shrink-0 text-xs text-ink-muted">{time(kickoff(c)) && `kicks off ${time(kickoff(c))}`}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {placed.bets > 0 && (
+        <p className="mt-3 border-t border-line pt-2 text-xs text-ink-muted">
+          You&apos;ve placed {placed.bets} bet{placed.bets === 1 ? "" : "s"}, {signedGbp(placed.staked).replace("+", "")} staked
+          {placed.settled > 0 && (
+            <>
+              {" "}
+              · {placed.settled} settled: <span className={tone(placed.profit)}>{signedGbp(placed.profit)}</span> at the advised prices
+            </>
+          )}
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -299,6 +396,8 @@ export default function TipmanPage() {
   return (
     <div className="space-y-6">
       <PageHeader as="h2" title="TipMan" subtitle="The tipster's bets, staked as he sets them up. Tracked only: nothing is bet." />
+
+      <ToPlace cards={data.cards} placed={data.placed} />
 
       <Record rows={data.record} pointValue={data.pointValue} />
 

@@ -81,7 +81,7 @@ import type { TelegramClient } from "telegram";
 import { parsePickMode, type EngineDb } from "../storage/engine-db";
 import { fixAndResend, listUnplaced, UNPLACED_AFTER_MS, chooseBetfairMatch } from "../betfair/unplaced";
 import { listStrategyNames, saveStrategyName } from "../inplayguru/strategy-names";
-import { parseSubscription, pushPublicKey, sendPush, subscribePush } from "./push";
+import { parseSubscription, pushFocused, pushPublicKey, sendPush, setPushFocused, subscribePush } from "./push";
 import { buildDailySummary } from "./daily-summary";
 import { picksExportCsv } from "./picks-export";
 import type { BackupScheduler } from "../storage/spaces-sync";
@@ -113,7 +113,7 @@ import { adviceFromComputed, AdviceChanged, agentDates, applyAdvice, applyAllAdv
 import { clashCheck } from "./clash-check";
 import { autoAdjustLog, autoAdjustOn, protectedKeys } from "./auto-adjust";
 import { listChanges, withChangeSource } from "../inplayguru/change-log";
-import { listCards, notifyNewCards, pointValue, recordCards, recordOf, setLegResultByHand, setPointValue, setResultByHand, settleCards, type RawCard } from "../tips/tipman-cards";
+import { listCards, notifyNewCards, pointValue, recordCards, placedSummary, recordOf, setLegResultByHand, setPlaced, setPointValue, setResultByHand, settleCards, type RawCard } from "../tips/tipman-cards";
 import { horseTipResultsWithPoints } from "./horse-bsp";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -625,6 +625,17 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
+    // Focused notifications (push.ts): only TipMan, the scheduled summaries and safety warnings are sent. GET reads, POST { on } sets.
+    if (path === "/internal/push-focus" && (req.method === "GET" || req.method === "POST")) {
+      if (!requireAdmin(req, res)) return;
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        if (typeof body.on === "boolean") setPushFocused(db, body.on);
+      }
+      send(res, 200, { focused: pushFocused(db) });
+      return;
+    }
+
     // The Notifications page: what was sent, newest first (push.ts logs each one).
     if (req.method === "GET" && path === "/internal/notifications") {
       if (!requireAdmin(req, res)) return;
@@ -1129,6 +1140,8 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
           if (body.action === "result" && typeof body.id === "string" && (body.result === "won" || body.result === "lost" || body.result === "void")) setResultByHand(db, body.id, body.result);
           else if (body.action === "leg" && typeof body.match === "string" && typeof body.selection === "string" && (body.result === "won" || body.result === "lost" || body.result === "void" || body.result === null)) setLegResultByHand(db, body.match, body.selection, body.result);
           else if (body.action === "pointValue" && typeof body.value === "number") setPointValue(db, body.value);
+          else if (body.action === "placed" && typeof body.placed === "boolean" && (typeof body.id === "string" || typeof body.group === "string"))
+            setPlaced(db, { id: typeof body.id === "string" ? body.id : undefined, group: typeof body.group === "string" ? body.group : undefined }, body.placed, { stake: typeof body.stake === "number" ? body.stake : undefined, book: typeof body.book === "string" ? body.book : undefined });
           else {
             send(res, 400, { error: "unknown_action" });
             return;
@@ -1139,7 +1152,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
       }
       const day = (daysAgo: number) => ukDateOf(new Date(Date.now() - daysAgo * 86_400_000));
-      send(res, 200, { pointValue: pointValue(db), cards: listCards(db, day(14)), record: recordOf(listCards(db, day(120))), at: new Date().toISOString() });
+      send(res, 200, { pointValue: pointValue(db), cards: listCards(db, day(14)), record: recordOf(listCards(db, day(120))), placed: placedSummary(listCards(db, day(120))), at: new Date().toISOString() });
       return;
     }
 

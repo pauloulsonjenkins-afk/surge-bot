@@ -2283,6 +2283,8 @@ export interface TipmanCard {
   note?: string;
   /** Paddy Power's betslip link with exactly this bet's legs. */
   pad?: string;
+  /** The owner has put this bet on: when, the stake used and where. */
+  placed?: { at: string; stake: number; book: string } | null;
 }
 export interface TipmanRecord {
   category: TipmanCategory;
@@ -2294,10 +2296,18 @@ export interface TipmanRecord {
   stakedPts: number;
   profitPts: number;
 }
+export interface TipmanPlaced {
+  bets: number;
+  staked: number;
+  settled: number;
+  profit: number;
+  toPlace: number;
+}
 export interface TipmanState {
   pointValue: number;
   cards: TipmanCard[];
   record: TipmanRecord[];
+  placed: TipmanPlaced;
   at: string;
 }
 export function fetchTipman(): Promise<TipmanState> {

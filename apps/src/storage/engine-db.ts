@@ -3309,6 +3309,10 @@ export class EngineDb {
     this.onChange();
   }
 
+  deleteTipmanCard(id: string): void {
+    if (this.db.prepare(`DELETE FROM tipman_cards WHERE id = ?`).run(id).changes > 0) this.onChange();
+  }
+
   /** Removes the stored cards whose id starts with this prefix (the screenshot reader's own, "tg"). Returns how many. */
   deleteTipmanCardsStartingWith(prefix: string): number {
     const r = this.db.prepare(`DELETE FROM tipman_cards WHERE id LIKE ? ESCAPE '\\'`).run(`${prefix.replace(/[\\%_]/g, "\\$&")}%`);

@@ -5,7 +5,7 @@ import type { TipmanState } from "@/server/engine-client";
 import { getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
 
-export type { TipmanState, TipmanCard, TipmanLeg, TipmanRecord, TipmanCategory } from "@/server/engine-client";
+export type { TipmanState, TipmanCard, TipmanLeg, TipmanRecord, TipmanCategory, TipmanPlaced } from "@/server/engine-client";
 
 /** TipMan's bets as the tipster sets them up, and the record by category (engine tips/tipman-cards.ts). */
 export function useTipman() {

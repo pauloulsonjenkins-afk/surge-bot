@@ -78,10 +78,43 @@ export interface PushMessage {
 }
 
 /**
+ * FOCUSED NOTIFICATIONS (owner, 22 Nov 2026: "I just want the tipman alerts and the scheduled how we are doing alerts").
+ * A notification is one of: TipMan's bets, the scheduled summaries (daily and the Sunday review), a safety warning (betting
+ * paused, the daily loss stop, Telegram alerts down, a bet not placed, the horse fetch failing), or anything else: the
+ * strategy chatter (Golden alerts and stages, suggestions, automatic stakes and changes, league and LAY milestones, each bet's
+ * result, learned names). While focused (the default) only the first three kinds are sent; the rest are logged as muted on the
+ * Notifications page. POST /internal/push-focus { on: false } brings everything back.
+ */
+export type PushKind = "tipman" | "summary" | "safety" | "other";
+
+export function pushKind(m: Pick<PushMessage, "title" | "tag">): PushKind {
+  const tag = m.tag ?? "";
+  if (/^tipman-/.test(tag) || /tip\s*man/i.test(m.title)) return "tipman";
+  if (/^summary-/.test(tag) || tag === "weekly-review") return "summary";
+  if (["loss-stop", "telegram-watchdog", "horse-import"].includes(tag) || /^unplaced-/.test(tag)) return "safety";
+  if (/^(Betting paused|Betting resumed|Daily loss stop|Telegram alerts|Notifications are on)/i.test(m.title)) return "safety";
+  return "other";
+}
+
+const FOCUS_KEY = "push_focus";
+export const pushFocused = (db: EngineDb): boolean => db.getSetting(FOCUS_KEY) !== "0";
+export function setPushFocused(db: EngineDb, on: boolean): void {
+  db.setSetting(FOCUS_KEY, on ? "1" : "0");
+}
+
+/**
  * Sends a notification to every subscribed device. Devices the push service says are gone are removed. Returns how
  * many it reached. Never throws: a failed notification mustn't stop the caller.
  */
 export async function sendPush(db: EngineDb, message: PushMessage): Promise<number> {
+  if (pushFocused(db) && pushKind(message) === "other") {
+    try {
+      db.logPush(new Date().toISOString(), `(muted) ${message.title}`, message.body, message.url ?? null, 0);
+    } catch {
+      // never stops the caller
+    }
+    return 0;
+  }
   const reached = await deliver(db, db.listPushSubscriptions(), message, (endpoint) => db.deletePushSubscription(endpoint));
   // Kept for the Notifications page, whether or not a device got it.
   try {
