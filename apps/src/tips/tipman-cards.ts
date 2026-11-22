@@ -106,6 +106,8 @@ export interface TipmanCard {
   group?: { id: string; label: string; totalPts: number; bets: number };
   /** The screenshot reader's note, e.g. that it read a leg's odds with low confidence. */
   note?: string;
+  /** Paddy Power's betslip link with exactly THIS bet's legs (its slip doesn't offer a double or treble from a longer list). */
+  pad?: string;
 }
 
 // --------------------------------------------------------------------------- reading the text

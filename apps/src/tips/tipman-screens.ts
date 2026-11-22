@@ -159,6 +159,25 @@ export function claudeVision(apiKey: string, model = process.env.TIPMAN_VISION_M
 
 // --------------------------------------------------------------------------- building the bets
 
+/**
+ * A Paddy Power betslip link, taken apart: TipMan's link adds every selection of the post to the slip
+ * (`...addLegs&leg%3D<market>%7C<selection>%7CSIMPLE_SELECTION%7C%26leg%3D...&lpid=53`), and Paddy Power's slip doesn't offer a
+ * double or treble from a longer list, so each bet needs a link of its own with only its legs. Null for any other shape of link.
+ */
+export function paddyParts(url: string): { prefix: string; legs: string[]; suffix: string } | null {
+  const m = /^(.*?addLegs&)(leg%3D[^&]*)(&.*)?$/i.exec(url);
+  if (!m) return null;
+  const legs = m[2]!.split("%26").filter(Boolean);
+  return legs.length > 0 && legs.every((l) => /^leg%3D/i.test(l)) ? { prefix: m[1]!, legs, suffix: m[3] ?? "" } : null;
+}
+
+/** The same link with only the legs at these positions (in the order given). Null when the link doesn't split. */
+export function paddyLinkFor(url: string, indices: number[]): string | null {
+  const p = paddyParts(url);
+  if (!p || indices.length === 0 || indices.some((i) => i < 0 || i >= p.legs.length)) return null;
+  return p.prefix + indices.map((i) => p.legs[i]!).join("%26") + p.suffix;
+}
+
 const legOf = (s: VisionSel, now: Date): TipmanLeg => {
   const { home, away } = sides(s.match);
   return { kickoff: kickoffOf(s.kickoff, now), match: s.match, home, away, league: s.league, selection: s.selection, market: s.market || s.selection, odds: fractionToDecimal(s.odds), ...settleOf(s.selection, s.market || s.selection, home, away), result: null };
@@ -202,6 +221,11 @@ export function buildScreenCards(post: ScreenPost): TipmanCard[] {
   const category = categoryOf(firstLine || post.caption, legs);
   const plan = parseStakePlan(post.caption);
   const books = booksOf(post.links);
+  // Paddy Power's link, to be split into a link per bet when it has one leg for each selection read (else the slip is left to the owner).
+  const padUrl = post.links.find((l) => /paddy/i.test(`${l.label} ${l.url}`))?.url;
+  const padLegs = padUrl ? paddyParts(padUrl)?.legs.length : undefined;
+  const padOk = !!padUrl && padLegs === legs.length;
+  const padFor = (set: TipmanLeg[]): string | undefined => (padOk ? (paddyLinkFor(padUrl!, set.map((l) => legs.indexOf(l))) ?? undefined) : undefined);
   const first = legs.map((l) => l.kickoff).filter((k): k is string => k !== null).sort()[0];
   const common = { tier: "premium" as const, books, day: ukDateOf(first ? new Date(first) : now), firstSeenAt: now.toISOString(), updatedAt: now.toISOString(), result: null, settledAt: null, resultBy: null, source: "screenshot" as const };
   const notes: string[] = [];
@@ -215,7 +239,7 @@ export function buildScreenCards(post: ScreenPost): TipmanCard[] {
   const sameMatch = new Set(legs.map(matchKey)).size === 1;
   if (sameMatch && legs.length > 1) {
     const pts = plan.parts[0]?.pts ?? pointsOf(read.stake) ?? pointsOf(post.caption);
-    return [{ ...common, id: id("builder"), category: "bet-builder", name: CATEGORY_LABEL["bet-builder"], pts: pts ?? 1, ptsAssumed: pts === null, odds: fractionToDecimal(read.totalOdds), legs, note }];
+    return [{ ...common, id: id("builder"), category: "bet-builder", name: CATEGORY_LABEL["bet-builder"], pts: pts ?? 1, ptsAssumed: pts === null, odds: fractionToDecimal(read.totalOdds), legs, note, pad: padFor(legs) }];
   }
 
   const plans = plan.parts.length > 0 ? plan.parts : [{ shape: legs.length === 1 ? ("single" as const) : ("acca" as const), pts: pointsOf(post.caption) ?? 1 }];
@@ -225,29 +249,30 @@ export function buildScreenCards(post: ScreenPost): TipmanCard[] {
   for (const part of plans) {
     const sets = part.shape === "acca" ? [legs] : combinations(legs, SIZE[part.shape]).filter((c) => new Set(c.map(matchKey)).size === c.length);
     counts.push(sets.length);
-    sets.forEach((set, i) => cards.push({ ...common, id: id(`${part.shape}${i + 1}`), category, name: `${CATEGORY_LABEL[category]} · ${part.shape === "acca" ? "accumulator" : part.shape}`, pts: part.pts, ptsAssumed: assumed, odds: product(set), legs: set, note }));
+    sets.forEach((set, i) => cards.push({ ...common, id: id(`${part.shape}${i + 1}`), category, name: `${CATEGORY_LABEL[category]} · ${part.shape === "acca" ? "accumulator" : part.shape}`, pts: part.pts, ptsAssumed: assumed, odds: product(set), legs: set, note, pad: padFor(set) }));
   }
   if (cards.length === 0) return [];
   const totalPts = Math.round(cards.reduce((t, c) => t + c.pts, 0) * 100) / 100;
   const label = plan.parts.length > 0 ? groupLabel(plans, legs.length, counts) : cards.length === 1 ? CATEGORY_LABEL[category] : "Bets";
+  if (padUrl && !padOk) notes.push(padLegs === undefined ? "Paddy Power's link couldn't be split into a link for each bet, so its slip is the whole post: pick the bet there." : `Paddy Power's link has ${padLegs} selections but ${legs.length} were read: its slip is the whole post, so pick the bet there.`);
   if (plan.totalPts !== null && Math.abs(plan.totalPts - totalPts) > 0.01) notes.push(`The caption says ${plan.totalPts}pt in total but these selections make ${totalPts}pt: check them.`);
   const group = { id: id("group"), label, totalPts, bets: cards.length };
   const finalNote = notes.join(" ") || undefined;
-  return cards.map((c) => ({ ...c, group, note: finalNote }));
+  // A bet of its own gets its own Paddy Power link; the other bookmakers' links add the whole post, so they aren't kept on a part of it.
+  return cards.map((c) => ({ ...c, group, note: finalNote, books: c.pad ? [{ book: "Paddy Power", url: c.pad, odds: null }] : c.books }));
 }
 
 /** One phone notification for a post's bets: what it is, the stake in all, and a tap that opens Betfair's betslip. */
-export async function notifyScreenPost(db: EngineDb, cards: TipmanCard[], links: ScreenPost["links"]): Promise<void> {
+export async function notifyScreenPost(db: EngineDb, cards: TipmanCard[], _links: ScreenPost["links"] = []): Promise<void> {
   const first = cards[0];
   if (!first) return;
   const label = first.group?.label ?? CATEGORY_LABEL[first.category];
   const total = first.group?.totalPts ?? first.pts;
   const legs = [...new Map(cards.flatMap((c) => c.legs).map((l) => [`${l.match}|${l.selection}`, l] as const)).values()];
-  const betfair = links.find((l) => /betfair/i.test(`${l.label} ${l.url}`));
   await sendPush(db, {
     title: `TipMan Premium: ${label}, ${total}pt: send to bet?`,
-    body: `${legs.map((l) => l.selection).join(" · ")}. Read from a screenshot: check the legs. Tap to open the Betfair betslip.`.slice(0, 220),
-    url: betfair?.url ?? "/more/admin/tipman",
+    body: `${legs.map((l) => l.selection).join(" · ")}. Read from a screenshot: check the legs. Tap for the ${cards.length === 1 ? "bet" : `${cards.length} bets`} to open in Paddy Power.`.slice(0, 220),
+    url: `/more/admin/tipman#${first.group?.id ?? first.id}`,
     tag: `tipman-${first.group?.id ?? first.id}`,
   });
 }

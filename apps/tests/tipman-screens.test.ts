@@ -44,10 +44,10 @@ test("the Premium Bookings post: three selections make a Trixie of four bets, 4p
   assert.deepEqual(cards.map((c) => c.odds), [13.13, 15.75, 16.88, 59.06], "3.5 x 3.75, 3.5 x 4.5, 3.75 x 4.5 and all three");
   assert.deepEqual(cards.map((c) => c.legs.length), [2, 2, 2, 3]);
   assert.deepEqual(cards[0]!.group, { id: "tg9001-group", label: "Trixie", totalPts: 4, bets: 4 }, "the caption's 4pt total matches, so no warning");
-  assert.equal(cards[0]!.note, undefined);
+  assert.match(cards[0]!.note ?? "", /couldn't be split/, "this test's Paddy link has no legs to split, and the card says so");
   assert.ok(cards.every((c) => c.tier === "premium" && c.category === "booking" && c.source === "screenshot" && !c.ptsAssumed));
   assert.ok(cards.every((c) => c.legs.every((l) => l.settle === "manual")), "bookings aren't on the Exchange");
-  assert.equal(cards[0]!.books[0]!.book, "Betfair");
+  assert.equal(cards[0]!.books[0]!.book, "Betfair", "links that can't be split are kept as the post gave them");
   assert.equal(cards[0]!.day, "2026-11-22");
 });
 
@@ -106,14 +106,59 @@ test("a leg marked by hand updates every bet it is in: a Trixie from three taps"
   assert.deepEqual(byName.sort(), [["Gueye+Romero", "won"], ["Heskey+Gueye+Romero", "lost"], ["Heskey+Gueye", "lost"], ["Heskey+Romero", "lost"]]);
 });
 
-test("the notification opens Betfair's betslip, says what it is and that it was read from an image", async () => {
+
+// ---------------------------------------------------------------------------- Paddy Power, one link per bet
+
+import { paddyLinkFor, paddyParts } from "../src/tips/tipman-screens";
+
+// TipMan's real Paddy Power link for the free accumulator of 22 Nov 2026: four legs.
+const PP4 =
+  "https://media.paddypower.com/redirect.aspx?pid=17720662&bid=1524&redirectURL=https%3A%2F%2Fpaddypower.com/?action=addLegs&leg%3D927.414659489%7C18567%7CSIMPLE_SELECTION%7C%26leg%3D927.414660894%7C199545%7CSIMPLE_SELECTION%7C%26leg%3D927.414733141%7C5168454%7CSIMPLE_SELECTION%7C%26leg%3D927.414737964%7C52457652%7CSIMPLE_SELECTION%7C&lpid=53";
+const PP3 = PP4.replace("%26leg%3D927.414737964%7C52457652%7CSIMPLE_SELECTION%7C", "");
+
+test("a Paddy Power link comes apart into its legs, and goes back together with only the ones asked for, in the same form", () => {
+  const p = paddyParts(PP4)!;
+  assert.equal(p.legs.length, 4);
+  assert.equal(p.suffix, "&lpid=53");
+  assert.equal(`${p.prefix}${p.legs.join("%26")}${p.suffix}`, PP4, "whole again, byte for byte");
+  const two = paddyLinkFor(PP4, [0, 2])!;
+  assert.equal(two, PP4.replace("%26leg%3D927.414660894%7C199545%7CSIMPLE_SELECTION%7C", "").replace("%26leg%3D927.414737964%7C52457652%7CSIMPLE_SELECTION%7C", ""));
+  assert.ok(two.includes("18567") && two.includes("5168454") && !two.includes("199545") && !two.includes("52457652"));
+  assert.equal(paddyLinkFor(PP4, [4]), null, "no such leg");
+  assert.equal(paddyLinkFor(PP4, []), null);
+  assert.equal(paddyLinkFor("https://media.betfair.com/redirect.aspx?bssId%3D1%2C2", [0]), null, "not a Paddy Power link");
+  assert.equal(paddyParts("https://example.com/"), null);
+});
+
+test("the Trixie gets a Paddy Power link for each double and the treble, each holding only its own legs", () => {
+  const links = [{ label: "Betfair - add to betslip", url: LINKS[0]!.url }, { label: "Paddy - add to betslip", url: PP3 }];
+  const cards = buildScreenCards({ messageId: 9010, caption: CAPTION, read: READ, links, now: NOW });
+  assert.equal(cards.length, 4);
+  const has = (c: (typeof cards)[number], ...ids: string[]) => ids.every((i) => c.pad!.includes(i));
+  // Selections read in order: Heskey (18567), Gueye (199545), Romero (5168454).
+  assert.ok(has(cards[0]!, "18567", "199545") && !cards[0]!.pad!.includes("5168454"), "double 1: Heskey + Gueye");
+  assert.ok(has(cards[1]!, "18567", "5168454") && !cards[1]!.pad!.includes("199545"), "double 2: Heskey + Romero");
+  assert.ok(has(cards[2]!, "199545", "5168454") && !cards[2]!.pad!.includes("18567"), "double 3: Gueye + Romero");
+  assert.ok(has(cards[3]!, "18567", "199545", "5168454"), "the treble: all three");
+  assert.equal(cards[3]!.pad, PP3);
+  assert.deepEqual(cards.map((c) => c.books.map((b) => b.book)), [["Paddy Power"], ["Paddy Power"], ["Paddy Power"], ["Paddy Power"]], "only the link that holds exactly this bet is kept");
+  assert.equal(cards[0]!.note, undefined);
+});
+
+test("a link with a different number of legs from the selections read is not split, and the card says so", () => {
+  const links = [{ label: "Paddy - add to betslip", url: PP4 }];
+  const cards = buildScreenCards({ messageId: 9011, caption: CAPTION, read: READ, links, now: NOW });
+  assert.ok(cards.every((c) => c.pad === undefined));
+  assert.match(cards[0]!.note ?? "", /Paddy Power's link has 4 selections but 3 were read/);
+  assert.deepEqual(cards[0]!.books.map((b) => b.book), ["Paddy Power"], "the whole-post link is kept as it was");
+});
+
+test("the notification points at the bet sheet on the TipMan page, which lists each bet to open", async () => {
   const db = new EngineDb(":memory:", () => {});
-  const cards = buildScreenCards({ messageId: 9001, caption: CAPTION, read: READ, links: LINKS, now: NOW });
-  await notifyScreenPost(db, cards, LINKS);
-  const logged = db.listPushLog?.(1)?.[0] as { title?: string; body?: string; url?: string } | undefined;
-  if (logged) {
-    assert.match(logged.title ?? "", /Trixie, 4pt: send to bet\?/);
-    assert.match(logged.url ?? "", /media\.betfair\.com/);
-    assert.match(logged.body ?? "", /Heskey to be carded/);
-  }
+  const cards = buildScreenCards({ messageId: 9012, caption: CAPTION, read: READ, links: [{ label: "Paddy", url: PP3 }], now: NOW });
+  await notifyScreenPost(db, cards, []);
+  const n = db.listPushLog(1)[0]!;
+  assert.equal(n.url, "/more/admin/tipman#tg9012-group");
+  assert.match(n.title, /Trixie, 4pt: send to bet\?/);
+  assert.match(n.body, /4 bets to open in Paddy Power/);
 });

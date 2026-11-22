@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
@@ -146,10 +146,9 @@ function GroupView({ cards, pointValue }: { cards: TipmanCard[]; pointValue: num
   const legs = [...new Map(cards.flatMap((c) => c.legs).map((l) => [`${l.match}|${l.selection}`, l] as const)).values()];
   const settled = cards.filter((c) => c.result === "won" || c.result === "lost");
   const profit = settled.reduce((t, c) => t + (cardPts(c) ?? 0), 0);
-  const book = first.books.find((b) => b.book === "Betfair") ?? first.books[0];
   const mark = (l: TipmanCard["legs"][number], result: "won" | "lost" | null) => change.mutate({ action: "leg", match: l.match, selection: l.selection, result });
   return (
-    <li className="py-3">
+    <li id={g.id} className="scroll-mt-20 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-ink">
@@ -197,29 +196,34 @@ function GroupView({ cards, pointValue }: { cards: TipmanCard[]; pointValue: num
         ))}
       </ul>
 
-      <ul className="mt-2 divide-y divide-line/60 rounded-lg bg-surface-2 px-3 text-xs">
+      <p className="mt-3 text-xs font-medium text-ink">Place these in Paddy Power</p>
+      <p className="text-xs text-ink-muted">Its slip can&apos;t load a double or treble from a longer list, so each bet has its own button: tap one, check the slip, set the stake, then come back for the next.</p>
+      <ul className="mt-1 divide-y divide-line/60 rounded-lg bg-surface-2 px-3 text-xs">
         {cards.map((c) => {
           const p = cardPts(c);
+          const link = c.pad ?? c.books.find((b) => b.book === "Paddy Power")?.url ?? c.books[0]?.url;
           return (
-            <li key={c.id} className="flex items-center justify-between gap-2 py-1.5">
-              <span className="min-w-0 text-ink">
-                {c.name.split(" · ")[1] ?? c.name}
-                <span className="text-ink-muted"> · {c.legs.map((l) => l.selection.split(" ")[0]).join(" + ")}{c.odds !== null ? ` @ ${c.odds.toFixed(2)}` : ""}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                <Status c={c} />
-                {p !== null && <span className={`tabular-nums ${tone(p)}`}>{pts(p)}</span>}
-              </span>
+            <li key={c.id} className="py-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 text-ink">
+                  {c.name.split(" · ")[1] ?? c.name}
+                  <span className="text-ink-muted"> · {c.legs.map((l) => l.selection.split(" ")[0]).join(" + ")}{c.odds !== null ? ` @ ${c.odds.toFixed(2)}` : ""}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <Status c={c} />
+                  {p !== null && <span className={`tabular-nums ${tone(p)}`}>{pts(p)}</span>}
+                </span>
+              </div>
+              {link && c.result === null && (
+                <a href={link} target="_blank" rel="noopener noreferrer" className="mt-1.5 inline-flex min-h-11 items-center rounded-full bg-accent px-4 py-2 text-xs font-medium text-accent-ink">
+                  Open in Paddy Power · stake {signedGbp(c.pts * pointValue).replace("+", "")} ({c.pts}pt)
+                </a>
+              )}
+              {!c.pad && link && c.result === null && <span className="ml-2 text-ink-muted">adds the whole post</span>}
             </li>
           );
         })}
       </ul>
-
-      {book && (
-        <a href={book.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-11 items-center rounded-full bg-accent px-4 py-2 text-xs font-medium text-accent-ink">
-          Open {book.book} betslip
-        </a>
-      )}
       {change.error && <p className="mt-1 text-xs text-destructive">{change.error.message}</p>}
     </li>
   );
@@ -277,6 +281,11 @@ export default function TipmanPage() {
   const { data, isLoading, error } = useTipman();
   const change = useChangeTipman();
   const [draft, setDraft] = useState<string | null>(null);
+  // A notification opens this page at a post (#tg123-group): scroll to it once the bets are on screen.
+  const loaded = !!data;
+  useEffect(() => {
+    if (loaded && window.location.hash) document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: "start" });
+  }, [loaded]);
   if (error) return <QueryError error={error} next="/more/admin/tipman" />;
   if (isLoading || !data) return <Skeleton className="h-64 w-full" />;
 

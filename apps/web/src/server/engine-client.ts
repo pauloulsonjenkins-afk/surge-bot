@@ -2281,6 +2281,8 @@ export interface TipmanCard {
   /** The bets of one post (a Trixie is three doubles and a treble). */
   group?: { id: string; label: string; totalPts: number; bets: number };
   note?: string;
+  /** Paddy Power's betslip link with exactly this bet's legs. */
+  pad?: string;
 }
 export interface TipmanRecord {
   category: TipmanCategory;
