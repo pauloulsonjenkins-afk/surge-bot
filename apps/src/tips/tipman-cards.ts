@@ -100,6 +100,12 @@ export interface TipmanCard {
   settledAt: string | null;
   /** "betfair" (settled from the Exchange), "owner" (marked by hand) or "mixed". */
   resultBy: string | null;
+  /** "site" (read from the web page) or "screenshot" (read from a Telegram post's images: check the legs). */
+  source?: "site" | "screenshot";
+  /** Bets that come from one post: a Trixie is three doubles and a treble from the same selections. */
+  group?: { id: string; label: string; totalPts: number; bets: number };
+  /** The screenshot reader's note, e.g. that it read a leg's odds with low confidence. */
+  note?: string;
 }
 
 // --------------------------------------------------------------------------- reading the text
@@ -188,13 +194,13 @@ function splitWhen(w: string): { when: string; match: string; league: string } {
   return m ? { when: m[1]!, match: m[2]!.trim(), league: (m[3] ?? "").trim() } : { when: "", match: w.trim(), league: "" };
 }
 
-function sides(match: string): { home: string; away: string } {
+export function sides(match: string): { home: string; away: string } {
   const m = /^(.+?)\s+(?:vs\.?|v)\s+(.+)$/i.exec(match.trim());
   return m ? { home: m[1]!.trim(), away: m[2]!.trim() } : { home: match.trim(), away: "" };
 }
 
 /** Whether Betfair's Exchange can settle a leg, by the same reading the Telegram tips use (tips/track.ts readTipBet). */
-function settleOf(selection: string, market: string, home: string, away: string): { settle: LegSettle; why?: string } {
+export function settleOf(selection: string, market: string, home: string, away: string): { settle: LegSettle; why?: string } {
   if (!away) return { settle: "manual", why: "The match wasn't read." };
   const bet = readTipBet(selection, market, home, away);
   return "reason" in bet ? { settle: "manual", why: bet.reason } : { settle: "exchange" };
@@ -337,6 +343,35 @@ export async function notifyNewCards(db: EngineDb, added: TipmanCard[]): Promise
       tag: `tipman-${c.id}`,
     });
   }
+}
+
+/** Stores cards built elsewhere (the screenshot reader). Ones already stored are left as they are. Returns the new ones. */
+export function storeCards(db: EngineDb, cards: TipmanCard[]): TipmanCard[] {
+  const added: TipmanCard[] = [];
+  for (const c of cards) {
+    if (load(db, c.id)) continue;
+    save(db, c);
+    added.push(c);
+  }
+  return added;
+}
+
+/**
+ * The owner marks one LEG by hand (a booking, a card, a player bet: none are on the Exchange): every stored card with that
+ * leg takes the result, so a Trixie's four bets all update from one tap, and each card's result follows from its legs.
+ * Returns how many cards changed.
+ */
+export function setLegResultByHand(db: EngineDb, match: string, selection: string, result: "won" | "lost" | "void" | null, now = new Date()): number {
+  const key = legKey({ match, selection });
+  let changed = 0;
+  for (const c of listCards(db, ukDateOf(new Date(now.getTime() - 5 * 86_400_000)))) {
+    if (!c.legs.some((l) => legKey(l) === key)) continue;
+    const legs = c.legs.map((l) => (legKey(l) === key ? { ...l, result } : l));
+    const decided = cardResultFrom(legs);
+    save(db, { ...c, legs, result: decided, settledAt: decided ? now.toISOString() : null, resultBy: decided ? (c.resultBy === "betfair" ? "mixed" : "owner") : null, updatedAt: now.toISOString() });
+    changed++;
+  }
+  return changed;
 }
 
 /** The owner marks a card (or one leg of it) won, lost or void by hand: bookings, cards and players aren't on the Exchange. */

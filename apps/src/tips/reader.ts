@@ -18,6 +18,8 @@ import { log } from "../server/log";
 import { classifyTip } from "./classify";
 import { applyLearning, type Reviewed } from "./similar";
 import { trackTips } from "./track";
+import { buildScreenCards, claudeVision, notifyScreenPost, parseVision, visionPrompt } from "./tipman-screens";
+import { storeCards } from "./tipman-cards";
 import { notifyNewTips } from "./notify";
 import { getExchangeReader } from "../betfair/exchange";
 import { messageWords, richMessageIsPart, richMessageText } from "./rich-text";
@@ -277,6 +279,103 @@ interface Active {
   firstDone: Set<string>;
 }
 
+// --------------------------------------------------------------------------- TipMan Premium's screenshots
+
+const SCREENS_KEY = "tipman_screens_done";
+const SCREEN_TRIES = 3;
+const SCREEN_MAX_AGE_S = 30 * 3600;
+const SCREENS_PER_PASS = 3;
+const isTipmanPremium = (name: string) => /tip\s*man/i.test(name) && /premium/i.test(name);
+let screensKeyWarned = false;
+
+function screensDone(db: EngineDb): Record<string, number> {
+  try {
+    return JSON.parse(db.getSetting(SCREENS_KEY) ?? "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The TipMan Premium channel posts its bets as screenshots with a caption ("1pt for all 3 doubles and a 1pt treble"). New photo
+ * posts of the last 30 hours (an album is one post) are read with Claude's image reading, built into the bets the caption
+ * sets up (tips/tipman-screens.ts), stored for tracking (tips/tipman-cards.ts) and notified once, with a tap that opens
+ * Betfair's betslip. Each post is read once (three tries if the reading fails); racing posts are left to the Horses page.
+ * Needs ANTHROPIC_API_KEY on the engine.
+ */
+async function readTipmanScreens(a: Active, chatId: string, name: string, messages: Api.Message[]): Promise<void> {
+  if (!isTipmanPremium(name)) return;
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) {
+    if (!screensKeyWarned) log.info("TipMan screenshots: ANTHROPIC_API_KEY isn't set on the engine, so the images aren't read.");
+    screensKeyWarned = true;
+    return;
+  }
+  const done = screensDone(a.db);
+  const groups = new Map<string, Api.Message[]>();
+  for (const m of [...messages].reverse()) {
+    if (!(m as unknown as { photo?: unknown }).photo || Date.now() / 1000 - m.date > SCREEN_MAX_AGE_S) continue;
+    const gid = (m as unknown as { groupedId?: unknown }).groupedId;
+    const key = `${chatId}:${gid != null ? `g${String(gid)}` : `m${m.id}`}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(m);
+  }
+  let read = 0;
+  for (const [key, msgs] of groups) {
+    if ((done[key] ?? 0) >= SCREEN_TRIES || done[key] === -1 || read >= SCREENS_PER_PASS || a.stopped()) continue;
+    const caption = msgs.map((m) => (m.message ?? "").trim()).find(Boolean) ?? "";
+    if (/racing|horse|\bnap\b|each[- ]way|\be\/?w\b/i.test(caption)) {
+      done[key] = -1;
+      continue;
+    }
+    read++;
+    try {
+      const images: Array<{ data: Buffer; mime: string }> = [];
+      for (const m of msgs.slice(0, 4)) {
+        const buf = (await a.client.downloadMedia(m, {})) as Buffer | string | undefined;
+        if (Buffer.isBuffer(buf) && buf.length > 0 && buf.length < 6_000_000) images.push({ data: buf, mime: "image/jpeg" });
+      }
+      if (images.length === 0) throw new Error("no image could be downloaded");
+      const links = msgs.flatMap((m) => betslipLinks(m as unknown as WordsMessage)).map((l) => {
+        const i = l.indexOf(": ");
+        return { label: l.slice(0, i), url: l.slice(i + 2) };
+      });
+      const reply = await claudeVision(apiKey)(visionPrompt(caption), images);
+      const parsed = parseVision(reply);
+      if (!parsed) throw new Error("the reply wasn't a reading of the image");
+      const cards = buildScreenCards({ messageId: msgs[0]!.id, caption, read: parsed, links, now: new Date() });
+      const added = storeCards(a.db, cards);
+      done[key] = -1;
+      if (added.length > 0) {
+        log.info(`TipMan screenshots: ${added.length} bet(s) from post ${msgs[0]!.id}: ${added[0]!.group?.label ?? added[0]!.name}.`);
+        // Tracked either way; only a post from the last 3 hours is worth a "send to bet?" (an old one found on start-up isn't).
+        if (Date.now() / 1000 - msgs[0]!.date < 3 * 3600) await notifyScreenPost(a.db, added, links);
+      } else if (parsed.kind === "selections") log.info(`TipMan screenshots: post ${msgs[0]!.id} read, nothing new to store.`);
+    } catch (err) {
+      done[key] = (done[key] ?? 0) + 1;
+      log.warn(`TipMan screenshots: couldn't read post ${msgs[0]!.id} (try ${done[key]} of ${SCREEN_TRIES}): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  // Kept short: only keys from posts still in the window matter.
+  const keep = new Set(groups.keys());
+  a.db.setSetting(SCREENS_KEY, JSON.stringify(Object.fromEntries(Object.entries(done).filter(([k]) => keep.has(k)))));
+}
+
+let screensTimer: NodeJS.Timeout | null = null;
+
+/** A photo has just arrived in the TipMan Premium channel: reads it shortly, so the whole album is there. */
+function readScreensSoon(a: Active, chatId: string, name: string): void {
+  if (screensTimer) clearTimeout(screensTimer);
+  screensTimer = setTimeout(() => {
+    screensTimer = null;
+    if (active !== a || a.stopped()) return;
+    void a.client
+      .getMessages(Number(chatId), { limit: 20 })
+      .then((msgs) => readTipmanScreens(a, chatId, name, msgs as Api.Message[]))
+      .catch((err) => log.warn(`TipMan screenshots: ${err instanceof Error ? err.message : String(err)}`));
+  }, 20_000);
+  screensTimer.unref?.();
+}
+
 let active: Active | null = null;
 let timer: NodeJS.Timeout | null = null;
 let attachedClient: TelegramClient | null = null;
@@ -319,6 +418,7 @@ async function sync(a: Active): Promise<void> {
       a.firstDone.add(id);
       if (first) saveTipStats(a.db, id, name, messages as unknown as StatMessage[]);
       const reviewed = reviewedIn(a.db, id);
+      await readTipmanScreens(a, id, name, messages);
       for (const m of [...messages].reverse()) {
         // Whole rich posts are asked for only for the last two days' posts, at most 10 a pass: Telegram limits requests.
         const recent = Date.now() / 1000 - m.date < 2 * 86_400 && fetches < 10;
@@ -381,6 +481,7 @@ export function startTipReader(client: TelegramClient, db: EngineDb, stopped: ()
         if (!id || !name) return;
         // A message that arrives live is priced straight away, not at the next five-minute read: an in-play tip's price
         // only means something if it is read within minutes.
+        if (isTipmanPremium(name) && (message as unknown as { photo?: unknown }).photo) readScreensSoon(active, id, name);
         const store = (text: string) => {
           if (recordTip(db, { chatKey: id, messageId: message.id, date: message.date, text: wordsWithLinks(text, message as WordsMessage), channel: name })) {
             void notifyNewTips(db);

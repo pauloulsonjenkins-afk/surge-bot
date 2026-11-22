@@ -1,5 +1,11 @@
 # TipMan read (scheduled Claude task, not yet created)
 
+> **Update, 22 Nov 2026:** the premium bets are also read from the TipMan Premium Telegram channel's screenshots by the
+> engine itself (`apps/src/tips/tipman-screens.ts`), with no TipMan login and no PC: the images are read with Claude's image
+> reading (needs `ANTHROPIC_API_KEY` on the engine), the caption's staking ("1pt for all 3 doubles and a 1pt treble") sets
+> the bets up (a Trixie), and a phone notification ("send to bet?") opens Betfair's betslip. This browser read is the
+> cross-check and the source of exact text, odds and points; it is not required.
+
 TipMan (tipmantips.com) publishes its bets as cards on its website. GoalBrew tracks each card as the tipster sets it up
 (`apps/src/tips/tipman-cards.ts`): stake in points, combined price, each leg. The engine holds **no TipMan login** (the
 horse site is a different site), so the page is read in the owner's own signed-in browser and posted to GoalBrew.

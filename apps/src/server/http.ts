@@ -113,7 +113,7 @@ import { adviceFromComputed, AdviceChanged, agentDates, applyAdvice, applyAllAdv
 import { clashCheck } from "./clash-check";
 import { autoAdjustLog, autoAdjustOn, protectedKeys } from "./auto-adjust";
 import { listChanges, withChangeSource } from "../inplayguru/change-log";
-import { listCards, notifyNewCards, pointValue, recordCards, recordOf, setPointValue, setResultByHand, settleCards, type RawCard } from "../tips/tipman-cards";
+import { listCards, notifyNewCards, pointValue, recordCards, recordOf, setLegResultByHand, setPointValue, setResultByHand, settleCards, type RawCard } from "../tips/tipman-cards";
 import { horseTipResultsWithPoints } from "./horse-bsp";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -1127,6 +1127,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
             return;
           }
           if (body.action === "result" && typeof body.id === "string" && (body.result === "won" || body.result === "lost" || body.result === "void")) setResultByHand(db, body.id, body.result);
+          else if (body.action === "leg" && typeof body.match === "string" && typeof body.selection === "string" && (body.result === "won" || body.result === "lost" || body.result === "void" || body.result === null)) setLegResultByHand(db, body.match, body.selection, body.result);
           else if (body.action === "pointValue" && typeof body.value === "number") setPointValue(db, body.value);
           else {
             send(res, 400, { error: "unknown_action" });

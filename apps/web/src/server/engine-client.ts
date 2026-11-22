@@ -2276,6 +2276,11 @@ export interface TipmanCard {
   result: "won" | "lost" | "void" | null;
   settledAt: string | null;
   resultBy: string | null;
+  /** "screenshot": read from a Telegram post's images, so the legs are worth checking. */
+  source?: "site" | "screenshot";
+  /** The bets of one post (a Trixie is three doubles and a treble). */
+  group?: { id: string; label: string; totalPts: number; bets: number };
+  note?: string;
 }
 export interface TipmanRecord {
   category: TipmanCategory;

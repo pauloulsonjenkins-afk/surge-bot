@@ -22,6 +22,26 @@ const tone = (n: number) => (n > 0 ? "text-hit" : n < 0 ? "text-loss" : "text-in
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" }) : "");
 const dayWords = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
+/** A day's cards as blocks: the bets of one post together, each other card on its own. */
+function blocks(cards: TipmanCard[]): Array<{ key: string; group: boolean; cards: TipmanCard[] }> {
+  const out: Array<{ key: string; group: boolean; cards: TipmanCard[] }> = [];
+  const byGroup = new Map<string, { key: string; group: boolean; cards: TipmanCard[] }>();
+  for (const c of cards) {
+    if (!c.group) {
+      out.push({ key: c.id, group: false, cards: [c] });
+      continue;
+    }
+    let b = byGroup.get(c.group.id);
+    if (!b) {
+      b = { key: c.group.id, group: true, cards: [] };
+      byGroup.set(c.group.id, b);
+      out.push(b);
+    }
+    b.cards.push(c);
+  }
+  return out;
+}
+
 /** Points won or lost on a settled card. */
 function cardPts(c: TipmanCard): number | null {
   if (c.result === "lost") return -c.pts;
@@ -113,6 +133,93 @@ function CardView({ c, pointValue }: { c: TipmanCard; pointValue: number }) {
           ))}
         {c.result !== null && c.resultBy && <span className="text-xs text-ink-muted">Settled {c.resultBy === "owner" ? "by you" : c.resultBy === "betfair" ? "from Betfair" : "from Betfair and you"}</span>}
       </div>
+      {change.error && <p className="mt-1 text-xs text-destructive">{change.error.message}</p>}
+    </li>
+  );
+}
+
+/** The bets of one post (a Trixie: three doubles and a treble) as one block: its legs, tapped once each, and its bets. */
+function GroupView({ cards, pointValue }: { cards: TipmanCard[]; pointValue: number }) {
+  const change = useChangeTipman();
+  const first = cards[0]!;
+  const g = first.group!;
+  const legs = [...new Map(cards.flatMap((c) => c.legs).map((l) => [`${l.match}|${l.selection}`, l] as const)).values()];
+  const settled = cards.filter((c) => c.result === "won" || c.result === "lost");
+  const profit = settled.reduce((t, c) => t + (cardPts(c) ?? 0), 0);
+  const book = first.books.find((b) => b.book === "Betfair") ?? first.books[0];
+  const mark = (l: TipmanCard["legs"][number], result: "won" | "lost" | null) => change.mutate({ action: "leg", match: l.match, selection: l.selection, result });
+  return (
+    <li className="py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-ink">
+            {LABEL[first.category]}: {g.label} <span className="text-xs font-normal text-ink-muted">· {g.totalPts}pt in all ({signedGbp(g.totalPts * pointValue).replace("+", "")})</span>
+          </p>
+          <p className="mt-0.5 text-xs text-ink-muted">
+            {g.bets} bets · {settled.length} settled
+            {first.source === "screenshot" ? " · read from the screenshot" : ""}
+          </p>
+        </div>
+        {settled.length > 0 && (
+          <p className={`shrink-0 text-right text-sm font-semibold tabular-nums ${tone(profit)}`}>
+            {pts(profit)}
+            <span className="block text-xs font-normal">{signedGbp(profit * pointValue)}</span>
+          </p>
+        )}
+      </div>
+      {first.note && <p className="mt-1 text-xs font-medium text-warn">{first.note}</p>}
+      {first.source === "screenshot" && !first.note && <p className="mt-1 text-xs text-ink-muted">Read from the screenshot by GoalBrew: check the legs match the post.</p>}
+
+      <ul className="mt-2 space-y-1.5">
+        {legs.map((l) => (
+          <li key={`${l.match}|${l.selection}`} className="flex items-center justify-between gap-2 text-xs">
+            <span className="min-w-0 text-ink">
+              {l.selection}
+              <span className="text-ink-muted">
+                {" "}
+                · {l.match}
+                {l.odds !== null ? ` · ${l.odds.toFixed(2)}` : ""}
+              </span>
+            </span>
+            {l.settle === "manual" ? (
+              <span className="flex shrink-0 gap-1.5">
+                <button type="button" disabled={change.isPending} onClick={() => mark(l, l.result === "won" ? null : "won")} className={`min-h-11 min-w-11 rounded-full border px-3 text-sm font-bold ${l.result === "won" ? "border-hit bg-hit/15 text-hit" : "border-line text-ink-muted"}`} aria-label={`${l.selection} won`} aria-pressed={l.result === "won"}>
+                  ✓
+                </button>
+                <button type="button" disabled={change.isPending} onClick={() => mark(l, l.result === "lost" ? null : "lost")} className={`min-h-11 min-w-11 rounded-full border px-3 text-sm font-bold ${l.result === "lost" ? "border-loss bg-loss/15 text-loss" : "border-line text-ink-muted"}`} aria-label={`${l.selection} lost`} aria-pressed={l.result === "lost"}>
+                  ✗
+                </button>
+              </span>
+            ) : (
+              <span className={`shrink-0 font-bold ${l.result === "won" ? "text-hit" : l.result === "lost" ? "text-loss" : "text-ink-muted"}`}>{l.result === "won" ? "✓" : l.result === "lost" ? "✗" : "·"}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <ul className="mt-2 divide-y divide-line/60 rounded-lg bg-surface-2 px-3 text-xs">
+        {cards.map((c) => {
+          const p = cardPts(c);
+          return (
+            <li key={c.id} className="flex items-center justify-between gap-2 py-1.5">
+              <span className="min-w-0 text-ink">
+                {c.name.split(" · ")[1] ?? c.name}
+                <span className="text-ink-muted"> · {c.legs.map((l) => l.selection.split(" ")[0]).join(" + ")}{c.odds !== null ? ` @ ${c.odds.toFixed(2)}` : ""}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <Status c={c} />
+                {p !== null && <span className={`tabular-nums ${tone(p)}`}>{pts(p)}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {book && (
+        <a href={book.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-11 items-center rounded-full bg-accent px-4 py-2 text-xs font-medium text-accent-ink">
+          Open {book.book} betslip
+        </a>
+      )}
       {change.error && <p className="mt-1 text-xs text-destructive">{change.error.message}</p>}
     </li>
   );
@@ -213,11 +320,9 @@ export default function TipmanPage() {
           <section key={day} className="space-y-1">
             <h3 className="text-base font-semibold text-ink">{dayWords(day)}</h3>
             <ul className="divide-y divide-line rounded-xl border border-line bg-surface px-3.5">
-              {data.cards
-                .filter((c) => c.day === day)
-                .map((c) => (
-                  <CardView key={c.id} c={c} pointValue={data.pointValue} />
-                ))}
+              {blocks(data.cards.filter((c) => c.day === day)).map((b) =>
+                b.group ? <GroupView key={b.key} cards={b.cards} pointValue={data.pointValue} /> : <CardView key={b.key} c={b.cards[0]!} pointValue={data.pointValue} />,
+              )}
             </ul>
           </section>
         ))
