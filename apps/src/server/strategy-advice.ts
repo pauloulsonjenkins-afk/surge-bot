@@ -189,6 +189,35 @@ const EARLY_ROI = -0.08;
 const EARLY_UNITS = -1;
 const EARLY_STAKE_PCT = 3;
 
+/** Combined (real + trial) bets a strategy needs before its combined record can hold it on real money. */
+export const COMBINED_FROM = 50;
+/** ...and in the last 30 days, so a strategy that has genuinely turned is still cut. */
+export const COMBINED_RECENT_FROM = 30;
+/** Within this share of the money staked, below zero, still counts as break-even (the site's LEVEL_BAND, money-verdict.ts). */
+const COMBINED_LEVEL = 0.01;
+/** Real bets, and the share of their stake lost, past which a trial in profit is not to be trusted. */
+const REAL_WORSE_BETS = 5;
+const REAL_WORSE_LOSS = 0.5;
+
+type CombinedInput = { live: Pick<StrategyReturn, "counted" | "profit" | "staked">; sim: Pick<StrategyReturn, "profit">; all: Pick<StrategyReturn, "counted" | "roi"> };
+
+/**
+ * "Move to combined" (owner, 22 Nov 2026): real and trial bets are two samples of the same rule, and over 100-150 real
+ * bets luck alone moves a result by about 15 points, so the Strategies page judges a strategy on both together. This is
+ * the same view for the suggestions and the nightly auto-adjust: a strategy whose real and trial bets TOGETHER (COMBINED_FROM+)
+ * are at break-even or better isn't put back to Sim for a bad real run. The one exception is real bets far worse than a
+ * trial in profit (REAL_WORSE_BETS+ bets losing half their stake: LAY Comeback Roast, 0 from 7, about 1 in 400 if the two
+ * behaved alike): then the combined figure isn't trusted and the cut stands. It must also hold over the last 30 days
+ * (COMBINED_RECENT_FROM+ bets, `recent`): a strong overall record must not keep a strategy that has turned on real money. Pure.
+ */
+export function combinedHoldsUp(r: CombinedInput, recent?: { all: Pick<StrategyReturn, "counted" | "roi"> } | null): boolean {
+  if (r.all.counted < COMBINED_FROM || r.all.roi === null || r.all.roi < -COMBINED_LEVEL) return false;
+  if (!recent || recent.all.counted < COMBINED_RECENT_FROM || recent.all.roi === null || recent.all.roi < -COMBINED_LEVEL) return false;
+  const staked = r.live.staked ?? 0;
+  const realWorse = r.sim.profit > 0 && r.live.counted >= REAL_WORSE_BETS && staked > 0 && r.live.profit / staked <= -REAL_WORSE_LOSS;
+  return !realWorse;
+}
+
 /** One suggestion's identity: a strategy can have one per kind, and one league-block per league. */
 const adviceId = (a: Pick<Advice, "key" | "kind" | "league">) => (a.league ? `${a.key}@${a.league.key}` : a.key);
 
@@ -400,7 +429,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
         out.push({ key, kind: "back-to-sim", early: true, action: "Put back to Sim", reason: `Early warning: ${pct(l.roi)} per £1 (${l.units} units) over its last ${l.counted} Live bets at ${settings.stakePct[key]}% of the balance. Too few bets to be sure, but a stake this size is costly if it is real.` });
         continue;
       }
-      if (settled && l.counted >= 30 && adj !== null && adj < -0.02) {
+      if (settled && l.counted >= 30 && adj !== null && adj < -0.02 && !combinedHoldsUp(r, recent[key])) {
         // The strategy's whole Live record since its rules last changed, for comparison: it's often still green even
         // when the last 30 days have turned, which otherwise reads as a contradiction once the admin switches to Sim
         // and the headline figure (a different window) looks fine. Said here so the two numbers are never seen apart.
