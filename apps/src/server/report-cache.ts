@@ -27,6 +27,7 @@ import { log } from "./log";
 import { runReport, type ReportName } from "./reports";
 import { reportWorkerReady, workerReport } from "./report-client";
 import { timed } from "./loop-delay";
+import { adviceSettingsStamp, RESULTS_REUSE_MS, VIEW_MAX_AGE_MS } from "./strategy-advice";
 
 export const REPORT_TTL_MS = 60_000;
 /**
@@ -51,23 +52,51 @@ export function holdFor(key: string): number {
 /** Today's own, much shorter reuse window (see above). */
 export const TODAY_TTL_MS = 10_000;
 
-const cache = new WeakMap<EngineDb, Map<string, { at: number; stamp: string; body: Record<string, unknown> }>>();
+/**
+ * THE SUGGESTIONS ("advice", 22 Nov 2026) are kept by the rule they had before they moved to the report worker
+ * (strategy-advice.ts adviceForView): afresh at once when a setting they read changes, but at most every RESULTS_REUSE_MS
+ * (2 minutes) for results, and every VIEW_MAX_AGE_MS (30 minutes) for the clock. On the worker they were worked out
+ * again after every result, 4.7-7.6 s each on the live data, and the Today page waited behind them (Ops Watch, 22 Nov).
+ */
+export const ADVICE_KEY = "advice";
+
+const cache = new WeakMap<EngineDb, Map<string, { at: number; stamp: string; settings: string; body: Record<string, unknown> }>>();
+
+/** The settings a report under `key` is worked out from (the suggestions read more of them than the others). */
+function settingsStamp(db: EngineDb, key: string): string {
+  const base = [getSendingSettings(db), getWinLossSettings(db), getBank(db).total, db.getStrategyMerges(), db.getFreshStart()];
+  return JSON.stringify(key === ADVICE_KEY ? [...base, adviceSettingsStamp(db)] : base);
+}
 
 /** What the reports are worked out from, besides the clock: when this differs, a kept report is out of date. */
-function inputsStamp(db: EngineDb): string {
-  return JSON.stringify([db.resultsVersion(), getSendingSettings(db), getWinLossSettings(db), getBank(db).total, db.getStrategyMerges(), db.getFreshStart()]);
+function inputsStamp(db: EngineDb, settings: string): string {
+  return JSON.stringify([db.resultsVersion(), settings]);
+}
+
+/** Whether a kept report can be given again as it is. */
+function stillGood(key: string, hit: { stamp: string; settings: string }, stamp: string, settings: string, age: number, ttlMs: number): boolean {
+  if (age < 0) return false;
+  if (age < holdFor(key)) return true;
+  if (key === ADVICE_KEY && ttlMs === REPORT_TTL_MS) return hit.settings === settings && age < VIEW_MAX_AGE_MS && (hit.stamp === stamp || age < RESULTS_REUSE_MS);
+  return hit.stamp === stamp && age < ttlMs;
+}
+
+/** How old a kept report may be and still be shown while a fresh one is worked out. */
+function staleFor(key: string): number {
+  return STALE_OK_MS + holdFor(key) + (key === ADVICE_KEY ? RESULTS_REUSE_MS : 0);
 }
 
 /** The report under `key`: the one kept, while it still holds (above), else worked out now and kept. */
 export function cachedReport(db: EngineDb, key: string, compute: () => Record<string, unknown>, now = Date.now(), ttlMs = REPORT_TTL_MS): Record<string, unknown> {
   let byKey = cache.get(db);
   if (!byKey) cache.set(db, (byKey = new Map()));
-  const stamp = inputsStamp(db);
+  const settings = settingsStamp(db, key);
+  const stamp = inputsStamp(db, settings);
   const hit = byKey.get(key);
   const age = hit ? now - hit.at : -1;
-  if (hit && age >= 0 && ((hit.stamp === stamp && age < ttlMs) || age < holdFor(key))) return hit.body;
+  if (hit && stillGood(key, hit, stamp, settings, age, ttlMs)) return hit.body;
   // Out of date, but recent: show it now and bring it up to date straight after, so nobody waits for the report.
-  if (hit && age >= 0 && age < STALE_OK_MS + holdFor(key) && ttlMs === REPORT_TTL_MS) {
+  if (hit && age >= 0 && age < staleFor(key) && ttlMs === REPORT_TTL_MS) {
     let busy = refreshing.get(db);
     if (!busy) refreshing.set(db, (busy = new Set()));
     if (!busy.has(key)) {
@@ -77,8 +106,8 @@ export function cachedReport(db: EngineDb, key: string, compute: () => Record<st
           const fresh = cache.get(db)?.get(key);
           // Skipped if a request (or a clear) has dealt with it since.
           if (fresh === hit) {
-            const again = inputsStamp(db);
-            byKey.set(key, { at: Date.now(), stamp: again, body: timed(`report ${key}`, compute) });
+            const again = settingsStamp(db, key);
+            byKey.set(key, { at: Date.now(), stamp: inputsStamp(db, again), settings: again, body: timed(`report ${key}`, compute) });
           }
         } catch {
           // The next request works it out itself.
@@ -90,7 +119,7 @@ export function cachedReport(db: EngineDb, key: string, compute: () => Record<st
     return hit.body;
   }
   const body = timed(`report ${key}`, compute);
-  byKey.set(key, { at: now, stamp, body });
+  byKey.set(key, { at: now, stamp, settings, body });
   // Oldest first out, so a run of different requests (each "since" date) can't grow it without limit.
   if (byKey.size > 50) byKey.delete(byKey.keys().next().value as string);
   return body;
@@ -113,10 +142,11 @@ export async function cachedReportVia(db: EngineDb, key: string, name: ReportNam
   if (!reportWorkerReady()) return cachedReport(db, key, () => runReport(db, name, args), now, ttlMs);
   let byKey = cache.get(db);
   if (!byKey) cache.set(db, (byKey = new Map()));
-  const stamp = inputsStamp(db);
+  const settings = settingsStamp(db, key);
+  const stamp = inputsStamp(db, settings);
   const hit = byKey.get(key);
   const age = hit ? now - hit.at : -1;
-  if (hit && age >= 0 && ((hit.stamp === stamp && age < ttlMs) || age < holdFor(key))) return hit.body;
+  if (hit && stillGood(key, hit, stamp, settings, age, ttlMs)) return hit.body;
 
   let flying = inFlight.get(db);
   if (!flying) inFlight.set(db, (flying = new Map()));
@@ -132,7 +162,7 @@ export async function cachedReportVia(db: EngineDb, key: string, name: ReportNam
         // Kept under the stamp read before it was asked for: if something changed meanwhile, the next view sees that.
         let m = cache.get(db);
         if (!m) cache.set(db, (m = new Map()));
-        m.set(key, { at: Date.now(), stamp, body });
+        m.set(key, { at: Date.now(), stamp, settings, body });
         if (m.size > 50) m.delete(m.keys().next().value as string);
         return body;
       })
@@ -141,7 +171,7 @@ export async function cachedReportVia(db: EngineDb, key: string, name: ReportNam
     return p;
   };
   // Out of date, but recent: show it now and bring it up to date behind the scenes.
-  if (hit && age >= 0 && age < STALE_OK_MS + holdFor(key) && ttlMs === REPORT_TTL_MS) {
+  if (hit && age >= 0 && age < staleFor(key) && ttlMs === REPORT_TTL_MS) {
     void fetchFresh().catch(() => {});
     return hit.body;
   }

@@ -620,6 +620,11 @@ export const VIEW_MAX_AGE_MS = 30 * 60_000;
 const ADVICE_SETTING_KEYS = [LOCKS_KEY, RAISES_KEY, LAST_STEP_KEY, "archived_strategies", "custom_segments", "golden_badges"];
 const viewCache = new WeakMap<EngineDb, { at: number; stamp: string; results: number; advice: Advice[] }>();
 
+/** Every setting the suggestions are worked out from (not the results): the kept "advice" report (report-cache.ts) is worked out afresh when this changes. */
+export function adviceSettingsStamp(db: EngineDb): string {
+  return settingsStamp(db);
+}
+
 function settingsStamp(db: EngineDb): string {
   return JSON.stringify([
     getSendingSettings(db),
@@ -765,8 +770,14 @@ export function adviceFromComputed(db: EngineDb, computed: Advice[], now = new D
 /** With automatic stakes on: the stake steps waiting for their week to pass, and when each is due. */
 export function autoStakeQueue(db: EngineDb, now = new Date()): Array<{ key: string; action: string; due: string }> {
   if (!getSendingSettings(db).ladderAuto) return [];
+  return autoStakeQueueFrom(db, adviceForView(db, now), now);
+}
+
+/** autoStakeQueue from suggestions already worked out and held to the week's pass (weeklyGrowth). */
+export function autoStakeQueueFrom(db: EngineDb, all: Advice[], now = new Date()): Array<{ key: string; action: string; due: string }> {
+  if (!getSendingSettings(db).ladderAuto) return [];
   const last = lastSteps(db);
-  return adviceForView(db, now)
+  return all
     .filter((a) => a.kind === "stake-up" || a.kind === "stake-down")
     .map((a) => {
       const prev = last[a.key] ? Date.parse(last[a.key]!) : NaN;

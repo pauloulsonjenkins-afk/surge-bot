@@ -133,7 +133,7 @@ import { displayName } from "../inplayguru/strategy-names";
 import { leagueFormReport } from "./league-form";
 import { getStoredLeagueForm, leagueLevel } from "../inplayguru/league-form";
 import { BLOCK_FROM, MILESTONES, computeLeagueReturns, getLeagueBlocks, setLeagueBlock } from "./league-returns";
-import { notPlacedReport, todayLiveParts, todaySnapshot, withLiveParts } from "./today";
+import { notPlacedReport, todayAdvice, todayLiveParts, withLiveParts } from "./today";
 import { pickDetail } from "./pick-detail";
 import { historyStatus, leagueProfiles, loadHistory, SEASONS, testAwayLay } from "../history/football-data";
 import { getHorseImportStatus, listHorseBets, listHorseCourses, listHorseDays, parseOdds, RACECOURSES, saveHorseDay, saveHorseSuggestions, setHorseImportStatus, setHorseResult } from "./horses";
@@ -245,6 +245,8 @@ export function warmReportCache(db: EngineDb): void {
     try {
       cachedReport(db, "today", () => runReport(db, "today", []), Date.now(), TODAY_TTL_MS);
       cachedReport(db, `strategies:null`, () => runReport(db, "strategies", [null]));
+      // Today's Suggestions (the route adds them from this one): warmed here, not worked out while the page waits.
+      cachedReport(db, "advice", () => runReport(db, "advice", []));
     } catch (err) {
       failed(err);
     }
@@ -1195,7 +1197,9 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       if (path === "/internal/today") {
         // Reused for up to a minute, and warmed in the background (see above): the page polls every 15s, so this was
         // the single busiest uncached report on the engine's one thread until 27 Oct 2026.
-        send(res, 200, withLiveParts(await cachedReportVia(db, "today", "today", [], Date.now(), TODAY_TTL_MS), todayLiveParts(db)));
+        // The Suggestions come from the kept "advice" report (as the menus' badge does), not worked out again in Today's.
+        const [body, adv] = await Promise.all([cachedReportVia(db, "today", "today", [], Date.now(), TODAY_TTL_MS), cachedReportVia(db, "advice", "advice", [])]);
+        send(res, 200, withLiveParts({ ...body, ...todayAdvice(db, adv.advice as Advice[]) }, todayLiveParts(db)));
         return;
       }
       const days = Math.min(365, Math.max(1, Number(new URL(rawUrl, "http://internal").searchParams.get("days")) || 30));

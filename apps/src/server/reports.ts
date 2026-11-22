@@ -17,7 +17,9 @@ import { buildStrategiesReport } from "./http";
 import { strategyAdvice } from "./strategy-advice";
 
 export const REPORTS = {
-  today: (db: EngineDb): Record<string, unknown> => todaySnapshot(db) as unknown as Record<string, unknown>,
+  // Without the Suggestions: the route adds them from the "advice" report below (today.ts todayAdvice), so they are
+  // worked out once, not once here and again for the menus' badge.
+  today: (db: EngineDb): Record<string, unknown> => todaySnapshot(db, new Date(), { withAdvice: false }) as unknown as Record<string, unknown>,
   strategies: (db: EngineDb, since: string | null): Record<string, unknown> => buildStrategiesReport(db, since),
   golden: (db: EngineDb): Record<string, unknown> => {
     const { timed, done } = reportTimings("Golden page data");

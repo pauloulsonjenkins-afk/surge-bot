@@ -15,7 +15,7 @@ import { getBetfairLinkStatus } from "../betfair/exchange";
 import { reasonFor } from "../betfair/unplaced";
 import { telegramHealth } from "./telegram-watchdog";
 import { ukDateOf, ukDayBounds } from "./uk-time";
-import { autoStakeQueue, visibleAdvice } from "./strategy-advice";
+import { adviceFromComputed, autoStakeQueue, autoStakeQueueFrom, visibleAdvice, weeklyGrowth, type Advice } from "./strategy-advice";
 import { reportTimings } from "./report-timings";
 
 // --------------------------------------------------------------------------- not placed, by reason
@@ -222,7 +222,13 @@ function reused<T>(db: EngineDb, key: string, ttlMs: number, now: Date, work: ()
   return value;
 }
 
-export function todaySnapshot(db: EngineDb, now = new Date()) {
+/**
+ * `withAdvice: false` leaves the Suggestions and automatic stakes out (the Today report, reports.ts): the route fills them
+ * in from the kept "advice" report (todayAdvice, below). Worked out here as well they were the same suggestions worked out
+ * a second time, 4.7-7.6 s of the page's 6.5-9.3 s on the live data (Ops Watch, 22 Nov 2026).
+ */
+export function todaySnapshot(db: EngineDb, now = new Date(), opts: { withAdvice?: boolean } = {}) {
+  const withAdvice = opts.withAdvice !== false;
   // How long each part takes (ms): shown on the page's data as "timings", and logged when the whole takes over a second.
   const { timed, done } = reportTimings("Today page data");
   const sending = getSendingSettings(db);
@@ -255,8 +261,8 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
   const open = db.listOpenDirectBets();
   const notPlacedToday = timed("notPlaced", () => reused(db, "notPlaced", 30_000, now, () => notPlacedReport(db, 1, now)));
   const speed = timed("speed", () => reused(db, `speed:${dayFrom}`, 120_000, now, () => ({ today: speedReport(db, dayFrom), week: speedReport(db, new Date(now.getTime() - 7 * 86_400_000).toISOString()) })));
-  const advice = timed("advice", () => visibleAdvice(db, now));
-  const autoStakes = timed("autoStakes", () => autoStakeQueue(db, now));
+  const advice = withAdvice ? timed("advice", () => visibleAdvice(db, now)) : [];
+  const autoStakes = withAdvice ? timed("autoStakes", () => autoStakeQueue(db, now)) : [];
   const timings = done();
 
   return {
@@ -298,6 +304,14 @@ export function todaySnapshot(db: EngineDb, now = new Date()) {
  */
 export function todayLiveParts(db: EngineDb, now = new Date()) {
   return { breaker: breakerStatus(), betfair: getBetfairLinkStatus(), telegram: telegramHealth(db, now) };
+}
+
+/**
+ * Today's Suggestions and automatic stakes from the suggestions already worked out (the "advice" report, the same one
+ * GET /internal/strategy-advice uses): only the week's pass, what is set aside and the stake-step queue run here.
+ */
+export function todayAdvice(db: EngineDb, computed: Advice[], now = new Date()): { advice: Advice[]; autoStakes: ReturnType<typeof autoStakeQueueFrom> } {
+  return { advice: adviceFromComputed(db, computed, now).advice, autoStakes: autoStakeQueueFrom(db, weeklyGrowth(db, computed, now), now) };
 }
 
 /** A Today snapshot (from the worker or not) with the engine thread's own parts put back. Pure apart from `live`. */
