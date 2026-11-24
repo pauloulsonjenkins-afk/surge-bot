@@ -19,7 +19,7 @@ import { classifyTip } from "./classify";
 import { applyLearning, type Reviewed } from "./similar";
 import { trackTips } from "./track";
 import { buildScreenCards, claudeVision, notifyScreenPost, parseVision, visionPrompt } from "./tipman-screens";
-import { storeCards } from "./tipman-cards";
+import { applyCarried, carryState, listCards, storeCards } from "./tipman-cards";
 import { notifyNewTips } from "./notify";
 import { getExchangeReader } from "../betfair/exchange";
 import { messageWords, richMessageIsPart, richMessageText } from "./rich-text";
@@ -317,6 +317,8 @@ async function readTipmanScreens(a: Active, chatId: string, name: string, messag
   // had been merged, and a bet builder's advised points and price missed). The first posts read before that are read again.
   // Version 3: "3 doubles and a treble" on bookings in one match had been built as a single treble; now four separate bets.
   if (a.db.getSetting(SCREENS_VERSION_KEY) !== SCREENS_VERSION) {
+    // What the owner did on them (placed, results) is kept and given back to the rebuilt bets.
+    carryState(a.db, listCards(a.db, "0000-00-00").filter((c) => c.id.startsWith("tg")));
     const gone = a.db.deleteTipmanCardsStartingWith("tg");
     a.db.setSetting(SCREENS_KEY, "{}");
     a.db.setSetting(SCREENS_VERSION_KEY, SCREENS_VERSION);
@@ -355,7 +357,7 @@ async function readTipmanScreens(a: Active, chatId: string, name: string, messag
       const parsed = parseVision(reply);
       if (!parsed) throw new Error("the reply wasn't a reading of the image");
       const cards = buildScreenCards({ messageId: msgs[0]!.id, caption, read: parsed, links, now: new Date() });
-      const added = storeCards(a.db, cards);
+      const added = storeCards(a.db, applyCarried(a.db, cards));
       done[key] = -1;
       if (added.length > 0) {
         log.info(`TipMan screenshots: ${added.length} bet(s) from post ${msgs[0]!.id}: ${added[0]!.group?.label ?? added[0]!.name}.`);

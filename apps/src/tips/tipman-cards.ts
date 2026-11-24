@@ -380,10 +380,10 @@ export function legSignature(c: Pick<TipmanCard, "legs">): string {
     .join("+");
 }
 
-/** A stored bet of the last three days with these legs under another id (the same bet again, from a repost or the other source). */
+/** A stored bet of the last three days, of the same tier, with these legs under another id (the same bet again, from a repost or the other source). A free bet and a premium one with the same legs are different bets (own stake, own alert). */
 export function findDuplicate(db: EngineDb, card: TipmanCard, now = new Date()): TipmanCard | null {
   const sig = legSignature(card);
-  return listCards(db, ukDateOf(new Date(now.getTime() - 3 * 86_400_000))).find((c) => c.id !== card.id && legSignature(c) === sig) ?? null;
+  return listCards(db, ukDateOf(new Date(now.getTime() - 3 * 86_400_000))).find((c) => c.id !== card.id && c.tier === card.tier && legSignature(c) === sig) ?? null;
 }
 
 /**
@@ -399,6 +399,54 @@ export function storeCards(db: EngineDb, cards: TipmanCard[]): TipmanCard[] {
     added.push(c);
   }
   return added;
+}
+
+const CARRY_KEY = "tipman_carry";
+interface Carried {
+  placed: TipmanCard["placed"];
+  result: TipmanCard["result"];
+  settledAt: string | null;
+  resultBy: string | null;
+  legs: Record<string, TipmanLeg["result"]>;
+}
+const readCarry = (db: EngineDb): Record<string, Carried> => {
+  try {
+    return JSON.parse(db.getSetting(CARRY_KEY) ?? "{}") as Record<string, Carried>;
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * Before stored bets are deleted to be read again (a new reader version), keeps what the owner did on them (placed, results
+ * marked by hand or settled), by the bet's legs, so the rebuilt bet gets it back (applyCarried). Returns how many were kept.
+ */
+export function carryState(db: EngineDb, cards: TipmanCard[]): number {
+  const carry = readCarry(db);
+  let n = 0;
+  for (const c of cards) {
+    const legs = Object.fromEntries(c.legs.filter((l) => l.result !== null).map((l) => [legKey(l), l.result]));
+    if (!c.placed && c.result === null && Object.keys(legs).length === 0) continue;
+    carry[`${c.tier}|${legSignature(c)}`] = { placed: c.placed ?? null, result: c.result, settledAt: c.settledAt, resultBy: c.resultBy, legs };
+    n++;
+  }
+  if (n > 0) db.setSetting(CARRY_KEY, JSON.stringify(carry));
+  return n;
+}
+
+/** The rebuilt bets, each with what was carried for the same bet (used once). */
+export function applyCarried(db: EngineDb, cards: TipmanCard[]): TipmanCard[] {
+  const carry = readCarry(db);
+  if (Object.keys(carry).length === 0) return cards;
+  const out = cards.map((c) => {
+    const k = `${c.tier}|${legSignature(c)}`;
+    const k0 = carry[k];
+    if (!k0) return c;
+    delete carry[k];
+    return { ...c, placed: k0.placed, result: k0.result, settledAt: k0.settledAt, resultBy: k0.resultBy, legs: c.legs.map((l) => ({ ...l, result: k0.legs[legKey(l)] ?? l.result })) };
+  });
+  db.setSetting(CARRY_KEY, JSON.stringify(carry));
+  return out;
 }
 
 /**
@@ -541,13 +589,24 @@ export async function settleCards(db: EngineDb, reader: Reader | null, now = new
         legs.push(leg);
       }
       // Manual legs have no result until the owner gives one on the card, so only a lost Exchange leg can finish a card early.
-      const result = cardResultFrom(legs);
+      if (!changed) continue;
+      // The look-ups above took time: the owner may have marked this bet (placed, a leg, the card) meanwhile, so it is read again
+      // and only what was found is merged in. A result they gave is never replaced.
+      const cur = load(db, card.id);
+      if (!cur || cur.result !== null) continue;
+      const found = new Map(legs.map((l) => [legKey(l), l]));
+      const merged = cur.legs.map((l) => {
+        const f = found.get(legKey(l));
+        if (!f) return l;
+        return { ...l, marketId: f.marketId ?? l.marketId, selectionId: f.selectionId ?? l.selectionId, settle: f.settle, why: f.why ?? l.why, result: l.result ?? f.result };
+      });
+      const result = cardResultFrom(merged);
       if (result !== null) {
-        const by = legs.some((l) => l.settle === "manual") ? "mixed" : "betfair";
-        save(db, { ...card, legs, result, settledAt: now.toISOString(), resultBy: by, updatedAt: now.toISOString() });
+        const by = merged.some((l) => l.settle === "manual") ? "mixed" : "betfair";
+        save(db, { ...cur, legs: merged, result, settledAt: now.toISOString(), resultBy: by, updatedAt: now.toISOString() });
         settled++;
-      } else if (changed) {
-        save(db, { ...card, legs, updatedAt: now.toISOString() });
+      } else {
+        save(db, { ...cur, legs: merged, updatedAt: now.toISOString() });
       }
     }
   } finally {

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EngineDb } from "../src/storage/engine-db";
 import { buildScreenCards, notifyScreenPost, type VisionRead } from "../src/tips/tipman-screens";
-import { findDuplicate, legSignature, listCards, placedSummary, recordCards, setPlaced, setPointValue, setResultByHand, storeCards, type RawCard } from "../src/tips/tipman-cards";
+import { applyCarried, carryState, findDuplicate, legSignature, listCards, placedSummary, recordCards, setPlaced, setPointValue, setResultByHand, settleCards, storeCards, type RawCard } from "../src/tips/tipman-cards";
 import { pushKind, pushFocused, sendPush, setPushFocused } from "../src/server/push";
 
 const NOW = new Date("2026-11-22T10:00:00Z");
@@ -120,4 +120,42 @@ test("a fresh start removes every stored bet except the ones kept", () => {
   assert.equal(a.length, 1);
   assert.equal(db.deleteTipmanCardsExcept([]), 1);
   assert.equal(listCards(db, "2026-11-22").length, 0);
+});
+
+test("a free bet and a premium bet with the same legs are different bets: the premium one is stored and notified", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const free = { ...post(1)[0]!, id: "free1", tier: "free" as const };
+  assert.equal(storeCards(db, [free]).length, 1);
+  const premium = storeCards(db, post(2));
+  assert.equal(premium.length, 1, "not swallowed by the free card");
+  assert.equal(listCards(db, "2026-11-22").length, 2);
+});
+
+test("what the owner did survives the bets being read again", () => {
+  const db = new EngineDb(":memory:", () => {});
+  const [c] = storeCards(db, post(10));
+  setPlaced(db, { id: c!.id }, true, { stake: 5 }, NOW);
+  setResultByHand(db, c!.id, "won", NOW);
+  assert.equal(carryState(db, listCards(db, "2026-11-22")), 1);
+  db.deleteTipmanCardsStartingWith("tg");
+  const rebuilt = applyCarried(db, post(10));
+  assert.equal(rebuilt[0]!.placed?.stake, 5);
+  assert.equal(rebuilt[0]!.result, "won");
+  assert.equal(applyCarried(db, post(10))[0]!.placed ?? null, null, "carried once only");
+});
+
+test("settling doesn't overwrite what the owner marked while it was looking results up", async () => {
+  const db = new EngineDb(":memory:", () => {});
+  const [c] = storeCards(db, post(20));
+  const ko = Date.parse(c!.legs[0]!.kickoff!);
+  const reader = {
+    searchEvents: async () => {
+      setPlaced(db, { id: c!.id }, true, { stake: 7 }, NOW); // the owner taps while the look-up is running
+      return [];
+    },
+    checkBet: async () => ({ status: "none" as const }),
+    runnerResult: async () => null,
+  };
+  await settleCards(db, reader as never, new Date(ko + 4 * 3_600_000));
+  assert.equal(listCards(db, "2026-11-22")[0]!.placed?.stake, 7, "the placed mark is still there");
 });
