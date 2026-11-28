@@ -113,7 +113,6 @@ import { adviceFromComputed, AdviceChanged, agentDates, applyAdvice, applyAllAdv
 import { clashCheck } from "./clash-check";
 import { autoAdjustLog, autoAdjustOn, protectedKeys } from "./auto-adjust";
 import { listChanges, withChangeSource } from "../inplayguru/change-log";
-import { listCards, notifyNewCards, pointValue, recordCards, placedSummary, recordOf, setLegResultByHand, setPlaced, setPointValue, setResultByHand, settleCards, type RawCard } from "../tips/tipman-cards";
 import { horseTipResultsWithPoints } from "./horse-bsp";
 import { layIdeas } from "./lay-finder";
 import { CANDIDATE_FROM as LAY_CANDIDATE_FROM, FULL_FROM as LAY_FULL_FROM, layGroupRecords, TRIAL_FROM as LAY_TRIAL_FROM } from "./lay-badges";
@@ -125,9 +124,6 @@ import { similarAlertsFor } from "./similar-alerts";
 import { computeByMethod } from "./by-method";
 import { computeDripReport } from "./drip-shadow-report";
 import { archiveRows, getArchived, setArchived } from "./archive";
-import { getTipNotify, setTipNotify } from "../tips/notify";
-import { addTipChannel, getTipChannels, getTipStats, refreshTipChannels, removeTipChannel, rescoreChannel, storedLinks, trackSoon } from "../tips/reader";
-import { applyMyBet, type MyBet } from "../tips/track";
 import { FEATURES, type Feature } from "./segments";
 import { displayName } from "../inplayguru/strategy-names";
 import { leagueFormReport } from "./league-form";
@@ -627,7 +623,7 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
       return;
     }
 
-    // Focused notifications (push.ts): only TipMan, the scheduled summaries and safety warnings are sent. GET reads, POST { on } sets.
+    // Focused notifications (push.ts): only the scheduled summaries and safety warnings are sent. GET reads, POST { on } sets.
     if (path === "/internal/push-focus" && (req.method === "GET" || req.method === "POST")) {
       if (!requireAdmin(req, res)) return;
       if (req.method === "POST") {
@@ -1123,49 +1119,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
     }
 
     // The Today page (server/today.ts), and the not-placed picks grouped by reason.
-    // TipMan's bets (tips/tipman-cards.ts): the cards read from tipmantips.com in the owner's signed-in browser, tracked as
-    // the tipster sets them up. POST { action: "ingest", cards } stores what the scheduled read found; { action: "result",
-    // id, result } marks one by hand (bookings, cards and players aren't on the Exchange); { action: "pointValue", value }
-    // sets the £ per point. Nothing is bet.
-    if (path === "/internal/tipman" && (req.method === "GET" || req.method === "POST")) {
-      if (!requireAdmin(req, res)) return;
-      if (req.method === "POST") {
-        const body = await readJsonBody(req);
-        try {
-          if (body.action === "ingest" && Array.isArray(body.cards)) {
-            const r = recordCards(db, (body.cards as RawCard[]).slice(0, 30));
-            void notifyNewCards(db, r.added).catch((err) => log.warn(`TipMan notification failed: ${err instanceof Error ? err.message : String(err)}`));
-            void settleCards(db, getExchangeReader()).catch(() => {});
-            send(res, 200, { added: r.added.length, updated: r.updated, skipped: r.skipped, new: r.added.map((c) => ({ id: c.id, category: c.category, tier: c.tier, pts: c.pts, odds: c.odds, legs: c.legs.length })) });
-            return;
-          }
-          if (body.action === "clear" && body.confirm === true && Array.isArray(body.keep) && typeof body.beforeMessage === "number") {
-            // A fresh start (owner, 22 Nov 2026): every stored bet goes except the ones kept, and posts before this message are not read again.
-            const keep = (body.keep as unknown[]).filter((k): k is string => typeof k === "string");
-            const removed = db.deleteTipmanCardsExcept(keep);
-            db.setSetting("tipman_ignore_before", String(Math.floor(body.beforeMessage)));
-            send(res, 200, { removed, kept: keep.length });
-            return;
-          }
-          if (body.action === "result" && typeof body.id === "string" && (body.result === "won" || body.result === "lost" || body.result === "void")) setResultByHand(db, body.id, body.result);
-          else if (body.action === "leg" && typeof body.match === "string" && typeof body.selection === "string" && (body.result === "won" || body.result === "lost" || body.result === "void" || body.result === null)) setLegResultByHand(db, body.match, body.selection, body.result);
-          else if (body.action === "pointValue" && typeof body.value === "number") setPointValue(db, body.value);
-          else if (body.action === "placed" && typeof body.placed === "boolean" && (typeof body.id === "string" || typeof body.group === "string"))
-            setPlaced(db, { id: typeof body.id === "string" ? body.id : undefined, group: typeof body.group === "string" ? body.group : undefined }, body.placed, { stake: typeof body.stake === "number" ? body.stake : undefined, book: typeof body.book === "string" ? body.book : undefined });
-          else {
-            send(res, 400, { error: "unknown_action" });
-            return;
-          }
-        } catch (err) {
-          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't do that." });
-          return;
-        }
-      }
-      const day = (daysAgo: number) => ukDateOf(new Date(Date.now() - daysAgo * 86_400_000));
-      send(res, 200, { pointValue: pointValue(db), cards: listCards(db, day(14)), record: recordOf(listCards(db, day(120))), placed: placedSummary(listCards(db, day(120))), at: new Date().toISOString() });
-      return;
-    }
-
     // The changes log (inplayguru/change-log.ts): every switch and stake change, with who made it. Read-only.
     if (req.method === "GET" && path === "/internal/changes") {
       if (!requireAdmin(req, res)) return;
@@ -1368,58 +1321,6 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         return;
       }
       send(res, 200, { keys: Object.keys(getArchived(db)), rows: archiveRows(db) });
-      return;
-    }
-
-    // Free tip channels (tips/): the channels read, and what each message was taken to be. Admin only, read-only for betting.
-    if (path === "/internal/tips" && (req.method === "GET" || req.method === "POST")) {
-      if (!requireAdmin(req, res)) return;
-      if (req.method === "POST") {
-        const body = await readJsonBody(req);
-        try {
-          if (body.action === "add" && typeof body.channel === "string") addTipChannel(db, body.channel);
-          else if (body.action === "remove" && typeof body.channel === "string") removeTipChannel(db, body.channel);
-          else if (body.action === "notify") setTipNotify(db, { on: typeof body.on === "boolean" ? body.on : undefined, quiet: typeof body.quiet === "boolean" ? body.quiet : undefined });
-          else if (body.action === "review" && typeof body.chatKey === "string" && typeof body.messageId === "number") {
-            const r = body.review === "tip" || body.review === "not" ? body.review : null;
-            db.setChannelTipReview(body.chatKey, body.messageId, r);
-            // Messages that read like this one move with it (tips/similar.ts).
-            rescoreChannel(db, body.chatKey);
-          } else if (body.action === "bet" && typeof body.chatKey === "string" && typeof body.messageId === "number" && typeof body.bet === "object" && body.bet !== null) {
-            // "This is the bet" (and how it ended, when the system can't tell): tips/track.ts applyMyBet.
-            const problem = applyMyBet(db, {
-              chatKey: body.chatKey,
-              messageId: body.messageId,
-              bet: body.bet as MyBet,
-              odds: typeof body.odds === "number" ? body.odds : null,
-              result: body.result === "won" || body.result === "lost" ? body.result : null,
-            });
-            if (problem) {
-              send(res, 400, { error: problem });
-              return;
-            }
-            void trackSoon(db);
-          } else {
-            send(res, 400, { error: "unknown_action" });
-            return;
-          }
-        } catch (err) {
-          send(res, 400, { error: err instanceof Error ? err.message : "Couldn't do that." });
-          return;
-        }
-        if (body.action === "add") void refreshTipChannels();
-      }
-      const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
-      // The page shows four lines of each message, so no more than that is sent. A page open on a phone asks every minute:
-      // the same answer is reused until something changes (and a change made here, above, is read fresh).
-      const tipsBody = () => ({
-        channels: getTipChannels(db),
-        notify: getTipNotify(db),
-        stats: Object.values(getTipStats(db)),
-        tips: db.listChannelTips(since).map((t) => ({ ...t, text: t.text.slice(0, 700), links: storedLinks(t.text) })),
-      });
-      if (req.method === "POST") responseMemo.get(db)?.delete("tips");
-      send(res, 200, memoized(db, "tips", tipsBody));
       return;
     }
 

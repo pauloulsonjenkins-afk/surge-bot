@@ -2244,78 +2244,6 @@ export function setArchive(label: string, archived: boolean, note?: string): Pro
   return engineCall<{ keys: string[]; switchedOff: string[] }>("/internal/archive", "the archive", { method: "POST", body: { label, archived, note } });
 }
 
-/** The drip shadow test's report (engine drip-shadow-report.ts): admin only, no page uses it. */
-/** TipMan's bets as the tipster sets them up (engine tips/tipman-cards.ts). Tracked only: nothing is bet. */
-export type TipmanCategory = "botd" | "double-treble" | "acca" | "booking" | "bet-builder" | "btts-win-acca" | "other";
-export interface TipmanLeg {
-  kickoff: string | null;
-  match: string;
-  home: string;
-  away: string;
-  league: string;
-  selection: string;
-  market: string;
-  odds: number | null;
-  /** exchange: settled from Betfair's result; manual: the owner marks the card (bookings, cards, players...). */
-  settle: "exchange" | "manual";
-  why?: string;
-  result: "won" | "lost" | "void" | null;
-}
-export interface TipmanCard {
-  id: string;
-  tier: "free" | "premium";
-  category: TipmanCategory;
-  name: string;
-  pts: number;
-  ptsAssumed: boolean;
-  odds: number | null;
-  legs: TipmanLeg[];
-  books: Array<{ book: string; url: string; odds: number | null }>;
-  day: string;
-  firstSeenAt: string;
-  result: "won" | "lost" | "void" | null;
-  settledAt: string | null;
-  resultBy: string | null;
-  /** "screenshot": read from a Telegram post's images, so the legs are worth checking. */
-  source?: "site" | "screenshot";
-  /** The bets of one post (a Trixie is three doubles and a treble). */
-  group?: { id: string; label: string; totalPts: number; bets: number };
-  note?: string;
-  /** Paddy Power's betslip link with exactly this bet's legs. */
-  pad?: string;
-  /** The owner has put this bet on: when, the stake used and where. */
-  placed?: { at: string; stake: number; book: string } | null;
-}
-export interface TipmanRecord {
-  category: TipmanCategory;
-  tier: "free" | "premium";
-  cards: number;
-  settled: number;
-  won: number;
-  lost: number;
-  stakedPts: number;
-  profitPts: number;
-}
-export interface TipmanPlaced {
-  bets: number;
-  staked: number;
-  settled: number;
-  profit: number;
-  toPlace: number;
-}
-export interface TipmanState {
-  pointValue: number;
-  cards: TipmanCard[];
-  record: TipmanRecord[];
-  placed: TipmanPlaced;
-  at: string;
-}
-export function fetchTipman(): Promise<TipmanState> {
-  return engineCall<TipmanState>("/internal/tipman", "TipMan");
-}
-export function postTipman(body: Record<string, unknown>): Promise<TipmanState> {
-  return engineCall<TipmanState>("/internal/tipman", "TipMan", { method: "POST", body });
-}
 
 /** One line of the changes log (engine inplayguru/change-log.ts). */
 export interface ChangeEntry {
@@ -2348,45 +2276,7 @@ export function fetchAutoAdjust(): Promise<AutoAdjustState> {
 export function setAutoAdjust(on: boolean): Promise<AutoAdjustState> {
   return engineCall<AutoAdjustState>("/internal/auto-adjust", "auto-adjust", { method: "POST", body: { on } });
 }
+/** The drip shadow test's report (engine drip-shadow-report.ts): admin only, no page uses it. */
 export function fetchDripShadow(): Promise<{ headline: string; text: string; recorded: number; settled: number }> {
   return engineCall<{ headline: string; text: string; recorded: number; settled: number }>("/internal/drip-shadow", "the drip test report");
-}
-
-/** Free tip channels (engine tips/): the channels read, and each message with how it was classified. Admin only. */
-export interface ChannelTip {
-  chatKey: string;
-  messageId: number;
-  channel: string;
-  postedAt: string;
-  text: string;
-  /** The reading: tip, maybe, advert or other. */
-  verdict: "tip" | "maybe" | "advert" | "other";
-  reasons: string[];
-  match: string | null;
-  selection: string | null;
-  odds: number | null;
-  stake: string | null;
-  /** The owner's own call, which wins over the reading. */
-  review: "tip" | "not" | null;
-  /** null = waiting to be priced on Betfair, "done" = recorded in Sim as Telegram tips, "no: why" = can't be tracked. */
-  tracked: string | null;
-  /** The bet in the owner's own words (set on the page), and the odds they gave; null until they say. */
-  myBet?: string | null;
-  myOdds?: number | null;
-  /** Bookmaker betslip links stored with the post ("Betfair - add to betslip"): the page shows each as an "Open betslip" button. */
-  links?: Array<{ label: string; url: string }>;
-}
-export interface TipsState {
-  channels: string[];
-  /** Whether a proper tip sends a phone notification, and whether quiet hours (23:00 to 07:00) apply. */
-  notify: { on: boolean; quiet: boolean };
-  /** Photos and words in each channel's latest messages (what reading the bet-slip images would cost depends on it). */
-  stats: Array<{ name: string; from: string; to: string; messages: number; photos: number; withText: number }>;
-  tips: ChannelTip[];
-}
-export function fetchTips(): Promise<TipsState> {
-  return engineCall<TipsState>("/internal/tips", "the free tips");
-}
-export function changeTips(body: Record<string, unknown>): Promise<TipsState> {
-  return engineCall<TipsState>("/internal/tips", "the free tips", { method: "POST", body });
 }

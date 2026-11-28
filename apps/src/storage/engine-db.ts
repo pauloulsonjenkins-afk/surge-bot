@@ -822,18 +822,6 @@ export class EngineDb {
         reason     TEXT,
         chosen_at  TEXT
       );
-      -- TipMan's bets, as the tipster sets them up (tips/tipman-cards.ts): a card per bet, its legs and result in json.
-      CREATE TABLE IF NOT EXISTS tipman_cards (
-        id            TEXT PRIMARY KEY,
-        day           TEXT NOT NULL,
-        tier          TEXT NOT NULL,
-        category      TEXT NOT NULL,
-        json          TEXT NOT NULL,
-        first_seen_at TEXT NOT NULL,
-        result        TEXT,
-        settled_at    TEXT
-      );
-      CREATE INDEX IF NOT EXISTS tipman_cards_day ON tipman_cards (day);
       -- Price check (betfair/price-check.ts): the price of a pick's bet read again a little later (2 and 5 minutes after
       -- an in-play alert, or at kick-off for a pre-match one), to see whether the strategy beats the market's later price.
       CREATE TABLE IF NOT EXISTS pick_price_checks (
@@ -844,24 +832,6 @@ export class EngineDb {
         later     REAL,
         at        TEXT NOT NULL,
         PRIMARY KEY (pick_id, kind)
-      );
-
-      -- Free tip channels (tips/): every message read from a watched channel, with how it was classified. review is the
-      -- owner's own call ('tip' or 'not'), which always wins over verdict. Read-only: nothing here is used to bet.
-      CREATE TABLE IF NOT EXISTS channel_tips (
-        chat_key   TEXT NOT NULL,
-        message_id INTEGER NOT NULL,
-        channel    TEXT NOT NULL,
-        posted_at  TEXT NOT NULL,
-        text       TEXT NOT NULL,
-        verdict    TEXT NOT NULL,
-        reasons    TEXT NOT NULL,
-        match_name TEXT,
-        selection  TEXT,
-        odds       REAL,
-        stake      TEXT,
-        review     TEXT,
-        PRIMARY KEY (chat_key, message_id)
       );
 
       -- Edge (edge/edge.ts): the pre-match insight card for each upcoming fixture, worked out a few times a day and
@@ -917,22 +887,6 @@ export class EngineDb {
       );
 
     `);
-
-    // Tracking arrived after the first free-tips table: null = not yet tried, 'done' = recorded as a pick, 'no: why' = set aside.
-    const tipCols = this.db.prepare(`PRAGMA table_info(channel_tips)`).all() as Array<{ name: string }>;
-    if (!tipCols.some((c) => c.name === "tracked")) this.db.exec(`ALTER TABLE channel_tips ADD COLUMN tracked TEXT`);
-    // Notifications (tips/notify.ts): when a tip's notification was handled. Tips already stored are marked, so none is sent for old ones.
-    if (!tipCols.some((c) => c.name === "notified")) {
-      this.db.exec(`ALTER TABLE channel_tips ADD COLUMN notified TEXT`);
-      this.db.exec(`UPDATE channel_tips SET notified = '1970-01-01T00:00:00.000Z'`);
-    }
-
-    // The owner's own reading of a tip's bet ("Over 2.5 goals", "Both teams to score: Yes", "Ajax to win") and its odds, kept apart from
-    // the classifier's reading so rereading a channel never overwrites them.
-    if (!tipCols.some((c) => c.name === "my_bet")) {
-      this.db.exec(`ALTER TABLE channel_tips ADD COLUMN my_bet TEXT`);
-      this.db.exec(`ALTER TABLE channel_tips ADD COLUMN my_odds REAL`);
-    }
 
     // Usernames arrived after the first accounts: those have none and sign in with their email.
     const userCols = this.db.prepare(`PRAGMA table_info(app_users)`).all() as Array<{ name: string }>;
@@ -1255,117 +1209,6 @@ export class EngineDb {
       )
       .all(Math.min(Math.max(limit, 1), 50)) as Array<{ id: number; received_at: string; body_sha256: string; content_type: string | null; signature_verified: number; body: string }>;
     return rows.map((r) => ({ id: r.id, receivedAt: r.received_at, bodySha256: r.body_sha256, contentType: r.content_type, signatureVerified: !!r.signature_verified, body: r.body }));
-  }
-
-  /** Stores (or re-reads, after an edit) one channel message. The owner's review is kept when the text is re-classified. */
-  upsertChannelTip(t: { chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null }): void {
-    this.db
-      .prepare(
-        `INSERT INTO channel_tips (chat_key, message_id, channel, posted_at, text, verdict, reasons, match_name, selection, odds, stake)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(chat_key, message_id) DO UPDATE SET channel = excluded.channel, text = excluded.text, verdict = excluded.verdict,
-           reasons = excluded.reasons, match_name = excluded.match_name, selection = excluded.selection, odds = excluded.odds, stake = excluded.stake`,
-      )
-      .run(t.chatKey, t.messageId, t.channel, t.postedAt, t.text, t.verdict, JSON.stringify(t.reasons), t.match, t.selection, t.odds, t.stake);
-  }
-
-  getChannelTipText(chatKey: string, messageId: number): string | null {
-    const r = this.db.prepare(`SELECT text FROM channel_tips WHERE chat_key = ? AND message_id = ?`).get(chatKey, messageId) as { text: string } | undefined;
-    return r ? r.text : null;
-  }
-
-  /** Newest first, since `since`. */
-  listChannelTips(since: string, limit = 400): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; verdict: string; reasons: string[]; match: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null; myBet: string | null; myOdds: number | null }> {
-    const rows = this.db
-      .prepare(`SELECT * FROM channel_tips WHERE posted_at >= ? ORDER BY posted_at DESC LIMIT ?`)
-      .all(since, limit) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; verdict: string; reasons: string; match_name: string | null; selection: string | null; odds: number | null; stake: string | null; review: string | null; tracked: string | null; my_bet: string | null; my_odds: number | null }>;
-    return rows.map((r) => ({
-      chatKey: r.chat_key,
-      messageId: r.message_id,
-      channel: r.channel,
-      postedAt: r.posted_at,
-      text: r.text,
-      verdict: r.verdict,
-      reasons: JSON.parse(r.reasons) as string[],
-      match: r.match_name,
-      selection: r.selection,
-      odds: r.odds,
-      stake: r.stake,
-      review: r.review,
-      tracked: r.tracked,
-      myBet: r.my_bet,
-      myOdds: r.my_odds,
-    }));
-  }
-
-  /** Messages taken as tips (by the reading, or the owner's 'Tip') not yet recorded as a pick or set aside, posted since `since`. */
-  listUntrackedTips(since: string): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null; mine?: boolean }> {
-    const rows = this.db
-      .prepare(
-        `SELECT chat_key, message_id, channel, posted_at, text, match_name, selection, odds, my_bet, my_odds FROM channel_tips
-         WHERE tracked IS NULL AND posted_at >= ? AND (review = 'tip' OR (review IS NULL AND verdict = 'tip')) ORDER BY posted_at`,
-      )
-      .all(since) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; selection: string | null; odds: number | null; my_bet: string | null; my_odds: number | null }>;
-    // The owner's own reading of the bet (Free tips page) wins over the classifier's, and is read on its own, not with the message's text.
-    return rows.map((r) => ({
-      chatKey: r.chat_key,
-      messageId: r.message_id,
-      channel: r.channel,
-      postedAt: r.posted_at,
-      text: r.text,
-      match: r.match_name,
-      selection: r.my_bet ?? r.selection,
-      odds: r.my_odds ?? r.odds,
-      ...(r.my_bet ? { mine: true } : {}),
-    }));
-  }
-
-  /** Puts tips that were set aside ("no: ...") since `since` back in the queue, once the rules for reading them have improved. */
-  resetSetAsideTips(since: string): number {
-    return this.db.prepare(`UPDATE channel_tips SET tracked = NULL WHERE tracked LIKE 'no:%' AND posted_at >= ?`).run(since).changes;
-  }
-
-  /** The owner's own reading of a tip's bet (null clears it), and the odds they gave. */
-  setChannelTipBet(chatKey: string, messageId: number, bet: string | null, odds: number | null): boolean {
-    return this.db.prepare(`UPDATE channel_tips SET my_bet = ?, my_odds = ? WHERE chat_key = ? AND message_id = ?`).run(bet, odds, chatKey, messageId).changes > 0;
-  }
-
-  /** One tip by its message, or null. */
-  getChannelTip(chatKey: string, messageId: number): { chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; tracked: string | null } | null {
-    const r = this.db.prepare(`SELECT chat_key, message_id, channel, posted_at, text, match_name, tracked FROM channel_tips WHERE chat_key = ? AND message_id = ?`).get(chatKey, messageId) as
-      | { chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; tracked: string | null }
-      | undefined;
-    return r ? { chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, tracked: r.tracked } : null;
-  }
-
-  /** The id of an Edge-style pick (Best Value Cuppa, Telegram tips) by its message id. */
-  findEdgePickId(messageId: number): number | null {
-    const r = this.db.prepare(`SELECT id FROM live_picks WHERE chat_id = ? AND message_id = ?`).get(EDGE_CHAT, messageId) as { id: number } | undefined;
-    return r ? r.id : null;
-  }
-
-  /** Tips (by the reading, or the owner's 'Tip') posted since `since` whose notification hasn't been handled yet. */
-  listUnnotifiedTips(since: string): Array<{ chatKey: string; messageId: number; channel: string; postedAt: string; text: string; match: string | null; selection: string | null; odds: number | null }> {
-    const rows = this.db
-      .prepare(
-        `SELECT chat_key, message_id, channel, posted_at, text, match_name, selection, odds FROM channel_tips
-         WHERE notified IS NULL AND posted_at >= ? AND (review = 'tip' OR (review IS NULL AND verdict = 'tip')) ORDER BY posted_at`,
-      )
-      .all(since) as Array<{ chat_key: string; message_id: number; channel: string; posted_at: string; text: string; match_name: string | null; selection: string | null; odds: number | null }>;
-    return rows.map((r) => ({ chatKey: r.chat_key, messageId: r.message_id, channel: r.channel, postedAt: r.posted_at, text: r.text, match: r.match_name, selection: r.selection, odds: r.odds }));
-  }
-
-  markChannelTipNotified(chatKey: string, messageId: number, at: string): void {
-    this.db.prepare(`UPDATE channel_tips SET notified = ? WHERE chat_key = ? AND message_id = ?`).run(at, chatKey, messageId);
-  }
-
-  setChannelTipTracked(chatKey: string, messageId: number, tracked: string | null): void {
-    this.db.prepare(`UPDATE channel_tips SET tracked = ? WHERE chat_key = ? AND message_id = ?`).run(tracked, chatKey, messageId);
-  }
-
-  /** The owner's call on a message: 'tip', 'not', or null to clear it. */
-  setChannelTipReview(chatKey: string, messageId: number, review: "tip" | "not" | null): boolean {
-    return this.db.prepare(`UPDATE channel_tips SET review = ? WHERE chat_key = ? AND message_id = ?`).run(review, chatKey, messageId).changes > 0;
   }
 
   /**
@@ -3292,46 +3135,6 @@ export class EngineDb {
       side: (r.side as "back" | "lay" | "first" | null) ?? null,
       reason: (r.reason as string | null) ?? null,
     }));
-  }
-
-  getTipmanCardJson(id: string): string | null {
-    const r = this.db.prepare(`SELECT json FROM tipman_cards WHERE id = ?`).get(id) as { json: string } | undefined;
-    return r?.json ?? null;
-  }
-
-  saveTipmanCard(c: { id: string; day: string; tier: string; category: string; json: string; firstSeenAt: string; result: string | null; settledAt: string | null }): void {
-    this.db
-      .prepare(
-        `INSERT INTO tipman_cards (id, day, tier, category, json, first_seen_at, result, settled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET day = excluded.day, tier = excluded.tier, category = excluded.category, json = excluded.json, result = excluded.result, settled_at = excluded.settled_at`,
-      )
-      .run(c.id, c.day, c.tier, c.category, c.json, c.firstSeenAt, c.result, c.settledAt);
-    this.onChange();
-  }
-
-  deleteTipmanCard(id: string): void {
-    if (this.db.prepare(`DELETE FROM tipman_cards WHERE id = ?`).run(id).changes > 0) this.onChange();
-  }
-
-  /** Removes the stored cards whose id starts with this prefix (the screenshot reader's own, "tg"). Returns how many. */
-  deleteTipmanCardsStartingWith(prefix: string): number {
-    const r = this.db.prepare(`DELETE FROM tipman_cards WHERE id LIKE ? ESCAPE '\\'`).run(`${prefix.replace(/[\\%_]/g, "\\$&")}%`);
-    if (r.changes > 0) this.onChange();
-    return r.changes;
-  }
-
-  /** Removes every stored card except these ids (a fresh start). Returns how many went. */
-  deleteTipmanCardsExcept(keep: string[]): number {
-    const ids = keep;
-    const marks = ids.map(() => "?").join(",");
-    const r = ids.length > 0 ? this.db.prepare(`DELETE FROM tipman_cards WHERE id NOT IN (${marks})`).run(...ids) : this.db.prepare(`DELETE FROM tipman_cards`).run();
-    if (r.changes > 0) this.onChange();
-    return r.changes;
-  }
-
-  /** The stored cards' json from this UK day on, newest day first. */
-  listTipmanCardJson(sinceDay: string): string[] {
-    return (this.db.prepare(`SELECT json FROM tipman_cards WHERE day >= ? ORDER BY day DESC, first_seen_at DESC`).all(sinceDay) as Array<{ json: string }>).map((r) => r.json);
   }
 
   /** resultsVersion plus the newest alert: changes when a result is written or a new alert is stored, not on other writes. */

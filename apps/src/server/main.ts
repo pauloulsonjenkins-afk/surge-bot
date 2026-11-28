@@ -41,7 +41,6 @@ import { logHorseResults } from "./horse-results";
 import { settleHorseTips } from "./horse-bsp";
 import { fillClashChoices } from "./clash-choices";
 import { maybeAutoAdjust } from "./auto-adjust";
-import { settleCards } from "../tips/tipman-cards";
 import { autoWatchGoldenFinds, loadCustomSegments, monitorGoldenBets } from "./golden";
 import { notifyBetResults } from "./bet-result-notify";
 import { maybeSendDripReport } from "./drip-shadow-report";
@@ -254,9 +253,6 @@ async function main(): Promise<void> {
   const autoAdjust = setInterval(() => void maybeAutoAdjust(db).catch((err) => log.warn(`Auto-adjust failed: ${err instanceof Error ? err.message : String(err)}`)), 5 * 60_000);
   autoAdjust.unref();
 
-  // TipMan's bets (tips/tipman-cards.ts): the legs the Exchange can settle are looked up and settled as the matches finish.
-  const tipmanCards = setInterval(() => void settleCards(db, getExchangeReader()).catch((err) => log.warn(`TipMan settling failed: ${err instanceof Error ? err.message : String(err)}`)), 10 * 60_000);
-  tipmanCards.unref();
 
   // Clash chooser, Sim only: what it would have placed for each pick the clash guard held back (clash-choices.ts).
   const clashChoices = setInterval(

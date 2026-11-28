@@ -203,8 +203,15 @@ export async function settleValuePicks(db: EngineDb, reader: Pick<BetfairReader,
   for (const p of db.listOpenEdgePicks()) {
     const info = (p.detail as ParsedAlert & { edge?: EdgePickInfo }).edge;
     if (!info) continue;
-    // A tip priced from its channel has no Betfair market: tips/track.ts settles it from the channel's own results.
-    if (info.marketType === "BY_CHANNEL") continue;
+    // A tip priced from its channel had no Betfair market and was settled from the channel's own posts. Telegram tips were
+    // removed (owner, 28 Nov 2026), so one still open is set aside once it is long finished.
+    if (info.marketType === "BY_CHANNEL") {
+      if (now.getTime() > Date.parse(info.kickoff) + GIVE_UP_MS) {
+        db.setPickExcluded(p.id, true);
+        done++;
+      }
+      continue;
+    }
     const ko = Date.parse(info.kickoff);
     if (now.getTime() < ko + SETTLE_AFTER_MS) continue;
     const r = await reader.runnerResult(info.marketId, info.selectionId).catch(() => null);

@@ -54,8 +54,8 @@ export default function StrategiesPage() {
   const isQuiet = (r: AdminStrategy) => !r.sendingOn && (!r.lastAlertAt || loadedAt - Date.parse(r.lastAlertAt) > INACTIVE_DAYS * 86_400_000);
 
   // Real money: Live strategies, on their real bets only.
-  // Every strategy betting real money is listed, even one folded into another for reporting (a merged one: the old
-  // "Telegram: TipMan InPlays & Rollers" was Live and missing from the list, 21 Nov 2026).
+  // Every strategy betting real money is listed, even one folded into another for reporting (a merged one was Live and
+  // missing from the list, 21 Nov 2026).
   const realLines: MoneyLine[] = data.strategies
     .filter((r) => !isArchived(r.label) && (!r.mergedInto || modeOf(r) === "live"))
     .filter((r) => modeOf(r) === "live")

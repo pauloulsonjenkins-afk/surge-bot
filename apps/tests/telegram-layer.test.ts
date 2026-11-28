@@ -1,14 +1,12 @@
 /** use-new-layer.ts: GramJS reads Telegram's current schema, so posts with newer media keep their words. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-// The reader loads GramJS the way the engine does: the newer schema goes in first.
-import "../src/tips/reader";
+// GramJS loads the way the engine does: the newer schema goes in first.
+import "../src/telegram/use-new-layer";
 import { telegramLayer } from "../src/telegram/use-new-layer";
 import { TELEGRAM_API_LAYER } from "../src/telegram/api-layer";
 import { Api } from "telegram";
 import { BinaryReader } from "telegram/extensions";
-import { messageWords } from "../src/tips/rich-text";
-import { classifyTip } from "../src/tips/classify";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const all = require("telegram/tl/AllTLObjects") as { LAYER: number };
 
@@ -29,7 +27,7 @@ test("a channel post with a bet-slip card (a widget) is read with its words, not
   assert.equal(back.message, text);
 });
 
-test("a rich post (words in page blocks, not in message) is read as the freebie it is", () => {
+test("a rich post (words in page blocks, not in message) keeps its blocks through the newer schema", () => {
   const A = Api as unknown as Record<string, new (args: Record<string, unknown>) => { getBytes(): Buffer }>;
   const plain = (text: string) => new A.TextPlain!({ text });
   const para = (...parts: unknown[]) => new A.PageBlockParagraph!({ text: parts.length === 1 ? parts[0] : new A.TextConcat!({ texts: parts }) });
@@ -50,18 +48,7 @@ test("a rich post (words in page blocks, not in message) is read as the freebie 
   const post = new A.Message!({ id: 5380, peerId: new Api.PeerChannel({ channelId: 1401746016 as never }), date: 1794040000, message: "", post: true, richMessage: rich });
   const back = new BinaryReader(post.getBytes()).tgReadObject() as { message: string; richMessage: unknown };
   assert.equal(back.message, "");
-  const words = messageWords(back);
-  assert.match(words, /^🔥 FIRST FREEBIE OF THE DAY!!\n⚽ GOG FCC vs Clube de Salgaocar\n🎯 OVER 2\.5 TOTAL GOALS\n@ ODDS: 4\/7 \(1\.57\)/);
-  const read = classifyTip(words);
-  assert.equal(read.verdict, "tip");
-  assert.equal(read.match, "GOG FCC v Clube de Salgaocar");
-  assert.equal(read.odds, 1.57);
-});
-
-test("plain text wins over a rich part, and a message with neither has no words", () => {
-  assert.equal(messageWords({ message: "Tip: Arsenal to win @ 1.80" }), "Tip: Arsenal to win @ 1.80");
-  assert.equal(messageWords({ message: "" }), "");
-  assert.equal(messageWords({ message: "", richMessage: { blocks: [] } }), "");
+  assert.equal((back.richMessage as { blocks: unknown[] }).blocks.length, 8);
 });
 
 test("buttons the newer layer dropped have stand-ins, so GramJS's own checks don't throw", () => {
