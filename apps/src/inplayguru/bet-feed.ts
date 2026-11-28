@@ -330,7 +330,7 @@ export function pickFacts(p: LivePick): AlertFacts {
     live1x2: p.detail?.odds?.live1x2 ?? null,
     minute: p.minute,
     country: leagueCountryFromText(p.rawText),
-    ...extraFacts({ ...(p.detail ?? {}), minute: p.minute, competition: p.competition, home: p.home, away: p.away }),
+    ...extraFacts({ ...(p.detail ?? {}), minute: p.minute, competition: p.competition, home: p.home, away: p.away, alertAt: p.messageAt ?? p.firstSeenAt }),
   };
 }
 

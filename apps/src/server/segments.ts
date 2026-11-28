@@ -33,9 +33,20 @@ export interface AlertFacts {
   sinceGoal?: number | null;
   /** A youth, women's or reserves match (from the league and team names). */
   youth?: boolean | null;
+  /** The UK hour (0-23) the alert fired. */
+  ukHour?: number | null;
 }
 
-/** The extra facts (price, time since the last goal, youth) from a parsed alert, for pickFacts and the stored results. */
+const ukHourFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" });
+/** The UK hour (0-23) at an instant, or null for a time that doesn't read. */
+export function ukHourOf(iso: string | null | undefined): number | null {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return null;
+  const h = Number(ukHourFormat.format(new Date(t)));
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : null;
+}
+
+/** The extra facts (price, time since the last goal, youth, the UK hour) from a parsed alert, for pickFacts and the stored results. */
 export function extraFacts(a: {
   lastGoal?: string | null;
   minute?: number | null;
@@ -44,14 +55,16 @@ export function extraFacts(a: {
   competition?: string | null;
   home?: string | null;
   away?: string | null;
-}): Pick<AlertFacts, "price" | "sinceGoal" | "youth"> {
+  /** When the alert fired (ISO). */
+  alertAt?: string | null;
+}): Pick<AlertFacts, "price" | "sinceGoal" | "youth" | "ukHour"> {
   const over = a.odds?.over ?? null;
   const price = over !== null && over > 1 && a.targetLine != null && a.odds?.overUnderLine === a.targetLine ? over : null;
   const ago = /\((\d+) minutes? ago\)/.exec(a.lastGoal ?? "");
   const sinceGoal = ago ? Number(ago[1]) : /^none$/i.test((a.lastGoal ?? "").trim()) && a.minute != null ? a.minute : null;
   const names = `${a.competition ?? ""} ${a.home ?? ""} ${a.away ?? ""}`;
   const youth = names.trim() ? /\(W\)|women|\bU(1[6-9]|2[0-3])\b|youth|reserves?\b|\(Res\)/i.test(names) : null;
-  return { price, sinceGoal, youth };
+  return { price, sinceGoal, youth, ukHour: ukHourOf(a.alertAt) };
 }
 
 export interface Segment {
@@ -152,6 +165,10 @@ export const FEATURES = {
   redCard: { group: "cards", label: "a red card", test: (f: AlertFacts) => !!f.stats["Red Cards"] && f.stats["Red Cards"][0] + f.stats["Red Cards"][1] > 0 },
   xgHigh: { group: "xg", label: "xG 1.5+ in total", test: (f: AlertFacts) => !!f.stats["xG"] && f.stats["xG"][0] + f.stats["xG"][1] >= 1.5 },
   xgLow: { group: "xg", label: "xG under 0.8 in total", test: (f: AlertFacts) => !!f.stats["xG"] && f.stats["xG"][0] + f.stats["xG"][1] < 0.8 },
+  // The UK time the alert fired (owner, 28 Nov 2026). Next-goal picks at 45-59' made +7.2% per £1 from 16:00 (796 picks,
+  // profitable in 7 of 9 weeks; the real Betfair bets +17% over 189) and lost 8.0% before 16:00 (674, losing in 8 of 9 weeks),
+  // in Europe and the Americas alike. Found by searching the whole record, so the finder tests it like any other feature.
+  uk16to22: { group: "time", label: "16:00-22:59 UK", test: (f: AlertFacts) => f.ukHour != null && f.ukHour >= 16 && f.ukHour <= 22 },
   youthWomen: { group: "players", label: "youth, women's or reserves", test: (f: AlertFacts) => f.youth === true },
   seniorMen: { group: "players", label: "senior men's", test: (f: AlertFacts) => f.youth === false },
   // Added by hand only (the finder doesn't try it): next-goal picks there lost heavily in both halves of the record

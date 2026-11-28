@@ -2412,11 +2412,11 @@ export class EngineDb {
     byHand: boolean;
     simShadow: SimRecord | null;
     /** The alert's score, stats and prices when it fired, for the slices watched on a strategy's card (server/segments.ts). */
-    facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null; minute: number | null; country: string | null; price?: number | null; sinceGoal?: number | null; youth?: boolean | null } | null;
+    facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null; minute: number | null; country: string | null; price?: number | null; sinceGoal?: number | null; youth?: boolean | null; ukHour?: number | null } | null;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, first_seen_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange, manual_bet,
+        `SELECT id, first_seen_at, message_at, strategy, market, COALESCE(result_override, result) AS result, parsed_json, sent_row, sent_at, sim_row, exchange, manual_bet,
                 exchange_odds, competition, country,
                 (SELECT SUM(b.matched * b.odds) / SUM(b.matched) FROM betfair_bets b
                   WHERE b.pick_id = live_picks.id AND b.matched > 0 AND b.odds > 1) AS bet_odds,
@@ -2430,6 +2430,7 @@ export class EngineDb {
       .all((opts.ignoreFreshStart ? null : this.floorSince(sinceIso)) ?? sinceIso) as Array<{
       id: number;
       first_seen_at: string;
+      message_at: string | null;
       strategy: string;
       market: string | null;
       result: "hit" | "miss";
@@ -2458,7 +2459,7 @@ export class EngineDb {
       let favouriteOdds: number | null = null;
       let layOdds: number | null = null;
       let edgeBet: { market: string; pick: string } | null = null;
-      let facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null; minute: number | null; country: string | null; price?: number | null; sinceGoal?: number | null; youth?: boolean | null } | null = null;
+      let facts: { goalsHome: number | null; goalsAway: number | null; stats: Record<string, [number, number]>; preMatch1x2: [number, number, number] | null; live1x2: [number, number, number] | null; minute: number | null; country: string | null; price?: number | null; sinceGoal?: number | null; youth?: boolean | null; ukHour?: number | null } | null = null;
       try {
         const p = JSON.parse(r.parsed_json) as Partial<ParsedAlert> & { edge?: { bet?: { market?: unknown; pick?: unknown } } };
         facts = {
@@ -2469,7 +2470,8 @@ export class EngineDb {
           live1x2: p.odds?.live1x2 ?? null,
           minute: typeof p.minute === "number" ? p.minute : null,
           country: r.country ?? null,
-          ...extraFacts({ ...p, competition: r.competition }),
+          // The alert's own posting time when known: a catch-up sync can store an alert well after it was sent.
+          ...extraFacts({ ...p, competition: r.competition, alertAt: r.message_at ?? r.first_seen_at }),
         };
         const eb = p.edge?.bet;
         if (eb && typeof eb.market === "string" && typeof eb.pick === "string") edgeBet = { market: eb.market, pick: eb.pick };
