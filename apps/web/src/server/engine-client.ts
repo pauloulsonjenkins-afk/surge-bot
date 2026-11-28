@@ -1415,6 +1415,8 @@ export interface PriceCheckRow {
   strategy: string;
   kind: "t2" | "t5" | "ko";
   picks: number;
+  /** A LAY strategy: its edge is measured the lay way round (a shorter price is better), against typicalLay. */
+  lay: boolean;
   edge: number;
   avgEntry: number;
   avgLater: number;
@@ -1423,7 +1425,9 @@ export interface PriceCheckRow {
 export interface PriceCheckReport {
   days: number;
   rows: PriceCheckRow[];
+  /** Back bets' average edge at each check, and lays' (engine price-check.ts). */
   typical: Partial<Record<"t2" | "t5" | "ko", number>>;
+  typicalLay: Partial<Record<"t2" | "t5" | "ko", number>>;
 }
 
 export function fetchPriceCheck(days: number): Promise<PriceCheckReport> {

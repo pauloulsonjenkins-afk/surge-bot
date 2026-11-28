@@ -1027,6 +1027,12 @@ export class EngineDb {
       // The price each bet asked for (Shadow: would have asked for), as against the price shown.
       this.db.exec(`ALTER TABLE direct_bets ADD COLUMN ask_price REAL`);
     }
+    const checkCols = this.db.prepare(`PRAGMA table_info(pick_price_checks)`).all() as Array<{ name: string }>;
+    if (!checkCols.some((c) => c.name === "price_side")) {
+      // Which side's price the later check read ("back" or "lay"); null on checks saved before this was recorded, when a
+      // LAY group's later price was read on the back side against a lay-side entry (price-check.ts leaves those out).
+      this.db.exec(`ALTER TABLE pick_price_checks ADD COLUMN price_side TEXT`);
+    }
   }
 
   // ---- Direct betting ----
@@ -2759,15 +2765,18 @@ export class EngineDb {
     return new Set(rows.map((r) => `${r.pick_id}:${r.kind}`));
   }
 
-  savePriceCheck(c: { pickId: number; kind: string; strategy: string; entry: number; later: number | null; at: string }): void {
+  savePriceCheck(c: { pickId: number; kind: string; strategy: string; entry: number; later: number | null; at: string; priceSide?: "back" | "lay" }): void {
     this.db
-      .prepare(`INSERT OR IGNORE INTO pick_price_checks (pick_id, kind, strategy, entry, later, at) VALUES (?, ?, ?, ?, ?, ?)`)
-      .run(c.pickId, c.kind, c.strategy, c.entry, c.later, c.at);
+      .prepare(`INSERT OR IGNORE INTO pick_price_checks (pick_id, kind, strategy, entry, later, at, price_side) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(c.pickId, c.kind, c.strategy, c.entry, c.later, c.at, c.priceSide ?? null);
     this.onChange();
   }
 
-  listPriceChecks(sinceIso: string): Array<{ pickId: number; kind: "t2" | "t5" | "ko"; strategy: string; entry: number; later: number | null; at: string }> {
-    const rows = this.db.prepare(`SELECT * FROM pick_price_checks WHERE at >= ? ORDER BY at`).all(sinceIso) as Array<Record<string, unknown>>;
+  /** The stored price checks from `sinceIso`, with the pick's market (null when the pick has since been deleted). */
+  listPriceChecks(sinceIso: string): Array<{ pickId: number; kind: "t2" | "t5" | "ko"; strategy: string; entry: number; later: number | null; at: string; priceSide: "back" | "lay" | null; market: string | null }> {
+    const rows = this.db
+      .prepare(`SELECT c.*, p.market AS pick_market FROM pick_price_checks c LEFT JOIN live_picks p ON p.id = c.pick_id WHERE c.at >= ? ORDER BY c.at`)
+      .all(sinceIso) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       pickId: Number(r.pick_id),
       kind: String(r.kind) as "t2" | "t5" | "ko",
@@ -2775,6 +2784,8 @@ export class EngineDb {
       entry: Number(r.entry),
       later: typeof r.later === "number" ? r.later : null,
       at: String(r.at),
+      priceSide: r.price_side === "back" || r.price_side === "lay" ? r.price_side : null,
+      market: typeof r.pick_market === "string" ? r.pick_market : null,
     }));
   }
 

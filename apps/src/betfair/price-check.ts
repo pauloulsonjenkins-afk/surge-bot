@@ -6,10 +6,14 @@
  * price of the same bet again:
  *   - in-play picks: 2 and 5 minutes after the alert;
  *   - pre-match picks (First Half Goal): at kick-off, the true "closing" price.
- * Edge = alert price / later price - 1. Positive = the alert's price was better than the market's later price.
+ * Edge, positive when the alert's price was better than the market's later price:
+ *   - a back bet: alert price / later price - 1 (a longer price is better);
+ *   - a LAY: later price / alert price - 1 (a shorter price is better: less to pay out). The later price is read on the
+ *     same side as the alert's (the lay side for LAY groups, as exchange.ts reads it).
  *
  * In-play goal prices drift out on their own as minutes pass without a goal, so every in-play pick looks a little worse
- * later. The fair comparison there is against the average of all picks at the same check ("vs typical").
+ * later. The fair comparison there is against the average of the other picks at the same check ("vs typical"), worked out
+ * for backs and lays apart: drift helps one and hurts the other, so mixed together they made a meaningless baseline.
  * A later price under 1.06 means a goal has already settled the bet (or the market was suspended), so those checks
  * are kept out of the figures.
  *
@@ -19,6 +23,7 @@ import type { EngineDb } from "../storage/engine-db";
 import type { BetfairReader } from "./exchange";
 import { alertOddsOfPick, exchangeNamer, feedMarket, getSendingSettings, kickoffAt, strategyLabel } from "../inplayguru/bet-feed";
 import { isStaleExchangePrice } from "../server/pricing";
+import { isLayGroupMarket, isLayMarket } from "../inplayguru/parse-alert";
 
 export type CheckKind = "t2" | "t5" | "ko";
 
@@ -68,9 +73,11 @@ export async function runPriceChecks(db: EngineDb, reader: Pick<BetfairReader, "
       const market = feedMarket(p, settings, namer);
       if ("error" in market) continue;
       calls++;
-      const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName).catch(() => null);
+      // The same side the alert's own price (exchangeOdds) was read on, so the two are comparable.
+      const priceSide = isLayGroupMarket(p.market) ? "lay" : "back";
+      const bet = await reader.checkBet(p.exchangeEventId!, market.marketType, market.selectionName, priceSide).catch(() => null);
       if (!bet) continue;
-      db.savePriceCheck({ pickId: p.id, kind, strategy: strategyLabel(p.strategy), entry: p.exchangeOdds!, later: bet.price, at: new Date(now).toISOString() });
+      db.savePriceCheck({ pickId: p.id, kind, strategy: strategyLabel(p.strategy), entry: p.exchangeOdds!, later: bet.price, at: new Date(now).toISOString(), priceSide });
       done.add(`${p.id}:${kind}`);
     }
   }
@@ -81,7 +88,9 @@ interface PriceCheckRow {
   strategy: string;
   kind: CheckKind;
   picks: number;
-  /** Average of alert price / later price - 1, as a percentage. */
+  /** A LAY strategy: its edge is measured the lay way round, and its "vs typical" is against typicalLay. */
+  lay: boolean;
+  /** Average edge (see the top of this file), as a percentage. */
   edge: number;
   avgEntry: number;
   avgLater: number;
@@ -90,17 +99,33 @@ interface PriceCheckRow {
 export interface PriceCheckReport {
   days: number;
   rows: PriceCheckRow[];
-  /** The all-strategies average for each check, the baseline for "vs typical". */
+  /** The average edge of every back bet at each check: the baseline for a back strategy's "vs typical". */
   typical: Partial<Record<CheckKind, number>>;
+  /** The same for lays. */
+  typicalLay: Partial<Record<CheckKind, number>>;
 }
 
 const round = (n: number, d = 1) => Math.round(n * 10 ** d) / 10 ** d;
 
+type StoredCheck = ReturnType<EngineDb["listPriceChecks"]>[number];
+
+/** A LAY bet. When the pick has since been deleted, a LAY group still shows in its strategy name. */
+const isLayCheck = (c: StoredCheck) => (c.market !== null ? isLayMarket(c.market) : /^lay\b/i.test(c.strategy));
+
+/**
+ * A LAY group's check saved before the side was recorded read the later price on the back side against an entry read on
+ * the lay side: not comparable, so left out.
+ */
+const comparable = (c: StoredCheck) => c.priceSide !== null || !(c.market !== null ? isLayGroupMarket(c.market) : /^lay\b/i.test(c.strategy));
+
+const edgeOf = (c: StoredCheck) => (isLayCheck(c) ? c.later! / c.entry - 1 : c.entry / c.later! - 1);
+const averageEdge = (list: StoredCheck[]) => round((100 * list.reduce((s, c) => s + edgeOf(c), 0)) / list.length);
+
 /** The figures by strategy and check, from the last `days` days. Checks where a goal had already settled the bet are left out. */
 export function priceCheckReport(db: EngineDb, days = 30, now = new Date()): PriceCheckReport {
   const since = new Date(now.getTime() - days * 86_400_000).toISOString();
-  const usable = db.listPriceChecks(since).filter((c) => c.later !== null && c.later >= SETTLED_PRICE && c.entry > 1);
-  const groups = new Map<string, typeof usable>();
+  const usable = db.listPriceChecks(since).filter((c) => c.later !== null && c.later >= SETTLED_PRICE && c.entry > 1 && comparable(c));
+  const groups = new Map<string, StoredCheck[]>();
   for (const c of usable) {
     const k = `${c.strategy.toLowerCase()}|${c.kind}`;
     (groups.get(k) ?? groups.set(k, []).get(k)!).push(c);
@@ -109,14 +134,18 @@ export function priceCheckReport(db: EngineDb, days = 30, now = new Date()): Pri
     strategy: list[0]!.strategy,
     kind: list[0]!.kind,
     picks: list.length,
-    edge: round((100 * list.reduce((s, c) => s + c.entry / c.later! - 1, 0)) / list.length),
+    lay: isLayCheck(list[0]!),
+    edge: averageEdge(list),
     avgEntry: round(list.reduce((s, c) => s + c.entry, 0) / list.length, 2),
     avgLater: round(list.reduce((s, c) => s + c.later!, 0) / list.length, 2),
   }));
   const typical: Partial<Record<CheckKind, number>> = {};
+  const typicalLay: Partial<Record<CheckKind, number>> = {};
   for (const kind of ["t2", "t5", "ko"] as const) {
-    const list = usable.filter((c) => c.kind === kind);
-    if (list.length) typical[kind] = round((100 * list.reduce((s, c) => s + c.entry / c.later! - 1, 0)) / list.length);
+    const backs = usable.filter((c) => c.kind === kind && !isLayCheck(c));
+    const lays = usable.filter((c) => c.kind === kind && isLayCheck(c));
+    if (backs.length) typical[kind] = averageEdge(backs);
+    if (lays.length) typicalLay[kind] = averageEdge(lays);
   }
-  return { days, rows: rows.sort((a, b) => a.strategy.localeCompare(b.strategy) || a.kind.localeCompare(b.kind)), typical };
+  return { days, rows: rows.sort((a, b) => a.strategy.localeCompare(b.strategy) || a.kind.localeCompare(b.kind)), typical, typicalLay };
 }

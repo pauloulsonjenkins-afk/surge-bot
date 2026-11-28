@@ -27,9 +27,11 @@ export function PriceCheck() {
     return [...m.entries()];
   }, [data]);
 
-  const cell = (r: PriceCheckRow | undefined, typical: number | undefined, relative: boolean) => {
+  // Lays are compared with other lays: the drift that hurts a back price helps a lay one.
+  const cell = (r: PriceCheckRow | undefined, kind: "t2" | "t5" | null) => {
     if (!r) return <span className="text-ink-muted">–</span>;
-    const v = relative && typical !== undefined ? r.edge - typical : r.edge;
+    const typical = kind && data ? (r.lay ? data.typicalLay?.[kind] : data.typical[kind]) : undefined;
+    const v = typical !== undefined ? r.edge - typical : r.edge;
     return (
       <span className={r.picks < ENOUGH ? "opacity-60" : ""}>
         <span className={`font-medium tabular-nums ${toneOf(v)}`}>{signed(Math.round(v * 10) / 10)}</span>
@@ -66,9 +68,9 @@ export function PriceCheck() {
                   <StrategyName label={name} />
                 </p>
                 <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
-                  <span>2 min: {cell(k.t2, data.typical.t2, true)}</span>
-                  <span>5 min: {cell(k.t5, data.typical.t5, true)}</span>
-                  <span>Kick-off: {cell(k.ko, undefined, false)}</span>
+                  <span>2 min: {cell(k.t2, "t2")}</span>
+                  <span>5 min: {cell(k.t5, "t5")}</span>
+                  <span>Kick-off: {cell(k.ko, null)}</span>
                 </p>
               </li>
             ))}
@@ -88,16 +90,17 @@ export function PriceCheck() {
                   <td className="py-2 pr-2 text-ink">
                     <StrategyName label={name} />
                   </td>
-                  <td className="px-2">{cell(k.t2, data.typical.t2, true)}</td>
-                  <td className="px-2">{cell(k.t5, data.typical.t5, true)}</td>
-                  <td className="px-2">{cell(k.ko, undefined, false)}</td>
+                  <td className="px-2">{cell(k.t2, "t2")}</td>
+                  <td className="px-2">{cell(k.t5, "t5")}</td>
+                  <td className="px-2">{cell(k.ko, null)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p className="mt-2 text-xs text-ink-muted">
-            Typical in-play drift: {data.typical.t2 !== undefined ? `${signed(data.typical.t2)} at 2 min` : "–"}
-            {data.typical.t5 !== undefined ? `, ${signed(data.typical.t5)} at 5 min` : ""}. The number after each figure is how many checks it’s from.
+            Typical in-play drift for back bets: {data.typical.t2 !== undefined ? `${signed(data.typical.t2)} at 2 min` : "–"}
+            {data.typical.t5 !== undefined ? `, ${signed(data.typical.t5)} at 5 min` : ""}; LAY strategies are compared with other lays
+            {data.typicalLay?.t2 !== undefined ? ` (${signed(data.typicalLay.t2)} at 2 min)` : ""}. The number after each figure is how many checks it’s from.
           </p>
         </div>
       )}
