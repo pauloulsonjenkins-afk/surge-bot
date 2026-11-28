@@ -38,7 +38,7 @@ test("the cap follows the evidence: 2% under 150 Live bets, 3% under 300, 5% aft
 test("raising a stake past its cap needs confirming; the same raise with enough bets does not", () => {
   const p = moneyProblems({ stakePct: { "Time to fight": 4 } }, inputs({ bets: { "time to fight": 19 } }));
   assert.deepEqual(p.map((x) => x.figure), ["4"]);
-  assert.match(p[0]!.reason, /19 settled Live bets/);
+  assert.match(p[0]!.reason, /19 settled real bets/);
   assert.deepEqual(moneyProblems({ stakePct: { "Time to fight": 2 } }, inputs({ bets: { "time to fight": 19 } })), []);
   assert.deepEqual(moneyProblems({ stakePct: { "Time to fight": 4 } }, inputs({ bets: { "time to fight": 320 } })), []);
   assert.deepEqual(moneyProblems({ stakePct: { "Time to fight": 6 } }, inputs({ bets: { "time to fight": 320 } })).map((x) => x.figure), ["6"]);

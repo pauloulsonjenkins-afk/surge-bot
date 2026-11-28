@@ -118,8 +118,8 @@ test("back to Sim: the reason also gives the whole Live record, so it doesn't co
   const advice = strategyAdvice(db, now);
   const a = advice.find((x) => x.key === KEY && x.kind === "back-to-sim");
   assert.ok(a, "suggested back to Sim from the bad last 30 days");
-  assert.match(a!.reason, /Live bets \(30 days\)/);
-  assert.match(a!.reason, /whole Live record is still \+\d/, "names the whole-record figure so it isn't read as a contradiction once the headline shows it");
+  assert.match(a!.reason, /real bets \(30 days\)/);
+  assert.match(a!.reason, /whole real-money record is still \+\d/,"names the whole-record figure so it isn't read as a contradiction once the headline shows it");
 });
 
 test("a Live / Sim change from a suggestion holds back the opposite one for a week; the early warning still gets through", async () => {

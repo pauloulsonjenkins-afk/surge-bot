@@ -147,14 +147,14 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
       const ok = await dialog.confirm({
         title: "Turn betting on?",
         tone: "money",
-        confirmLabel: live.length === 0 ? "Turn betting on" : `Start betting ${live.length} Live strateg${live.length === 1 ? "y" : "ies"}`,
+        confirmLabel: live.length === 0 ? "Turn betting on" : `Start betting ${live.length} real-money strateg${live.length === 1 ? "y" : "ies"}`,
         details: [
-          { label: "Live strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${strategyNames.name(x.label)} ${x.stakePct != null ? `${x.stakePct}% of balance` : `£${x.stake?.toFixed(2) ?? "–"}`}`).join(", ") },
+          { label: "Real-money strategies", value: live.length === 0 ? "None yet" : live.map((x) => `${strategyNames.name(x.label)} ${x.stakePct != null ? `${x.stakePct}% of balance` : `£${x.stake?.toFixed(2) ?? "–"}`}`).join(", ") },
           { label: "Daily limit", value: `${settings.dailyCap} new bets` },
           { label: "Most staked in a day", value: perDay > 0 ? `up to £${perDay.toFixed(2)}` : "–" },
           { label: "Highest stake allowed", value: `£${settings.maxStake.toFixed(2)}` },
         ],
-        body: <p>New picks from Live strategies are bet on Betfair, at each strategy’s own stake.</p>,
+        body: <p>New picks from real-money strategies are bet on Betfair, at each strategy’s own stake.</p>,
       });
       if (!ok) return;
     }
@@ -225,7 +225,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
               {settings.enabled ? "Betting is ON" : "Betting is OFF"}
             </p>
             <p className="mt-0.5 text-xs text-ink-muted">
-              {settings.enabled ? `${onCount} of ${data.strategies.length} strategies Live` : "Nothing is bet while this is off, so every strategy runs as Sim."}
+              {settings.enabled ? `${onCount} of ${data.strategies.length} strategies on real money` : "Nothing is bet while this is off, so every strategy runs as a trial."}
               {stoppedCount > 0 && <span className="text-warn"> · {stoppedCount} stopped by stop loss today</span>}
             </p>
           </div>
@@ -251,7 +251,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
       {view === "limits" && (
       <Card
         title="Strategies"
-        subtitle="Each strategy's Live / Sim switch, stake, minimum odds and stop loss sit with its results on the Strategies page."
+        subtitle="Each strategy's real money / trial switch, stake, minimum odds and stop loss sit with its results on the Strategies page."
         actions={
           <Link href="/more/admin/strategies" className="text-xs font-medium text-accent">
             Open Strategies
@@ -268,11 +268,11 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                 <li key={s.label} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-ink"><StrategyName label={s.label} /></span>
                   <span className="shrink-0 text-xs text-ink-muted">
-                    {s.stopLoss?.stopped ? <span className="text-warn">Stopped today · </span> : null}Live · {s.stakePct != null ? `${s.stakePct}% of balance` : `£${s.stake?.toFixed(2) ?? "–"}`}
+                    {s.stopLoss?.stopped ? <span className="text-warn">Stopped today · </span> : null}Real money · {s.stakePct != null ? `${s.stakePct}% of balance` : `£${s.stake?.toFixed(2) ?? "–"}`}
                   </span>
                 </li>
               ))}
-            {onCount === 0 && <li className="text-xs text-ink-muted">No strategy is Live: every one runs in Sim.</li>}
+            {onCount === 0 && <li className="text-xs text-ink-muted">No strategy is on real money: every one runs on trial.</li>}
           </ul>
         )}
       </Card>
@@ -407,7 +407,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                 </span>
               </label>
               <label className="text-xs text-ink-muted">
-                Stop all betting when Live is down £ today (0 = off)
+                Stop all betting when real money is down £ today (0 = off)
                 <input
                   inputMode="numeric"
                   className={`${inputCls} mt-1`}
@@ -519,7 +519,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                 <p className="mt-0.5 text-xs text-ink-muted">
                   The favourite&rsquo;s own goals Over (its goals at the alert + 0.5), by full time. <code>{"{line}"}</code> becomes the line (1.5) and{" "}
                   <code>{"{line10}"}</code> ten times it in two digits (15, or 05 for 0.5). Copy the codes from &ldquo;Team goal markets on Betfair&rdquo; on the Reconcile page.
-                  Leave a code empty and it stays in Sim.
+                  Leave a code empty and it stays on trial.
                 </p>
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label className="text-xs text-ink-muted">
@@ -541,7 +541,7 @@ export default function SendingView({ view }: { view: "bets" | "limits" }) {
                 <p className="mt-0.5 text-xs text-ink-muted">
                   One more corner before half-time: first-half corners Over the corners so far + 0.5. <code>{"{line}"}</code> becomes the line
                   (5.5) and <code>{"{line10}"}</code> ten times it in two digits (55). Copy the code and wording from &ldquo;Corner markets on Betfair&rdquo; on the
-                  Reconcile page. Leave the code empty and it stays in Sim.
+                  Reconcile page. Leave the code empty and it stays on trial.
                 </p>
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-xs text-ink-muted">
@@ -602,14 +602,14 @@ function LadderCard({ on }: { on: boolean }) {
   return (
     <Card
       title="Stake ladder"
-      subtitle="Stakes move one step (1 → 1.5 → 2 → 3 → 4 → 5% of the balance, or £1 → £2 → £3 → £5) when a Live strategy proves itself over 50+ bets, or starts losing. Your highest-stake limit still caps every bet."
+      subtitle="Stakes move one step (1 → 1.5 → 2 → 3 → 4 → 5% of the balance, or £1 → £2 → £3 → £5) when a real-money strategy proves itself over 50+ bets, or starts losing. Your highest-stake limit still caps every bet."
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink">
           {on ? (
             <>
               <span className="font-medium text-hit">Automatic.</span> Raises and cuts happen by themselves, at most one step a week per strategy, and you get a
-              notification each time. Putting a strategy Live or back to Sim still waits for you.
+              notification each time. Putting a strategy on real money or back to trial still waits for you.
             </>
           ) : (
             <>
@@ -629,7 +629,7 @@ function LadderCard({ on }: { on: boolean }) {
                 confirmLabel: "Turn on automatic stakes",
                 body: (
                   <p>
-                    A Live strategy&apos;s stake will go up one step after 50+ bets at +5% or better (and down after 30+ losing bets), without asking first. One
+                    A real-money strategy&apos;s stake will go up one step after 50+ bets at +5% or better (and down after 30+ losing bets), without asking first. One
                     step a week at most per strategy, never above your highest-stake limit, with a notification each time.
                   </p>
                 ),

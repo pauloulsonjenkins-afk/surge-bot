@@ -67,7 +67,7 @@ function LayCard({
               <GoldenBadge
                 status={badge.status}
                 candidate={`Candidate · ${badge.n} of ${trialFrom}`}
-                trial={`Live trial suggested · ${badge.n} of ${fullFrom}`}
+                trial={`Real-money trial suggested · ${badge.n} of ${fullFrom}`}
               />
             )}
           </span>
@@ -99,7 +99,7 @@ function LayCard({
       {/* Live and Sim apart: a LAY switched Live starts a new record, and its Sim one shouldn't vanish from view. */}
       {(row.returns?.live.counted ?? 0) > 0 && (row.returns?.sim.counted ?? 0) > 0 && (
         <p className="text-xs tabular-nums text-ink-muted">
-          Live <span className={tone(row.returns!.live.roi)}>{splitUnits(row.returns!.live)}</span> ({row.returns!.live.counted}) · Sim{" "}
+          Real money <span className={tone(row.returns!.live.roi)}>{splitUnits(row.returns!.live)}</span> ({row.returns!.live.counted}) · trial{" "}
           <span className={tone(row.returns!.sim.roi)}>{splitUnits(row.returns!.sim)}</span> ({row.returns!.sim.counted})
         </p>
       )}
@@ -115,7 +115,7 @@ function LayCard({
       {/* The risk: lays lose big and win small, so this matters more than the hit rate. */}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
         <div>
-          <dt className="text-ink-muted">Liability per bet</dt>
+          <dt className="text-ink-muted">Most it can lose per bet</dt>
           <dd className="font-medium text-ink">{bet?.stakeNow != null ? gbp(bet.stakeNow, false) : bet?.stakePct != null ? `${bet.stakePct}%` : "–"}</dd>
         </div>
         <div>
@@ -183,7 +183,7 @@ function IdeaRow({ idea }: { idea: LayIdea }) {
         {action.error && <span className="block text-xs text-destructive">{action.error.message}</span>}
       </span>
       {done ? (
-        <span className="shrink-0 text-xs text-hit">Laying in Sim</span>
+        <span className="shrink-0 text-xs text-hit">Laying on trial</span>
       ) : (
         <button
           type="button"
@@ -191,13 +191,13 @@ function IdeaRow({ idea }: { idea: LayIdea }) {
           onClick={async () => {
             const ok = await dialog.confirm({
               title: `Lay ${idea.strategy}${idea.rule.length > 0 ? `, ${idea.label}` : ""}?`,
-              confirmLabel: "Lay it in Sim",
+              confirmLabel: "Lay it on trial",
               body: (
                 <>
                   <p>
-                    From now on its alerts get a LAY pick: {what}. It starts in <strong>Sim</strong> at a £2 liability, so nothing is bet until you switch it Live.
+                    From now on its alerts get a LAY pick: {what}. It starts in <strong>Trial</strong> at a £2 liability, so nothing is bet until you switch it to real money.
                   </p>
-                  <p className="text-xs text-ink-muted">Many slices were tried to find this, so some will look good by luck: give it time in Sim first.</p>
+                  <p className="text-xs text-ink-muted">Many slices were tried to find this, so some will look good by luck: give it time on trial first.</p>
                 </>
               ),
             });
@@ -206,7 +206,7 @@ function IdeaRow({ idea }: { idea: LayIdea }) {
           }}
           className="shrink-0 rounded-md border border-accent px-3 py-1.5 text-xs font-semibold text-accent disabled:opacity-50"
         >
-          {action.isPending ? "Adding…" : "Lay it in Sim"}
+          {action.isPending ? "Adding…" : "Lay it on trial"}
         </button>
       )}
     </li>
@@ -242,7 +242,7 @@ export function LaySection({
         <p className="text-sm font-semibold text-ink">LAY bets</p>
         <p className="mt-1">
           A LAY bets <em>against</em> something: it wins a little when that doesn&apos;t happen, and loses the whole liability when it does. GoalBrew lays groups of
-          alerts that kept losing when backed. A LAY is never made, and no Live bet is placed, when it would cancel out a Live bet on the same match.
+          alerts that kept losing when backed. A LAY is never made, and no real bet is placed, when it would cancel out a real bet on the same match.
         </p>
       </div>
 

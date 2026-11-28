@@ -25,7 +25,7 @@ export default function manifest(): MetadataRoute.Manifest {
     shortcuts: [
       { name: "Today", short_name: "Today", description: "Betting status, today's result and what needs attention", url: "/more/admin/today", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: "Live", short_name: "Live", description: "Matches in play and the alerts on them", url: "/live", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Strategies", short_name: "Strategies", description: "Each strategy's record, verdict and stake", url: "/more/admin/strategies", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Strategies", short_name: "Strategies", description: "Each strategy's record, answer and stake", url: "/more/admin/strategies", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: "Profit", short_name: "Profit", description: "Profit and loss by day and by strategy", url: "/more/admin/winloss", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };

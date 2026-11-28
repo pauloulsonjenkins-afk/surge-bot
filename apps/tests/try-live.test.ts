@@ -53,5 +53,5 @@ test("200+ picks in profit in both halves: suggested, at a trial stake, not its 
   assert.ok(a, "suggested");
   assert.deepEqual(a!.to, { flat: 1 }, "£1 trial for a flat-stake strategy");
   assert.match(a!.action, /trial stake/);
-  assert.match(a!.reason, /older half .* newer/);
+  assert.match(a!.reason, /older bets .* newer/);
 });

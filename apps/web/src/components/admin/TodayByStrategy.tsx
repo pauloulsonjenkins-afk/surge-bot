@@ -24,7 +24,7 @@ function verdict(r: AdminStrategy, day: StrategyReturn): { kind: "look" | "wait"
   if (r.sendingOn || day.counted < DAY_MIN || day.profit <= 0) return { kind: null, text: "" };
   const sim = r.returns?.sim;
   if (sim && sim.counted >= RECORD_MIN && sim.roi !== null && sim.roi > 0)
-    return { kind: "look", text: `Good day, and ${signedPct(sim.roi)} per £1 over ${sim.counted} Sim picks: worth a look for Live.` };
+    return { kind: "look", text: `Good day, and ${signedPct(sim.roi)} per £1 over ${sim.counted} trial picks: worth a look for real money.` };
   return {
     kind: "wait",
     text: sim && sim.counted > 0 ? `Good day, but its longer record is ${signedPct(sim.roi)} over ${sim.counted} picks: wait.` : "Good day, but no longer record yet: wait.",
@@ -76,7 +76,7 @@ export function TodayByStrategy() {
 
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-xl border border-line bg-surface p-3">
-              <p className="text-xs text-ink-muted">{mode === "live" ? "Profit today" : "Sim today"}</p>
+              <p className="text-xs text-ink-muted">{mode === "live" ? "Profit today" : "Trial today"}</p>
               <p className={`font-display text-xl font-bold tabular-nums ${toneOf(total.profit)}`}>{gbp(total.profit)}</p>
             </div>
             <div className="rounded-xl border border-line bg-surface p-3">
@@ -95,8 +95,8 @@ export function TodayByStrategy() {
 
           {mode === "sim" && looks.length > 0 && (
             <div className="rounded-xl border border-line bg-surface-2 p-3 text-xs">
-              <p className="text-sm font-semibold text-ink">Worth a look for Live</p>
-              <p className="mt-0.5 text-ink-muted">A good day alone is mostly luck; these also have a longer Sim record that makes money. Switch one on Strategies (it asks first, with its clash check).</p>
+              <p className="text-sm font-semibold text-ink">Worth a look for real money</p>
+              <p className="mt-0.5 text-ink-muted">A good day alone is mostly luck; these also have a longer trial record that makes money. Switch one on Strategies (it asks first, with its clash check).</p>
               <ul className="mt-2 space-y-1">
                 {looks.map((x) => (
                   <li key={x.r.label}>
@@ -108,7 +108,7 @@ export function TodayByStrategy() {
           )}
 
           {rows.length === 0 ? (
-            <p className="text-sm text-ink-muted">{mode === "live" ? "No Live bets settled yet today." : "No Sim picks settled yet today."}</p>
+            <p className="text-sm text-ink-muted">{mode === "live" ? "No real bets settled yet today." : "No trial picks settled yet today."}</p>
           ) : (
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
               {rows.map(({ r, day }) => {
@@ -121,7 +121,7 @@ export function TodayByStrategy() {
                         <span className="block text-sm font-medium text-ink">{names.name(r.label)}</span>
                         <span className="block text-xs tabular-nums text-ink-muted">
                           {won}–{day.counted - won} · staked {gbp(day.staked, false)}
-                          {mode === "sim" && r.sendingOn ? " · Live now" : ""}
+                          {mode === "sim" && r.sendingOn ? " · On real money now" : ""}
                         </span>
                       </span>
                       <span className="shrink-0 text-right">

@@ -15,13 +15,13 @@ import { tidyText } from "@/lib/format";
  * Nothing changes until Apply is pressed and confirmed, since it changes real-money betting.
  */
 export const ADVICE_LABEL: Record<StrategyAdvice["kind"], string> = {
-  "try-live": "ready to try Live",
-  "back-to-sim": "consider putting back to Sim",
+  "try-live": "ready to try with real money",
+  "back-to-sim": "consider putting back to trial",
   "stake-up": "worth a bigger stake",
   "stake-down": "worth a smaller stake",
   "league-block": "losing in one league",
-  "slice-live": "slice ready to try Live",
-  "slice-sim": "slice losing: consider Sim",
+  "slice-live": "slice ready to try with real money",
+  "slice-sim": "slice losing: consider trial",
   "slice-stake-up": "slice worth a bigger stake",
   "slice-stake-down": "slice worth a smaller stake",
 };
@@ -205,7 +205,7 @@ export function ApplyAllAdvice({ advice, nameOf }: { advice: StrategyAdvice[]; n
             tone: "money",
             confirmLabel: `Apply all ${list.length}`,
             details: list.map((a) => ({ label: nameOf(a), value: a.action! })),
-            body: <p>This changes real-money betting: strategies and slices going Live or back to Sim, and stakes. Each one is the same change its own Apply button makes. League stops are left out.</p>,
+            body: <p>This changes real-money betting: strategies and slices going on real money or back to trial, and stakes. Each one is the same change its own Apply button makes. League stops are left out.</p>,
           });
           if (ok) run.mutate();
         }}

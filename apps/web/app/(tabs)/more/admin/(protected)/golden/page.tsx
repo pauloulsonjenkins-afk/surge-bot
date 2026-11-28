@@ -57,14 +57,14 @@ function Side({ r, name, split }: { r: StrategyReturn; name: string; split?: { l
           <p className="text-xs tabular-nums text-ink-muted">
             {r.counted > 0 && r.units !== undefined && `${signedPct(r.roi)} per £1 · `}
             {hits}–{r.settled - hits}
-            {r.counted > 0 && ` · ${r.counted} priced`}
+            {r.counted > 0 && ` · ${r.counted} with known odds`}
             {r.counted > 0 && few && " · too few to judge"}
           </p>
           {/* Live and Sim apart, so a switch between them never changes what's shown above (that's both together). */}
           {split && (
             <p className="text-xs tabular-nums text-ink-muted">
-              Live <span className={judged(split.live.roi, split.live.counted)}>{split.live.counted > 0 ? unitsText(split.live) : "–"}</span> (
-              {split.live.counted}) · Sim <span className={judged(split.sim.roi, split.sim.counted)}>{split.sim.counted > 0 ? unitsText(split.sim) : "–"}</span>{" "}
+              Real money <span className={judged(split.live.roi, split.live.counted)}>{split.live.counted > 0 ? unitsText(split.live) : "–"}</span> (
+              {split.live.counted}) · trial <span className={judged(split.sim.roi, split.sim.counted)}>{split.sim.counted > 0 ? unitsText(split.sim) : "–"}</span>{" "}
               ({split.sim.counted})
             </p>
           )}
@@ -177,7 +177,7 @@ export default function GoldenPage() {
               <GoldenBadge
                 status={s.status}
                 candidate={`Candidate · ${mine.counted} of ${trialFrom}`}
-                trial={`Live trial suggested · ${mine.counted} of ${fullFrom}`}
+                trial={`Real-money trial suggested · ${mine.counted} of ${fullFrom}`}
               />
               <span>
                 <span className={`font-semibold ${judged(mine.roi, mine.counted)}`}>{mine.counted > 0 ? unitsText(mine) : "–"}</span> ({mine.counted})
@@ -188,7 +188,7 @@ export default function GoldenPage() {
                   </>
                 )}
               </span>
-              {s.bet?.live && <span className="rounded-full bg-accent/15 px-1.5 font-medium text-accent">Live</span>}
+              {s.bet?.live && <span className="rounded-full bg-accent/15 px-1.5 font-medium text-accent">Real money</span>}
               {s.notify && <BellRing size={14} aria-label="Notifies you" className="text-accent" />}
             </span>
           </span>
@@ -213,7 +213,7 @@ export default function GoldenPage() {
             </div>
             {s.bet?.live && (
               <p className="text-xs text-ink-muted">
-                Its own Live bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
+                Its own real bets since {s.bet.liveSince ? day.format(new Date(s.bet.liveSince)) : "it was switched on"}:{" "}
                 {s.ownLive && s.ownLive.n > 0 ? (
                   <span className="tabular-nums">
                     {s.ownLive.won}–{s.ownLive.n - s.ownLive.won}{" "}
@@ -310,22 +310,21 @@ export default function GoldenPage() {
         <div className="space-y-2 pb-3">
           <p>
             Each slice is counted from the day it started being watched, on new matches only. Its bets are{" "}
-            <b className="text-ink">part of its strategy&apos;s bets</b>, not extra ones: the figures show that part against the rest of the same strategy, Live
-            and Sim picks together.
+            <b className="text-ink">part of its strategy&apos;s bets</b>, not extra ones: the figures show that part against the rest of the same strategy, real money and trial picks together.
           </p>
           <p>
-            Watched quietly (no notification) until {candidateFrom} priced picks in profit make it a <b className="text-ink">candidate</b> (one notification).
-            At {trialFrom}+, still in profit in both halves of its record, a <b className="text-ink">small Live trial</b> is suggested — 1% stake, with a stop
+            Watched quietly (no notification) until {candidateFrom} picks with known odds in profit make it a <b className="text-ink">candidate</b> (one notification).
+            At {trialFrom}+, still in profit in both its older and newer bets, a <b className="text-ink">small real-money trial</b> is suggested — 1% stake, with a stop
             loss (one notification). At {fullFrom}+, once that trial is itself in profit, <b className="text-gold">full stake</b> is suggested (one
-            notification). Nothing is ever switched Live or re-staked automatically — every suggestion is the admin&apos;s call.
+            notification). Nothing is ever switched to real money or re-staked automatically — every suggestion is the admin&apos;s call.
           </p>
           <p>
             It has to keep earning its stage: if its last 30 picks lose more than 5% per £1, the stage goes at once (with a notification), and it only comes
             back after 30 more picks back in profit.
           </p>
           <p>
-            Bet one on its own with its &ldquo;Change betting&rdquo; button below (or from its strategy&apos;s card on Strategies). Safety: a slice bet Live on
-            its own goes back to Sim by itself, with a notification, if it stops holding up or its own Live bets lose more than {worst}% per £1 over {minBets}+
+            Bet one on its own with its &ldquo;Change betting&rdquo; button below (or from its strategy&apos;s card on Strategies). Safety: a slice bet with real money on
+            its own goes back to trial by itself, with a notification, if it stops holding up or its own real bets lose more than {worst}% per £1 over {minBets}+
             bets.
           </p>
         </div>
@@ -339,7 +338,7 @@ export default function GoldenPage() {
         <>
           {/* Live slices that have turned: the first thing to see, with a way straight to their betting switch. */}
           {watchOut.length > 0 && (
-            <Card title="Needs a look" subtitle="Bet Live, and not earning its place. It goes back to Sim by itself if it stops holding up.">
+            <Card title="Needs a look" subtitle="Bet with real money, and not earning its place. It goes back to trial by itself if it stops holding up.">
               <ul className="divide-y divide-line">{watchOut.map((s) => renderSlice(s, true, s.watchOut))}</ul>
             </Card>
           )}
@@ -347,7 +346,7 @@ export default function GoldenPage() {
             title="Being watched"
             subtitle={
               allMainSlices.length > 0
-                ? `${mainSlices.length} of ${allMainSlices.length} shown · ${liveCount} Live · ${golden} proved Golden${shelvedSlices.length > 0 ? ` · ${shelvedSlices.length} shelved below` : ""}`
+                ? `${mainSlices.length} of ${allMainSlices.length} shown · ${liveCount} on real money · ${golden} proved Golden${shelvedSlices.length > 0 ? ` · ${shelvedSlices.length} shelved below` : ""}`
                 : undefined
             }
           >
@@ -433,7 +432,7 @@ export default function GoldenPage() {
                     {/* League and holding filters (owner, 8 Nov 2026: "alerts only on performing Golden slices in green leagues"). */}
                     <div className="rounded-md bg-surface px-3 py-2.5">
                       <p className="font-semibold text-ink">Which leagues</p>
-                      <p className="mb-2 text-ink-muted">Judged per strategy on its priced picks in each league. Grey means too few to judge.</p>
+                      <p className="mb-2 text-ink-muted">Judged per strategy on its picks with known odds in each league. Grey means too few to judge.</p>
                       <div role="radiogroup" aria-label="Which leagues" className="grid grid-cols-3 gap-1.5">
                         {(
                           [
@@ -509,7 +508,7 @@ export default function GoldenPage() {
                       {g.strategy}{" "}
                       <span className="font-normal text-ink-muted">
                         · {g.slices.length}
-                        {g.slices.some((s) => s.bet?.live) && ` · ${g.slices.filter((s) => s.bet?.live).length} Live`}
+                        {g.slices.some((s) => s.bet?.live) && ` · ${g.slices.filter((s) => s.bet?.live).length} Real money`}
                       </span>
                     </h3>
                     <ul className="mt-1 divide-y divide-line">{g.slices.map((s) => renderSlice(s, false))}</ul>
@@ -537,7 +536,7 @@ export default function GoldenPage() {
               <summary className="flex min-h-11 cursor-pointer items-center font-medium text-ink">Watched quietly by the finder ({quietSlices.length})</summary>
               <div className="space-y-1 pb-3">
                 <p className="text-xs text-ink-muted">
-                  New ideas the finder found itself, counted from the day found. No notifications yet: once one reaches {candidateFrom} priced picks in profit,
+                  New ideas the finder found itself, counted from the day found. No notifications yet: once one reaches {candidateFrom} picks with known odds in profit,
                   you&apos;ll be told it&apos;s a candidate.
                 </p>
                 <ul className="divide-y divide-line">
@@ -559,7 +558,7 @@ export default function GoldenPage() {
 
           <Card
             title="Suggested by the Golden finder"
-            subtitle={`Beat the rest in both halves; proved on new matches once watched.${
+            subtitle={`Beat the rest in both its older and newer bets; proved on new matches once watched.${
               checked && !Number.isNaN(checked.getTime()) ? ` Last checked ${dayTime.format(checked)}.` : ""
             }`}
           >

@@ -35,7 +35,7 @@ export function buildWeeklyReview(db: EngineDb, now = new Date()): { title: stri
   const live = totals("live");
   const sim = totals("sim");
   const lines: string[] = [];
-  lines.push(`Live ${money(live.profit)} (${live.hits}–${live.settled - live.hits}) · Sim ${money(sim.profit)} (${sim.hits}–${sim.settled - sim.hits})`);
+  lines.push(`Real money ${money(live.profit)} (${live.hits}–${live.settled - live.hits}) · trial ${money(sim.profit)} (${sim.hits}–${sim.settled - sim.hits})`);
   const liveRows = Object.entries(week)
     .filter(([key, r]) => settings.strategies[key] === true && r.live.settled > 0)
     .sort((a, b) => b[1].live.profit - a[1].live.profit);
@@ -48,7 +48,7 @@ export function buildWeeklyReview(db: EngineDb, now = new Date()): { title: stri
   for (const s of goldenReport(db, now, { skipFinder: true }).slices.filter((x) => x.bet?.live)) {
     const r = s.ownLive;
     const pct = (n: number | null) => (n === null ? "–" : `${n > 0 ? "+" : ""}${Math.round(n * 1000) / 10}%`);
-    lines.push(`• Golden Live: ${s.strategy}, ${s.label.replace(/^Golden: /, "")}: ${r ? `${r.won}–${r.n - r.won}, ${pct(r.roi)} per £1 since on` : "no bets yet"} (${s.status})`);
+    lines.push(`• Golden real money: ${s.strategy}, ${s.label.replace(/^Golden: /, "")}: ${r ? `${r.won}–${r.n - r.won}, ${pct(r.roi)} per £1 since on` : "no bets yet"} (${s.status})`);
   }
   for (const q of autoStakeQueue(db, now)) lines.push(`• Automatic: ${displayName(db, q.key)}: ${q.action.toLowerCase()} on ${new Date(q.due).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" })}`);
   return { title: `GoalBrew week: Live ${money(live.profit)}`, body: lines.join("\n") };

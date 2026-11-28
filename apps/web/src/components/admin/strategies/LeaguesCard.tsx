@@ -75,14 +75,14 @@ export function LeagueFilterControl({
       title:
         next === "off"
           ? `Bet ${name} in every league?`
-          : `Bet ${name} Live in ${words}?`,
+          : `Bet ${name} with real money in ${words}?`,
       tone: "money",
       confirmLabel: next === "off" ? "Bet every league" : "Use this filter",
       body: (
         <p>
           {next === "off"
-            ? `${name}'s picks will be bet in any league again, as its Live / Sim switch says.`
-            : `${name}'s picks in other leagues will be recorded in Sim instead of bet. A league's colour can change as results come in (worked out hourly), so the leagues bet will change with it.`}
+            ? `${name}'s picks will be bet in any league again, as its real money / trial switch says.`
+            : `${name}'s picks in other leagues will be recorded as trial bets instead. A league's colour can change as results come in (worked out hourly), so the leagues bet will change with it.`}
         </p>
       ),
     });
@@ -224,8 +224,8 @@ export function LeaguesCard({
       <div>
         <p className="font-semibold text-ink">Leagues</p>
         <p className="text-ink-muted">
-          Green: {q.data.greenFrom}+ priced picks and in profit after allowing
-          for luck. Proven: {q.data.provenFrom}+ and the whole likely range
+          Green: {q.data.greenFrom}+ picks with known odds and in profit after allowing
+          for luck. Proven: {q.data.provenFrom}+ and in profit even at the unlucky end of its range
           above zero. Red: losing by the same tests.{" "}
           {grey > 0 &&
             `${grey} more ${grey === 1 ? "league has" : "leagues have"} too few picks to judge.`}
@@ -268,14 +268,14 @@ export function LeaguesCard({
           </table>
           <p className="mt-1 text-ink-muted">
             Each pick judged only on its league&apos;s record before it, so no
-            hindsight. Live and Sim picks together, at their stakes. With many
+            hindsight. Real money and trial picks together, at their stakes. With many
             leagues, some look green by luck: trust a filter only if it keeps
             beating &ldquo;All leagues&rdquo;.
           </p>
         </div>
       )}
       <div>
-        <p className="mb-1 font-medium text-ink-muted">Bet Live in</p>
+        <p className="mb-1 font-medium text-ink-muted">Bet with real money in</p>
         <LeagueFilterControl
           filterKey={strategyKey}
           name={name}
@@ -283,7 +283,7 @@ export function LeaguesCard({
         />
         {current !== "off" && (
           <p className="mt-1 text-ink-muted">
-            Picks in other leagues are recorded in Sim.
+            Picks in other leagues are recorded as trial bets.
           </p>
         )}
       </div>

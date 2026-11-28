@@ -361,7 +361,7 @@ function EntryCard({
           {yankeeOn && (
             <div className="mt-2 flex flex-wrap items-end gap-3 text-xs text-ink-muted">
               <label>
-                Unit stake (£)
+                Stake per bet (£)
                 <input inputMode="decimal" className={`${inputCls} mt-1 w-24 tabular-nums`} value={yankee} onChange={(e) => (setYankee(e.target.value), setSaved(false))} />
               </label>
               <span className="pb-2 tabular-nums">

@@ -221,7 +221,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
       {/* ---- the centrepiece: this month's total, and how the strategies add up to it (MonthWaterfall.tsx) ---- */}
       {lines.length > 0 && anyMoney && (
         <>
-          <ProfitHero label={`${monthLong(state.today)} so far${mode === "live" ? ", real money" : mode === "sim" ? ", Sim" : ""}`} total={state.periods.mtd.total} />
+          <ProfitHero label={`${monthLong(state.today)} so far${mode === "live" ? ", real money" : mode === "sim" ? ", trial" : ""}`} total={state.periods.mtd.total} />
           <MonthWaterfall
             totalLabel="The month"
             total={state.periods.mtd.total}
@@ -236,7 +236,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
       <Card title="Profit and loss" subtitle="Settled picks only.">
         {lines.length === 0 ? (
           <EmptyState
-            title={mode === "live" ? "No live picks settled yet" : mode === "sim" ? "No simulation picks settled yet" : "Nothing settled yet"}
+            title={mode === "live" ? "No real-money picks settled yet" : mode === "sim" ? "No trial picks settled yet" : "Nothing settled yet"}
             detail="Figures appear once picks have results."
           />
         ) : (
@@ -253,7 +253,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
                     },
                   ]
                 : []),
-              { key: "total", title: mode === "live" ? "Live total" : mode === "sim" ? "Sim total" : "Total", bold: true, values: PERIODS.map((p) => state.periods[p.key].total) },
+              { key: "total", title: mode === "live" ? "Real-money total" : mode === "sim" ? "Trial total" : "Total", bold: true, values: PERIODS.map((p) => state.periods[p.key].total) },
               ...(expenditureRows
                 ? [
                     { key: "exp", title: "Expenditure", muted: true, values: PERIODS.map((p) => (state.periods[p.key].expenditure > 0 ? -state.periods[p.key].expenditure : null)) },
@@ -297,7 +297,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
           <WinLossLines data={combinedData} series={combinedSeries} />
         )}
         {ex.enabled && (period === "d1" || period === "d7") && (
-          <p className="mt-2 text-xs text-ink-muted">Expenditure is monthly, so it only shows on the MTD and YTD views.</p>
+          <p className="mt-2 text-xs text-ink-muted">Expenditure is monthly, so it only shows on the This month and This year views.</p>
         )}
       </Card>
 
@@ -310,7 +310,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
       </Fold>
 
       {/* ---- inputs ---- */}
-      <Fold title="Assumed odds and commission" hint="settings">
+      <Fold title="Estimated odds and commission" hint="settings">
         <p className="mb-2 text-xs text-ink-muted">Tap a strategy to set the odds to assume where an alert carries none. Stakes are set on Strategies.</p>
         {strategies.length === 0 ? (
           <p className="text-xs text-ink-muted">Strategies appear here once they have settled picks this year.</p>
@@ -380,7 +380,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
                     {s.usedAlertOdds > 0 ? ` (${s.usedAlertOdds} at the alert's own odds)` : ""}
                     {s.noStake > 0 ? ` · ${s.noStake} left out: no stake set` : ""}
                     {s.noOdds > 0 ? ` · ${s.noOdds} left out: no odds` : ""}
-                    {(s.notPlaced ?? 0) > 0 ? ` · ${s.notPlaced} Sim pick${s.notPlaced === 1 ? "" : "s"} not placed (minimum odds, stop loss or daily limit)` : ""}
+                    {(s.notPlaced ?? 0) > 0 ? ` · ${s.notPlaced} trial pick${s.notPlaced === 1 ? "" : "s"} not placed (minimum odds, stop loss or daily limit)` : ""}
                   </p>
                   {overMax && (
                     <p className="mt-1 text-xs text-ink-muted">
@@ -461,8 +461,7 @@ function WinLoss({ state, mode }: { state: WinLossState; mode: PickMode }) {
               {gbp(-ex.monthly, false)} is taken off on the 1st of every month
               {ex.startMonth ? `, starting ${monthName(ex.startMonth)}` : ""}. Month to date:{" "}
               <span className="tabular-nums text-ink">{gbp(-state.periods.mtd.expenditure, false)}</span>. Year to date:{" "}
-              <span className="tabular-nums text-ink">{gbp(-state.periods.ytd.expenditure, false)}</span>. It applies to the MTD and
-              YTD figures only.
+              <span className="tabular-nums text-ink">{gbp(-state.periods.ytd.expenditure, false)}</span>. It applies to the This month and This year figures only.
             </p>
           </div>
         )}

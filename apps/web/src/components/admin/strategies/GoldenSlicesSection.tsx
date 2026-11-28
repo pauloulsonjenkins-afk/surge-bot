@@ -51,7 +51,7 @@ function SliceRow({ s, settings, strategyName }: { s: GoldenSlice; settings: Sen
           <p className="text-xs text-ink-muted">{strategyName}</p>
           <p className="font-medium text-ink">{shortName(s.label)}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-ink-muted">
-            <GoldenBadge status={s.status} candidate="Candidate" trial="Live trial suggested" />
+            <GoldenBadge status={s.status} candidate="Candidate" trial="Real-money trial suggested" />
             <span>
               <span className={`font-semibold ${judgedReturn(mine)}`}>{mine.counted > 0 ? unitsText(mine) : "–"}</span> on {mine.counted}
               {mine.verdict && mine.counted > 0 && <span className={VERDICT_TONE[mine.verdict]}> · {VERDICT_LABEL[mine.verdict].toLowerCase()}</span>}
@@ -65,7 +65,7 @@ function SliceRow({ s, settings, strategyName }: { s: GoldenSlice; settings: Sen
           </p>
           {ownLive && (
             <p className="mt-1 text-xs text-ink-muted">
-              Its own Live bets:{" "}
+              Its own real bets:{" "}
               {s.ownLive && s.ownLive.n > 0 ? (
                 <span className="tabular-nums">
                   {s.ownLive.won}–{s.ownLive.n - s.ownLive.won}{" "}
@@ -82,9 +82,9 @@ function SliceRow({ s, settings, strategyName }: { s: GoldenSlice; settings: Sen
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           {withLiveStrategy ? (
-            <span className="rounded-md bg-accent/15 px-2.5 py-2 text-xs font-medium text-accent">Live with {strategyName}</span>
+            <span className="rounded-md bg-accent/15 px-2.5 py-2 text-xs font-medium text-accent">Real money with {strategyName}</span>
           ) : (
-            <div className="inline-flex rounded-md border border-line p-0.5" role="group" aria-label={`${shortName(s.label)}: Sim or Live`}>
+            <div className="inline-flex rounded-md border border-line p-0.5" role="group" aria-label={`${shortName(s.label)}: trial or real money`}>
               {([false, true] as const).map((v) => (
                 <button
                   key={String(v)}
@@ -168,13 +168,13 @@ export function GoldenSlicesSection() {
       <div>
         <h3 className="text-base font-semibold text-ink">Golden slices</h3>
         <p className="text-xs text-ink-muted">
-          Put a part of a strategy Live on its own, without the rest of it. Each is bet at its own stake (1% to start), and goes back to Sim by itself if it stops
+          Put a part of a strategy on real money on its own, without the rest of it. Each is bet at its own stake (1% to start), and goes back to trial by itself if it stops
           holding up.
         </p>
       </div>
       {all.length === 0 && <p className="text-sm text-ink-muted">No slices are being watched yet. The finder on the Golden page suggests them.</p>}
-      <Group title="Live on their own" note="Real money, whatever the rest of the strategy is doing." slices={liveOwn} settings={settings} nameOf={nameOf} />
-      <Group title="Doing well, not Live" note="Proving themselves: gold is a full stake earned, outline a Live trial suggested." slices={proving} settings={settings} nameOf={nameOf} />
+      <Group title="On real money on their own" note="Real money, whatever the rest of the strategy is doing." slices={liveOwn} settings={settings} nameOf={nameOf} />
+      <Group title="Doing well, not on real money" note="Proving themselves: gold is a full stake earned, outline a real-money trial suggested." slices={proving} settings={settings} nameOf={nameOf} />
       {others.length > 0 && (
         <details className="rounded-lg border border-line px-3">
           <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-ink">

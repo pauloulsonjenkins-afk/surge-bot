@@ -32,8 +32,8 @@ export function BreakevenBar({
   const clamp = (v: number) => Math.max(0, Math.min(100, v));
   const above = hitRate >= breakeven;
   const gap = Math.round(Math.abs(hitRate - breakeven) * 10) / 10;
-  const gapText = gap === 0 ? "right on break-even" : `${gap} pts ${above ? "above" : "below"} break-even`;
-  const tip = `Hit rate ${hitRate}%. Break-even ${breakeven}%: the hit rate needed to make money at these prices. ${gapText[0]!.toUpperCase()}${gapText.slice(1)}.`;
+  const gapText = gap === 0 ? "right on break-even" : `${gap} points ${above ? "above" : "below"} break-even`;
+  const tip = `Win rate ${hitRate}%. Break-even ${breakeven}%: the win rate needed to make money at these prices. ${gapText[0]!.toUpperCase()}${gapText.slice(1)}.`;
   return (
     <span className="block" title={tip}>
       <span className="relative block h-1.5 rounded-full bg-surface-2" role="img" aria-label={tip}>

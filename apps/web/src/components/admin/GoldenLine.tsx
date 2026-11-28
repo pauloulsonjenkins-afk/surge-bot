@@ -28,17 +28,17 @@ export function GoldenLine({ pick }: { pick: PublicPick }) {
         };
         const what = cfg
           ? cfg.live
-            ? `Bet as Golden: Live at ${cfg.stakePct != null ? `${cfg.stakePct}%` : cfg.stake != null ? `£${cfg.stake}` : stakeOf()}`
-            : "Golden set to Sim: not bet"
+            ? `Bet as Golden: real money at ${cfg.stakePct != null ? `${cfg.stakePct}%` : cfg.stake != null ? `£${cfg.stake}` : stakeOf()}`
+            : "Golden set to trial: not bet"
           : strategyLive
             ? `Bet with its strategy at ${stakeOf()}`
-            : "Sim only: not bet";
+            : "Trial only: not bet";
         const status = !slice
           ? "being watched"
           : slice.status === "full"
             ? "full stake suggested"
             : slice.status === "trial"
-              ? "small Live trial suggested"
+              ? "small real-money trial suggested"
               : slice.status === "not holding up"
                 ? "not holding up"
                 : slice.status === "candidate"

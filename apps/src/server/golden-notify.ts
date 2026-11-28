@@ -165,11 +165,11 @@ export function goldenNotification(
   const strategyLive = settings.enabled && settings.strategies[key] === true;
   const what = own
     ? own.cfg.live && settings.enabled
-      ? `Bet Live${own.cfg.stakePct != null ? ` at ${own.cfg.stakePct}%` : ""}`
-      : "Sim: not bet"
+      ? `Bet with real money${own.cfg.stakePct != null ? ` at ${own.cfg.stakePct}%` : ""}`
+      : "Trial: not bet"
     : strategyLive
-      ? "Bet Live with its strategy"
-      : "Sim: not bet";
+      ? "Bet with real money, along with its strategy"
+      : "Trial: not bet";
 
   return {
     title: `${first ? "Golden alert" : "Doing well today"} · ${displayName(db, key)}`,

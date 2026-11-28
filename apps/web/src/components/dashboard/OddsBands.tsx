@@ -25,7 +25,7 @@ export function OddsBands({ bands, money }: { bands: OddsBand[] | undefined; mon
           <tr className="text-left text-xs text-ink-muted">
             <th scope="col" className="pb-1.5 font-normal">Odds</th>
             <th scope="col" className="pb-1.5 text-right font-normal">Picks</th>
-            <th scope="col" className="pb-1.5 text-right font-normal">Hit rate</th>
+            <th scope="col" className="pb-1.5 text-right font-normal">Win rate</th>
             <th scope="col" className="pb-1.5 text-right font-normal">Needs</th>
             {money && <th scope="col" className="pb-1.5 text-right font-normal">Return per £1</th>}
           </tr>

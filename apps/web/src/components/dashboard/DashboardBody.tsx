@@ -41,9 +41,9 @@ function SimpleBreakdown({ stats, isLoading }: { stats: HitRateStats | undefined
       title="Breakdown"
       subtitle={
         tab === "strategy"
-          ? "Hit rate from settled picks"
+          ? "Win rate from settled picks"
           : tab === "minute"
-            ? "Hit rate by the match minute the alert fired"
+            ? "Win rate by the match minute the alert fired"
             : "Busiest leagues first"
       }
     >

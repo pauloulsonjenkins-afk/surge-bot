@@ -84,7 +84,7 @@ export default function StrategyPage() {
     const ok = await dialog.confirm({
       title: `Archive ${names.name(row!.label)}?`,
       confirmLabel: "Archive",
-      body: <p>It disappears from the lists and goes back to Sim if it is Live. Its bets still count in every total. You can restore it from the Archive page.</p>,
+      body: <p>It disappears from the lists and goes back to trial if it is on real money. Its bets still count in every total. You can restore it from the Archive page.</p>,
     });
     if (ok) archive.mutate({ label: row!.label, archived: true, note: "Archived from its page." });
   }
@@ -98,7 +98,7 @@ export default function StrategyPage() {
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-ink">{names.name(row.label)}</h2>
           <p className="text-sm text-ink-muted">
-            {mode === "live" ? "Live: real money" : "Sim: recorded as if bet"}
+            {mode === "live" ? "Real money: bets placed on Betfair" : "Trial: recorded as if bet"}
             {trend && trend.label !== "Too few bets" && <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${trend.cls}`}>{trend.label}</span>}
           </p>
         </div>
@@ -110,10 +110,10 @@ export default function StrategyPage() {
       {archive.error && <p className="text-sm text-destructive">{archive.error.message}</p>}
 
       <div className="grid grid-cols-2 gap-2">
-        <Tile label={mode === "live" ? "Live, per £1" : "Sim, per £1"} value={money && money.counted > 0 ? roiText(money.roi) : "–"} tone={roiTone(money?.roi ?? null)} sub={`${money?.counted ?? 0} bets${(money?.counted ?? 0) < SAMPLE ? " · too few to be sure" : adj !== null ? ` · ${roiText(adj)} adjusted` : ""}`} />
+        <Tile label={mode === "live" ? "Real money, per £1" : "Trial, per £1"} value={money && money.counted > 0 ? roiText(money.roi) : "–"} tone={roiTone(money?.roi ?? null)} sub={`${money?.counted ?? 0} bets${(money?.counted ?? 0) < SAMPLE ? " · too few to be sure" : adj !== null ? ` · ${roiText(adj)} adjusted` : ""}`} />
         <Tile label="Last 7 days" value={last7 && last7.counted > 0 ? formatUnits(last7.units ?? 0) : "–"} tone={roiTone(last7?.units ?? null)} sub={`${last7?.counted ?? 0} bets`} />
         <Tile label="The 4 weeks before" value={prev28 && prev28.counted > 0 ? formatUnits(prev28.units ?? 0) : "–"} tone={roiTone(prev28?.units ?? null)} sub={`${prev28?.counted ?? 0} bets`} />
-        <Tile label={other === "live" ? "Live, per £1" : "Sim, per £1"} value={otherMoney && otherMoney.counted > 0 ? roiText(otherMoney.roi) : "–"} tone={roiTone(otherMoney?.roi ?? null)} sub={`${otherMoney?.counted ?? 0} bets · the other side, for comparison`} />
+        <Tile label={other === "live" ? "Real money, per £1" : "Trial, per £1"} value={otherMoney && otherMoney.counted > 0 ? roiText(otherMoney.roi) : "–"} tone={roiTone(otherMoney?.roi ?? null)} sub={`${otherMoney?.counted ?? 0} bets · the other side, for comparison`} />
       </div>
 
       {advice.length > 0 && (

@@ -23,7 +23,7 @@ export function HitRateTrendChart({ stats, isLoading }: { stats: HitRateStats | 
   }
 
   return (
-    <ChartCard title="Hit rate over time" subtitle="Running hit rate, all settled picks to date">
+    <ChartCard title="Win rate over time" subtitle="Running win rate, all settled picks to date">
       {isLoading ? (
         <Skeleton className="h-52 w-full" />
       ) : data.length < 2 ? (
@@ -49,7 +49,7 @@ export function HitRateTrendChart({ stats, isLoading }: { stats: HitRateStats | 
                     label={props.label}
                     payload={props.payload as unknown as ChartTooltipProps["payload"]}
                     series={{
-                      rate: { label: "Hit rate", color: "var(--chart)", format: (v) => `${v}%` },
+                      rate: { label: "Win rate", color: "var(--chart)", format: (v) => `${v}%` },
                       settled: { label: "Settled", color: "var(--ink-muted)", format: (v) => String(v) },
                     }}
                   />

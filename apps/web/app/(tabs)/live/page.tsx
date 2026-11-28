@@ -123,7 +123,7 @@ function placementChip(p: Placement): { label: string; tone: ChipTone; title: st
       return {
         label: `Placed by hand £${p.manual?.stake.toFixed(2) ?? "–"} @ ${p.manual?.odds.toFixed(2) ?? "–"}`,
         tone: "neutral",
-        title: "You logged this as placed yourself, so it counts as a live bet.",
+        title: "You logged this as placed yourself, so it counts as a real bet.",
       };
     case "beforeKickoff":
       return {
@@ -270,7 +270,7 @@ function ManualBet({ pick, placement }: { pick: LivePick; placement?: Placement 
           Log as placed
         </button>
       </div>
-      <p className="text-xs text-ink-muted">It then counts as a live bet at your stake and price, and settles with the alert&rsquo;s result.</p>
+      <p className="text-xs text-ink-muted">It then counts as a real bet at your stake and price, and settles with the alert&rsquo;s result.</p>
       {save.error && <p className="text-xs text-destructive">{save.error.message}</p>}
       </div>
     </details>
@@ -344,7 +344,7 @@ function PickRow({ pick, admin, placement, waiting = false }: { pick: LivePick; 
           </span>
           {/* The strategy's colour in this league (owner, 8 Nov 2026): information only. */}
           {admin && pick.leagueForm && pick.leagueForm.level !== "grey" && (
-            <span className="mt-0.5 flex items-center gap-1.5 text-xs tabular-nums text-ink-muted" title="How this strategy has done in this league, on its priced picks since its last rule change. Worked out hourly. Information only, unless you set a league filter on the strategy.">
+            <span className="mt-0.5 flex items-center gap-1.5 text-xs tabular-nums text-ink-muted" title="How this strategy has done in this league, on its picks with known odds since its last rule change. Worked out hourly. Information only, unless you set a league filter on the strategy.">
               <LeagueDot level={pick.leagueForm.level} />
               <span className="truncate">
                 {pick.leagueForm.level === "proven" ? "Proven" : pick.leagueForm.level === "green" ? "Green" : "Red"} league ·{" "}
@@ -611,7 +611,7 @@ function Featured({
   const sim = best.similar;
   const why =
     stage === "full" ? `${name}: Golden, full stake`
-    : stage === "trial" ? `${name}: Golden, Live trial`
+    : stage === "trial" ? `${name}: Golden, real-money trial`
     : stage === "candidate" ? `${name}: Golden candidate`
     : sim && sim.roiPct !== null ? `${name}: +${sim.roiPct}% per £1 over ${sim.n} similar bets`
     : name;
@@ -744,7 +744,7 @@ export default function LivePage() {
 
       {inPlay.length === 0 ? (
         <EmptyState
-          title={show === "live" ? "No Live bets in play" : show === "sim" ? "No Sim picks in play" : "Nothing in play"}
+          title={show === "live" ? "No real bets in play" : show === "sim" ? "No trial picks in play" : "Nothing in play"}
           detail="New alerts appear here as they arrive."
         />
       ) : (

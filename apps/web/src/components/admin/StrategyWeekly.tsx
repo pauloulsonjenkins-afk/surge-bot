@@ -25,7 +25,7 @@ const betCount = (t: WeekTally) => {
   const n = t.counted > 0 ? t.counted : t.picks;
   return `${n} bet${n === 1 ? "" : "s"}`;
 };
-const detail = (t: WeekTally) => `${t.won}–${t.lost} from ${t.picks} settled alerts, ${t.counted} priced · ${pct(t)} per £1 · ${money(t.profit)} in £`;
+const detail = (t: WeekTally) => `${t.won}–${t.lost} from ${t.picks} settled alerts, ${t.counted} with known odds · ${pct(t)} per £1 · ${money(t.profit)} in £`;
 
 /** Short names for watched slices' rows. */
 const SLICE_NAMES: Record<string, string> = { golden: "Golden", "two-apart": "2+ goals apart", "home-one-down": "Home team 1 down" };
@@ -252,7 +252,7 @@ export function StrategyWeekly({
   return (
     <div className="overflow-x-auto">
       <div className="sticky left-0 mb-1 flex flex-wrap items-baseline justify-between gap-2">
-        {showHelp && <p className="text-xs text-ink-muted">Each row shows its own mode&apos;s bets. A coloured line under a name is its other record.</p>}
+        {showHelp && <p className="text-xs text-ink-muted">Each row shows the bets of its current setting (real money or trial). A coloured line under a name is its other record.</p>}
         {withSlices.length > 0 && (
           <button type="button" onClick={() => setSlicesOpen(withSlices, !allOpen)} className="shrink-0 text-xs text-ink-muted underline">
             {allOpen ? "Fold all slices" : "Show all slices"}

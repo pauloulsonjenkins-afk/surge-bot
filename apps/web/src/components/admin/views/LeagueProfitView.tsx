@@ -42,7 +42,7 @@ function Figures({ t }: { t: LeagueTally }) {
     <span className={`shrink-0 text-right ${early ? "opacity-70" : ""}`}>
       <span className={`block text-base font-semibold tabular-nums ${early ? "text-ink" : toneOf(j.roi)}`}>{signedPct(j.roi)}</span>
       <span className="block text-xs text-ink-muted">
-        {j.adjusted !== null && `adjusted ${signedPct(j.adjusted)}`}
+        {j.adjusted !== null && `allowing for luck ${signedPct(j.adjusted)}`}
         {j.low !== null && j.high !== null && t.counted >= 10 && <span className="block">likely {signedPct(j.low)} to {signedPct(j.high)}</span>}
       </span>
       <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${VERDICT[j.verdict].cls}`}>{VERDICT[j.verdict].label}</span>
@@ -53,7 +53,7 @@ function Figures({ t }: { t: LeagueTally }) {
 function RecordLine({ t }: { t: LeagueTally }) {
   return (
     <span className="text-xs text-ink-muted">
-      <span className="text-hit">Won {t.won}</span> · <span className="text-loss">Lost {t.lost}</span> · {t.counted} priced · {nextCheck(t.counted)}
+      <span className="text-hit">Won {t.won}</span> · <span className="text-loss">Lost {t.lost}</span> · {t.counted} with known odds · {nextCheck(t.counted)}
     </span>
   );
 }
@@ -144,7 +144,7 @@ export default function LeagueProfitView() {
       tone: "money",
       confirmLabel: on ? "Stop it there" : "Restart it there",
       body: on ? (
-        <p>Its picks in {l.name} won&apos;t be bet any more. They&apos;re still recorded in Sim, so you can see whether stopping it was right and restart it here.</p>
+        <p>Its picks in {l.name} won&apos;t be bet any more. They&apos;re still recorded as trial bets, so you can see whether stopping it was right and restart it here.</p>
       ) : (
         <p>Its picks in {l.name} will be bet again, like everywhere else.</p>
       ),
@@ -163,14 +163,14 @@ export default function LeagueProfitView() {
           <>
             Is each league making money, and each strategy within it? Priced exactly as on Profit. A league showing a loss after a few dozen picks
             is usually just unlucky: with hundreds of leagues, some will look awful by chance. So nothing is called <b>clearly losing</b> until
-            the whole likely range is below zero, and you get a notification as a league, country or strategy-in-a-league reaches 50, 100, 250
-            and 500 priced picks. Tap a league to see each strategy in it; one losing clearly over {blockFrom}+ picks can be stopped there.
+            it is losing even after allowing for luck, and you get a notification as a league, country or strategy-in-a-league reaches 50, 100, 250
+            and 500 picks with known odds. Tap a league to see each strategy in it; one losing clearly over {blockFrom}+ picks can be stopped there.
           </>
         }
       />
 
       {blocked.length > 0 && (
-        <Card title="Stopped in a league" subtitle="Not bet there; their picks there are recorded in Sim, so you can check the call.">
+        <Card title="Stopped in a league" subtitle="Not bet there; their picks there are recorded as trial bets, so you can check the call.">
           <ul className="space-y-2 text-sm">
             {blocked.map((b) => (
               <li key={`${b.strategy}@${b.leagueKey}`} className="flex flex-wrap items-center justify-between gap-2">
@@ -188,7 +188,7 @@ export default function LeagueProfitView() {
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Segmented label="Period" value={period} onChange={setPeriod} options={[{ value: "ALL", label: "All" }, { value: "30D", label: "30D" }, { value: "7D", label: "7D" }]} />
-        <Segmented label="Live or Sim" value={mode} onChange={setMode} options={[{ value: "all", label: "Live + Sim" }, { value: "live", label: "Live" }, { value: "sim", label: "Sim" }]} />
+        <Segmented label="Real money or trial" value={mode} onChange={setMode} options={[{ value: "all", label: "Real money + trial" }, { value: "live", label: "Live" }, { value: "sim", label: "Sim" }]} />
         <Segmented label="Group by" value={group} onChange={(g) => { setGroup(g); setOpen(null); }} options={[{ value: "league", label: "League" }, { value: "country", label: "Country" }, { value: "tier", label: "Tier" }]} />
         <label className="flex items-center gap-1.5 text-xs text-ink-muted">
           Strategy
@@ -205,12 +205,12 @@ export default function LeagueProfitView() {
           Sort
           <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink">
             <option value="picks">Most picks</option>
-            <option value="adjusted">Adjusted return</option>
+            <option value="adjusted">Return, allowing for luck</option>
             <option value="roi">Return</option>
           </select>
         </label>
       </div>
-      {mode === "all" && <p className="text-xs text-ink-muted">Live + Sim: every pick counts, bet or simulated, so leagues build up a record faster.</p>}
+      {mode === "all" && <p className="text-xs text-ink-muted">Real money + trial: every pick counts, real or trial, so leagues build up a record faster.</p>}
 
       {error ? (
         <QueryError error={error} next="/more/admin/leagues?tab=profit" />

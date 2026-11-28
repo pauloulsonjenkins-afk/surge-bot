@@ -86,13 +86,13 @@ export function HeroRow({
       {money && unit === "units" && typeof c?.units === "number" ? (
         // Units: every bet counted as the same 1-unit stake, so a stake change can't skew the figure.
         <Hero
-          label={`${mode === "sim" ? "Sim units" : mode === "live" ? "Live units" : "Units"} · ${WINDOW[timeframe]}`}
+          label={`${mode === "sim" ? "Trial, at £1 a bet" : mode === "live" ? "Real money, at £1 a bet" : "Units"} · ${WINDOW[timeframe]}`}
           value={formatUnits(c.units)}
           tone={moneyTone(c.units)}
           sub={
             <>
               <span className="tabular-nums">
-                {formatNumber(c.counted)} priced bet{c.counted === 1 ? "" : "s"} · {money.profit === 0 ? "£0.00" : gbp(money.profit)} ·{" "}
+                {formatNumber(c.counted)} bet with known odds{c.counted === 1 ? "" : "s"} · {money.profit === 0 ? "£0.00" : gbp(money.profit)} ·{" "}
               </span>
               <Link href="/more/admin/winloss" className="underline hover:text-ink">
                 Profit
@@ -102,7 +102,7 @@ export function HeroRow({
         />
       ) : money ? (
         <Hero
-          label={`${mode === "sim" ? "Sim profit" : mode === "live" ? "Live profit" : "Profit"} · ${WINDOW[timeframe]}`}
+          label={`${mode === "sim" ? "Trial profit" : mode === "live" ? "Real-money profit" : "Profit"} · ${WINDOW[timeframe]}`}
           value={money.profit === 0 ? "£0.00" : gbp(money.profit)}
           tone={moneyTone(money.profit)}
           sub={
@@ -116,7 +116,7 @@ export function HeroRow({
         />
       ) : (
         <Hero
-          label="Hit rate"
+          label="Win rate"
           value={hitRate}
           tone="ink"
           sub={settled === 0 ? "No settled picks yet" : `from ${formatNumber(settled)} settled${c?.range ? ` · likely ${rangeText(c.range)}` : ""}`}
@@ -128,12 +128,12 @@ export function HeroRow({
         <Figure label="Won and lost" value={record} />
         {money ? (
           <Figure
-            label="Hit rate"
+            label="Win rate"
             value={hitRate}
             below={<span className="mt-1.5 block"><BreakevenBar hitRate={totals.hitRate} breakeven={breakeven} range={c?.range ?? null} /></span>}
           />
         ) : (
-          <Figure label="Break-even hit rate" value={breakeven === null ? "–" : `${breakeven}%`} below={<span className="mt-1.5 block"><BreakevenBar hitRate={totals.hitRate} breakeven={breakeven} range={c?.range ?? null} /></span>} />
+          <Figure label="Break-even win rate" value={breakeven === null ? "–" : `${breakeven}%`} below={<span className="mt-1.5 block"><BreakevenBar hitRate={totals.hitRate} breakeven={breakeven} range={c?.range ?? null} /></span>} />
         )}
         <Figure label="Average odds" value={c?.avgOdds == null ? "–" : c.avgOdds.toFixed(2)} />
       </dl>
@@ -189,7 +189,7 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
   let tone: keyof typeof TONE;
   if (money && c.roi !== null && c.counted > 0) {
     const pence = Math.round(Math.abs(c.roi) * 1000) / 10;
-    const over = `over ${formatNumber(c.counted)} priced pick${c.counted === 1 ? "" : "s"}`;
+    const over = `over ${formatNumber(c.counted)} pick with known odds${c.counted === 1 ? "" : "s"}`;
     const lead = c.roi > 0 ? `Making ${pence}p per £1 staked ${over}` : c.roi < 0 ? `Losing ${pence}p per £1 staked ${over}` : `Breaking even ${over}`;
     const breakeven = c.breakevenEffective ?? c.breakeven;
     // The engine's own verdict, when it sends one: the same call its stake rules act on (verdict.ts).
@@ -197,7 +197,7 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
       const likely = roiRangeText(c.roiRange);
       const tail =
         c.verdict === "too early"
-          ? "Too early to say: under 100 priced picks."
+          ? "Too early to say: under 100 picks with known odds."
           : `${VERDICT_LABEL[c.verdict]}${likely ? `: the true return is ${likely}` : ""}.`;
       return (
         <p className="text-sm">
@@ -207,16 +207,16 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
           {c.oddsKnown < c.settled && c.oddsKnown > 0 && (
             <span className="text-ink-muted"> Odds known for {formatNumber(c.oddsKnown)} of {formatNumber(c.settled)} picks.</span>
           )}
-          {c.assumed ? <span className="text-warn"> {formatNumber(c.assumed)} priced at an assumed price set on Profit, so the return is partly a guess.</span> : null}
+          {c.assumed ? <span className="text-warn"> {formatNumber(c.assumed)} priced at an estimated price set on Profit, so the return is partly a guess.</span> : null}
         </p>
       );
     }
     const clearlyAbove = c.range != null && breakeven !== null && c.range.low > breakeven;
     const clearlyBelow = c.range != null && breakeven !== null && c.range.high < breakeven;
-    if (c.roi < 0 && clearlyAbove) text = `${lead}, though the hit rate is clearly above break-even: look at the stakes on the losing strategies.`;
-    else if (c.roi > 0 && clearlyBelow) text = `${lead}, though the hit rate is below break-even: a few long prices are carrying it.`;
-    else if (clearlyAbove) text = `${lead}, and the hit rate is clearly above break-even.`;
-    else if (clearlyBelow) text = `${lead}, and the hit rate is clearly below break-even.`;
+    if (c.roi < 0 && clearlyAbove) text = `${lead}, though the win rate is clearly above break-even: look at the stakes on the losing strategies.`;
+    else if (c.roi > 0 && clearlyBelow) text = `${lead}, though the win rate is below break-even: a few long prices are carrying it.`;
+    else if (clearlyAbove) text = `${lead}, and the win rate is clearly above break-even.`;
+    else if (clearlyBelow) text = `${lead}, and the win rate is clearly below break-even.`;
     else text = `${lead}. Too few picks to call it yet.`;
     tone = moneyTone(c.roi);
   } else {
@@ -231,7 +231,7 @@ function Verdict({ stats, money }: { stats: HitRateStats; money: boolean }) {
         <span className="text-ink-muted"> Odds known for {formatNumber(c.oddsKnown)} of {formatNumber(c.settled)} picks.</span>
       )}
       {c.assumed ? (
-        <span className="text-warn"> {formatNumber(c.assumed)} priced at an assumed price set on Profit, so the return is partly a guess.</span>
+        <span className="text-warn"> {formatNumber(c.assumed)} priced at an estimated price set on Profit, so the return is partly a guess.</span>
       ) : null}
     </p>
   );

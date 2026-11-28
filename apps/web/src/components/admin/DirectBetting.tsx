@@ -19,14 +19,14 @@ const money = (n: number) => gbp(n, false);
 
 const MODES: ReadonlyArray<{ value: DirectMode; label: string }> = [
   { value: "off", label: "Off" },
-  { value: "shadow", label: "Shadow" },
-  { value: "live", label: "Live" },
+  { value: "shadow", label: "Practice" },
+  { value: "live", label: "On" },
 ];
 
 const MODE_TEXT: Record<DirectMode, string> = {
-  off: "GoalBrew places no bets. Live strategies are recorded but nothing is bet.",
+  off: "GoalBrew places no bets. Real-money strategies are recorded but nothing is bet.",
   shadow:
-    "For each pick going to bet, GoalBrew works out what it would bet itself (market, price, checks) and lists it below, without placing anything. Check it before going Live.",
+    "For each pick going to bet, GoalBrew works out what it would bet itself (market, price, checks) and lists it below, without placing anything. Check it before going on real money.",
   live: "GoalBrew places your bets on Betfair itself, with every check below.",
 };
 
@@ -40,7 +40,7 @@ export function ModeCard({ data }: { data: DirectStatus }) {
     if (mode === "live") {
       const ok = await dialog.confirm({
         title: "Place bets from GoalBrew?",
-        confirmLabel: "Go Live",
+        confirmLabel: "Go on real money",
         tone: "money",
         body: (
           <>
@@ -55,9 +55,9 @@ export function ModeCard({ data }: { data: DirectStatus }) {
       if (!ok) return;
     } else if (s.mode === "live") {
       const ok = await dialog.confirm({
-        title: mode === "off" ? "Stop direct betting?" : "Back to Shadow?",
-        confirmLabel: mode === "off" ? "Switch off" : "Back to Shadow",
-        body: <p>No more bets are placed: Live strategies&apos; new picks are recorded but not bet. Bets already placed stay on Betfair.</p>,
+        title: mode === "off" ? "Stop direct betting?" : "Back to practice?",
+        confirmLabel: mode === "off" ? "Switch off" : "Back to practice",
+        body: <p>No more bets are placed: real-money strategies&apos; new picks are recorded but not bet. Bets already placed stay on Betfair.</p>,
       });
       if (!ok) return;
     }
@@ -72,7 +72,7 @@ export function ModeCard({ data }: { data: DirectStatus }) {
       {save.error && <p className="mt-2 text-xs text-destructive">{save.error.message}</p>}
       {blocked && (
         <p className="mt-2 text-xs text-warn">
-          Live is set but the engine doesn&apos;t allow it, so it&apos;s acting as Shadow. Add BF_DIRECT_BETTING = allow to the engine in DigitalOcean.
+          It&apos;s set to On but the engine doesn&apos;t allow it, so it&apos;s only practising. Add BF_DIRECT_BETTING = allow to the engine in DigitalOcean.
         </p>
       )}
       {s.mode !== "off" && <p className="mt-2 text-xs text-ink-muted">Taking picks sent since {timeFmt.format(new Date(s.since))}.</p>}
@@ -121,16 +121,16 @@ export function Readiness({ data }: { data: DirectStatus }) {
     {
       ok: data.sendingOn,
       label: "Betting switched on",
-      detail: data.sendingOn ? "Strategies set Live on Strategies are bet." : "The Betting on / off switch is off, so nothing is bet either way.",
+      detail: data.sendingOn ? "Strategies set to real money on Strategies are bet." : "The Betting on / off switch is off, so nothing is bet either way.",
     },
     {
       ok: r.liveAllowed,
-      label: "Engine allows Live",
-      detail: r.liveAllowed ? "BF_DIRECT_BETTING is set to allow." : "Live stays locked until BF_DIRECT_BETTING = allow is added to the engine in DigitalOcean. Shadow works without it.",
+      label: "Engine allows real bets",
+      detail: r.liveAllowed ? "BF_DIRECT_BETTING is set to allow." : "Real bets stay locked until BF_DIRECT_BETTING = allow is added to the engine in DigitalOcean. Practice works without it.",
     },
   ];
   return (
-    <Card title="Ready for Live?" subtitle={r.checkedAt ? `Checked ${timeFmt.format(new Date(r.checkedAt))}` : undefined}>
+    <Card title="Ready for real money?" subtitle={r.checkedAt ? `Checked ${timeFmt.format(new Date(r.checkedAt))}` : undefined}>
       <ul className="space-y-2.5">
         {rows.map((row) => (
           <li key={row.label} className="flex gap-2.5">
@@ -361,7 +361,7 @@ export function Activity({ bets }: { bets: DirectBetRow[] }) {
       }
     >
       {bets.length === 0 ? (
-        <p className="text-xs text-ink-muted">Nothing yet. Picks show here once direct betting is in Shadow or Live and a Live strategy alerts.</p>
+        <p className="text-xs text-ink-muted">Nothing yet. Picks show here once direct betting is in practice or on and a real-money strategy alerts.</p>
       ) : (
         <>
         <ul className="divide-y divide-line">
@@ -372,7 +372,7 @@ export function Activity({ bets }: { bets: DirectBetRow[] }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs tabular-nums text-ink-muted">{timeFmt.format(new Date(b.createdAt))}</span>
                   <Chip tone={st.tone}>{st.label}</Chip>
-                  {b.mode === "shadow" && <Chip tone="muted">Shadow</Chip>}
+                  {b.mode === "shadow" && <Chip tone="muted">Practice</Chip>}
                   <span className="text-xs text-ink-muted">{b.strategy}</span>
                 </div>
                 <p className="mt-1 text-sm text-ink">

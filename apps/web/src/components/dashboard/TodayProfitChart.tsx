@@ -24,7 +24,7 @@ export function TodayProfitChart({ mode, strategy }: { mode: PickMode; strategy:
 
   return (
     <ChartCard
-      title={inUnits ? "Today’s units" : "Today’s profit"}
+      title={inUnits ? "Today, at £1 a bet" : "Today’s profit"}
       subtitle={`Running total${inUnits ? " in units (every bet as the same 1-unit stake)" : ""} as today’s picks settle, by the time each alert came in`}
     >
       {winLoss.isLoading ? (

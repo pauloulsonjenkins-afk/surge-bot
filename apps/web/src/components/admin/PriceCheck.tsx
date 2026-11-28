@@ -49,7 +49,7 @@ export function PriceCheck() {
         earliest sign a strategy has a real edge, well before enough results come in to prove it.
       </p>
       <p className="mt-1 text-xs text-ink-muted">
-        Only the kick-off column is a fair verdict. The in-play columns leave out every pick a goal settled within those minutes, so the strategies that
+        Only the kick-off column is a fair answer. The in-play columns leave out every pick a goal settled within those minutes, so the strategies that
         win quickest look worst; no suggestion uses them. Judge in-play strategies by their return. Last 30 days; faded = fewer than {ENOUGH} checks.
       </p>
       {error ? (
@@ -79,8 +79,8 @@ export function PriceCheck() {
             <thead className="text-xs text-ink-muted">
               <tr>
                 <th className="py-1.5 pr-2 font-medium">Strategy</th>
-                <th className="px-2 font-medium">2 min, vs typical</th>
-                <th className="px-2 font-medium">5 min, vs typical</th>
+                <th className="px-2 font-medium">2 min, vs usual</th>
+                <th className="px-2 font-medium">5 min, vs usual</th>
                 <th className="px-2 font-medium">At kick-off</th>
               </tr>
             </thead>
@@ -98,7 +98,7 @@ export function PriceCheck() {
             </tbody>
           </table>
           <p className="mt-2 text-xs text-ink-muted">
-            Typical in-play drift for back bets: {data.typical.t2 !== undefined ? `${signed(data.typical.t2)} at 2 min` : "–"}
+            Usual price move in play for back bets: {data.typical.t2 !== undefined ? `${signed(data.typical.t2)} at 2 min` : "–"}
             {data.typical.t5 !== undefined ? `, ${signed(data.typical.t5)} at 5 min` : ""}; LAY strategies are compared with other lays
             {data.typicalLay?.t2 !== undefined ? ` (${signed(data.typicalLay.t2)} at 2 min)` : ""}. The number after each figure is how many checks it’s from.
           </p>

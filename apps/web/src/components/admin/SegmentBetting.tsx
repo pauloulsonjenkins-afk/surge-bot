@@ -35,13 +35,13 @@ export function useSliceLive(strategyKey: string, strategyName: string, segment:
   async function toggleLive(next: boolean, p: number | null): Promise<void> {
     if (next) {
       const ok = await dialog.confirm({
-        title: `Bet ${name} alerts Live?`,
+        title: `Bet ${name} alerts with real money?`,
         tone: "money",
-        confirmLabel: "Bet them Live",
+        confirmLabel: "Bet them with real money",
         body: (
           <>
             <p>
-              {strategyName}&apos;s {name} alerts will be bet with real money at {stakeText(p)}, whether {strategyName} itself is Live or in Sim. Your highest stake,
+              {strategyName}&apos;s {name} alerts will be bet with real money at {stakeText(p)}, whether {strategyName} itself is on real money or on trial. Your highest stake,
               match limit, daily loss stop and its stop loss still apply.
             </p>
             <p className="text-xs text-ink-muted">For all of {strategyName}&apos;s picks (this slice is a part of them):</p>
@@ -166,7 +166,7 @@ export function SegmentBetting({
             Save stake
           </button>
         )}
-        <div className="inline-flex rounded-md border border-line p-0.5" role="radiogroup" aria-label={`${name}: Sim or Live`} aria-describedby={statusId} onKeyDown={onArrow}>
+        <div className="inline-flex rounded-md border border-line p-0.5" role="radiogroup" aria-label={`${name}: trial or real money`} aria-describedby={statusId} onKeyDown={onArrow}>
           {([false, true] as const).map((v) => {
             const checked = cfg !== null && live === v;
             // One stop in the tab order: the chosen option, or Sim while neither is chosen (following the strategy).
@@ -200,7 +200,7 @@ export function SegmentBetting({
       )}
       {live && cfg && (
         <p className="mt-1 text-ink-muted">
-          Safety: goes back to Sim by itself if it stops being Golden, or its own Live bets lose more than {Math.abs((safety?.worstRoi ?? -0.05) * 100)}% per £1 over{" "}
+          Safety: goes back to trial by itself if it stops being Golden, or its own real bets lose more than {Math.abs((safety?.worstRoi ?? -0.05) * 100)}% per £1 over{" "}
           {safety?.minBets ?? 30}+ bets.
         </p>
       )}

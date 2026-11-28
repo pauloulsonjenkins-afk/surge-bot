@@ -66,10 +66,10 @@ export function BrewGauge({
         ? `${toBreakEven} of the ${settled} winning would break even at today's odds, so you're ahead.`
         : `You'd need ${toBreakEven} of the ${settled} to win to break even at today's odds.`;
   const summary = loading
-    ? `Live today ${gbp(net, false)}.`
+    ? `Real money today ${gbp(net, false)}.`
     : hitRate === null
-      ? `Live today ${gbp(net, false)}. Nothing settled yet.`
-      : `Live today ${gbp(net, false)}. ${won} of ${settled} bets won. ${plain ?? ""}`;
+      ? `Real money today ${gbp(net, false)}. Nothing settled yet.`
+      : `Real money today ${gbp(net, false)}. ${won} of ${settled} bets won. ${plain ?? ""}`;
 
   return (
     <section aria-label={summary} className="relative mx-auto w-full max-w-[390px]">
@@ -107,7 +107,7 @@ export function BrewGauge({
         )}
       </svg>
       <div className="absolute inset-x-0 top-[37%] text-center">
-        <p className="text-[13px] text-ink-muted">Live today</p>
+        <p className="text-[13px] text-ink-muted">Real money today</p>
         <p className="font-display text-[3.25rem] font-extrabold leading-[1.1] tracking-tight tabular-nums [font-stretch:125%]">
           <Flash value={net}>
             <span className={toneOf(net)}>{gbp(net, false)}</span>

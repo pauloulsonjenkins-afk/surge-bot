@@ -16,7 +16,7 @@ function BettingStatus() {
   const live = Object.values(s.strategies).filter(Boolean).length;
   return (
     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${s.enabled ? "bg-hit/15 text-hit" : "bg-surface-2 text-ink-muted"}`}>
-      {s.enabled ? `On · ${live} Live` : "Off"}
+      {s.enabled ? `On · ${live} Real money` : "Off"}
     </span>
   );
 }

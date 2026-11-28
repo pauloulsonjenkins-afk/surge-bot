@@ -41,7 +41,7 @@ test("a Live back bet that would cancel a Live LAY on the match isn't placed; an
   db.upsertLivePick("c", 3, alert("Blistering Momentum", [1, 0], "Other FC vs Third FC"), parseAlert(alert("Blistering Momentum", [1, 0], "Other FC vs Third FC")), at, at);
   const second = buildFeed(db, { markSent: true, direct: true });
   assert.equal(second.newlySent, 1, "only the other match");
-  assert.match(second.skipped.find((s) => /cancel/.test(s.reason))!.reason, /Would cancel out LAY next goal · Wake-up Call 1 goal apart's Live bet/);
+  assert.match(second.skipped.find((s) => /cancel/.test(s.reason))!.reason, /Would cancel out LAY next goal · Wake-up Call 1 goal apart's real bet/);
 
   // By hand too.
   const p = db.listLivePicks(10).find((x) => x.chatId === "c" && x.messageId === 2)!;

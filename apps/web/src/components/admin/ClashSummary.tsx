@@ -21,20 +21,20 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  */
 export function ClashSummary({ strategyKey, compact = false }: { strategyKey: string; compact?: boolean }) {
   const q = useClashCheck(strategyKey);
-  if (q.isLoading) return <p className="text-xs text-ink-muted">Checking for clashes with your Live strategies…</p>;
+  if (q.isLoading) return <p className="text-xs text-ink-muted">Checking for clashes with your real-money strategies…</p>;
   if (q.error || !q.data) return <p className="text-xs text-warn">Couldn&apos;t check for clashes: {q.error instanceof Error ? q.error.message : "no answer"}.</p>;
   const c = q.data;
   if (c.shared === 0)
     return (
       <p className={`text-xs ${compact ? "text-ink-muted" : "text-hit"}`}>
-        No clashes: none of its {plural(c.picks, "pick")} in the last {c.days} days were on a match with a Live bet.
+        No clashes: none of its {plural(c.picks, "pick")} in the last {c.days} days were on a match with a real bet.
       </p>
     );
   const worry = c.totals.cancels > 0 || c.totals.offsets > 0;
   return (
     <div className="space-y-1 text-xs">
       <p className={worry ? "text-warn" : "text-ink"}>
-        <strong>Clash check, last {c.days} days:</strong> {c.shared} of its {plural(c.picks, "pick")} were on a match with a Live bet.
+        <strong>Clash check, last {c.days} days:</strong> {c.shared} of its {plural(c.picks, "pick")} were on a match with a real bet.
       </p>
       <ul className="space-y-0.5">
         {c.against.slice(0, compact ? 3 : 6).map((r) => (

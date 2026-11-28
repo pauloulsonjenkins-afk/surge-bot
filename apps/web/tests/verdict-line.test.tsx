@@ -14,7 +14,7 @@ test("under 100 bets it says too early, with the count, and no range to read int
 
 test("with enough bets it gives the verdict, the count and the likely range of the return", () => {
   const html = renderToStaticMarkup(<VerdictLine m={{ verdict: "no clear edge", counted: 212, roiRange: { low: -0.077, high: 0.2 } }} />);
-  assert.match(html, /No clear edge/);
+  assert.match(html, /No clear advantage/);
   assert.match(html, /212 bets/);
   assert.match(html, /likely −7\.7% to \+20%/);
   assert.match(renderToStaticMarkup(<VerdictLine m={{ verdict: "probably winning", counted: 400, roiRange: null }} />), /text-hit[^>]*>Probably winning/);

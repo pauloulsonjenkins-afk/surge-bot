@@ -388,7 +388,7 @@ export type GoldenStatus = "quiet" | "candidate" | "trial" | "full" | "not holdi
  * before a next one means anything). Shared by the Golden page (a number on the card) and the daily review's
  * "worth watching" line, so the two always agree. */
 export function nextStageOf(status: GoldenStatus, counted: number): { name: string; threshold: number; picksAway: number } | null {
-  const next = status === "quiet" ? { threshold: CANDIDATE_FROM, name: "a candidate" } : status === "candidate" ? { threshold: TRIAL_FROM, name: "a Live trial" } : status === "trial" ? { threshold: FULL_FROM, name: "full stake" } : null;
+  const next = status === "quiet" ? { threshold: CANDIDATE_FROM, name: "a candidate" } : status === "candidate" ? { threshold: TRIAL_FROM, name: "a real-money trial" } : status === "trial" ? { threshold: FULL_FROM, name: "full stake" } : null;
   if (!next) return null;
   const picksAway = next.threshold - counted;
   return picksAway > 0 ? { ...next, picksAway } : null;
@@ -451,7 +451,7 @@ export function tidySlices<T extends TidyInput>(slices: T[], signatures: Map<str
         : inn.roi !== null && inn.counted >= SHELVE.losingFrom && inn.roi < 0
           ? `Live, and losing over ${inn.counted} picks`
           : own && own.n >= 15 && own.roi !== null && own.roi < 0
-            ? `Live, and its own Live bets are losing over ${own.n}`
+            ? `on real money, and its own real bets are losing over ${own.n}`
             : null;
     return { ...s, shelved, watchOut };
   });
@@ -656,7 +656,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
     const rec = from ? liveSinceRecord(db, strategyKey, id, from) : null;
     const pct = (n: number) => `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${Math.abs(Math.round(n * 1000) / 10)}%`;
     if (!rec || rec.n < SAFETY.minBets || rec.roi === null || rec.roi >= SAFETY.worstRoi) continue;
-    const why = `its own Live bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
+    const why = `its own real bets are ${pct(rec.roi)} per £1 over ${rec.n} bets`;
     withChangeSource("Golden safety", () => saveSendingSettings(db, { segmentBets: { [k]: { live: false } } }));
     const name = `${displayName(db, strategyKey)}, ${(slice?.label ?? "Golden").replace(/^Golden: /, "")}`;
     off.push(name);
@@ -666,7 +666,7 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
   // One notification for the check, however many slices it switched (they used to arrive one each, all at once).
   if (lines.length > 0)
     await sendPush(db, {
-      title: lines.length === 1 ? "Golden switched to Sim" : `${lines.length} Golden slices switched to Sim`,
+      title: lines.length === 1 ? "Golden switched to trial" : `${lines.length} Golden slices switched to trial`,
       body: `${lines.join("\n")}\nTheir alerts aren't bet until you turn them back on.`,
       url: "/more/admin/golden",
       tag: "golden-off",
@@ -675,14 +675,14 @@ export async function monitorGoldenBets(db: EngineDb, now = new Date()): Promise
 }
 
 const STAGE_MESSAGE: Record<ToldStage, (name: string) => { title: string; body: string }> = {
-  candidate: (name) => ({ title: "Golden candidate", body: `${name} has made ${CANDIDATE_FROM}+ priced picks in profit — worth a look.` }),
+  candidate: (name) => ({ title: "Golden candidate", body: `${name} has made ${CANDIDATE_FROM}+ picks with known odds in profit — worth a look.` }),
   trial: (name) => ({
-    title: "Golden: small Live trial suggested",
-    body: `${name} has made ${TRIAL_FROM}+ priced picks, in profit in both halves of its record. Worth a small Live trial — 1% stake, with a stop loss — the choice is yours.`,
+    title: "Golden: small real-money trial suggested",
+    body: `${name} has made ${TRIAL_FROM}+ picks with known odds, in profit in both its older and newer bets. Worth a small real-money trial — 1% stake, with a stop loss — the choice is yours.`,
   }),
   full: (name) => ({
     title: "Golden: full stake suggested",
-    body: `${name} has made ${FULL_FROM}+ priced picks and its own Live trial is in profit. Worth its full stake now — the choice is yours.`,
+    body: `${name} has made ${FULL_FROM}+ picks with known odds and its own real-money trial is in profit. Worth its full stake now — the choice is yours.`,
   }),
 };
 

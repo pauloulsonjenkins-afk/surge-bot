@@ -77,7 +77,7 @@ function PickLine({ pick, admin, pairedWith = null }: { pick: Row; admin: boolea
           <p className="mt-0.5 text-xs text-ink-muted">
             ↳ LAY of the pick above
             {priced(pairedWith) && priced(pick) ? ` · together ${gbp(priced(pairedWith)!.profit + priced(pick)!.profit)}` : ""}
-            {modeOf(pick) === "sim" && modeOf(pairedWith) === "sim" ? " (both Sim, so nothing was bet)" : ""}
+            {modeOf(pick) === "sim" && modeOf(pairedWith) === "sim" ? " (both on trial, so nothing was bet)" : ""}
           </p>
         )}
         <p className="mt-0.5 truncate text-xs text-ink-muted">{betText(pick.market, pick.selection) ?? "No market set"}</p>
@@ -92,7 +92,7 @@ function PickLine({ pick, admin, pairedWith = null }: { pick: Row; admin: boolea
             {admin && money?.real ? " · Betfair" : ""}
             {pick.resultOverridden ? " · amended" : ""}
           </span>
-          {admin && money?.assumed ? <span className="font-normal text-warn"> · assumed odds</span> : null}
+          {admin && money?.assumed ? <span className="font-normal text-warn"> · estimated odds</span> : null}
         </p>
       </div>
       {admin && <ChevronDown size={14} aria-hidden className={`mt-1 shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />}
@@ -238,7 +238,7 @@ export default function TradeLogPage() {
                     <span className="text-hit">{g.hits}</span>
                     <span className="text-ink-muted">–</span>
                     <span className="text-loss">{misses}</span>
-                    <span className="text-ink-muted"> · {Math.round((g.hits / g.picks) * 100)}% hit rate</span>
+                    <span className="text-ink-muted"> · {Math.round((g.hits / g.picks) * 100)}% win rate</span>
                   </p>
                 </div>
               </button>
@@ -275,8 +275,8 @@ export default function TradeLogPage() {
 
       {admin && (
         <p className="text-center text-xs text-ink-muted">
-          Live bets matched on Betfair (marked “Betfair”) show the real stake and profit; other figures are estimated from the
-          alert’s odds, as on Profit. Sim picks show what the bet would have made. Not placed: sent to your betting
+          Real bets matched on Betfair (marked “Betfair”) show the real stake and profit; other figures are estimated from the
+          alert’s odds, as on Profit. Trial picks show what the bet would have made. Not placed: sent to your betting
           software but never bet, so nothing was staked.
         </p>
       )}

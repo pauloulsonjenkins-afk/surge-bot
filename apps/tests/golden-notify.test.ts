@@ -35,11 +35,11 @@ test("off until a slice is switched on; then one notification saying what happen
   assert.match(m!.title, /^Golden alert · /);
   assert.match(m!.body, /2\+ goals apart/);
   assert.match(m!.body, /Lyon v Nice, 63'/);
-  assert.match(m!.body, /Sim: not bet/);
+  assert.match(m!.body, /Trial: not bet/);
   assert.deepEqual(m!.muteSlice, { strategyKey: KEY, id: "two-apart", name: "2+ goals apart" });
   // Its own Golden betting Live: said so.
   saveSendingSettings(db, { enabled: true, segmentBets: { [`${KEY}#two-apart`]: { live: true, stakePct: 2 } } });
-  assert.match(goldenNotification(db, p, [twoApart], NOON)!.body, /Bet Live at 2%/);
+  assert.match(goldenNotification(db, p, [twoApart], NOON)!.body, /Bet with real money at 2%/);
 });
 
 test("an alert in two switched-on slices is one notification naming both; a switched-off slice isn't named", () => {

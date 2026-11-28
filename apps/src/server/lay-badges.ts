@@ -135,14 +135,14 @@ export function layGroupRecords(db: EngineDb, now = new Date()): LayGroupRecord[
 }
 
 const STAGE_MESSAGE: Record<ToldStage, (name: string) => { title: string; body: string }> = {
-  candidate: (name) => ({ title: "LAY candidate", body: `${name} has made ${CANDIDATE_FROM}+ priced picks in profit per £1 of liability — worth a look.` }),
+  candidate: (name) => ({ title: "LAY candidate", body: `${name} has made ${CANDIDATE_FROM}+ picks with known odds in profit per £1 of liability — worth a look.` }),
   trial: (name) => ({
-    title: "LAY: small Live trial suggested",
-    body: `${name} has made ${TRIAL_FROM}+ priced picks, in profit in both halves of its record. Worth a small Live trial — 1% liability, with a stop loss — the choice is yours.`,
+    title: "LAY: small real-money trial suggested",
+    body: `${name} has made ${TRIAL_FROM}+ picks with known odds, in profit in both its older and newer bets. Worth a small real-money trial — 1% liability, with a stop loss — the choice is yours.`,
   }),
   full: (name) => ({
     title: "LAY: full stake suggested",
-    body: `${name} has made ${FULL_FROM}+ priced picks and its own Live bets are in profit. Worth its full stake now — the choice is yours.`,
+    body: `${name} has made ${FULL_FROM}+ picks with known odds and its own real bets are in profit. Worth its full stake now — the choice is yours.`,
   }),
 };
 

@@ -54,7 +54,7 @@ export function betSummary(s: SendingStrategy, settings: SendingSettings): { tex
   // A lay: the stake is the liability (the most one bet can lose), capped by a maximum lay price.
   if (isLay(s)) {
     const hasStop = s.stopLoss !== null && (s.stopLoss.dailyLoss !== null || s.stopLoss.lossRun !== null);
-    const parts = [marketName(s.market), stakeText(s) ? `${stakeText(s)} liability` : "No liability set yet", s.maxLayOdds != null ? `max lay ${s.maxLayOdds.toFixed(2)}` : null, hasStop ? "stop loss set" : null];
+    const parts = [marketName(s.market), stakeText(s) ? `${stakeText(s)} liability` : "Not set yet: the most it can lose", s.maxLayOdds != null ? `max lay ${s.maxLayOdds.toFixed(2)}` : null, hasStop ? "stop loss set" : null];
     return { text: parts.filter(Boolean).join(" · "), warn: !hasStake(s) };
   }
   if (!canBet(s, settings)) return { text: "Can't be bet yet: set its market under Betting → Limits and switches → Bet wording", warn: true };
@@ -123,12 +123,12 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
     const stop = s.stopLoss;
     const hasStop = stop !== null && (stop.dailyLoss !== null || stop.lossRun !== null);
     return dialog.confirm({
-      title: `Put ${names.name(s.label)} Live?`,
+      title: `Put ${names.name(s.label)} on real money?`,
       tone: "money",
-      confirmLabel: s.stakePct != null ? `Put Live at ${s.stakePct}% of balance` : `Put Live at £${stake.toFixed(2)}`,
+      confirmLabel: s.stakePct != null ? `Put on real money at ${s.stakePct}% of balance` : `Put on real money at £${stake.toFixed(2)}`,
       details: [
         isLay(s)
-          ? { label: "Liability per bet (most it can lose)", value: stakeText(s) ?? `£${stake.toFixed(2)}` }
+          ? { label: "Most it can lose per bet", value: stakeText(s) ?? `£${stake.toFixed(2)}` }
           : { label: "Stake per bet", value: stakeText(s) ?? `£${stake.toFixed(2)}` },
         isLay(s)
           ? { label: "Maximum lay price", value: s.maxLayOdds != null ? s.maxLayOdds.toFixed(2) : <span className="text-warn">None set</span> }
@@ -149,23 +149,23 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
               Sim, -£11.08 Live). The suggestion's own Apply goes Live at a trial stake; a manual switch skips that. */}
           {ready === false && !isLay(s) && (
             <p className="rounded-lg bg-warn/10 p-3 text-sm">
-              <strong>Not ready by GoalBrew&apos;s rule</strong>, which needs 200+ priced Sim bets making money in both the older and newer half. A good Sim run on
-              fewer is often luck. If you go Live anyway, use a small trial stake (1% of the balance) and let the stake ladder raise it.
+              <strong>Not ready by GoalBrew&apos;s rule</strong>, which needs 200+ trial bets with known odds making money in both the older and newer half. A good trial run on
+              fewer is often luck. If you go on real money anyway, use a small trial stake (1% of the balance) and let the stake ladder raise it.
             </p>
           )}
           {ready === true && (
-            <p className="text-sm text-hit">Ready by GoalBrew&apos;s rule. The suggestion&apos;s Apply button puts it Live at a 1% trial stake; this switch uses the stake below.</p>
+            <p className="text-sm text-hit">Ready by GoalBrew&apos;s rule. The suggestion&apos;s Apply button puts it on real money at a 1% starting stake; this switch uses the stake below.</p>
           )}
           <p>Its new picks will be bet with real money{settings.enabled ? "" : " once betting is switched on (Betting)"}.</p>
           {/* 28 Oct 2026: a strategy green in Sim showed red the moment it went Live, which read as "going Live made it lose". */}
           <p className="text-xs text-ink-muted">
-            Live and Sim are separate records. Once Live, its row shows its <em>Live</em> bets only, which can be red even though its Sim record is green (or the
-            reverse). Its Sim record isn&apos;t lost: it still shows beside the Live one.
+            Real money and trial are separate records. Once on real money, its row shows its <em>Real money</em> bets only, which can be red even though its trial record is green (or the
+            reverse). Its trial record isn&apos;t lost: it still shows beside the real-money one.
           </p>
           {isLay(s) && (
             <p>
               These are LAY bets: each one wins a small amount if {layWinsOn(s)}, and loses the full liability if {layLosesOn(s)}. They are placed only
-              by GoalBrew&apos;s direct betting, so Betting → Limits and switches → Betting on Betfair must be Live.
+              by GoalBrew&apos;s direct betting, so Betting → Limits and switches → Betting on Betfair must be On.
             </p>
           )}
           {!hasStop && (
@@ -183,8 +183,8 @@ export function LiveSimSwitch({ s, settings }: { s: SendingStrategy; settings: S
     <div className="shrink-0">
       <div
         role="radiogroup"
-        aria-label={`${names.name(s.label)}: live or simulation`}
-        title={!supported ? "This strategy can't be bet yet, so it stays in Sim" : !hasStake(s) ? "Set a stake before going Live" : undefined}
+        aria-label={`${names.name(s.label)}: real money or trial`}
+        title={!supported ? "This strategy can't be bet yet, so it stays on trial" : !hasStake(s) ? "Set a stake before going on real money" : undefined}
         className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5"
       >
         {([false, true] as const).map((live) => {
@@ -271,7 +271,7 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
       <p className="text-xs font-medium text-ink">Bet settings</p>
       {error && <p className="text-xs text-destructive">{error}</p>}
       {save.error && <p className="text-xs text-destructive">{save.error.message}</p>}
-      {!supported && <p className="text-xs text-warn">{betSummary(s, settings).text}. It stays in Sim until then.</p>}
+      {!supported && <p className="text-xs text-warn">{betSummary(s, settings).text}. It stays on trial until then.</p>}
       <div className="grid grid-cols-2 gap-3">
         {/* The stake is asked for every strategy: Sim profit is priced at it even where the market can't be bet. */}
         <div className="text-xs text-ink-muted">
@@ -302,7 +302,7 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
                 )}
               </div>
               {s.stakePct != null && !stakeDirty && <span className="mt-1 block">Currently {s.stakePct}% of balance. Setting a £ amount replaces it.</span>}
-              {!stakeDirty && !hasStake(s) && <span className="mt-1 block text-warn">Needed to go Live, and for Sim profit</span>}
+              {!stakeDirty && !hasStake(s) && <span className="mt-1 block text-warn">Needed to go on real money, and for trial profit</span>}
             </>
           ) : (
             <>
@@ -362,10 +362,10 @@ export function BetSettings({ s, settings, bank }: { s: SendingStrategy; setting
       {/* In Sim, the same limits run on the simulated bets, so they can be tuned before going Live. */}
       {!s.enabled && s.simStopLoss && (
         <p className={`rounded-md bg-surface px-2.5 py-1.5 text-xs ${s.simStopLoss.stopped ? "text-warn" : "text-ink-muted"}`}>
-          In Sim today: {s.simStopLoss.todayNet < 0 ? "−" : ""}£{Math.abs(s.simStopLoss.todayNet).toFixed(2)} from {s.simStopLoss.settledToday} bet
+          On trial today: {s.simStopLoss.todayNet < 0 ? "−" : ""}£{Math.abs(s.simStopLoss.todayNet).toFixed(2)} from {s.simStopLoss.settledToday} bet
           {s.simStopLoss.settledToday === 1 ? "" : "s"}
           {s.simStopLoss.todayRun > 0 && `, ${s.simStopLoss.todayRun} loss${s.simStopLoss.todayRun === 1 ? "" : "es"} in a row`}.{" "}
-          {s.simStopLoss.stopped ? `If it were Live it would have stopped: ${s.simStopLoss.reason} Its later picks today are recorded as not placed.` : "It hasn't reached either limit."}
+          {s.simStopLoss.stopped ? `If it were on real money it would have stopped: ${s.simStopLoss.reason} Its later picks today are recorded as not placed.` : "It hasn't reached either limit."}
         </p>
       )}
       {s.enabled && s.stopLoss?.stopped && <p className="text-xs text-warn">Stopped today by its stop loss.</p>}

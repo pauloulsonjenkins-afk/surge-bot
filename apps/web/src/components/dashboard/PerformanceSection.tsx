@@ -48,7 +48,7 @@ const LIGHT_STYLE: Record<Light, { dot: string; label: string }> = {
 };
 
 function LowSample() {
-  return <span className="ml-1 text-xs text-ink-muted">small sample</span>;
+  return <span className="ml-1 text-xs text-ink-muted">few bets so far</span>;
 }
 
 /**
@@ -169,7 +169,7 @@ export function PerformanceSection({
           tab === "strategy"
             ? "Tap one to filter the dashboard"
             : tab === "minute"
-              ? "Hit rate by the match minute the alert fired"
+              ? "Win rate by the match minute the alert fired"
               : "Tap a country, tier or league to filter this section"
         }
       >
@@ -203,7 +203,7 @@ export function PerformanceSection({
                         {(() => {
                           const l = lights?.get(r.name.toLowerCase());
                           if (!l) return null;
-                          const roi = l.roi === null ? "" : ` (${l.roi >= 0 ? "+" : ""}${(l.roi * 100).toFixed(1)}p per £1, ${l.counted} priced)`;
+                          const roi = l.roi === null ? "" : ` (${l.roi >= 0 ? "+" : ""}${(l.roi * 100).toFixed(1)}p per £1, ${l.counted} with known odds)`;
                           return <span role="img" aria-label={LIGHT_STYLE[l.light].label + roi} title={LIGHT_STYLE[l.light].label + roi} className={`h-2.5 w-2.5 shrink-0 rounded-full ${LIGHT_STYLE[l.light].dot}`} />;
                         })()}
                         {strategyNames.name(r.name)}

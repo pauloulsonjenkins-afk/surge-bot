@@ -72,12 +72,12 @@ export default function ReportsPage() {
           <h3 className="text-sm font-semibold text-ink">Today so far</h3>
           <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-lg bg-surface-2 p-3">
-              <p className="text-xs text-ink-muted">Live</p>
+              <p className="text-xs text-ink-muted">Real money</p>
               <p className="text-lg font-medium tabular-nums">{gbp(sum("live"))}</p>
               <p className="text-xs text-ink-muted">{bets("live")} bets</p>
             </div>
             <div className="rounded-lg bg-surface-2 p-3">
-              <p className="text-xs text-ink-muted">Sim</p>
+              <p className="text-xs text-ink-muted">Trial</p>
               <p className="text-lg font-medium tabular-nums">{gbp(sum("sim"))}</p>
               <p className="text-xs text-ink-muted">{bets("sim")} bets</p>
             </div>
@@ -86,7 +86,7 @@ export default function ReportsPage() {
       ) : (
         <section className="rounded-xl border border-line bg-surface p-3.5">
           <h3 className="text-sm font-semibold text-ink">The last 7 days, strategy by strategy</h3>
-          <p className="mt-0.5 text-xs text-ink-muted">Units: profit at a flat 1 unit per bet. The right-hand figure is the last 7 days; &ldquo;before&rdquo; is the 4 weeks earlier.</p>
+          <p className="mt-0.5 text-xs text-ink-muted">At £1 a bet: the profit if every bet had been £1. The right-hand figure is the last 7 days; &ldquo;before&rdquo; is the 4 weeks earlier.</p>
           {all && (
             <p className="mt-2 text-sm text-ink">
               All strategies: <span className="font-medium tabular-nums">{formatUnits(all.last7.all.units ?? 0)}</span> over {all.last7.all.counted} bets, against {formatUnits(all.prev28.all.units ?? 0)} over {all.prev28.all.counted} in the 4 weeks before.

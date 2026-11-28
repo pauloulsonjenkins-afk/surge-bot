@@ -54,7 +54,7 @@ export function sliceName(label: string): string {
  * A watched slice's badge: a metal gold chip at full stake; an outlined gold chip for a small Live trial suggested, or
  * a candidate (or its stage not yet loaded); red once it isn't holding up.
  */
-export function GoldenBadge({ status, candidate = "Golden candidate", trial = "Live trial suggested" }: { status: SliceStatus | null | undefined; candidate?: string; trial?: string }) {
+export function GoldenBadge({ status, candidate = "Golden candidate", trial = "Real-money trial suggested" }: { status: SliceStatus | null | undefined; candidate?: string; trial?: string }) {
   const base = "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs";
   if (status === "full")
     return (

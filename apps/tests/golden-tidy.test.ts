@@ -73,6 +73,6 @@ test("a Live or notifying slice is never shelved for losing, but a Live one that
   for (const id of ["live-losing", "live-lost", "live-own", "live-fine", "notify-empty"]) assert.equal(by(r, id).shelved, null, id);
   assert.match(by(r, "live-losing").watchOut!, /Live, and losing over 40/);
   assert.match(by(r, "live-lost").watchOut!, /no longer holding up: its last 30/);
-  assert.match(by(r, "live-own").watchOut!, /own Live bets are losing over 20/);
+  assert.match(by(r, "live-own").watchOut!, /own real bets are losing over 20/);
   assert.equal(by(r, "live-fine").watchOut, null);
 });

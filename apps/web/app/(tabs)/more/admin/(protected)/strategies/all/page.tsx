@@ -214,7 +214,7 @@ export default function StrategiesPage() {
         title="Strategies"
         subtitle={
           <>
-            Golden slices you can put Live on their own, then each strategy&apos;s results and Live / Sim switch; tap one for its stake and limits. Overall limits are on{" "}
+            Golden slices you can put on real money on their own, then each strategy&apos;s results and real money / trial switch; tap one for its stake and limits. Overall limits are on{" "}
             <Link href="/more/admin/sending?tab=limits" className="text-accent underline">
               Betting
             </Link>
@@ -302,7 +302,7 @@ export default function StrategiesPage() {
       {period !== "ALL" && (
         <p className={`text-xs text-ink-muted ${isPlaceholderData ? "animate-pulse" : ""}`}>
           {period === "YTD" ? "Since 1 January" : period === "1D" ? "Today (since midnight)" : `Last ${period === "7D" ? "7 days" : "30 days"}`} only. Figures from
-          fewer than {SAMPLE} priced picks are faded. Suggestions (the same as on Today) use their own windows, whatever the period here; the equity curve is always all time.
+          fewer than {SAMPLE} picks with known odds are faded. Suggestions (the same as on Today) use their own windows, whatever the period here; the running-profit chart is always all time.
         </p>
       )}
 
@@ -348,7 +348,7 @@ export default function StrategiesPage() {
             <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-2 p-2.5">
               <p className="text-xs text-ink">
                 {picked.size} selected
-                {strategies.some((s) => s.sendingOn) && <span className="text-ink-muted"> · Live ones can’t be picked</span>}
+                {strategies.some((s) => s.sendingOn) && <span className="text-ink-muted"> · Real-money ones can’t be picked</span>}
               </p>
               <button
                 type="button"
@@ -414,7 +414,7 @@ export default function StrategiesPage() {
               <section key={m} className="space-y-3">
                 <div>
                   <h3 className="text-base font-semibold text-ink">
-                    {m === "live" ? "Live strategies" : "Simulation strategies"}{" "}
+                    {m === "live" ? "Real-money strategies" : "Strategies on trial"}{" "}
                     <span className="text-sm font-normal text-ink-muted">· {group.length}</span>
                   </h3>
                   <p className="text-xs text-ink-muted">{m === "live" ? "Bet with real money." : "Recorded as if bet; no money placed."}</p>
@@ -438,7 +438,7 @@ export default function StrategiesPage() {
                   return parked.length > 0 ? (
                     <details className="rounded-xl border border-line bg-surface p-3">
                       <summary className="cursor-pointer text-sm font-medium text-ink">
-                        Parked <span className="font-normal text-ink-muted">· {parked.length} · losing in Sim, still recorded</span>
+                        Parked <span className="font-normal text-ink-muted">· {parked.length} · losing on trial, still recorded</span>
                       </summary>
                       <ul className="mt-2 space-y-2">{parked.map(renderCard)}</ul>
                     </details>

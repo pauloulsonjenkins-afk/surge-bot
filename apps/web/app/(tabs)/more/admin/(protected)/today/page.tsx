@@ -248,7 +248,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
         <Tile flat
           label="Betting"
           value={d.betting.on ? (d.betting.breaker.open ? "Paused" : "On") : "Off"}
-          sub={`${d.betting.liveStrategies} Live strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · placing: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "shadow only" : "off"}`}
+          sub={`${d.betting.liveStrategies} real-money strateg${d.betting.liveStrategies === 1 ? "y" : "ies"} · bets placed by: ${d.betting.directMode === "live" ? "GoalBrew" : d.betting.directMode === "shadow" ? "practice only (no bets placed)" : "off"}`}
           warn={d.betting.on && d.betting.breaker.open}
         />
         <Tile flat
@@ -293,7 +293,7 @@ function Tiles({ d }: { d: TodaySnapshot }) {
           flat
           label="Betfair balance"
           value={d.bank.available === null ? "–" : `£${d.bank.available.toFixed(2)}`}
-          sub={d.bank.at ? `exposure £${Math.abs(d.bank.exposure ?? 0).toFixed(2)} · read ${ago(d.bank.at)}` : "Not connected"}
+          sub={d.bank.at ? `money at risk £${Math.abs(d.bank.exposure ?? 0).toFixed(2)} · read ${ago(d.bank.at)}` : "Not connected"}
           warn={bankAge !== null && bankAge > 30 * 60_000}
         />
         <Tile

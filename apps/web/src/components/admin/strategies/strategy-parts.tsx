@@ -97,8 +97,8 @@ export function FormParagraph({ row, kind }: { row: AdminStrategy; kind: FormKin
     parts.push(prev === rate ? `That matches ${label} (${prev}%).` : `That is ${rate > prev ? "up" : "down"} from ${prev}% ${label}.`);
   }
   const m: string[] = [];
-  if (w.live.counted > 0) m.push(`Live: ${money(w.live)} on ${w.live.counted} real bet${w.live.counted === 1 ? "" : "s"}`);
-  if (w.sim.counted > 0) m.push(`Sim: ${money(w.sim)} on ${w.sim.counted} pick${w.sim.counted === 1 ? "" : "s"}`);
+  if (w.live.counted > 0) m.push(`Real money: ${money(w.live)} on ${w.live.counted} real bet${w.live.counted === 1 ? "" : "s"}`);
+  if (w.sim.counted > 0) m.push(`Trial: ${money(w.sim)} on ${w.sim.counted} pick${w.sim.counted === 1 ? "" : "s"}`);
   if (m.length > 0) parts.push(`${m.join("; ")}.`);
   const run = [
     (a.longestLosingRun ?? 0) > 1 ? `Longest losing run ${a.longestLosingRun}` : null,
@@ -149,8 +149,8 @@ export function ReadyForLive({ row, check, hasStop }: { row: AdminStrategy; chec
   const sim = row.returns?.sim;
   const adj = sim ? adjustedRoi(sim.roi, sim.counted) : null;
   const items: Array<{ ok: boolean; text: string }> = [
-    { ok: (sim?.counted ?? 0) >= SAMPLE, text: `${SAMPLE}+ priced Sim picks (has ${sim?.counted ?? 0})` },
-    { ok: adj !== null && adj > 0, text: `Adjusted Sim return above zero (${roiText(adj)})` },
+    { ok: (sim?.counted ?? 0) >= SAMPLE, text: `${SAMPLE}+ trial picks with known odds (has ${sim?.counted ?? 0})` },
+    { ok: adj !== null && adj > 0, text: `Trial return above zero, allowing for luck (${roiText(adj)})` },
     // Pre-match strategies only: their price at the alert against the kick-off price.
     ...(check
       ? [
@@ -165,7 +165,7 @@ export function ReadyForLive({ row, check, hasStop }: { row: AdminStrategy; chec
   const ready = items.every((i) => i.ok);
   return (
     <div className="rounded-md bg-surface-2 p-2.5 text-xs">
-      <p className={`font-medium ${ready ? "text-hit" : "text-ink"}`}>{ready ? "Ready for Live: Today suggests it once its last 30 days are up too." : "Ready for Live? Not yet."}</p>
+      <p className={`font-medium ${ready ? "text-hit" : "text-ink"}`}>{ready ? "Ready for real money: Today suggests it once its last 30 days are up too." : "Ready for real money? Not yet."}</p>
       <ul className="mt-1 space-y-0.5">
         {items.map((i) => (
           <li key={i.text} className={i.ok ? "text-ink" : "text-ink-muted"}>
@@ -228,7 +228,7 @@ export function PriceCheckLine({ check }: { check: CheckResult }) {
   const tone = !judged ? "text-ink-muted" : check.vsTypical > 0 ? "text-hit" : "text-loss";
   const v = `${check.vsTypical > 0 ? "+" : ""}${check.vsTypical.toFixed(1)}%`;
   return (
-    <span className="mt-0.5 block text-xs text-ink-muted" title="How much better the alert's price was than Betfair's price a few minutes later (against the typical drift), or at kick-off for pre-match picks. Positive, again and again, means the strategy finds value the market hasn't priced yet.">
+    <span className="mt-0.5 block text-xs text-ink-muted" title="How much better the alert's price was than Betfair's price a few minutes later (against the usual price move), or at kick-off for pre-match picks. Positive, again and again, means the strategy finds value the market hasn't priced yet.">
       Price check: <span className={tone}>{v} {check.kickOff ? "vs kick-off" : "vs the market"}</span> · {check.picks} check{check.picks === 1 ? "" : "s"}
       {judged ? "" : " (too early)"}
     </span>
@@ -257,7 +257,7 @@ export function ByBetLine({ row, mode }: { row: AdminStrategy; mode: "all" | "li
   });
   if (parts.length === 0) return null;
   return (
-    <span className="mt-1 block text-xs text-ink-muted" title={`By bet type. Unders are being watched: ${SAMPLE}+ priced picks before reading anything into them.`}>
+    <span className="mt-1 block text-xs text-ink-muted" title={`By bet type. Unders are being watched: ${SAMPLE}+ picks with known odds before reading anything into them.`}>
       By bet:{" "}
       {parts.map((p, i) => (
         <span key={p.key}>
@@ -353,7 +353,7 @@ export type SortBy = "adjusted" | "roi" | "profit" | "hitRate";
 /** Whose figures each card shows: "own" = its own mode (Live or Sim), else the same mode for every card. */
 export type View = "own" | "live" | "sim" | "all";
 export const VIEWS: { value: View; label: string }[] = [
-  { value: "own", label: "Own mode" },
+  { value: "own", label: "Its current setting" },
   { value: "live", label: "Live" },
   { value: "sim", label: "Sim" },
   { value: "all", label: "All" },
@@ -362,10 +362,10 @@ export const VIEWS: { value: View; label: string }[] = [
 export const shortDay = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 
 export const SORTS: { value: SortBy; label: string }[] = [
-  { value: "adjusted", label: "Return % (adjusted)" },
+  { value: "adjusted", label: "Return %, allowing for luck" },
   { value: "roi", label: "Return %" },
   { value: "profit", label: "Profit £" },
-  { value: "hitRate", label: "Hit rate %" },
+  { value: "hitRate", label: "Win rate %" },
 ];
 
 /**
@@ -398,7 +398,7 @@ export function OnBetfair({ m }: { m: Pick<StrategyReturn, "onBetfair" | "counte
   if (!b || b.roi === null || b.counted >= m.counted) return null;
   return (
     <span className="block">
-      At real Betfair prices only: <span className={b.counted >= 100 ? roiTone(b.roi) : ""}>{roiText(b.roi)}</span> on {b.counted} of {m.counted} priced picks
+      At real Betfair prices only: <span className={b.counted >= 100 ? roiTone(b.roi) : ""}>{roiText(b.roi)}</span> on {b.counted} of {m.counted} picks with known odds
       {m.roi !== null && b.counted >= SAMPLE && m.roi - b.roi >= 0.03 ? <span className="text-warn"> · the headline is flattered by quoted prices</span> : null}
     </span>
   );
@@ -418,15 +418,15 @@ export function OddsContext({ hitRate, settled, money }: { hitRate: number | nul
   return (
     <p className="mt-1 text-xs text-ink-muted">
       {m.avgOdds === null
-        ? "Odds unknown: set assumed odds on Profit"
-        : `Avg odds ${m.avgOdds.toFixed(2)} · priced picks hit ${j.hitRate}% · break-even ${j.breakeven}% (from what winners paid)`}
+        ? "Odds unknown: set estimated odds on Profit"
+        : `Avg odds ${m.avgOdds.toFixed(2)} · picks with known odds hit ${j.hitRate}% · break-even ${j.breakeven}% (from what winners paid)`}
       {range && ` · likely ${range}`}
       {verdict && <span className={verdict.tone === "hit" ? "text-hit" : verdict.tone === "loss" ? "text-loss" : ""}> · {verdict.text}</span>}
       <OnBetfair m={m} />
       {m.assumed ? (
         <span className="text-warn">
           {" "}
-          · {m.assumed === m.counted ? "All" : `${m.assumed} of ${m.counted}`} priced at the assumed odds set on Profit, not a real
+          · {m.assumed === m.counted ? "All" : `${m.assumed} of ${m.counted}`} priced at the estimated odds set on Profit, not a real
           price, so treat this return as a guess
         </span>
       ) : null}

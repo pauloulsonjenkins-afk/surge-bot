@@ -18,7 +18,7 @@ export type Verdict = "too early" | "probably losing" | "no clear edge" | "proba
 export const VERDICT_LABEL: Record<Verdict, string> = {
   "too early": "Too early to say",
   "probably losing": "Probably losing",
-  "no clear edge": "No clear edge",
+  "no clear edge": "No clear advantage",
   "probably winning": "Probably winning",
 };
 export const VERDICT_TONE: Record<Verdict, string> = {
@@ -50,7 +50,7 @@ export function againstBreakeven(
 ): { tone: "hit" | "loss" | "muted"; text: string } | null {
   if (hitRate === null || breakeven === null || breakeven === undefined) return null;
   const gap = Math.round((hitRate - breakeven) * 10) / 10;
-  const by = `${Math.abs(gap)} pts ${gap >= 0 ? "above" : "below"} break-even`;
+  const by = `${Math.abs(gap)} points ${gap >= 0 ? "above" : "below"} break-even`;
   if (range && range.low > breakeven) return { tone: "hit", text: `${by}, even at the low end of its range` };
   if (range && range.high < breakeven) return { tone: "loss", text: `${by}, even at the top of its range` };
   return { tone: "muted", text: `${by}; too few picks to be sure either way` };

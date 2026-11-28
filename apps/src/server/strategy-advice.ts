@@ -265,7 +265,7 @@ export function sliceAdviceFrom(slices: SliceInput[], settings: SendingSettings)
         kind: "slice-live",
         action: `Put this slice Live at ${SLICE_TRIAL_PCT}% of the balance`,
         to: { pct: SLICE_TRIAL_PCT },
-        reason: `${pct(mine.roi)} per £1${mine.units !== undefined ? ` (${mine.units > 0 ? "+" : ""}${mine.units} units)` : ""} over ${mine.counted} priced picks${rest.counted > 0 && rest.roi !== null ? `, against ${pct(rest.roi)} over ${rest.counted} for the rest of ${s.strategy}` : ""}${s.recent && s.recent.n >= 10 && s.recent.roi !== null ? `; its last ${s.recent.n} are ${pct(s.recent.roi)}` : ""}. Only this part of ${s.strategy} would bet with real money; the rest stays as it is.`,
+        reason: `${pct(mine.roi)} per £1${mine.units !== undefined ? ` (${mine.units > 0 ? "+" : ""}${mine.units} units)` : ""} over ${mine.counted} picks with known odds${rest.counted > 0 && rest.roi !== null ? `, against ${pct(rest.roi)} over ${rest.counted} for the rest of ${s.strategy}` : ""}${s.recent && s.recent.n >= 10 && s.recent.roi !== null ? `; its last ${s.recent.n} are ${pct(s.recent.roi)}` : ""}. Only this part of ${s.strategy} would bet with real money; the rest stays as it is.`,
       });
       continue;
     }
@@ -273,13 +273,13 @@ export function sliceAdviceFrom(slices: SliceInput[], settings: SendingSettings)
     const own = s.ownLive;
     const stakeNow = cfg.stakePct ?? null;
     if (own && own.n >= SLICE_SIM_BETS && own.roi !== null && own.roi <= SLICE_SIM_ROI) {
-      out.push({ ...base(s), kind: "slice-sim", action: "Put this slice back to Sim", reason: `Its own Live bets are ${pct(own.roi)} per £1 over ${own.n} bets${own.units !== undefined ? ` (${own.units} units)` : ""}.` });
+      out.push({ ...base(s), kind: "slice-sim", action: "Put this slice back to trial", reason: `Its own real bets are ${pct(own.roi)} per £1 over ${own.n} bets${own.units !== undefined ? ` (${own.units} units)` : ""}.` });
       continue;
     }
     if (own && own.n >= SLICE_SIM_BETS && own.roi !== null && own.roi < 0 && stakeNow !== null) {
       const down = ladderStep({ pct: stakeNow }, -1);
       if (down && "pct" in down) {
-        out.push({ ...base(s), kind: "slice-stake-down", action: `Lower to ${down.pct}% of the balance`, to: down, reason: `Its own Live bets are ${pct(own.roi)} per £1 over ${own.n} bets.` });
+        out.push({ ...base(s), kind: "slice-stake-down", action: `Lower to ${down.pct}% of the balance`, to: down, reason: `Its own real bets are ${pct(own.roi)} per £1 over ${own.n} bets.` });
         continue;
       }
     }
@@ -301,7 +301,7 @@ export function sliceAdviceFrom(slices: SliceInput[], settings: SendingSettings)
       kind: "slice-stake-up",
       action: `Raise to ${to.pct}% of the balance${best ? " (your best performer)" : ""}`,
       to,
-      reason: `${pct(mine.roi!)} per £1 (${mine.units! > 0 ? "+" : ""}${mine.units} units) over ${mine.counted} priced picks${best ? ", the best of your Live slices per pick" : ""}${s.recent && s.recent.n >= 10 && s.recent.roi !== null ? `; its last ${s.recent.n} are ${pct(s.recent.roi)}` : ""}. Currently ${now}% of the balance.`,
+      reason: `${pct(mine.roi!)} per £1 (${mine.units! > 0 ? "+" : ""}${mine.units} units) over ${mine.counted} picks with known odds${best ? ", the best of your real-money slices per pick" : ""}${s.recent && s.recent.n >= 10 && s.recent.roi !== null ? `; its last ${s.recent.n} are ${pct(s.recent.roi)}` : ""}. Currently ${now}% of the balance.`,
     });
   });
   return out;
@@ -404,9 +404,9 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
         out.push({
           key,
           kind: "try-live",
-          action: `Put Live at a ${stakeWords(to)} trial stake`,
+          action: `Put on real money at a ${stakeWords(to)} trial stake`,
           to,
-          reason: `${pct(sim.roi!)} per £1 over ${sim.counted} Sim picks (${pct(adj!)} adjusted; older half ${pct(halves![0])}, newer ${pct(halves![1])}), ${pct(recentSim!.roi!)} in the last 30 days${check ? `, and beating the kick-off price by ${check.edge.toFixed(1)}% over ${check.picks} checks` : ""}.`,
+          reason: `${pct(sim.roi!)} per £1 over ${sim.counted} trial picks (${pct(adj!)} allowing for luck; older bets ${pct(halves![0])}, newer ${pct(halves![1])}), ${pct(recentSim!.roi!)} in the last 30 days${check ? `, and beating the kick-off price by ${check.edge.toFixed(1)}% over ${check.picks} checks` : ""}.`,
         });
       }
       continue;
@@ -426,7 +426,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
       const adj = adjusted(l.roi, l.counted);
       // The early warning: a heavy stake on a clearly losing short record, ahead of the slower rule below.
       if (l.counted >= EARLY_BETS && l.counted < 30 && l.roi !== null && l.roi <= EARLY_ROI && (l.units ?? 0) <= EARLY_UNITS && (settings.stakePct[key] ?? 0) >= EARLY_STAKE_PCT) {
-        out.push({ key, kind: "back-to-sim", early: true, action: "Put back to Sim", reason: `Early warning: ${pct(l.roi)} per £1 (${l.units} units) over its last ${l.counted} Live bets at ${settings.stakePct[key]}% of the balance. Too few bets to be sure, but a stake this size is costly if it is real.` });
+        out.push({ key, kind: "back-to-sim", early: true, action: "Put back to trial", reason: `Early warning: ${pct(l.roi)} per £1 (${l.units} units) over its last ${l.counted} real bets at ${settings.stakePct[key]}% of the balance. Too few bets to be sure, but a stake this size is costly if it is real.` });
         continue;
       }
       if (settled && l.counted >= 30 && adj !== null && adj < -0.02 && !combinedHoldsUp(r, recent[key])) {
@@ -434,8 +434,8 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
         // when the last 30 days have turned, which otherwise reads as a contradiction once the admin switches to Sim
         // and the headline figure (a different window) looks fine. Said here so the two numbers are never seen apart.
         const whole = sinceChange[key]?.live;
-        const wholeNote = whole && whole.counted >= 30 && whole.roi !== null ? ` Its whole Live record is still ${pct(whole.roi)} over ${whole.counted} bets — this is about its LAST 30 days only, not a change to that overall figure.` : "";
-        out.push({ key, kind: "back-to-sim", action: "Put back to Sim", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} Live bets${changeAt && changeAt > recentFrom ? ` since ${dayWords(changeAt)}` : " (30 days)"}, ${pct(adj)} adjusted for luck.${wholeNote}` });
+        const wholeNote = whole && whole.counted >= 30 && whole.roi !== null ? ` Its whole real-money record is still ${pct(whole.roi)} over ${whole.counted} bets — this is about its LAST 30 days only, not a change to that overall figure.` : "";
+        out.push({ key, kind: "back-to-sim", action: "Put back to trial", reason: `${pct(l.roi!)} per £1 over its last ${l.counted} real bets${changeAt && changeAt > recentFrom ? ` since ${dayWords(changeAt)}` : " (30 days)"}, ${pct(adj)} adjusted for luck.${wholeNote}` });
         continue;
       }
     }
@@ -454,7 +454,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
           fast: true,
           action: `Lower to ${stakeWords(to)}`,
           to,
-          reason: `${pct(since.roi)} per £1 over ${since.counted} Live bets since it was raised on ${dayWords(raise.at)}.`,
+          reason: `${pct(since.roi)} per £1 over ${since.counted} real bets since it was raised on ${dayWords(raise.at)}.`,
         });
         continue;
       }
@@ -476,12 +476,12 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
           kind: "stake-up",
           action: `Raise to ${stakeWords(to)}`,
           to,
-          reason: `${pct(l.roi)} per £1 over ${l.counted} Live bets, hitting ${Math.round((1000 * l.pricedHits) / l.counted) / 10}% against ${be}% needed, and still up over the last 30 days.`,
+          reason: `${pct(l.roi)} per £1 over ${l.counted} real bets, hitting ${Math.round((1000 * l.pricedHits) / l.counted) / 10}% against ${be}% needed, and still up over the last 30 days.`,
         });
       }
     } else if (l.counted >= 30 && l.roi !== null && l.roi < 0) {
       const to = ladderStep(stake, -1);
-      if (to) out.push({ key, kind: "stake-down", action: `Lower to ${stakeWords(to)}`, to, reason: `${pct(l.roi)} per £1 over ${l.counted} Live bets since its rules last changed.` });
+      if (to) out.push({ key, kind: "stake-down", action: `Lower to ${stakeWords(to)}`, to, reason: `${pct(l.roi)} per £1 over ${l.counted} real bets since its rules last changed.` });
     }
   }
   // Stop in a league: a Live strategy clearly losing in one league over 100+ picks.
@@ -499,7 +499,7 @@ function computeAdvice(db: EngineDb, now: Date): Advice[] {
         kind: "league-block",
         league: { key: l.key, name },
         action: `Stop it in ${l.league}`,
-        reason: `${pct(j.roi!)} per £1 over ${t.counted} picks in ${name} (likely ${pct(j.low!)} to ${pct(j.high!)}). Its picks there would be recorded in Sim instead; undo on Leagues → Profit.`,
+        reason: `${pct(j.roi!)} per £1 over ${t.counted} picks in ${name} (likely ${pct(j.low!)} to ${pct(j.high!)}). Its picks there would be recorded as trial bets instead; undo on Leagues → Profit.`,
       });
     }
   }
@@ -589,13 +589,13 @@ export function applyAllAdvice(db: EngineDb, now = new Date()): { applied: Advic
 }
 
 const LABEL: Record<AdviceKind, string> = {
-  "try-live": "ready to try Live",
-  "back-to-sim": "consider putting back to Sim",
+  "try-live": "ready to try with real money",
+  "back-to-sim": "consider putting back to trial",
   "stake-up": "worth a bigger stake",
   "stake-down": "worth a smaller stake",
   "league-block": "losing in one league",
-  "slice-live": "slice ready to try Live",
-  "slice-sim": "slice losing: consider Sim",
+  "slice-live": "slice ready to try with real money",
+  "slice-sim": "slice losing: consider trial",
   "slice-stake-up": "slice worth a bigger stake",
   "slice-stake-down": "slice worth a smaller stake",
 };

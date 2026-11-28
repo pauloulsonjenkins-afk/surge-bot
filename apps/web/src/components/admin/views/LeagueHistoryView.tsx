@@ -14,7 +14,7 @@ const ENOUGH = 100;
 
 type SortKey = "homeEdge" | "homePct" | "drawPct" | "avgGoals" | "firstHalfGoalPct" | "over25Pct" | "avgCorners";
 const SORTS: { value: SortKey; label: string }[] = [
-  { value: "homeEdge", label: "Home edge" },
+  { value: "homeEdge", label: "Home advantage" },
   { value: "drawPct", label: "Draws" },
   { value: "avgGoals", label: "Goals" },
   { value: "firstHalfGoalPct", label: "1st-half goal" },
@@ -172,7 +172,7 @@ function Profiles({ profiles }: { profiles: LeagueProfile[] }) {
   const rows = useMemo(() => [...profiles].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1)), [profiles, sort]);
   const cell = (v: number | null, suffix = "") => (v === null ? "–" : `${v}${suffix}`);
   return (
-    <Card title="League profiles" subtitle="How each league plays, from its past results. Home edge is home wins minus away wins: the bigger it is, the more the home side is favoured.">
+    <Card title="League profiles" subtitle="How each league plays, from its past results. Home advantage is home wins minus away wins: the bigger it is, the more the home side is favoured.">
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
         Sort by
         <div className="inline-flex flex-wrap rounded-md border border-line p-0.5" role="group" aria-label="Sort leagues by">
@@ -202,7 +202,7 @@ function Profiles({ profiles }: { profiles: LeagueProfile[] }) {
               </span>
             </div>
             <p className="mt-1 text-xs tabular-nums text-ink-muted">
-              H {p.homePct}% · D {p.drawPct}% · A {p.awayPct}% · edge {signed(p.homeEdge)} · goals {p.avgGoals.toFixed(2)} · 1H goal {cell(p.firstHalfGoalPct, "%")} · O2.5 {p.over25Pct}% ·
+              H {p.homePct}% · D {p.drawPct}% · A {p.awayPct}% · home advantage {signed(p.homeEdge)} · goals {p.avgGoals.toFixed(2)} · 1H goal {cell(p.firstHalfGoalPct, "%")} · O2.5 {p.over25Pct}% ·
               corners {cell(p.avgCorners)} · {p.matches.toLocaleString("en-GB")} matches
             </p>
           </li>
@@ -216,7 +216,7 @@ function Profiles({ profiles }: { profiles: LeagueProfile[] }) {
               <th className="px-2 font-medium">Home</th>
               <th className="px-2 font-medium">Draw</th>
               <th className="px-2 font-medium">Away</th>
-              <th className="px-2 font-medium">Home edge</th>
+              <th className="px-2 font-medium">Home advantage</th>
               <th className="px-2 font-medium">Goals</th>
               <th className="px-2 font-medium">1st-half goal</th>
               <th className="px-2 font-medium">Over 2.5</th>

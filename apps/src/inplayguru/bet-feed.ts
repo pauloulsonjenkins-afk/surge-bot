@@ -763,7 +763,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     // A watched slice with its own betting (e.g. Second Pour's Golden alerts) is Live or Sim by its own switch.
     const seg = segmentBetFor(settings, p);
     if (seg ? !seg.cfg.live : !settings.strategies[label.toLowerCase()]) {
-      skipped.push(skip(p, seg ? `${seg.label} alerts are in Sim (Strategies).` : "This strategy's switch is off."));
+      skipped.push(skip(p, seg ? `${seg.label} alerts are on trial (Strategies).` : "This strategy's switch is off."));
       continue;
     }
     // A league whose matches aren't on Betfair (marked on the Leagues page) is recorded but never sent.
@@ -780,7 +780,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
     {
       const lf = leagueFilterAllows(settings, leagueForm, p, seg);
       if (!lf.ok) {
-        skipped.push(skip(p, lf.filter === "greenOnly" ? "Not a green league for this strategy (league filter): recorded in Sim." : "A red league for this strategy (league filter): recorded in Sim."));
+        skipped.push(skip(p, lf.filter === "greenOnly" ? "Not a green league for this strategy (league filter): recorded as trial bets." : "A red league for this strategy (league filter): recorded as trial bets."));
         continue;
       }
     }
@@ -870,7 +870,7 @@ export function buildFeed(db: EngineDb, opts: { markSent: boolean; now?: Date; h
       if (against) {
         // Noted for the clash chooser's Sim record (server/clash-choices.ts); what is placed doesn't change.
         if (opts.markSent) db.noteClash(p.id, against.id, isLayMarket(p.market) ? "lay" : "back", now);
-        skipped.push(skip(p, `Would cancel out ${against.label}'s Live bet on this match, so it isn't placed.`));
+        skipped.push(skip(p, `Would cancel out ${against.label}'s real bet on this match, so it isn't placed.`));
         continue;
       }
       if (sentToday >= settings.dailyCap) {
@@ -969,7 +969,7 @@ export function betPickNow(db: EngineDb, pickId: number, deps: { directLive: boo
   const stake = chosenStake !== undefined ? Math.round(chosenStake * 100) / 100 : (staked.stake ?? 1);
   if (stake > settings.maxStake) throw new Error(`Its stake £${stake.toFixed(2)} is above your highest stake allowed (£${settings.maxStake}).`);
   const against = cancelling(liveBetsByMatch(db), p);
-  if (against) throw new Error(`It would cancel out ${against.label}'s Live bet on this match.`);
+  if (against) throw new Error(`It would cancel out ${against.label}'s real bet on this match.`);
   if (settings.matchCap > 0) {
     const same = (x: LivePick) => x.leagueKey === p.leagueKey && (x.home ?? "").toLowerCase() === p.home!.toLowerCase() && (x.away ?? "").toLowerCase() === p.away!.toLowerCase();
     const out = db.listLivePicks(300).filter((x) => x.sentAt && !x.excluded && same(x)).reduce((t, x) => t + (parseFrozenRow(x)?.stake ?? 0), 0);
@@ -1161,7 +1161,7 @@ function parseFrozenRow(p: LivePick): FeedRow | null {
 export function dailyLossStopReason(db: EngineDb, limit: number, now = new Date()): string | null {
   if (limit <= 0) return null;
   const { net } = accountToday(db, now, "live");
-  return net <= -limit ? `Daily loss stop: Live is down £${Math.abs(net).toFixed(2)} today (limit £${limit}). No new bets until tomorrow.` : null;
+  return net <= -limit ? `Daily loss stop: real money is down £${Math.abs(net).toFixed(2)} today (limit £${limit}). No new bets until tomorrow.` : null;
 }
 
 function skip(p: LivePick, reason: string): FeedSkip {

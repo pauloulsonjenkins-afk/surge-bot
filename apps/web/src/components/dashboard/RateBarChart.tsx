@@ -38,7 +38,7 @@ function RateTooltip({ active, payload }: { active?: boolean; payload?: Readonly
       ) : (
         <div className="space-y-0.5 text-xs text-ink-muted">
           <p>
-            Hit rate <span className="font-medium tabular-nums text-ink">{row.rate}%</span>
+            Win rate <span className="font-medium tabular-nums text-ink">{row.rate}%</span>
           </p>
           <p>
             <span className="tabular-nums text-ink">{row.hits}</span> hit{row.hits === 1 ? "" : "s"} ·{" "}

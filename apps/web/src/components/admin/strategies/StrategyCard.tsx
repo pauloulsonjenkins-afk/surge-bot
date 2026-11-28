@@ -133,7 +133,7 @@ export function StrategyCard({
       ? {
           value: roiText(adj),
           tone: roiTone(adj),
-          sub: money && money.staked > 0 ? `adjusted · ${roiText(money.roi)} on ${money.counted} priced${sinceTag}` : `adjusted return per £1${sinceTag || " (too few picks since)"}`,
+          sub: money && money.staked > 0 ? `allowing for luck · ${roiText(money.roi)} on ${money.counted} with known odds${sinceTag}` : `return per £1, allowing for luck${sinceTag || " (too few picks since)"}`,
         }
       : sortBy === "profit"
       ? {
@@ -165,7 +165,7 @@ export function StrategyCard({
             disabled={row.sendingOn || busy}
             onChange={onToggle}
             aria-label={`Select ${shownName}`}
-            title={row.sendingOn ? "Put this strategy back to Sim first" : undefined}
+            title={row.sendingOn ? "Put this strategy back to trial first" : undefined}
             style={{ accentColor: "var(--accent)" }}
             className="h-4 w-4 shrink-0 disabled:opacity-40"
           />
@@ -199,16 +199,16 @@ export function StrategyCard({
             <LiveSimToday row={row} />
             {borrowed && (
               <span className="mt-1 block text-xs text-warn">
-                Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {row.mode === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} priced picks there yet.
+                Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {row.mode === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} picks with known odds there yet.
               </span>
             )}
           </span>
           {row.spark && row.spark.length >= 5 && (
-            <span className="block shrink-0" title={`Running profit over its last ${row.spark.length} bets (Live and Sim): ${gbp(row.spark[row.spark.length - 1]!)}`}>
+            <span className="block shrink-0" title={`Running profit over its last ${row.spark.length} bets (real money and trial): ${gbp(row.spark[row.spark.length - 1]!)}`}>
               <Sparkline values={row.spark} />
             </span>
           )}
-          <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} priced picks: too few to act on yet` : undefined}>
+          <span className={`shrink-0 text-right ${thin ? "opacity-60" : ""}`} title={thin ? `Fewer than ${SAMPLE} picks with known odds: too few to act on yet` : undefined}>
             <span className={`block font-display text-xl font-bold tabular-nums [font-stretch:108%] ${tooEarly ? "text-ink-muted" : headline.tone}`}>{headline.value}</span>
             <span className="block text-xs text-ink-muted">{headline.sub}</span>
             <VerdictLine m={money} />
@@ -217,7 +217,7 @@ export function StrategyCard({
                 but {otherNote}
               </span>
             )}
-            {thin && sortBy !== "adjusted" && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} priced</span>}
+            {thin && sortBy !== "adjusted" && money && money.counted > 0 && <span className="block text-xs text-ink-muted">{money.counted} with known odds</span>}
           </span>
           <ChevronDown size={16} aria-hidden className={`shrink-0 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
@@ -249,7 +249,7 @@ export function StrategyCard({
           {/* The detail behind the headline: hit rate against break-even, and the slices being watched. */}
           <div className="space-y-1">
             <span className="block max-w-xs">
-              <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="priced pick" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
+              <BreakevenBar hitRate={judge.hitRate} breakeven={judge.breakeven} range={judge.range} settled={judge.settled} noun="pick with known odds" since={row.recordFrom ? `since ${shortDay.format(new Date(row.recordFrom))}` : undefined} />
             </span>
             {check && check.picks > 0 && <PriceCheckLine check={check} />}
             {before && before.counted > 0 && (
@@ -259,7 +259,7 @@ export function StrategyCard({
             )}
             <ByBetLine row={row} mode={pickMode} />
             {row.returns?.byHand && row.returns.byHand.settled > 0 && (
-              <span className="mt-1 block text-xs text-ink-muted" title="Sim picks you bet for real from the Live tab. They stay in this strategy's Sim record and are left out of its Live record (the stake ladder and back-to-Sim judge that), so your own picking doesn't skew it.">
+              <span className="mt-1 block text-xs text-ink-muted" title="Trial picks you bet for real from the Live tab. They stay in this strategy's trial record and are left out of its real-money record (the stake ladder and back-to-trial judge that), so your own picking doesn't skew it.">
                 Bet by hand: {row.returns.byHand.settled} · won {row.returns.byHand.hits ?? 0}–{row.returns.byHand.settled - (row.returns.byHand.hits ?? 0)}
                 {row.returns.byHand.staked > 0 && <span className={roiTone(row.returns.byHand.profit)}> · {gbp(row.returns.byHand.profit)}</span>}
               </span>
@@ -281,7 +281,7 @@ export function StrategyCard({
           ))}
           <p className="text-xs text-ink-muted">
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}
-            {settled > 0 && settled < SAMPLE ? "small sample · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
+            {settled > 0 && settled < SAMPLE ? "few bets so far · " : ""}last alert {lastSeen.format(new Date(row.lastAlertAt))}
           </p>
           {row.form?.change && <ChangeCompare c={row.form.change} />}
           {row.recordFrom && (
@@ -308,7 +308,7 @@ export function StrategyCard({
                           <span className={roiTone(r?.roi ?? null)}>{roiText(r?.roi ?? null)}</span>
                           <span className="text-ink-muted">
                             {" "}
-                            · {rec.hits}–{rec.misses} · {rec.hitRate}%{r && r.counted < rec.settled ? ` · ${r.counted} priced` : ""}
+                            · {rec.hits}–{rec.misses} · {rec.hitRate}%{r && r.counted < rec.settled ? ` · ${r.counted} with known odds` : ""}
                           </span>
                         </>
                       )}
@@ -331,7 +331,7 @@ export function StrategyCard({
                 onClick={() => setShowCurve((v) => !v)}
                 className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2"
               >
-                {showCurve ? "Hide equity curve" : "Equity curve and drawdown"}
+                {showCurve ? "Hide running-profit chart" : "Running profit and its biggest drop"}
               </button>
               {showCurve && (
                 <div className="mt-2">

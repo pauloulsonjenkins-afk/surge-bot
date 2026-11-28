@@ -57,7 +57,7 @@ export default function ArchivePage() {
                     const ok = await dialog.confirm({
                       title: `Restore ${r.label}?`,
                       confirmLabel: "Restore",
-                      body: <p>It goes back on the Strategies and Profit lists. It stays in Sim: put it Live again yourself if you want to.</p>,
+                      body: <p>It goes back on the Strategies and Profit lists. It stays on trial: put it on real money again yourself if you want to.</p>,
                     });
                     if (ok) set.mutate({ label: r.label, archived: false });
                   }}

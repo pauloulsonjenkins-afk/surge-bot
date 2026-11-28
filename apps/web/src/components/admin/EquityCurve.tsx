@@ -50,7 +50,7 @@ function PointTooltip({ active, payload }: { active?: boolean; payload?: Readonl
 /** The figures a stop loss should be set from, read off the strategy's own history. */
 function RiskFigures({ summary }: { summary: StrategyEquity["summary"] }) {
   const items: Array<[string, string]> = [
-    ["Max drawdown", summary.maxDrawdown ? `£${summary.maxDrawdown.toFixed(2)}` : "£0.00"],
+    ["Biggest drop", summary.maxDrawdown ? `£${summary.maxDrawdown.toFixed(2)}` : "£0.00"],
     ["Longest losing run", `${summary.longestLosingRun ?? 0}`],
     ["Worst day", summary.worstDay ? `${gbp(summary.worstDay.profit)} (${dayFmt.format(new Date(`${summary.worstDay.day}T12:00:00Z`))})` : "–"],
     ["Most losses in one day, in a row", `${summary.worstDayRun ?? 0}`],
@@ -77,7 +77,7 @@ export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) 
 
   if (error) return <p className="text-xs text-destructive">{error.message}</p>;
   if (isLoading || !data) return <Skeleton className="h-48 w-full" />;
-  if (data.points.length === 0) return <p className="text-xs text-ink-muted">No priced picks yet in this mode, so there is no curve to draw.</p>;
+  if (data.points.length === 0) return <p className="text-xs text-ink-muted">No picks with known odds yet in this mode, so there is no curve to draw.</p>;
 
   const rows: Row[] = [{ n: 0, at: data.points[0]!.at, total: 0, profit: 0, result: "hit" }, ...data.points.map((p, i) => ({ n: i + 1, ...p }))];
   const span = drawdownSpan(rows);
@@ -87,7 +87,7 @@ export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) 
 
   return (
     <figure className="space-y-2">
-      <div className="h-48 w-full" role="img" aria-label={`Running profit for ${label} over ${data.points.length} priced picks, ending at ${gbp(data.summary.profit)}`}>
+      <div className="h-48 w-full" role="img" aria-label={`Running profit for ${label} over ${data.points.length} picks with known odds, ending at ${gbp(data.summary.profit)}`}>
         <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: 192 }}>
           <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
             <defs>
@@ -111,8 +111,8 @@ export function EquityCurve({ label, mode }: { label: string; mode: PickMode }) 
         </ResponsiveContainer>
       </div>
       <figcaption className="text-xs text-ink-muted">
-        Running profit over {data.points.length} priced pick{data.points.length === 1 ? "" : "s"} (pick number along the bottom).
-        {peak && trough && ` The biggest drawdown, £${data.summary.maxDrawdown?.toFixed(2)}, runs from the open dot (pick ${peak.n}) to the red dot (pick ${trough.n}).`}
+        Running profit over {data.points.length} pick with known odds{data.points.length === 1 ? "" : "s"} (pick number along the bottom).
+        {peak && trough && ` The biggest drop, £${data.summary.maxDrawdown?.toFixed(2)}, runs from the open dot (pick ${peak.n}) to the red dot (pick ${trough.n}).`}
       </figcaption>
       <RiskFigures summary={data.summary} />
     </figure>

@@ -59,8 +59,8 @@ export function buildDailySummary(db: EngineDb, now = new Date()): { title: stri
 
   const lines: string[] = [];
   const roi = (t: { profit: number; staked: number }) => (t.staked > 0 ? ` (${Math.round((t.profit / t.staked) * 100)}% return)` : "");
-  if (live.settled > 0) lines.push(`Live ${money(live.profit)} · ${live.hits}–${live.settled - live.hits}${roi(live)}`);
-  if (sim.settled > 0) lines.push(`Sim ${money(sim.profit)} · ${sim.hits}–${sim.settled - sim.hits}${roi(sim)}`);
+  if (live.settled > 0) lines.push(`Real money ${money(live.profit)} · ${live.hits}–${live.settled - live.hits}${roi(live)}`);
+  if (sim.settled > 0) lines.push(`Trial ${money(sim.profit)} · ${sim.hits}–${sim.settled - sim.hits}${roi(sim)}`);
 
   // Each strategy that settled something today, biggest money first; Live figures where it bet for real.
   const labels = new Map(db.listStrategiesForAdmin().map((x) => [x.label.toLowerCase(), x.label]));
@@ -72,11 +72,11 @@ export function buildDailySummary(db: EngineDb, now = new Date()): { title: stri
     .filter((x) => x.r.settled > 0)
     .sort((a, b) => Math.abs(b.r.profit) - Math.abs(a.r.profit));
   for (const x of rows.slice(0, MAX_LINES)) {
-    lines.push(`${x.name}${x.mode === "sim" ? " (Sim)" : ""} ${money(x.r.profit)} · ${record(x.r)}`);
+    lines.push(`${x.name}${x.mode === "sim" ? " (trial)" : ""} ${money(x.r.profit)} · ${record(x.r)}`);
   }
   if (rows.length > MAX_LINES) lines.push(`+${rows.length - MAX_LINES} more in the app`);
 
-  const headline = live.settled > 0 ? `Live ${money(live.profit)}` : `Sim ${money(sim.profit)}`;
+  const headline = live.settled > 0 ? `Real money ${money(live.profit)}` : `Trial ${money(sim.profit)}`;
   return { title: `GoalBrew ${time}: ${headline} today`, body: [...lines, waitingLine(db, now)].filter(Boolean).join("\n") };
 }
 

@@ -100,7 +100,7 @@ export function moneyProblems(patch: Record<string, unknown>, g: GuardInputs): M
     const reason =
       s.pct > MAX_STAKE_PCT
         ? `${s.pct}% of the balance is above the ${MAX_STAKE_PCT}% most that needs no confirming.`
-        : `${s.pct}% of the balance on ${bets} settled Live bet${bets === 1 ? "" : "s"}: up to ${cap}% needs no confirming until it has ${EVIDENCE_CAPS.find(([, c]) => c === cap)?.[0] ?? 300}.`;
+        : `${s.pct}% of the balance on ${bets} settled real bet${bets === 1 ? "" : "s"}: up to ${cap}% needs no confirming until it has ${EVIDENCE_CAPS.find(([, c]) => c === cap)?.[0] ?? 300}.`;
     out.push({ what: s.what, figure: String(s.pct), reason });
   }
   return out;
