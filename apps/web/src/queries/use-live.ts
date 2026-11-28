@@ -119,23 +119,6 @@ export function useLivePicks(limit = 50, enabled = true, open = false) {
   });
 }
 
-/** Signed-in view for the Results page (includes what is needed to amend a result). */
-/** The admin's picks, newest first. With `hours`, every pick from that window (up to `limit`), so whole days are complete. */
-export function useAdminLivePicks(limit = 100, enabled = true, hours?: number) {
-  // A week of picks (the Trade Log) is about 2 MB: settled picks change rarely, so once a minute is plenty.
-  const every = hours !== undefined && hours > 48 ? 60_000 : 15_000;
-  return usePersistedQuery({
-    queryKey: ["admin-live-picks", limit, hours ?? null],
-    enabled,
-    queryFn: async (): Promise<LivePick[]> => {
-      const data = await getJson<{ picks: LivePick[] }>(`/api/admin/live?limit=${limit}${hours ? `&hours=${hours}` : ""}`, "picks");
-      return data.picks;
-    },
-    staleTime: 0,
-    refetchInterval: every,
-  });
-}
-
 /** The Trade Log's week of picks: only the fields it shows (toTradeLogPick), so it arrives quickly and isn't re-sent whole every minute. */
 export function useTradeLogPicks(limit: number, enabled: boolean, hours: number) {
   return usePersistedQuery({

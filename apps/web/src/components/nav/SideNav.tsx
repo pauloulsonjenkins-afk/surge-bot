@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogIn } from "lucide-react";
-import { useVisibleTabs } from "./BottomNav";
+import { PUBLIC_TABS } from "./BottomNav";
 import { navIcon } from "./nav-icons";
 import { useMe } from "@/queries/use-me";
 import { ADMIN_MAIN, ADMIN_MORE, navActive, type NavItem } from "@/lib/admin-sections";
@@ -25,7 +25,7 @@ const itemCls = (active: boolean) =>
  */
 export default function SideNav() {
   const pathname = usePathname();
-  const tabs = useVisibleTabs();
+  const tabs = PUBLIC_TABS;
   const { data: me } = useMe();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 

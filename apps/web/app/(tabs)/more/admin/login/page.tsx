@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { safeNext } from "@/lib/user-pages";
+import { safeNext } from "@/lib/safe-next";
 
 export default function AdminLoginPage() {
   const router = useRouter();

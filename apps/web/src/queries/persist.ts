@@ -11,8 +11,8 @@ import { useHydrated } from "./use-me";
  * showing them during hydration would make the first render differ from the server's HTML. Only what pages open on is
  * kept, never who is signed in, and nothing older than a day. Signing out clears it.
  */
-const STORE = "goalbrew-cache-v2";
-const OLD_STORES = ["goalbrew-cache-v1"];
+const STORE = "goalbrew-cache-v3";
+const OLD_STORES = ["goalbrew-cache-v1", "goalbrew-cache-v2"];
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** Most queries kept, newest first, so the store stays well inside the browser's storage limit. */
 const MAX_ENTRIES = 30;
@@ -33,15 +33,11 @@ const KEEP = new Set([
 type Snapshot = Record<string, { at: number; data: unknown }>;
 
 /**
- * Lists longer than this aren't kept: a site may store about 5 MB in all, and the Trade Log's week of picks alone was
- * 2 MB, so once full nothing more could be saved for any page.
+ * A query whose figures run past this (as JSON) isn't kept. A site may store about 5 MB in all, and the store had reached
+ * 3.5 MB (Profit's Sim figures alone 1.5 MB): reading and rewriting that blocks a phone for a noticeable moment, and once
+ * full nothing more can be saved for any page.
  */
-const MAX_KEPT_ITEMS = 300;
-const tooBig = (data: unknown): boolean => {
-  if (Array.isArray(data)) return data.length > MAX_KEPT_ITEMS;
-  const picks = (data as { picks?: unknown })?.picks;
-  return Array.isArray(picks) && picks.length > MAX_KEPT_ITEMS;
-};
+const MAX_ENTRY_CHARS = 200_000;
 let memory: Snapshot | null = null;
 
 function read(): Snapshot {
@@ -88,18 +84,19 @@ export function keepCache(client: QueryClient): () => void {
     changed = false;
     try {
       const snapshot: Snapshot = { ...read() };
-      // A big list kept before the limit above goes now, freeing the space.
-      for (const [hash, entry] of Object.entries(snapshot)) if (tooBig(entry.data)) delete snapshot[hash];
       for (const q of client.getQueryCache().getAll()) {
-        if (q.state.status === "success" && q.state.data !== undefined && KEEP.has(String(q.queryKey[0])) && !tooBig(q.state.data)) {
+        if (q.state.status === "success" && q.state.data !== undefined && KEEP.has(String(q.queryKey[0]))) {
           snapshot[q.queryHash] = { at: q.state.dataUpdatedAt, data: q.state.data };
         }
       }
-      const newest = Object.entries(snapshot)
+      // Each entry is turned into JSON once: that both measures it and is what gets stored.
+      const kept = Object.entries(snapshot)
         .sort((a, b) => b[1].at - a[1].at)
-        .slice(0, MAX_ENTRIES);
-      memory = Object.fromEntries(newest);
-      localStorage.setItem(STORE, JSON.stringify(memory));
+        .slice(0, MAX_ENTRIES)
+        .map(([hash, entry]) => [hash, entry, JSON.stringify(entry)] as const)
+        .filter(([, , json]) => json.length <= MAX_ENTRY_CHARS);
+      memory = Object.fromEntries(kept.map(([hash, entry]) => [hash, entry]));
+      localStorage.setItem(STORE, `{${kept.map(([hash, , json]) => `${JSON.stringify(hash)}:${json}`).join(",")}}`);
     } catch {
       // Storage full or blocked: nothing is kept, and nothing breaks.
     }

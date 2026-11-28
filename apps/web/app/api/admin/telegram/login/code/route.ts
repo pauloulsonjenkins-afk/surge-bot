@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { telegramSubmitCode } from "@/server/telegram-admin-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const token = (await cookies()).get(ADMIN_COOKIE_NAME)?.value;
-  if (!(await verifySessionToken(token))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) {
+    return unauthorized();
   }
 
   try {

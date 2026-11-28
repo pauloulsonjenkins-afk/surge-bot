@@ -21,7 +21,7 @@ export function useSending(refetchInterval = 15_000) {
 }
 
 /** The owner chose not to confirm a risky figure: nothing was saved. */
-export class SaveCancelled extends ApiFetchError {
+class SaveCancelled extends ApiFetchError {
   constructor() {
     super("Not saved: you cancelled it.", 422);
   }

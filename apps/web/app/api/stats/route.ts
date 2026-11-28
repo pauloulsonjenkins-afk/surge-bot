@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { engineUnavailable } from "@/server/public-error";
 import { fetchHitRateStats, parsePickMode } from "@/server/engine-client";
 import { cached } from "@/server/cache";
-import { dataGate } from "@/server/access";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
+import { dataGate, isAdmin } from "@/server/access";
 
-// Open to the admin, to anyone while the public view switch is on, and to signed-in users given this page. These are totals only (hit rates by strategy, league, day and minute).
+// Open to the admin, and to anyone while the public view switch is on. These are totals only (hit rates by strategy, league, day and minute).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const blocked = await dataGate("dashboard");
+  const blocked = await dataGate();
   if (blocked) return blocked;
   const { searchParams } = new URL(request.url);
   const daysParam = Number(searchParams.get("days"));
@@ -22,7 +20,7 @@ export async function GET(request: Request) {
   const since = sinceRaw && Number.isFinite(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : null;
   const strategy = searchParams.get("strategy")?.trim().slice(0, 120) || null;
   // Live / simulation shows which picks were actually bet, so only the admin can split by it; everyone else sees every alert.
-  const admin = await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
+  const admin = await isAdmin();
   const asked = parsePickMode(searchParams.get("mode"));
   const mode = asked !== "all" && admin ? asked : "all";
 

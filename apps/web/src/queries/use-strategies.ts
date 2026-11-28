@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tansta
 import type { AdminStrategies, AdminStrategy, PickMode, RemoveStrategyResult, StrategyEquity, StrategyReturn, StrategyWeeksReport } from "@/server/engine-client";
 import { ApiFetchError, getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
+import type { StrategySummary } from "@/lib/strategy-summary";
 
 export type { AdminStrategies, AdminStrategy, RemoveStrategyResult, StrategyEquity, StrategyReturn };
 
@@ -18,6 +19,15 @@ export function useAdminStrategies(since: string | null = null) {
     staleTime: 0,
     // Switching period keeps the cards on screen until the new figures arrive.
     placeholderData: (previous) => previous,
+  });
+}
+
+/** The Strategies overview's few figures per strategy (strategy-summary.ts): a few KB, not the full report. */
+export function useStrategySummaries() {
+  return usePersistedQuery({
+    queryKey: [...KEY, "summary"],
+    queryFn: ({ signal }) => getJson<{ strategies: StrategySummary[] }>("/api/admin/strategies?view=summary", "the strategies", signal),
+    staleTime: 0,
   });
 }
 

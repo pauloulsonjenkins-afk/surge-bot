@@ -49,7 +49,7 @@ const EMPTY: Row = { horse: "", course: "", stake: "", odds: "", betType: "win",
  * the tip says which it is, so the row shouldn't keep the previous day's choice for that position (28 Oct 2026: rank 2
  * was each-way one day and win the next, and the carried-over choice was wrong until "Fill the form" was pressed).
  */
-export function withTipBetType(row: Row, tip: Pick<HorseSuggestion, "betType" | "ewPlaces"> | undefined): Row {
+function withTipBetType(row: Row, tip: Pick<HorseSuggestion, "betType" | "ewPlaces"> | undefined): Row {
   if (!tip) return row;
   return { ...row, betType: tip.betType, ewPlaces: tip.betType === "ew" && tip.ewPlaces ? String(tip.ewPlaces) : row.ewPlaces };
 }

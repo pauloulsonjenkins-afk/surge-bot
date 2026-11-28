@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { engineUnavailable } from "@/server/public-error";
 import { fetchStrategyNames } from "@/server/engine-client";
 import { cached } from "@/server/cache";
+import { isAdmin } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +13,7 @@ export const dynamic = "force-dynamic";
  * strategies work and so stay private.
  */
 export async function GET() {
-  const admin = await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
+  const admin = await isAdmin();
   try {
     const { names } = await cached("strategy-names", 30_000, fetchStrategyNames);
     if (admin) return NextResponse.json({ names });

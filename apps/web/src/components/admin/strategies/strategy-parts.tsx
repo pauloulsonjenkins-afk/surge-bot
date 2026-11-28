@@ -23,7 +23,7 @@ export const INACTIVE_DAYS = 14;
 export const lastSeen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const dayMonth = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" });
 
-export type FormKind = "recent" | "week";
+type FormKind = "recent" | "week";
 
 const pctOf = (hits: number, n: number) => Math.round((100 * hits) / n);
 const money = (r: StrategyReturn) => `${gbp(r.profit)}${r.roi !== null ? ` (${signedPct(r.roi)})` : ""}`;
@@ -114,11 +114,6 @@ export function record(hits: number, misses: number) {
   return { hits, misses, settled, hitRate: settled > 0 ? Math.round((hits / settled) * 1000) / 10 : null };
 }
 
-/** Live when its picks are bet with real money; Sim when they are only recorded. */
-export function modeOf(row: AdminStrategy): "live" | "sim" {
-  return row.mode;
-}
-
 /** Priced picks a mode needs before "Own mode" shows it (below this, a strategy that just switched shows its old mode). */
 export const OWN_FROM = 20;
 
@@ -128,7 +123,7 @@ export const OWN_FROM = 20;
  * bet (below minimum odds, too late, not on Betfair), unpriced and unrepresentative; its Live record is the real one.
  */
 export function ownMode(row: AdminStrategy): { mode: "live" | "sim"; borrowed: boolean } {
-  const m = modeOf(row);
+  const m = row.mode;
   const other = m === "live" ? "sim" : "live";
   const r = row.returns;
   if (r && r[m].counted < OWN_FROM && r[other].counted >= OWN_FROM) return { mode: other, borrowed: true };

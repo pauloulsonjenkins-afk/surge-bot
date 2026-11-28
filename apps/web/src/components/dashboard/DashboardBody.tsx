@@ -116,8 +116,8 @@ export function DashboardBody({ embedded = false }: { embedded?: boolean }) {
                   <span className="lg:hidden">
                     <ThemeToggle />
                   </span>
-                  {/* Signed out: the way into the admin area. The admin has the admin bar; members don't need it. */}
-                  {me && !me.user && !me.admin && (
+                  {/* Signed out: the way into the admin area. The admin has the admin bar. */}
+                  {me && !me.admin && (
                     <Link
                       href="/more/admin/login"
                       className="tap-target flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"

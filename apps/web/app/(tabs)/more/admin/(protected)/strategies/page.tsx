@@ -6,16 +6,17 @@ import { ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { QueryError } from "@/components/ui/QueryError";
-import { useAdminStrategies, type AdminStrategy } from "@/queries/use-strategies";
-import { useGolden } from "@/queries/use-golden";
+import { useStrategySummaries } from "@/queries/use-strategies";
+import { useLiveSlices } from "@/queries/use-golden";
 import { useIsArchived } from "@/queries/use-archive";
 import { useStrategyNames } from "@/queries/use-strategy-names";
 import { useToday } from "@/queries/use-today";
 import { AdviceRow, ApplyAllAdvice, adviceTitle, IgnoredAdvice } from "@/components/admin/Advice";
 import { isLayRow } from "@/components/admin/LaySection";
-import { INACTIVE_DAYS, modeOf } from "@/components/admin/strategies/strategy-parts";
+import { INACTIVE_DAYS } from "@/components/admin/strategies/strategy-parts";
 import { byMoney, ENOUGH, LEVEL_BAND, realTotalOf, signedGbp, sliceLine, strategyLine, VERDICT_WORDS, type MoneyLine, type Verdict } from "@/lib/money-verdict";
 import type { StrategyAdvice } from "@/server/engine-client";
+import type { StrategySummary } from "@/lib/strategy-summary";
 
 /** The address of a strategy's own page. */
 export const strategyHref = (label: string) => `/more/admin/strategies/${encodeURIComponent(label.toLowerCase())}`;
@@ -24,14 +25,13 @@ const TONE: Record<Verdict, string> = { making: "text-hit", losing: "text-loss",
 const CHIP: Record<Verdict, string> = { making: "bg-hit/15 text-hit", losing: "bg-loss/15 text-loss", level: "bg-ink/10 text-ink", early: "bg-ink/5 text-ink-muted", none: "bg-ink/5 text-ink-muted" };
 
 /**
- * Strategies, stripped back (owner, 21-22 Nov 2026). Two lists by where a strategy bets now: Real money, and On trial.
- * Each line's figure and label are its real and trial bets TOGETHER (the bigger sample says whether the idea is any
- * good), with the real / trial split underneath; the Real money total at the top is real bets only, so it reconciles to
- * the Betfair balance (src/lib/money-verdict.ts). The detail is a tap away, on each strategy's own page.
+ * Strategies: two lists by where a strategy bets now, Real money and On trial. Each line's figure and label are its real
+ * and trial bets together, with the split underneath; the Real money total is real bets only, so it reconciles to the
+ * Betfair balance (lib/money-verdict.ts). The detail is on each strategy's own page.
  */
 export default function StrategiesPage() {
-  const { data, isLoading, error } = useAdminStrategies(null);
-  const golden = useGolden();
+  const { data, isLoading, error } = useStrategySummaries();
+  const slices = useLiveSlices();
   const today = useToday();
   const names = useStrategyNames();
   const isArchived = useIsArchived();
@@ -51,32 +51,28 @@ export default function StrategiesPage() {
   }
 
   const shown = data.strategies.filter((r) => !isArchived(r.label) && !r.mergedInto);
-  const isQuiet = (r: AdminStrategy) => !r.sendingOn && (!r.lastAlertAt || loadedAt - Date.parse(r.lastAlertAt) > INACTIVE_DAYS * 86_400_000);
+  const isQuiet = (r: StrategySummary) => !r.sendingOn && (!r.lastAlertAt || loadedAt - Date.parse(r.lastAlertAt) > INACTIVE_DAYS * 86_400_000);
 
-  // Real money: Live strategies, on their real bets only.
-  // Every strategy betting real money is listed, even one folded into another for reporting (a merged one was Live and
-  // missing from the list, 21 Nov 2026).
+  // Real money: every Live strategy, even one merged into another for reporting.
   const realLines: MoneyLine[] = data.strategies
-    .filter((r) => !isArchived(r.label) && (!r.mergedInto || modeOf(r) === "live"))
-    .filter((r) => modeOf(r) === "live")
+    .filter((r) => r.mode === "live" && !isArchived(r.label))
     .map((r) => strategyLine({ key: r.label, name: names.name(r.label), lay: isLayRow(r) }, { live: r.returns?.live, sim: r.returns?.sim, all: r.returns?.all }));
-  // ...and Golden slices betting real money inside a strategy that is otherwise on trial (it used to look like Sim).
+  // ...and Golden slices betting real money inside a strategy that is otherwise on trial.
   const liveLabels = new Set(realLines.map((l) => l.key.toLowerCase()));
-  for (const s of golden.data?.slices ?? []) {
-    if (!s.bet?.live || liveLabels.has(s.strategyKey)) continue;
+  for (const s of slices.data?.slices ?? []) {
+    if (liveLabels.has(s.strategyKey)) continue;
     const parent = shown.find((r) => r.label.toLowerCase() === s.strategyKey)?.label ?? s.strategy;
-    const own = s.ownLive ? { counted: s.ownLive.n, profit: s.ownLive.profit, staked: s.ownLive.staked } : s.slice.live;
-    realLines.push(sliceLine({ key: `${parent}#${s.id}`, name: names.name(parent), detail: `Only: ${s.label.replace(/^Golden:\s*/, "")}` }, own));
+    realLines.push(sliceLine({ key: `${parent}#${s.id}`, name: names.name(parent), detail: `Only: ${s.label.replace(/^Golden:\s*/, "")}` }, s.own));
   }
   realLines.sort(byMoney);
 
   // On trial: the same lines, for strategies not betting real money.
-  const trialLine = (r: AdminStrategy): MoneyLine =>
+  const trialLine = (r: StrategySummary): MoneyLine =>
     strategyLine({ key: r.label, name: names.name(r.label), lay: isLayRow(r), ready: readyKeys.has(r.label.toLowerCase()) }, { live: r.returns?.live, sim: r.returns?.sim, all: r.returns?.all });
-  const onTrial = shown.filter((r) => modeOf(r) === "sim" && !isQuiet(r));
+  const onTrial = shown.filter((r) => r.mode === "sim" && !isQuiet(r));
   const trialLines = onTrial.filter((r) => !isLayRow(r)).map(trialLine).sort(byMoney);
   const trialLays = onTrial.filter((r) => isLayRow(r)).map(trialLine).sort(byMoney);
-  const quietLines = shown.filter((r) => modeOf(r) === "sim" && isQuiet(r)).map(trialLine).sort(byMoney);
+  const quietLines = shown.filter((r) => r.mode === "sim" && isQuiet(r)).map(trialLine).sort(byMoney);
 
   const trialMain = trialLines.filter((l) => l.verdict !== "losing");
   const trialLosing = trialLines.filter((l) => l.verdict === "losing");
@@ -110,7 +106,7 @@ export default function StrategiesPage() {
             l.disagree && <span className="mt-0.5 block text-xs font-medium text-warn">Real and trial point opposite ways: normal at this many bets.</span>
           )}
         </span>
-        <span className={`shrink-0 text-right text-base font-semibold tabular-nums ${TONE[l.verdict]}`}>{l.bets > 0 ? signedGbp(l.profit) : "–"}</span>
+        <span className={`shrink-0 whitespace-nowrap text-right text-base font-semibold tabular-nums ${TONE[l.verdict]}`}>{l.bets > 0 ? signedGbp(l.profit) : "–"}</span>
         <ChevronRight size={16} aria-hidden className="shrink-0 text-ink-muted" />
       </Link>
     </li>
@@ -146,7 +142,7 @@ export default function StrategiesPage() {
                 Real money so far
                 <span className="block text-xs text-ink-muted">{real.bets} real bets: what reached your Betfair account</span>
               </span>
-              <span className={`text-xl font-semibold tabular-nums ${real.profit > 0 ? "text-hit" : real.profit < 0 ? "text-loss" : "text-ink"}`}>{signedGbp(real.profit)}</span>
+              <span className={`whitespace-nowrap text-xl font-semibold tabular-nums ${real.profit > 0 ? "text-hit" : real.profit < 0 ? "text-loss" : "text-ink"}`}>{signedGbp(real.profit)}</span>
             </div>
             {list(realLines)}
           </>

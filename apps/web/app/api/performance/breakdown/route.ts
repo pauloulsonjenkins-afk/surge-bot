@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { engineUnavailable } from "@/server/public-error";
 import { fetchPerformanceCells, parsePickMode } from "@/server/engine-client";
 import { cached } from "@/server/cache";
-import { dataGate } from "@/server/access";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
+import { dataGate, isAdmin } from "@/server/access";
 
-// Open to the admin, to anyone while the public view switch is on, and to signed-in users given this page. Totals only: counts by league, strategy and alert minute, never individual alerts.
+// Open to the admin, and to anyone while the public view switch is on. Totals only: counts by league, strategy and alert minute, never individual alerts.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const blocked = await dataGate("dashboard");
+  const blocked = await dataGate();
   if (blocked) return blocked;
   const { searchParams } = new URL(request.url);
   const daysParam = Number(searchParams.get("days"));
@@ -20,7 +18,7 @@ export async function GET(request: Request) {
   const since = sinceRaw && Number.isFinite(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : null;
   // Live / simulation is admin-only, as on /api/stats.
   const asked = parsePickMode(searchParams.get("mode"));
-  const mode = asked !== "all" && (await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value)) ? asked : "all";
+  const mode = asked !== "all" && (await isAdmin()) ? asked : "all";
 
   try {
     return NextResponse.json({ cells: await cached(`performance:${since ?? days}:${mode}`, 5000, () => fetchPerformanceCells(days, mode, since)) });

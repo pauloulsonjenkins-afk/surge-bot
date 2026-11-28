@@ -8,7 +8,7 @@ export const IN_PLAY_MS = 115 * 60_000;
 const OFF = new Set(["PST", "CANC", "ABD", "AWD", "WO", "SUSP"]);
 const DONE = new Set(["FT", "AET", "PEN"]);
 
-export interface TodayMatchCounts {
+interface TodayMatchCounts {
   inPlay: number;
   toPlay: number;
   /** The next kick-off still to come today (ISO), or null. */

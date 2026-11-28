@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import { CalendarDays, ChevronRight, Home, Layers, ListChecks, Radio, Send, Settings, TrendingUp, Trophy } from "lucide-react";
 import { HorseHeadIcon } from "@/components/ui/HorseHeadIcon";
 
-export type NavIcon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+type NavIcon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
 
 /** One icon per menu entry, the same on the tab bar, the sidebar and the More page. */
 const NAV_ICONS: Record<string, NavIcon> = {

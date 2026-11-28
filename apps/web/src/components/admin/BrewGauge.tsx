@@ -4,9 +4,9 @@ import { gbp, toneOf } from "@/lib/format";
 import { Flash } from "@/components/ui/Flash";
 
 /**
- * Home's centrepiece (15 Nov 2026): today's Live profit inside a dial like an espresso machine's pressure gauge. The
- * marker is today's hit rate; the tick is the hit rate needed to break even, so "just short" or "clear" reads at a
- * glance. The dial runs from 30% to 80% (a hit rate outside that sits at the end). Colours come from the theme.
+ * Home's centrepiece: today's Live profit inside a dial. The marker is the share of today's bets that won; the tick is
+ * the share that needs to win to break even at today's odds. The dial runs from 30% to 80% (anything outside sits at the
+ * end). Underneath, the same thing in words and bets: "3 of 10 won; 6 would break even".
  */
 const CX = 195;
 const CY = 200;
@@ -33,6 +33,7 @@ export function BrewGauge({
   needs,
   won,
   lost,
+  loading = false,
   children,
 }: {
   /** Today's Live profit in pounds. */
@@ -42,22 +43,33 @@ export function BrewGauge({
   needs: number | null;
   won: number;
   lost: number;
+  /** The won / lost figures are still loading: show placeholders, not zeros. */
+  loading?: boolean;
   /** A line under the won and lost counts (today's Sim figure). */
   children?: React.ReactNode;
 }) {
+  const settled = won + lost;
   const ahead = hitRate !== null && needs !== null ? hitRate >= needs : net >= 0;
   const colour = hitRate === null ? "var(--ink-muted)" : ahead ? "var(--hit)" : "var(--loss)";
-  const gap = hitRate !== null && needs !== null ? Math.round(Math.abs(hitRate - needs) * 10) / 10 : null;
+  // How many of today's settled bets needed to win to break even at today's odds.
+  const toBreakEven = needs !== null && settled > 0 ? Math.min(settled, Math.ceil((needs / 100) * settled - 1e-9)) : null;
   const at = hitRate === null ? null : angleOf(hitRate);
   const [mx, my] = at === null ? [0, 0] : pointAt(at, R);
   const tick = needs === null ? null : angleOf(needs);
   const [tx0, ty0] = tick === null ? [0, 0] : pointAt(tick, R - 15);
   const [tx1, ty1] = tick === null ? [0, 0] : pointAt(tick, R + 17);
   const [lx, ly] = tick === null ? [0, 0] : pointAt(tick, R + 30);
-  const summary =
-    hitRate === null
+  const plain =
+    toBreakEven === null
+      ? null
+      : ahead
+        ? `${toBreakEven} of the ${settled} winning would break even at today's odds, so you're ahead.`
+        : `You'd need ${toBreakEven} of the ${settled} to win to break even at today's odds.`;
+  const summary = loading
+    ? `Live today ${gbp(net, false)}.`
+    : hitRate === null
       ? `Live today ${gbp(net, false)}. Nothing settled yet.`
-      : `Live today ${gbp(net, false)}. Hit rate ${hitRate}%${needs !== null ? `, ${needs}% needed to break even` : ""}. ${won} won, ${lost} lost.`;
+      : `Live today ${gbp(net, false)}. ${won} of ${settled} bets won. ${plain ?? ""}`;
 
   return (
     <section aria-label={summary} className="relative mx-auto w-full max-w-[390px]">
@@ -102,21 +114,23 @@ export function BrewGauge({
           </Flash>
         </p>
         <p className="mt-1 text-[15px]">
-          {hitRate === null ? (
+          {loading ? (
+            <span className="text-ink-muted">Loading today&apos;s bets…</span>
+          ) : hitRate === null ? (
             <span className="text-ink-muted">Nothing settled yet</span>
           ) : (
-            <>
-              <b className={`font-semibold ${ahead ? "text-hit" : "text-loss"}`}>{hitRate}% hit rate</b>
-              {gap !== null && <span className="text-ink-muted">, {gap} {ahead ? "clear" : "short"}</span>}
-            </>
+            <b className={`font-semibold ${ahead ? "text-hit" : "text-loss"}`}>
+              {won} of {settled} won
+            </b>
           )}
         </p>
       </div>
       <div className="-mt-1 flex flex-wrap items-center justify-center gap-2 text-[13px]">
-        <span className="rounded-full bg-hit/15 px-3 py-1 font-semibold text-hit">{won} won</span>
-        <span className="rounded-full bg-loss/15 px-3 py-1 font-semibold text-loss">{lost} lost</span>
+        <span className="rounded-full bg-hit/15 px-3 py-1 font-semibold text-hit">{loading ? "–" : won} won</span>
+        <span className="rounded-full bg-loss/15 px-3 py-1 font-semibold text-loss">{loading ? "–" : lost} lost</span>
         {children}
       </div>
+      {!loading && plain && <p className="mt-2 text-center text-sm text-ink-muted">{plain}</p>}
     </section>
   );
 }

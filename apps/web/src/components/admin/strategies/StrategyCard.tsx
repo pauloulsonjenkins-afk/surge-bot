@@ -21,7 +21,7 @@ import { BetSettings, betSummary, LiveSimSwitch, type SendingStrategy } from "@/
 import type { StrategyAdvice } from "@/server/engine-client";
 import { ADVICE_LABEL, ApplyAdvice, isGoodAdvice } from "@/components/admin/Advice";
 import { Sparkline } from "@/components/ui/Sparkline";
-import { EquityCurve, lastSeen, ChangeCompare, FormParagraph, record, modeOf, OWN_FROM, CheckResult, ReadyForLive, judged, PriceCheckLine, ByBetLine, SegmentLines, SAMPLE, VerdictLine, roiTone, returnsFor, SortBy, shortDay, adjustedRoi, OddsContext, AboutStrategy, LiveSimToday } from "@/components/admin/strategies/strategy-parts";
+import { EquityCurve, lastSeen, ChangeCompare, FormParagraph, record, OWN_FROM, CheckResult, ReadyForLive, judged, PriceCheckLine, ByBetLine, SegmentLines, SAMPLE, VerdictLine, roiTone, returnsFor, SortBy, shortDay, adjustedRoi, OddsContext, AboutStrategy, LiveSimToday } from "@/components/admin/strategies/strategy-parts";
 
 export function StrategyCard({
   row,
@@ -176,7 +176,7 @@ export function StrategyCard({
               <span className="min-w-0 break-words">
                 <StrategyName label={row.label} withOriginal />
               </span>
-              {!bet && <ModeBadge mode={modeOf(row)} />}
+              {!bet && <ModeBadge mode={row.mode} />}
               {bet?.enabled && bet.stopLoss?.stopped && <span className="rounded-full bg-warn px-2 py-0.5 text-xs font-medium text-warn-ink">Stopped today</span>}
             </span>
             <span className={`mt-0.5 block truncate text-xs ${row.market ? "text-ink-muted" : "text-warn"}`}>
@@ -199,7 +199,7 @@ export function StrategyCard({
             <LiveSimToday row={row} />
             {borrowed && (
               <span className="mt-1 block text-xs text-warn">
-                Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {modeOf(row) === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} priced picks there yet.
+                Showing its {pickMode === "live" ? "Live" : "Sim"} record: it&apos;s now in {row.mode === "live" ? "Live" : "Sim"}, with fewer than {OWN_FROM} priced picks there yet.
               </span>
             )}
           </span>
@@ -271,13 +271,13 @@ export function StrategyCard({
             <p className="mb-1 mt-2 text-xs font-medium text-ink-muted">Last 7 days</p>
             <FormParagraph row={row} kind="week" />
           </div>
-          {modeOf(row) === "sim" && (
+          {row.mode === "sim" && (
             <ReadyForLive row={row} check={check} hasStop={!!bet?.stopLoss && (bet.stopLoss.dailyLoss !== null || bet.stopLoss.lossRun !== null)} />
           )}
           {bet && settings && <BetSettings s={bet} settings={settings} bank={bank} />}
           <LeaguesCard strategyKey={row.label.toLowerCase()} name={names.name(row.label)} settings={settings} />
           {settings && bestSlicesFirst(row.returns?.segments ?? [], (s) => sliceStatus(row.label, s.id), (s) => s.in.all).map((s) => (
-            <SegmentBetting key={s.id} strategyKey={row.label.toLowerCase()} strategyName={names.name(row.label)} segment={s} settings={settings} strategyLive={modeOf(row) === "live"} />
+            <SegmentBetting key={s.id} strategyKey={row.label.toLowerCase()} strategyName={names.name(row.label)} segment={s} settings={settings} strategyLive={row.mode === "live"} />
           ))}
           <p className="text-xs text-ink-muted">
             {pickMode === "all" && `${row.alertsSince} alert${row.alertsSince === 1 ? "" : "s"} · `}

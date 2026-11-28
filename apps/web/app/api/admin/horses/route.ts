@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchHorseBets, saveHorseDay, type HorseEntryInput } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function isAdmin(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
 /** Every horse bet, for the Horses page (admin only). */
 export async function GET() {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     return NextResponse.json(await fetchHorseBets());
   } catch (err) {
@@ -24,7 +19,7 @@ const text = (v: unknown) => (typeof v === "string" || typeof v === "number" ? S
 
 /** Body: { day: "YYYY-MM-DD", entries: [{ rank, horse, course, stake, odds, betType, ewFraction, ewPlaces }], yankeeStake: string | null }. */
 export async function PUT(request: Request) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   const body = (await request.json().catch(() => ({}))) as { day?: unknown; entries?: unknown; yankeeStake?: unknown };
   if (typeof body.day !== "string" || !Array.isArray(body.entries)) return NextResponse.json({ error: "day and entries are required" }, { status: 400 });
   const entries: HorseEntryInput[] = (body.entries as Array<Record<string, unknown>>).slice(0, 4).map((e) => ({

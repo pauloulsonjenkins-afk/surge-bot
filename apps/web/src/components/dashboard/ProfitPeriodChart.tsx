@@ -9,7 +9,7 @@ import { ChartCard } from "./ChartCard";
 import { EmptyState } from "./EmptyState";
 import { useDashboardWinLoss } from "./WinLossSummary";
 
-export type Range = "d7" | "d30" | "ytd";
+type Range = "d7" | "d30" | "ytd";
 const WORDS: Record<Range, string> = { d7: "the last 7 days", d30: "the last 30 days", ytd: "this year" };
 
 const shortDate = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });

@@ -22,7 +22,7 @@ import { useToday } from "@/queries/use-today";
 import type { StrategyAdvice } from "@/server/engine-client";
 import { AdviceRow, ApplyAllAdvice, adviceTitle } from "@/components/admin/Advice";
 import { isLayRow, LaySection } from "@/components/admin/LaySection";
-import { INACTIVE_DAYS, adjustedRoi, modeOf, ownMode, hasPicks, CheckResult, SAMPLE, Period, PERIODS, periodStart, SortBy, View, VIEWS, SORTS, sortValue } from "@/components/admin/strategies/strategy-parts";
+import { INACTIVE_DAYS, adjustedRoi, ownMode, hasPicks, CheckResult, SAMPLE, Period, PERIODS, periodStart, SortBy, View, VIEWS, SORTS, sortValue } from "@/components/admin/strategies/strategy-parts";
 import { StrategyCard } from "@/components/admin/strategies/StrategyCard";
 import { GoldenSlicesSection } from "@/components/admin/strategies/GoldenSlicesSection";
 
@@ -381,7 +381,7 @@ export default function StrategiesPage() {
             // Best first by the chosen figure (in the section's own mode), so what to act on is at the top and bottom.
             const valueOf = (r: AdminStrategy) => sortValue(r, view === "own" ? ownMode(r).mode : m, sortBy) ?? -Infinity;
             const group = strategies
-              .filter((r) => modeOf(r) === m && !r.mergedInto && !isLayRow(r) && !isInactive(r) && !isParked(r))
+              .filter((r) => r.mode === m && !r.mergedInto && !isLayRow(r) && !isInactive(r) && !isParked(r))
               .sort((a, b) => valueOf(b) - valueOf(a) || a.label.localeCompare(b.label));
             if (group.length === 0) return null;
             const renderCard = (r: AdminStrategy) => (
@@ -427,14 +427,14 @@ export default function StrategiesPage() {
                     renderCard={(key) => (byKey.has(key) ? renderCard(byKey.get(key)!) : null)}
                     showTotal={m === "sim"}
                     // The "each row is its own mode" note once, on the first section shown, not repeated on both.
-                    showHelp={m === "live" || !strategies.some((r) => modeOf(r) === "live" && !isLayRow(r) && !isInactive(r))}
+                    showHelp={m === "live" || !strategies.some((r) => r.mode === "live" && !isLayRow(r) && !isInactive(r))}
                     sliceLabels={Object.fromEntries(strategies.flatMap((x) => (x.returns?.segments ?? []).map((s) => [`${x.label.toLowerCase()}#${s.id}`, s.label])))}
                   />
                 ) : (
                 <ul className="space-y-2">{group.filter((r) => hasPicks(r, m)).map(renderCard)}</ul>
                 )}
                 {m === "sim" && (() => {
-                  const parked = strategies.filter((r) => modeOf(r) === "sim" && !r.mergedInto && !isInactive(r) && isParked(r));
+                  const parked = strategies.filter((r) => r.mode === "sim" && !r.mergedInto && !isInactive(r) && isParked(r));
                   return parked.length > 0 ? (
                     <details className="rounded-xl border border-line bg-surface p-3">
                       <summary className="cursor-pointer text-sm font-medium text-ink">

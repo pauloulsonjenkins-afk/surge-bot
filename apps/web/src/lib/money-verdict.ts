@@ -22,7 +22,7 @@ export type Verdict = "making" | "losing" | "level" | "early" | "none";
 export const LEVEL_BAND = 0.01;
 
 /** One side's bets: real or trial. */
-export interface Split {
+interface Split {
   profit: number;
   bets: number;
 }
@@ -54,8 +54,8 @@ export interface MoneyLine {
 }
 
 /** Real bets, and the share of their stake lost, past which a trial in profit is not to be trusted. */
-export const REAL_WORSE_BETS = 5;
-export const REAL_WORSE_LOSS = 0.5;
+const REAL_WORSE_BETS = 5;
+const REAL_WORSE_LOSS = 0.5;
 
 export function verdictOf(profit: number, bets: number, staked?: number | null): Verdict {
   if (bets === 0) return "none";
@@ -70,7 +70,7 @@ export function disagrees(trialProfit: number, realProfit: number): boolean {
 }
 
 /** Bets a side needs before "real and trial disagree" is said: fewer is just a small sample. */
-export const DISAGREE_FROM = 20;
+const DISAGREE_FROM = 20;
 
 export const VERDICT_WORDS: Record<Verdict, string> = {
   making: "Making money",

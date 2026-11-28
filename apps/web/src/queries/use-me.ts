@@ -3,14 +3,10 @@
 import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getJson } from "./fetch-json";
-import type { UserPage } from "@/lib/user-pages";
 
-export interface Me {
+interface Me {
   admin: boolean;
   publicView: boolean;
-  user: { id: number; email: string; name: string; pages: UserPage[]; active: boolean } | null;
-  /** The page groups this visitor can open right now. */
-  pages: UserPage[];
 }
 
 const ME_KEY = ["me"];

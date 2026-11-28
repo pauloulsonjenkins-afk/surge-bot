@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { setManualBet } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Body: { id, stake, odds } to log a bet placed by hand on a pick, or { id, clear: true } to remove it. */
 export async function POST(request: Request) {
-  if (!(await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) {
+    return unauthorized();
   }
   const body = (await request.json().catch(() => ({}))) as { id?: unknown; stake?: unknown; odds?: unknown; clear?: unknown };
   if (typeof body.id !== "number") return NextResponse.json({ error: "id is required" }, { status: 400 });

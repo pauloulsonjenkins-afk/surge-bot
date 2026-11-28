@@ -6,7 +6,7 @@ import { gbp } from "@/lib/format";
 const GAIN = "var(--hit)";
 const LOSS = "var(--loss)";
 
-export interface DailyBar {
+interface DailyBar {
   /** UK calendar date, YYYY-MM-DD. */
   date: string;
   pnl: number;

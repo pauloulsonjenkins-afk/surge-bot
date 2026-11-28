@@ -8,7 +8,7 @@
 import { Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-export interface PageTab {
+interface PageTab {
   id: string;
   label: string;
   render: () => React.ReactNode;

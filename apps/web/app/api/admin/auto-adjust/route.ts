@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchAutoAdjust, setAutoAdjust } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 // Signed-in only. Read by the scheduled Claude cross-check: each auto-adjust run, what it changed and what it held back.
 // POST { on: boolean } switches auto-adjust on or off.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function authorised(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
 export async function GET() {
-  if (!(await authorised())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     return NextResponse.json(await fetchAutoAdjust());
   } catch (err) {
@@ -22,7 +17,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!(await authorised())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     const body = (await request.json()) as { on?: unknown };
     if (typeof body.on !== "boolean") return NextResponse.json({ error: "on must be true or false" }, { status: 400 });

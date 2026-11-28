@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { getLayReport, layGroupAction } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function admin(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
 /** The LAY groups (what each lays and why) and the lay ideas (admin only). */
 export async function GET() {
-  if (!(await admin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     return NextResponse.json(await getLayReport());
   } catch (err) {
@@ -22,7 +17,7 @@ export async function GET() {
 
 /** Body: { action: "watch", strategyKey, source, rule, why } lays an idea in Sim; { action: "unwatch", header } stops (admin only). */
 export async function POST(request: Request) {
-  if (!(await admin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   try {
     if (body.action === "unwatch" && typeof body.header === "string") return NextResponse.json(await layGroupAction({ action: "unwatch", header: body.header }));

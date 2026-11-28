@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchAdminStrategies, mergeAdminStrategy } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
+import { summariseStrategy } from "@/lib/strategy-summary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function isAdmin(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
+/** Every strategy (admin only). ?view=summary: only what the Strategies overview shows (strategy-summary.ts). */
 export async function GET(request: Request) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const raw = new URL(request.url).searchParams.get("since");
+  if (!(await isAdmin())) return unauthorized();
+  const params = new URL(request.url).searchParams;
+  const raw = params.get("since");
   const since = raw && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : null;
   try {
-    return NextResponse.json(await fetchAdminStrategies(since));
+    const data = await fetchAdminStrategies(since);
+    if (params.get("view") === "summary") return NextResponse.json({ strategies: data.strategies.map(summariseStrategy) });
+    return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
   }
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
 /** Body: { from: string, into: string | null }. into = null undoes a merge. */
 export async function POST(request: Request) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   const body = (await request.json().catch(() => ({}))) as { from?: unknown; into?: unknown };
   const from = typeof body.from === "string" ? body.from.trim() : "";
   const into = typeof body.into === "string" ? body.into.trim() : null;

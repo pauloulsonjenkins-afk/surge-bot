@@ -107,7 +107,7 @@ const snoozeBody = (a: StrategyAdvice, hours: number) => JSON.stringify({ key: a
  * "Ignore for 24 hours" (owner, 8 Nov 2026): sets this suggestion aside, changing nothing. It comes back by itself after a
  * day, or from the "ignored" line under the list.
  */
-export function IgnoreAdvice({ a }: { a: StrategyAdvice }) {
+function IgnoreAdvice({ a }: { a: StrategyAdvice }) {
   const qc = useQueryClient();
   const run = useMutation({
     mutationFn: async () => {

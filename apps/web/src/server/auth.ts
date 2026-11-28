@@ -1,30 +1,12 @@
 /**
- * Admin session handling.
+ * The admin session.
  *
- * Deliberately NOT what the spec asked for ("hardcode the password, hash it
- * in local session state"). That pattern ships the check to the browser,
- * where devtools can read the hash straight out of the bundle or flip the
- * "authenticated" flag directly — see the Security section of the original
- * blueprint, which flags exactly this. Given this gate sits in front of
- * Betfair credentials and live staking, the check has to happen on the
- * server, on every request to a protected route, against a secret that
- * never leaves the server.
- *
- * How it works:
- *  - ADMIN_PASSWORD lives only as a server-side env var (set it in the
- *    DigitalOcean App Platform dashboard as an encrypted/secret-type var —
- *    no terminal needed). It is never imported into client code.
- *  - On successful login, the server issues a signed token (HMAC-SHA256
- *    over a payload + expiry) inside an httpOnly, SameSite=Strict cookie.
- *    The browser can't read or forge it; it can only send it back.
- *  - Every protected request re-verifies the signature and expiry — using
- *    Web Crypto (SubtleCrypto), which runs in both the Node runtime (route
- *    handlers, layouts) and the Edge runtime (middleware), so the same
- *    verify function guards both layers.
- *
- * Swap-in path to the blueprint's fuller version later: replace the plain
- * ADMIN_PASSWORD comparison below with an argon2id hash comparison once
- * you're comfortable generating one — nothing else here changes.
+ *  - ADMIN_PASSWORD and ADMIN_SESSION_SECRET are server-only env vars (DigitalOcean, encrypted).
+ *  - Signing in sets an httpOnly, SameSite=Lax cookie holding "<expiry>.<HMAC-SHA256 signature>". Lax, not Strict, so a
+ *    link from a notification, Telegram or the widget arrives signed in.
+ *  - The signature also covers a fingerprint of ADMIN_PASSWORD, so changing the password signs every device out.
+ *  - Every protected page (proxy.ts and the (protected) layout) and every admin route (access.ts isAdmin) re-verifies it.
+ *    Web Crypto is used so the same code runs in the proxy and in route handlers.
  */
 
 const COOKIE_NAME = "surge_admin_session";

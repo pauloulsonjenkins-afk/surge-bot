@@ -19,7 +19,7 @@ export function useLeagueHistory(seasons: number) {
   });
 }
 
-export interface LayTestQuery {
+interface LayTestQuery {
   min: number;
   max: number;
   commission: number;

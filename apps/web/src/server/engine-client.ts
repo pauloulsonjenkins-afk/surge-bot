@@ -1,9 +1,49 @@
 /**
- * Server-only call to the engine's /internal/picks endpoint.
- *
- * Never imported into client code — ENGINE_BASE_URL and ADMIN_INTERNAL_KEY
- * stay on the server, same principle as auth.ts and ADMIN_PASSWORD.
+ * The website's calls to the engine's /internal routes, and the shapes they return. Server-only: ENGINE_BASE_URL and
+ * ADMIN_INTERNAL_KEY never reach the browser.
  */
+
+type EngineInit = { method?: "GET" | "POST" | "PUT"; body?: unknown; timeoutMs?: number };
+
+/** An engine reply that wasn't 2xx. The message is the engine's own reason when it gave one. */
+class EngineError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: Record<string, unknown>,
+    fallback: string,
+  ) {
+    super(typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : fallback);
+  }
+}
+
+/** One request to an /internal route, as the admin site. Throws EngineError on a non-2xx reply. */
+async function engineFetch(path: string, what: string, init: EngineInit = {}): Promise<Response> {
+  const baseUrl = process.env.ENGINE_BASE_URL;
+  const internalKey = process.env.ADMIN_INTERNAL_KEY;
+  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: init.method ?? "GET",
+    headers: { Authorization: `Bearer ${internalKey}`, ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}) },
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    cache: "no-store",
+    signal: AbortSignal.timeout(init.timeoutMs ?? 8000),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new EngineError(res.status, body, `Engine responded ${res.status} for ${what}.`);
+  }
+  return res;
+}
+
+/** engineFetch, reading the JSON reply. */
+export async function engineCall<T>(path: string, what: string, init: EngineInit = {}): Promise<T> {
+  return (await (await engineFetch(path, what, init)).json()) as T;
+}
+
+/** engineFetch for a change whose reply isn't needed. */
+async function engineSend(path: string, what: string, body: unknown): Promise<void> {
+  await (await engineFetch(path, what, { method: "POST", body })).arrayBuffer();
+}
 
 export interface EnginePick {
   id: number;
@@ -15,45 +55,7 @@ export interface EnginePick {
 }
 
 export async function fetchRecentPicks(limit = 50): Promise<EnginePick[]> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  console.log(`[picks] ENGINE_BASE_URL=${baseUrl ?? "MISSING"} ADMIN_INTERNAL_KEY=${internalKey ? "set" : "MISSING"}`);
-
-  if (!baseUrl || !internalKey) {
-    throw new Error(
-      "ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component " +
-        "(ADMIN_INTERNAL_KEY must match the same value set on the engine component).",
-    );
-  }
-
-  const url = `${baseUrl}/internal/picks?limit=${limit}`;
-  console.log(`[picks] fetching ${url} ...`);
-  const started = Date.now();
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    console.log(`[picks] got status ${res.status} after ${Date.now() - started}ms`);
-
-    if (!res.ok) {
-      throw new Error(`Engine responded ${res.status} when fetching picks.`);
-    }
-
-    const data = (await res.json()) as { picks: EnginePick[] };
-    console.log(`[picks] parsed ${data.picks?.length ?? 0} picks`);
-    return data.picks;
-  } catch (err) {
-    console.log(`[picks] fetch FAILED after ${Date.now() - started}ms: ${err instanceof Error ? err.message : String(err)}`);
-    throw err;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return (await engineCall<{ picks: EnginePick[] }>(`/internal/picks?limit=${limit}`, "the raw alerts")).picks;
 }
 
 /** One Telegram alert, parsed. Mirrors LivePick in the engine's engine-db.ts. */
@@ -277,29 +279,10 @@ export function toTradeLogPick(p: LivePick): TradeLogPick {
 export type PickWindow = { hours: number } | { date: string } | null;
 
 export async function fetchLivePicks(limit = 50, window: PickWindow = null): Promise<LivePick[]> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const query = new URLSearchParams({ limit: String(limit) });
-    if (window && "hours" in window) query.set("hours", String(window.hours));
-    if (window && "date" in window) query.set("date", window.date);
-    const res = await fetch(`${baseUrl}/internal/live?${query.toString()}`, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching live picks.`);
-    const data = (await res.json()) as { picks: LivePick[] };
-    return data.picks;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (window && "hours" in window) query.set("hours", String(window.hours));
+  if (window && "date" in window) query.set("date", window.date);
+  return (await engineCall<{ picks: LivePick[] }>(`/internal/live?${query}`, "live picks")).picks;
 }
 
 /** Mirrors HitRateStats in the engine's engine-db.ts. */
@@ -378,32 +361,13 @@ export function parsePickMode(v: unknown): PickMode {
 }
 
 /** `since` (an ISO time, e.g. UK midnight for "Today") takes the place of `days` when given. */
-export async function fetchHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all", since: string | null = null): Promise<HitRateStats> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const query = new URLSearchParams();
-    if (since) query.set("since", since);
-    else if (days) query.set("days", String(days));
-    if (strategy) query.set("strategy", strategy);
-    if (mode !== "all") query.set("mode", mode);
-    const qs = query.toString();
-    const res = await fetch(`${baseUrl}/internal/stats${qs ? `?${qs}` : ""}`, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching stats.`);
-    return (await res.json()) as HitRateStats;
-  } finally {
-    clearTimeout(timeout);
-  }
+export function fetchHitRateStats(days: number | null, strategy: string | null = null, mode: PickMode = "all", since: string | null = null): Promise<HitRateStats> {
+  const query = new URLSearchParams();
+  if (since) query.set("since", since);
+  else if (days) query.set("days", String(days));
+  if (strategy) query.set("strategy", strategy);
+  if (mode !== "all") query.set("mode", mode);
+  return engineCall<HitRateStats>(`/internal/stats${query.size ? `?${query}` : ""}`, "stats");
 }
 
 /** Mirrors the engine's bet-feed settings and the /internal/sending reply. */
@@ -537,7 +501,7 @@ export function fetchLeagueForm(): Promise<LeagueFormReport> {
 export type Verdict = "too early" | "probably losing" | "no clear edge" | "probably winning";
 
 /** The engine wants a risky figure typed again before it saves (engine money-guard.ts); nothing was changed. */
-export interface ConfirmNeededItem {
+interface ConfirmNeededItem {
   what: string;
   figure: string;
 }
@@ -551,29 +515,14 @@ export class ConfirmNeeded extends Error {
 }
 
 async function sendingRequest(method: "GET" | "PUT", body?: SendingPatch): Promise<SendingState> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(`${baseUrl}/internal/sending`, {
-      method,
-      headers: { Authorization: `Bearer ${internalKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (res.status === 422) {
-      const b = (await res.json().catch(() => ({}))) as { reason?: string; confirm?: ConfirmNeededItem[] };
+    return await engineCall<SendingState>("/internal/sending", "sending options", { method, body });
+  } catch (err) {
+    if (err instanceof EngineError && err.status === 422) {
+      const b = err.body as { reason?: string; confirm?: ConfirmNeededItem[] };
       throw new ConfirmNeeded(b.reason ?? "This change needs confirming.", Array.isArray(b.confirm) ? b.confirm : []);
     }
-    if (!res.ok) throw new Error(`Engine responded ${res.status} for sending options.`);
-    return (await res.json()) as SendingState;
-  } finally {
-    clearTimeout(timeout);
+    throw err;
   }
 }
 
@@ -587,126 +536,29 @@ export interface RemoveStrategyResult {
   ignoring?: boolean;
 }
 
-export async function removeStrategy(label: string, ignoreFuture = false, includeSent = false): Promise<RemoveStrategyResult> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/strategies/remove`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ label, ignoreFuture, includeSent }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error ?? `Engine responded ${res.status} when removing the strategy.`);
-    }
-    return (await res.json()) as RemoveStrategyResult;
-  } finally {
-    clearTimeout(timeout);
-  }
+export function removeStrategy(label: string, ignoreFuture = false, includeSent = false): Promise<RemoveStrategyResult> {
+  return engineCall<RemoveStrategyResult>("/internal/strategies/remove", "removing the strategy", { method: "POST", body: { label, ignoreFuture, includeSent } });
 }
 
-export async function setPickResult(id: number, result: "hit" | "miss" | null): Promise<void> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/picks/result`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ id, result }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving the result.`);
-  } finally {
-    clearTimeout(timeout);
-  }
+export function setPickResult(id: number, result: "hit" | "miss" | null): Promise<void> {
+  return engineSend("/internal/picks/result", "saving the result", { id, result });
 }
 
 /** Clears a pick from Live's "Waiting for a result" without a result, or (cleared = false) puts it back. */
-export async function setPickWaitingCleared(id: number, cleared: boolean): Promise<void> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/picks/clear-waiting`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ id, cleared }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when clearing the pick.`);
-  } finally {
-    clearTimeout(timeout);
-  }
+export function setPickWaitingCleared(id: number, cleared: boolean): Promise<void> {
+  return engineSend("/internal/picks/clear-waiting", "clearing the pick", { id, cleared });
 }
 
 async function accessRequest(method: "GET" | "PUT", publicView?: boolean): Promise<boolean> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/access`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${internalKey}`,
-        ...(publicView !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body: publicView !== undefined ? JSON.stringify({ publicView }) : undefined,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} for the public view setting.`);
-    return ((await res.json()) as { publicView: boolean }).publicView === true;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const data = await engineCall<{ publicView: boolean }>("/internal/access", "the public view setting", { method, body: publicView === undefined ? undefined : { publicView } });
+  return data.publicView === true;
 }
 
 export const fetchPublicView = () => accessRequest("GET");
 export const savePublicView = (enabled: boolean) => accessRequest("PUT", enabled);
 
-export async function setPickExcluded(id: number, excluded: boolean): Promise<void> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/picks/exclude`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ id, excluded }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving.`);
-  } finally {
-    clearTimeout(timeout);
-  }
+export function setPickExcluded(id: number, excluded: boolean): Promise<void> {
+  return engineSend("/internal/picks/exclude", "saving", { id, excluded });
 }
 
 export const fetchSending = () => sendingRequest("GET");
@@ -775,34 +627,15 @@ export interface WinLossPatch {
   expenditure?: { enabled?: boolean; monthly?: number; startMonth?: string };
 }
 
-async function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch, mode: PickMode = "all"): Promise<WinLossState> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/winloss${mode !== "all" ? `?mode=${mode}` : ""}`, {
-      method,
-      headers: { Authorization: `Bearer ${internalKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} for the win/loss figures.`);
-    return (await res.json()) as WinLossState;
-  } finally {
-    clearTimeout(timeout);
-  }
+function winLossRequest(method: "GET" | "PUT", body?: WinLossPatch, mode: PickMode = "all"): Promise<WinLossState> {
+  return engineCall<WinLossState>(`/internal/winloss${mode !== "all" ? `?mode=${mode}` : ""}`, "the win/loss figures", { method, body, timeoutMs: 12_000 });
 }
 
 export const fetchWinLoss = (mode: PickMode = "all") => winLossRequest("GET", undefined, mode);
 export const saveWinLoss = (patch: WinLossPatch, mode: PickMode = "all") => winLossRequest("PUT", patch, mode);
 
 /** Totals for one league / strategy / minute bucket. Mirrors PerformanceCell in the engine's engine-db.ts. */
-export interface EnginePerformanceCell {
+interface EnginePerformanceCell {
   leagueKey: string;
   league: string;
   country: string | null;
@@ -816,31 +649,11 @@ export interface EnginePerformanceCell {
 }
 
 export async function fetchPerformanceCells(days: number | null, mode: PickMode = "all", since: string | null = null): Promise<EnginePerformanceCell[]> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const query = new URLSearchParams();
-    if (since) query.set("since", since);
-    else if (days) query.set("days", String(days));
-    if (mode !== "all") query.set("mode", mode);
-    const qs = query.toString();
-    const res = await fetch(`${baseUrl}/internal/performance${qs ? `?${qs}` : ""}`, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the breakdown.`);
-    const data = (await res.json()) as { cells: EnginePerformanceCell[] };
-    return data.cells;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const query = new URLSearchParams();
+  if (since) query.set("since", since);
+  else if (days) query.set("days", String(days));
+  if (mode !== "all") query.set("mode", mode);
+  return (await engineCall<{ cells: EnginePerformanceCell[] }>(`/internal/performance${query.size ? `?${query}` : ""}`, "the breakdown")).cells;
 }
 
 /** One league on the admin Leagues page. Mirrors AdminLeagueRow in the engine's engine-db.ts. */
@@ -879,46 +692,11 @@ export interface LeaguePatch {
 }
 
 export async function fetchAdminLeagues(): Promise<AdminLeagueRow[]> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/leagues`, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching leagues.`);
-    return ((await res.json()) as { leagues: AdminLeagueRow[] }).leagues;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return (await engineCall<{ leagues: AdminLeagueRow[] }>("/internal/leagues", "leagues")).leagues;
 }
 
-export async function updateAdminLeague(key: string, patch: LeaguePatch): Promise<void> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/leagues/update`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ key, ...patch }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving the league.`);
-  } finally {
-    clearTimeout(timeout);
-  }
+export function updateAdminLeague(key: string, patch: LeaguePatch): Promise<void> {
+  return engineSend("/internal/leagues/update", "saving the league", { key, ...patch });
 }
 
 /** One match on the Schedule tab. Mirrors ScheduleFixture in the engine's fixtures/api-football.ts. */
@@ -951,25 +729,8 @@ export interface ScheduleDay {
   pull: { configured: boolean; lastSuccessAt: string | null; lastError: string | null };
 }
 
-export async function fetchSchedule(date: string | null): Promise<ScheduleDay> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/schedule${date ? `?date=${encodeURIComponent(date)}` : ""}`, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the schedule.`);
-    return (await res.json()) as ScheduleDay;
-  } finally {
-    clearTimeout(timeout);
-  }
+export function fetchSchedule(date: string | null): Promise<ScheduleDay> {
+  return engineCall<ScheduleDay>(`/internal/schedule${date ? `?date=${encodeURIComponent(date)}` : ""}`, "the schedule");
 }
 
 /** One strategy on the admin Strategies page. Mirrors AdminStrategyRow in the engine's engine-db.ts. */
@@ -1085,33 +846,6 @@ export interface StrategyEquity {
   summary: StrategyReturn;
 }
 
-/** GET or POST to an /internal route on the engine, as the admin site. */
-async function engineCall<T>(path: string, what: string, init: { method?: "GET" | "POST" | "PUT"; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), init.timeoutMs ?? 8000);
-  try {
-    const res = await fetch(`${baseUrl}${path}`, {
-      method: init.method ?? "GET",
-      headers: { Authorization: `Bearer ${internalKey}`, ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}) },
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-      throw new Error(body.message ?? body.error ?? `Engine responded ${res.status} for ${what}.`);
-    }
-    return (await res.json()) as T;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 export function fetchStrategyEquity(label: string, mode: PickMode): Promise<StrategyEquity> {
   const q = new URLSearchParams({ label });
   if (mode !== "all") q.set("mode", mode);
@@ -1135,76 +869,19 @@ export async function saveFreshStart(start: boolean): Promise<{ at: string | nul
 }
 
 async function freshStartRequest(method: "GET" | "POST", body?: { start: boolean }): Promise<{ at: string | null }> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/fresh-start`, {
-      method,
-      headers: { Authorization: `Bearer ${internalKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} for the fresh start setting.`);
-    const data = (await res.json()) as { at?: string | null };
-    return { at: data.at ?? null };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const data = await engineCall<{ at?: string | null }>("/internal/fresh-start", "the fresh start setting", { method, body });
+  return { at: data.at ?? null };
 }
 
 /** Every strategy; with `since` (an ISO date), hits, misses and returns count only picks from then on. */
 export async function fetchAdminStrategies(since: string | null = null): Promise<AdminStrategies> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/strategies${since ? `?since=${encodeURIComponent(since)}` : ""}`, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching strategies.`);
-    const data = (await res.json()) as { strategies: AdminStrategy[]; ignored?: string[] };
-    return { strategies: data.strategies, ignored: data.ignored ?? [] };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const data = await engineCall<{ strategies: AdminStrategy[]; ignored?: string[] }>(`/internal/strategies${since ? `?since=${encodeURIComponent(since)}` : ""}`, "strategies");
+  return { strategies: data.strategies, ignored: data.ignored ?? [] };
 }
 
 /** Reports one strategy under another's name (into = null undoes it). Throws the engine's reason if it refuses. */
-export async function mergeAdminStrategy(from: string, into: string | null): Promise<void> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/strategies/merge`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, into }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error ?? `Engine responded ${res.status} when merging.`);
-    }
-  } finally {
-    clearTimeout(timeout);
-  }
+export function mergeAdminStrategy(from: string, into: string | null): Promise<void> {
+  return engineSend("/internal/strategies/merge", "merging", { from, into });
 }
 
 /** One UK day that has picks. Mirrors listPickDays in the engine's engine-db.ts. */
@@ -1216,47 +893,12 @@ export interface PickDay {
 }
 
 export async function fetchPickDays(): Promise<PickDay[]> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/live/days`, {
-      headers: { Authorization: `Bearer ${internalKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when fetching the pick days.`);
-    return ((await res.json()) as { days: PickDay[] }).days;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return (await engineCall<{ days: PickDay[] }>("/internal/live/days", "the pick days")).days;
 }
 
 /** Starts or stops ignoring a strategy's new alerts. */
-export async function setStrategyIgnored(label: string, ignored: boolean): Promise<void> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) {
-    throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/strategies/ignore`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ label, ignored }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} when saving.`);
-  } finally {
-    clearTimeout(timeout);
-  }
+export function setStrategyIgnored(label: string, ignored: boolean): Promise<void> {
+  return engineSend("/internal/strategies/ignore", "saving", { label, ignored });
 }
 // ---- Betfair reconciliation (mirrors betfair/reconcile.ts in the engine) ----
 
@@ -1702,34 +1344,12 @@ export const saveDirect = (patch: Partial<DirectSettings>) => engineCall<DirectS
 
 /** Every direct betting record as CSV (for the Excel download). */
 export async function fetchDirectExport(): Promise<string> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/direct/export`, { headers: { Authorization: `Bearer ${internalKey}` }, cache: "no-store", signal: controller.signal });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} for the direct betting download.`);
-    return await res.text();
-  } finally {
-    clearTimeout(timeout);
-  }
+  return (await engineFetch("/internal/direct/export", "the direct betting download", { timeoutMs: 20_000 })).text();
 }
 
 /** Every pick ever received as CSV (the Settings page's Excel download). */
 export async function fetchPicksExport(): Promise<string> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
-  try {
-    const res = await fetch(`${baseUrl}/internal/picks/export`, { headers: { Authorization: `Bearer ${internalKey}` }, cache: "no-store", signal: controller.signal });
-    if (!res.ok) throw new Error(`Engine responded ${res.status} for the picks download.`);
-    return await res.text();
-  } finally {
-    clearTimeout(timeout);
-  }
+  return (await engineFetch("/internal/picks/export", "the picks download", { timeoutMs: 60_000 })).text();
 }
 
 // ---- League history (mirrors history/football-data.ts in the engine) ----
@@ -1986,68 +1606,24 @@ export function getStrategyAdvice(): Promise<{ advice: StrategyAdvice[] }> {
 
 /** Sets a suggestion aside for `hours` (24 by default; 0 brings it back). Changes no setting. */
 export async function snoozeStrategyAdvice(key: string, kind: StrategyAdvice["kind"], hours: number, league?: string): Promise<{ until: string | null }> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  const res = await fetch(`${baseUrl}/internal/strategy-advice/snooze`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ key, kind, hours, ...(league ? { league } : {}) }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  const data = (await res.json().catch(() => ({}))) as { until?: string | null; error?: string };
-  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  const data = await engineCall<{ until?: string | null }>("/internal/strategy-advice/snooze", "snoozing", { method: "POST", body: { key, kind, hours, ...(league ? { league } : {}) }, timeoutMs: 10_000 });
   return { until: data.until ?? null };
 }
 
 export async function applyStrategyAdvice(key: string, kind: StrategyAdvice["kind"], league: string | undefined, expect: { to: unknown }): Promise<{ advice: StrategyAdvice[] }> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  const res = await fetch(`${baseUrl}/internal/strategy-advice/apply`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ key, kind, expect, ...(league ? { league } : {}) }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  const data = (await res.json().catch(() => ({}))) as { advice?: StrategyAdvice[]; error?: string };
-  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  const data = await engineCall<{ advice?: StrategyAdvice[] }>("/internal/strategy-advice/apply", "applying the suggestion", { method: "POST", body: { key, kind, expect, ...(league ? { league } : {}) }, timeoutMs: 10_000 });
   return { advice: data.advice ?? [] };
 }
 
 /** Every suggestion showing, carried out in one go (engine applyAllAdvice). League stops are left out. */
 export async function applyAllStrategyAdvice(): Promise<{ applied: StrategyAdvice[]; failed: Array<{ key: string; kind: string; error: string }>; advice: StrategyAdvice[] }> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  const res = await fetch(`${baseUrl}/internal/strategy-advice/apply-all`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-    body: "{}",
-    cache: "no-store",
-    signal: AbortSignal.timeout(30_000),
-  });
-  const data = (await res.json().catch(() => ({}))) as { applied?: StrategyAdvice[]; failed?: Array<{ key: string; kind: string; error: string }>; advice?: StrategyAdvice[]; error?: string };
-  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  const data = await engineCall<{ applied?: StrategyAdvice[]; failed?: Array<{ key: string; kind: string; error: string }>; advice?: StrategyAdvice[] }>("/internal/strategy-advice/apply-all", "applying the suggestions", { method: "POST", body: {}, timeoutMs: 30_000 });
   return { applied: data.applied ?? [], failed: data.failed ?? [], advice: data.advice ?? [] };
 }
 
 /** Retries a bet GoalBrew didn't get placed (Live: Retry bet). */
 export async function retryBet(pickId: number): Promise<{ state: string; reason: string | null }> {
-  const baseUrl = process.env.ENGINE_BASE_URL;
-  const internalKey = process.env.ADMIN_INTERNAL_KEY;
-  if (!baseUrl || !internalKey) throw new Error("ENGINE_BASE_URL and ADMIN_INTERNAL_KEY must both be set on this component.");
-  const res = await fetch(`${baseUrl}/internal/direct/retry`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ pickId }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  const data = (await res.json().catch(() => ({}))) as { state?: string; reason?: string | null; error?: string };
-  if (!res.ok) throw new Error(data.error ?? `Engine responded ${res.status}.`);
+  const data = await engineCall<{ state?: string; reason?: string | null }>("/internal/direct/retry", "retrying the bet", { method: "POST", body: { pickId }, timeoutMs: 10_000 });
   return { state: data.state ?? "waiting", reason: data.reason ?? null };
 }
 
@@ -2221,7 +1797,7 @@ export function fetchByMethod(): Promise<ByMethodReport> {
 }
 
 /** The strategy archive (engine archive.ts): old strategies hidden from every page, kept on record. Admin only. */
-export interface ArchiveRow {
+interface ArchiveRow {
   key: string;
   label: string;
   archivedAt: string;
@@ -2240,6 +1816,10 @@ export interface ArchiveState {
 export function fetchArchive(): Promise<ArchiveState> {
   return engineCall<ArchiveState>("/internal/archive", "the archive");
 }
+/** Just the archived strategies' keys: cheap, unlike the rows (which work out every strategy's returns). */
+export async function fetchArchivedKeys(): Promise<string[]> {
+  return (await engineCall<{ keys: string[] }>("/internal/archive?keys=1", "the archive")).keys;
+}
 export function setArchive(label: string, archived: boolean, note?: string): Promise<{ keys: string[]; switchedOff: string[] }> {
   return engineCall<{ keys: string[]; switchedOff: string[] }>("/internal/archive", "the archive", { method: "POST", body: { label, archived, note } });
 }
@@ -2257,7 +1837,7 @@ export function fetchChanges(): Promise<{ changes: ChangeEntry[] }> {
   return engineCall<{ changes: ChangeEntry[] }>("/internal/changes", "the changes log");
 }
 /** Auto-adjust (engine auto-adjust.ts): whether it is on, what it leaves alone, and each run's changes and held-back suggestions. */
-export interface AutoAdjustState {
+interface AutoAdjustState {
   on: boolean;
   protected: string[];
   runs: Array<{

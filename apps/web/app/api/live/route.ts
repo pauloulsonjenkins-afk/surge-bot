@@ -4,13 +4,13 @@ import { fetchLivePicks, toPublicPick, type PublicPick } from "@/server/engine-c
 import { cached } from "@/server/cache";
 import { dataGate, isAdmin } from "@/server/access";
 
-// Open to the admin, to anyone while the public view switch is on (Admin, Settings), and to signed-in users given this page. Only the trimmed public shape is returned: no raw
+// Open to the admin, and to anyone while the public view switch is on (Admin, Settings). Only the trimmed public shape is returned: no raw
 // alert text, no ids, no stakes and nothing about what was sent to bet.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const blocked = await dataGate("live");
+  const blocked = await dataGate();
   if (blocked) return blocked;
   const { searchParams } = new URL(request.url);
   const limitParam = Number(searchParams.get("limit"));

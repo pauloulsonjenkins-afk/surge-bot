@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
 import type { GoldenActionBody, GoldenReport, GoldenSlice, GoldenSuggestion } from "@/server/engine-client";
+import type { LiveSlice } from "@/lib/strategy-summary";
 
 export type { GoldenReport, GoldenSlice, GoldenSuggestion };
 
@@ -17,6 +18,15 @@ export function useGolden(enabled = true) {
     staleTime: 60_000,
     enabled,
     queryFn: ({ signal }) => getJson<GoldenReport>("/api/admin/golden", "Golden", signal),
+  });
+}
+
+/** Only the Golden slices betting real money, trimmed (strategy-summary.ts): for the Strategies overview. */
+export function useLiveSlices() {
+  return usePersistedQuery({
+    queryKey: ["golden", "live"],
+    staleTime: 60_000,
+    queryFn: ({ signal }) => getJson<{ slices: LiveSlice[] }>("/api/admin/golden?view=live", "Golden", signal),
   });
 }
 
@@ -38,6 +48,7 @@ export function useGoldenAction() {
     },
     onSuccess: (data) => {
       qc.setQueryData(["golden"], data);
+      void qc.invalidateQueries({ queryKey: ["golden", "live"] });
       void qc.invalidateQueries({ queryKey: ["admin-strategies"] });
     },
   });

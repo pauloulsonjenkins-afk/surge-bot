@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchGolden, goldenAction, type LeagueFilter } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
+import { liveSlices } from "@/lib/strategy-summary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function isAdmin() {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
-/** Golden: watched slices and the finder's suggestions (admin only). */
-export async function GET() {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+/** Golden: watched slices and the finder's suggestions (admin only). ?view=live: only the slices betting real money. */
+export async function GET(request: Request) {
+  if (!(await isAdmin())) return unauthorized();
   try {
-    return NextResponse.json(await fetchGolden());
+    const report = await fetchGolden();
+    if (new URL(request.url).searchParams.get("view") === "live") return NextResponse.json({ slices: liveSlices(report.slices) });
+    return NextResponse.json(report);
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown_error" }, { status: 502 });
   }
@@ -25,7 +23,7 @@ export async function GET() {
  * id, on } (a slice's alert notifications; also the notification's own Mute button) or { action: "quiet", quiet }.
  */
 export async function POST(request: Request) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   try {
     if (b.action === "quiet" && typeof b.quiet === "boolean") return NextResponse.json(await goldenAction({ action: "quiet", quiet: b.quiet }));

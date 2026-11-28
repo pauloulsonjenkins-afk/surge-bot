@@ -1,7 +1,7 @@
 import { Sparkles } from "lucide-react";
 
 /** A watched slice's stage (engine golden.ts). */
-export type SliceStatus = "quiet" | "candidate" | "trial" | "full" | "not holding up";
+type SliceStatus = "quiet" | "candidate" | "trial" | "full" | "not holding up";
 
 /**
  * A watched slice's label. Every slice is named "Golden: …" by the engine, but gold is kept for the ones that have

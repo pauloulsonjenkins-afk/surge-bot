@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchReconcile, importBetHistory } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function isAdmin(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
 /** Real bets from the betting software against the app's estimates, per strategy. */
 export async function GET() {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     return NextResponse.json(await fetchReconcile());
   } catch (err) {
@@ -22,7 +17,7 @@ export async function GET() {
 
 /** Body: { csv: string, source?: string, timeZone?: string }. An exported bet history, uploaded on the Reconcile page. */
 export async function POST(request: Request) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   const body = (await request.json().catch(() => ({}))) as { csv?: unknown; source?: unknown; timeZone?: unknown };
   if (typeof body.csv !== "string" || !body.csv.trim()) return NextResponse.json({ error: "The file is empty." }, { status: 400 });
   try {

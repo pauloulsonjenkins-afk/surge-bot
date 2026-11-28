@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchPushState, pushAction } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function admin(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
 /** The push key and the devices that get the admin's notifications. */
 export async function GET() {
-  if (!(await admin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     return NextResponse.json(await fetchPushState());
   } catch (err) {
@@ -25,7 +20,7 @@ export async function GET() {
  * { action: "test" } sends every device a test notification.
  */
 export async function POST(request: Request) {
-  if (!(await admin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   const body = (await request.json().catch(() => ({}))) as { action?: unknown; subscription?: unknown; label?: unknown; endpoint?: unknown };
   try {
     if (body.action === "subscribe") {

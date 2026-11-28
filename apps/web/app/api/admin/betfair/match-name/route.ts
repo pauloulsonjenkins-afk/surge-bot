@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { addMatchName, undoLearnedName } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,8 +10,8 @@ export const dynamic = "force-dynamic";
  * undo: true, takes out a name learned by itself instead (also called from the notification's Undo button).
  */
 export async function POST(request: Request) {
-  if (!(await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) {
+    return unauthorized();
   }
   const body = (await request.json().catch(() => ({}))) as { from?: unknown; to?: unknown; undo?: unknown };
   if (typeof body.from !== "string" || typeof body.to !== "string") return NextResponse.json({ error: "from and to are required" }, { status: 400 });

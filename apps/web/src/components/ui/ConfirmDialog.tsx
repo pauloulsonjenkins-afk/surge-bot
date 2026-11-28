@@ -18,7 +18,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
  *   await dialog.notify({ title: "Done", body: "3 alerts deleted." });
  */
 
-export interface ConfirmOptions {
+interface ConfirmOptions {
   title: string;
   body?: React.ReactNode;
   /** A short summary shown as label / value rows, e.g. the stake, daily limit and stop loss of a money action. */

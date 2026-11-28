@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchAdminLeagues, updateAdminLeague, type LeaguePatch } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function isAdmin(): Promise<boolean> {
-  const token = (await cookies()).get(ADMIN_COOKIE_NAME)?.value;
-  return verifySessionToken(token);
-}
-
 export async function GET() {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     return NextResponse.json({ leagues: await fetchAdminLeagues() });
   } catch (err) {
@@ -21,7 +15,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const key = typeof body.key === "string" ? body.key.trim() : "";

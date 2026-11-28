@@ -20,7 +20,7 @@ interface Row {
 }
 
 /** Where the biggest drawdown starts (the high point) and ends (the low after it), as indexes into rows. Rows start at £0. */
-export function drawdownSpan(rows: Array<{ total: number }>): { peak: number; trough: number } | null {
+function drawdownSpan(rows: Array<{ total: number }>): { peak: number; trough: number } | null {
   let peak = 0;
   let best: { peak: number; trough: number; size: number } | null = null;
   rows.forEach((r, i) => {
@@ -48,7 +48,7 @@ function PointTooltip({ active, payload }: { active?: boolean; payload?: Readonl
 }
 
 /** The figures a stop loss should be set from, read off the strategy's own history. */
-export function RiskFigures({ summary }: { summary: StrategyEquity["summary"] }) {
+function RiskFigures({ summary }: { summary: StrategyEquity["summary"] }) {
   const items: Array<[string, string]> = [
     ["Max drawdown", summary.maxDrawdown ? `£${summary.maxDrawdown.toFixed(2)}` : "£0.00"],
     ["Longest losing run", `${summary.longestLosingRun ?? 0}`],

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ArchiveState } from "@/server/engine-client";
 import { getJson } from "./fetch-json";
 import { usePersistedQuery } from "./persist";
@@ -18,14 +18,19 @@ export function useArchive() {
 }
 
 /** A strategy label's archive key: lower case, as the engine keys strategies. */
-export const archiveKey = (label: string) => label.trim().toLowerCase();
+const archiveKey = (label: string) => label.trim().toLowerCase();
 
 /**
- * Whether a strategy is archived, for the pages that list strategies. Nothing is hidden while the archive loads, so a
- * slow or failed load can never make a strategy vanish.
+ * Whether a strategy is archived, for the pages that list strategies. Only the keys are fetched: the full archive works
+ * out every strategy's returns on the engine. Nothing is hidden while they load, so a slow or failed load can never
+ * make a strategy vanish.
  */
 export function useIsArchived(): (label: string) => boolean {
-  const { data } = useArchive();
+  const { data } = useQuery({
+    queryKey: ["archive", "keys"],
+    queryFn: ({ signal }) => getJson<{ keys: string[] }>("/api/admin/archive?keys=1", "the archive", signal),
+    staleTime: 60_000,
+  });
   const set = useMemo(() => new Set(data?.keys ?? []), [data]);
   return (label: string) => set.has(archiveKey(label));
 }

@@ -8,7 +8,7 @@ import { CircleAlert, Info, OctagonAlert } from "lucide-react";
  *   info    worth knowing, nothing to do                                  neutral
  * Put the most severe first; a page shows its Notices together at the top, not scattered through cards.
  */
-export type NoticeLevel = "stop" | "action" | "info";
+type NoticeLevel = "stop" | "action" | "info";
 
 const STYLE: Record<NoticeLevel, { box: string; icon: string; Icon: typeof Info; label: string }> = {
   stop: { box: "bg-loss/15", icon: "text-loss", Icon: OctagonAlert, label: "Stopped" },

@@ -17,10 +17,6 @@ export function overLimit(key: string, max: number, windowMs: number): boolean {
   return entry.count > max;
 }
 
-export function clearLimit(key: string): void {
-  buckets.delete(key);
-}
-
 /** DigitalOcean's edge sets DO-Connecting-IP; otherwise the LAST X-Forwarded-For entry (the one the proxy added). */
 export function clientIp(req: Request): string {
   const direct = req.headers.get("do-connecting-ip")?.trim();

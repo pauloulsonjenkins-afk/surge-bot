@@ -26,7 +26,7 @@ export function placeOdds(odds: number, fraction: number): number {
   return 1 + (odds - 1) / fraction;
 }
 
-export interface BetMoney {
+interface BetMoney {
   /** What the bet cost: the stake, or twice it for each-way. */
   cost: number;
   /** What came back, once settled (null while pending). */

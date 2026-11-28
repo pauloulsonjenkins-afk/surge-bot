@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchPickDays } from "@/server/engine-client";
+import { isAdmin, unauthorized } from "@/server/access";
 
 // Signed-in only. The days that have picks, for the Results page's date picker.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!(await verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) {
+    return unauthorized();
   }
   try {
     return NextResponse.json({ days: await fetchPickDays() });

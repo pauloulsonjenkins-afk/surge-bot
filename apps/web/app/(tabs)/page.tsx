@@ -1,14 +1,8 @@
 import { redirect } from "next/navigation";
-import { currentUser, isAdmin, publicViewOn } from "@/server/access";
+import { isAdmin, publicViewOn } from "@/server/access";
 
-/**
- * The site's front door. The admin starts on Home; everyone, while Public view is on, starts on the Dashboard, as do
- * people the admin gave the Dashboard to. Anyone else gets the admin sign-in (the Members area was removed on
- * 14 Nov 2026).
- */
+/** The site's front door: the admin starts on Home, visitors on the Dashboard while Public view is on, anyone else at the admin sign-in. */
 export default async function TabsIndexPage() {
   if (await isAdmin()) redirect("/more/admin/today");
-  if (await publicViewOn()) redirect("/dashboard");
-  const user = await currentUser();
-  redirect(user?.pages.includes("dashboard") ? "/dashboard" : "/more/admin/login");
+  redirect((await publicViewOn()) ? "/dashboard" : "/more/admin/login");
 }

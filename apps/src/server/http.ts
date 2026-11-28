@@ -1320,7 +1320,10 @@ export function createEngineHttpServer(env: ServerEnv, db: EngineDb, backups: Ba
         }
         return;
       }
-      send(res, 200, { keys: Object.keys(getArchived(db)), rows: archiveRows(db) });
+      // ?keys=1: just which strategies are archived, for the pages that hide them. The rows work out every strategy's
+      // returns (about a second on this thread), so only the Archive page itself asks for them.
+      const keysOnly = new URL(rawUrl, "http://internal").searchParams.get("keys") === "1";
+      send(res, 200, keysOnly ? { keys: Object.keys(getArchived(db)) } : { keys: Object.keys(getArchived(db)), rows: archiveRows(db) });
       return;
     }
 

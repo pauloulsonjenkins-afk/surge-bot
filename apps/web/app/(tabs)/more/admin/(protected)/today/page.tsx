@@ -25,7 +25,6 @@ import { useDashboard } from "@/queries/use-dashboard";
 import { ukMidnightIso } from "@/lib/uk-time";
 import type { ChangeEntry } from "@/server/engine-client";
 
-
 function ago(iso: string | null): string {
   if (!iso) return "never";
   const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
@@ -61,6 +60,7 @@ function LiveToday({ d }: { d: TodaySnapshot }) {
       needs={c?.breakevenEffective ?? c?.breakeven ?? null}
       won={stats?.totals.hits ?? 0}
       lost={stats?.totals.misses ?? 0}
+      loading={!stats}
     />
   );
 }

@@ -37,7 +37,7 @@ export const ADMIN_MORE: NavItem[] = [
 ];
 
 /** A main (or More) page and the pages shown as tabs under it. `root` is the menu entry that stays lit. */
-export interface NavFamily {
+interface NavFamily {
   root: string;
   tabs: NavItem[];
 }

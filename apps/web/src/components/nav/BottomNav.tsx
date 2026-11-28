@@ -8,7 +8,6 @@ import { navIcon } from "./nav-icons";
 import { AdviceBadge } from "@/components/admin/AdviceBadge";
 import { useUiStore } from "@/state/ui.store";
 import { isValidMoreRoute } from "@/lib/routes";
-import { TAB_PAGE } from "@/lib/user-pages";
 import { useMe } from "@/queries/use-me";
 
 const TABS = [
@@ -29,23 +28,15 @@ const ADMIN_TABS = [
   { href: "/more", label: "More", icon: MoreHorizontal, isMore: true },
 ];
 
-/** A signed-in user only sees the tabs the admin has given them. Signed-out visitors and the admin see them all
- * (a signed-out visitor who taps one is offered the sign-in). */
-export function useVisibleTabs() {
-  const { data: me } = useMe();
-  return TABS.filter((t) => {
-    const needs = TAB_PAGE[t.href] ?? null;
-    if (!needs || !me || me.admin || !me.user) return true;
-    return me.pages.includes(needs);
-  });
-}
+/** The site's tabs for a visitor (Public view); the admin has ADMIN_TABS. */
+export const PUBLIC_TABS = TABS;
 
 /**
- * A tap on the bar (phone polish, 12 Nov 2026). On the tab you are already on, it goes back to the top of the page,
+ * A tap on the bar. On the tab you are already on, it goes back to the top of the page,
  * as phone apps do, instead of loading the same page again. Any tap gives a very short buzz where the phone
  * supports it (Android; iPhones ignore it), so a press is felt as well as seen.
  */
-export function onTabTap(e: { preventDefault(): void }, sameTab: boolean): void {
+function onTabTap(e: { preventDefault(): void }, sameTab: boolean): void {
   try {
     navigator.vibrate?.(8);
   } catch {
@@ -63,10 +54,9 @@ export function onTabTap(e: { preventDefault(): void }, sameTab: boolean): void 
 export default function BottomNav() {
   const pathname = usePathname();
   const lastMoreRoute = useUiStore((s) => s.lastMoreRoute);
-  const visible = useVisibleTabs();
   const { data: me } = useMe();
   const admin = me?.admin === true;
-  const tabs = admin ? ADMIN_TABS : visible;
+  const tabs = admin ? ADMIN_TABS : TABS;
   // For the admin a tab is also lit on the pages that open under it (Golden under Strategies, the Report under Profit).
   const own = (href: string) => (admin ? navActive(pathname, href) : pathname === href || pathname.startsWith(`${href}/`));
 

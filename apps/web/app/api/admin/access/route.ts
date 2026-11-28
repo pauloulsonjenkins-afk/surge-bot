@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/server/auth";
 import { fetchPublicView, savePublicView } from "@/server/engine-client";
-import { forgetPublicViewCache } from "@/server/access";
+import { forgetPublicViewCache, isAdmin, unauthorized } from "@/server/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function authorised(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
-}
-
 export async function GET() {
-  if (!(await authorised())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     return NextResponse.json({ publicView: await fetchPublicView() });
   } catch (err) {
@@ -21,7 +15,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  if (!(await authorised())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
     const body = (await request.json()) as { publicView?: unknown };
     if (typeof body.publicView !== "boolean") {
